@@ -1,10 +1,20 @@
 "use client";
 
-import { CheckCircle2, FileSignature, Images, PenLine } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  ClipboardList,
+  Copy,
+  Download,
+  FileSignature,
+  Images,
+  PenLine,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SignaturePad, SignatureSlot } from "@/components/signature-pad";
 import { Button, Card, Input, Modal } from "@/components/ui";
+import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import {
   INFLU_TIER_ORDER,
@@ -69,9 +79,319 @@ export function PhotosModal({
   );
 }
 
-/* ---------- Stage 3: Memo ขออนุมัติ (จำลองแบบฟอร์มจริง) ---------- */
+/* ---------- Stage 3: Memo ขออนุมัติ ---------- */
 
-export function MemoStage({
+export function MemoStage(props: {
+  influencer: InfluencerRow;
+  signatures: InfluSignatureRow[];
+  userName: string;
+  readOnly: boolean;
+}) {
+  // โหมดแบบฟอร์มดิจิทัล (MemoFormStage) เก็บโค้ดไว้แต่ยังไม่เปิดใช้ — Coming soon
+  const [mode] = useState<"copy" | "form">("copy");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
+            mode === "copy"
+              ? "cursor-default bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
+              : "cursor-pointer border border-stone-200 bg-white/50 text-stone-500"
+          }`}
+        >
+          <ClipboardList size={15} />
+          คัดลอกข้อความไปสร้าง Memo
+        </button>
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70"
+        >
+          <FileSignature size={15} />
+          แบบฟอร์มดิจิทัล (เซนในระบบ)
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            Coming soon
+          </span>
+        </button>
+      </div>
+
+      {mode === "copy" ? (
+        <MemoCopyStage {...props} />
+      ) : (
+        <MemoFormStage {...props} />
+      )}
+    </div>
+  );
+}
+
+/* ---------- กล่องข้อความพร้อมปุ่มคัดลอก ---------- */
+
+function CopyBox({
+  label,
+  text,
+  multiline = false,
+}: {
+  label: string;
+  text: string;
+  multiline?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // เบราว์เซอร์ที่ไม่รองรับ clipboard API — fallback ผ่าน textarea ชั่วคราว
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-xs font-semibold text-stone-600">{label}</p>
+        <Button
+          variant="ghost"
+          onClick={() => void copy()}
+          className="!px-2.5 !py-1 !text-xs"
+        >
+          {copied ? (
+            <Check size={13} className="text-emerald-600" />
+          ) : (
+            <Copy size={13} />
+          )}
+          {copied ? "คัดลอกแล้ว" : "คัดลอก"}
+        </Button>
+      </div>
+      <div
+        className={`rounded-xl border border-stone-200 bg-white/80 px-3.5 py-2.5 text-[13px] leading-6 text-stone-800 ${
+          multiline ? "whitespace-pre-wrap" : ""
+        }`}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- โหมดคัดลอกข้อความ: เรื่อง / เรียน / รายละเอียด + รูปพร้อมดาวน์โหลด ---------- */
+
+function MemoCopyStage({
+  influencer,
+  readOnly,
+}: {
+  influencer: InfluencerRow;
+  signatures: InfluSignatureRow[];
+  userName: string;
+  readOnly: boolean;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const photoUrl = useSignedUrl(influencer.photo_path);
+  const channelUrl = useSignedUrl(influencer.channel_photo_path);
+
+  const fullName = [influencer.first_name, influencer.last_name]
+    .filter(Boolean)
+    .join(" ");
+  const nameWithNick = `คุณ${fullName}${
+    influencer.nickname ? ` (ชื่อเล่น : ${influencer.nickname})` : ""
+  }`;
+
+  const subjectText = `ขออนุมัติเคสทางการตลาด ${nameWithNick}`;
+  const tierText = influencer.tier
+    ? `${INFLU_TIERS[influencer.tier].label} (${INFLU_TIERS[influencer.tier].range})`
+    : "-";
+  const detailText = [
+    MEMO_COMPANY.purpose,
+    "",
+    `ชื่อ-นามสกุล : ${nameWithNick}`,
+    `อาชีพ : ${influencer.occupation || "-"}`,
+    `หัตถการที่รับบริการ : ${influencer.procedure_text || "-"}`,
+    `มูลค่า : ${
+      influencer.case_value != null
+        ? formatCurrency(influencer.case_value)
+        : "-"
+    }`,
+    `วันที่ทำหัตถการ : ${
+      influencer.service_date ? formatDate(influencer.service_date) : "-"
+    }`,
+    `ยอดผู้ติดตาม : ${
+      influencer.follower_note ||
+      (influencer.followers != null
+        ? formatNumber(influencer.followers)
+        : "-")
+    }`,
+    `Tier : ${tierText}`,
+    "",
+    "จึงเรียนมาเพื่อพิจารณาอนุมัติ",
+  ].join("\n");
+
+  const download = async (path: string, label: string) => {
+    setError(null);
+    setDownloading(path);
+    const { data, error: e } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .download(path);
+    setDownloading(null);
+    if (e || !data) {
+      setError(`ดาวน์โหลดรูปไม่สำเร็จ${e ? `: ${e.message}` : ""}`);
+      return;
+    }
+    const ext = path.includes(".")
+      ? path.slice(path.lastIndexOf(".") + 1)
+      : "jpg";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(data);
+    a.download = `${label}-${influencer.nickname || influencer.first_name}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const goNext = async () => {
+    if (
+      !window.confirm("ยืนยันว่า Memo ได้รับอนุมัติแล้ว และไป Stage 4 (สัญญา)?")
+    )
+      return;
+    const { error: e } = await supabase
+      .from("influencers")
+      .update({ stage: 4 })
+      .eq("id", influencer.id);
+    if (e) {
+      setError(`ไป stage ถัดไปไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    router.refresh();
+  };
+
+  const photos = [
+    { label: "รูป Influencer", url: photoUrl, path: influencer.photo_path },
+    {
+      label: "รูปช่องทาง (Channel)",
+      url: channelUrl,
+      path: influencer.channel_photo_path,
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
+        <ClipboardList size={14} className="shrink-0" />
+        คัดลอกข้อความแต่ละส่วนด้านล่างไปสร้างเอกสาร Memo ขออนุมัติเคส — เมื่อ
+        Memo ได้รับอนุมัติแล้วจึงกดปุ่มด้านล่างเพื่อไป Stage ถัดไป
+      </p>
+
+      <Card className="space-y-4 p-5">
+        <CopyBox label="เรื่อง" text={subjectText} />
+        <CopyBox label="เรียน" text={MEMO_COMPANY.to} />
+        <CopyBox label="รายละเอียด" text={detailText} multiline />
+      </Card>
+
+      {/* รายชื่อผู้ตรวจสอบ/ผู้อนุมัติ — แสดงอย่างเดียว ไม่มีปุ่มคัดลอก */}
+      <Card className="p-5">
+        <p className="mb-3 text-xs font-semibold text-stone-600">
+          รายชื่อผู้ตรวจสอบและผู้อนุมัติ
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {MEMO_SIGNERS.filter((s) => s.role !== "maker").map((s) => (
+            <div
+              key={s.role}
+              className="rounded-xl border border-stone-200 bg-white/70 px-3.5 py-2.5"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">
+                {s.heading}
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-stone-800">
+                {s.name}
+              </p>
+              {s.position && (
+                <p className="text-xs text-stone-500">{s.position}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* รูปที่อัพโหลดไว้ + ปุ่มดาวน์โหลดทุกรูป */}
+      <Card className="p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <Images size={14} />
+          รูปที่อัพโหลดไว้
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {photos.map((p) => (
+            <div key={p.label}>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium text-stone-500">{p.label}</p>
+                {p.path && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void download(p.path!, p.label)}
+                    loading={downloading === p.path}
+                    className="!px-2.5 !py-1 !text-xs"
+                  >
+                    <Download size={13} />
+                    ดาวน์โหลด
+                  </Button>
+                )}
+              </div>
+              {p.path ? (
+                p.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.url}
+                    alt={p.label}
+                    className="w-full rounded-xl border border-stone-200 object-contain"
+                  />
+                ) : (
+                  <div className="flex h-40 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
+                    กำลังโหลด...
+                  </div>
+                )
+              ) : (
+                <div className="flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-stone-200 text-xs text-stone-400">
+                  ยังไม่ได้อัพโหลด (กลับไปอัพโหลดใน Stage 2)
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {error && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+          {error}
+        </p>
+      )}
+
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button onClick={() => void goNext()}>
+            <CheckCircle2 size={16} />
+            Memo อนุมัติแล้ว — ไป Stage 4 (สัญญา)
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- แบบฟอร์มดิจิทัล (จำลองแบบฟอร์มจริง) — เก็บโค้ดไว้ ยังไม่เปิดใช้ (Coming soon) ---------- */
+
+export function MemoFormStage({
   influencer,
   signatures,
   userName,
