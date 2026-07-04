@@ -1,11 +1,51 @@
 "use client";
 
-import { Eraser, PenLine, X } from "lucide-react";
+import { Eraser, PenLine, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import SignaturePadLib from "signature_pad";
 import { Button } from "@/components/ui";
 
 /**
+ * ครอปพื้นที่ว่างรอบลายเซนออก (เหลือขอบ 12px) — ลายเซนจะได้แสดงเต็มช่องในเอกสาร
+ * ไม่ใช่ภาพเล็กจิ๋วกลางผืน canvas ใหญ่
+ */
+function trimmedPng(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas.toDataURL("image/png");
+  const { width, height } = canvas;
+  const alpha = ctx.getImageData(0, 0, width, height).data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (alpha[(y * width + x) * 4 + 3] > 0) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return canvas.toDataURL("image/png");
+  const margin = 12;
+  minX = Math.max(0, minX - margin);
+  minY = Math.max(0, minY - margin);
+  maxX = Math.min(width - 1, maxX + margin);
+  maxY = Math.min(height - 1, maxY + margin);
+  const w = maxX - minX + 1;
+  const h = maxY - minY + 1;
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  out.getContext("2d")?.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
+  return out.toDataURL("image/png");
+}
+
+/**
  * แผ่นเซนลายเซนดิจิทัลเต็มจอ — วาดด้วยเมาส์/นิ้ว หมึกสีน้ำเงิน
+ * ใช้ไลบรารี signature_pad (Bézier curve + ความหนาเส้นตามความเร็วปากกา) ให้เส้นโค้งลื่นเหมือนเซนจริง
  * บันทึกเป็น PNG data URL (พื้นโปร่งใส) เพื่อแปะลงช่องเซนในเอกสาร
  */
 export function SignaturePad({
@@ -20,7 +60,7 @@ export function SignaturePad({
   onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
+  const padRef = useRef<SignaturePadLib | null>(null);
   const [dirty, setDirty] = useState(false);
 
   // Esc ปิด pad (stopPropagation กัน Modal ที่ซ้อนอยู่ข้างล่างปิดตาม)
@@ -38,64 +78,65 @@ export function SignaturePad({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#1d4ed8"; // หมึกน้ำเงิน
+
+    const pad = new SignaturePadLib(canvas, {
+      penColor: "#1d4ed8", // หมึกน้ำเงิน
+      minWidth: 1,
+      maxWidth: 2.8,
+      throttle: 0, // เก็บทุกจุด ไม่ข้ามจุดตอนลากเร็ว — เส้นลื่นสุด
+      minDistance: 1,
+    });
+    padRef.current = pad;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return; // ยังไม่ถูก layout — รอรอบถัดไป
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const w = Math.round(rect.width * ratio);
+      const h = Math.round(rect.height * ratio);
+      if (canvas.width === w && canvas.height === h) return;
+      const data = pad.toData();
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")?.scale(ratio, ratio);
+      pad.fromData(data); // วาดเส้นเดิมกลับหลัง resize
+    };
+    resize();
+
+    // ResizeObserver ครอบคลุมทุกกรณีที่ขนาด canvas เปลี่ยน (ย่อหน้าต่าง, CSS โหลดช้า ฯลฯ)
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+
+    const onBegin = () => setDirty(true);
+    pad.addEventListener("beginStroke", onBegin);
+    window.addEventListener("resize", resize); // เผื่อ devicePixelRatio เปลี่ยน (ย้ายจอ)
+    return () => {
+      pad.removeEventListener("beginStroke", onBegin);
+      window.removeEventListener("resize", resize);
+      observer.disconnect();
+      pad.off();
+    };
   }, []);
 
-  const pos = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    drawing.current = true;
-    try {
-      canvasRef.current?.setPointerCapture(e.pointerId);
-    } catch {
-      // pointer capture ใช้ไม่ได้ในบางกรณี (เช่น synthetic events) — วาดต่อได้ปกติ
-    }
-    const { x, y } = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  };
-
-  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current) return;
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    const { x, y } = pos(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    setDirty(true);
-  };
-
-  const end = () => {
-    drawing.current = false;
+  const undo = () => {
+    const pad = padRef.current;
+    if (!pad) return;
+    const data = pad.toData();
+    data.pop();
+    pad.fromData(data);
+    setDirty(data.length > 0);
   };
 
   const clear = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    padRef.current?.clear();
     setDirty(false);
   };
 
   const save = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !dirty) return;
-    onSave(canvas.toDataURL("image/png"));
+    const pad = padRef.current;
+    if (!canvas || !pad || pad.isEmpty()) return;
+    onSave(trimmedPng(canvas));
   };
 
   return (
@@ -122,10 +163,6 @@ export function SignaturePad({
         <div className="relative min-h-0 flex-1 p-4">
           <canvas
             ref={canvasRef}
-            onPointerDown={start}
-            onPointerMove={move}
-            onPointerUp={end}
-            onPointerLeave={end}
             className="h-full w-full cursor-crosshair touch-none rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/50"
           />
           {!dirty && (
@@ -140,6 +177,10 @@ export function SignaturePad({
           <Button variant="ghost" onClick={clear} disabled={!dirty}>
             <Eraser size={15} />
             ล้าง
+          </Button>
+          <Button variant="ghost" onClick={undo} disabled={!dirty}>
+            <Undo2 size={15} />
+            ย้อน
           </Button>
           <div className="ml-auto flex gap-2">
             <Button variant="secondary" onClick={onClose}>

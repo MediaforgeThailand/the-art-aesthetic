@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "dev",
-      "runtimeExecutable": "C:\\Users\\User\\nodejs\\node-v24.18.0-win-x64\\node.exe",
+      "runtimeExecutable": "node",
       "runtimeArgs": ["--use-system-ca", "node_modules/next/dist/bin/next", "dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
