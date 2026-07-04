@@ -158,6 +158,9 @@ export type InfluencerRow = {
   doctor_name: string | null;
   photo_path: string | null;
   channel_photo_path: string | null;
+  memo_file_path: string | null;
+  memo_file_name: string | null;
+  memo_uploaded_at: string | null;
   maker_name: string | null;
   stage: number;
   completed: boolean;

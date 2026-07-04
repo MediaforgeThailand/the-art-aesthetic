@@ -7,15 +7,22 @@ import {
   Copy,
   Download,
   FileSignature,
+  FileText,
   Images,
   PenLine,
+  Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SignaturePad, SignatureSlot } from "@/components/signature-pad";
 import { Button, Card, Input, Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+} from "@/lib/format";
 import {
   INFLU_TIER_ORDER,
   INFLU_TIERS,
@@ -26,6 +33,10 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluSignatureRow } from "@/lib/types";
 import { useSignedUrl } from "../use-signed-url";
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
 
 /* ---------- ปุ่มดูรูปที่อัพโหลดไว้ (รูป influ + รูปช่องทาง) ---------- */
 
@@ -199,8 +210,12 @@ function MemoCopyStage({
   const supabase = useMemo(() => createClient(), []);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const memoInputRef = useRef<HTMLInputElement>(null);
   const photoUrl = useSignedUrl(influencer.photo_path);
   const channelUrl = useSignedUrl(influencer.channel_photo_path);
+
+  const memoUploaded = !!influencer.memo_file_path;
 
   const fullName = [influencer.first_name, influencer.last_name]
     .filter(Boolean)
@@ -238,7 +253,7 @@ function MemoCopyStage({
     "จึงเรียนมาเพื่อพิจารณาอนุมัติ",
   ].join("\n");
 
-  const download = async (path: string, label: string) => {
+  const download = async (path: string, label: string, saveAs?: string) => {
     setError(null);
     setDownloading(path);
     const { data, error: e } = await supabase.storage
@@ -246,7 +261,7 @@ function MemoCopyStage({
       .download(path);
     setDownloading(null);
     if (e || !data) {
-      setError(`ดาวน์โหลดรูปไม่สำเร็จ${e ? `: ${e.message}` : ""}`);
+      setError(`ดาวน์โหลดไฟล์ไม่สำเร็จ${e ? `: ${e.message}` : ""}`);
       return;
     }
     const ext = path.includes(".")
@@ -254,14 +269,60 @@ function MemoCopyStage({
       : "jpg";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(data);
-    a.download = `${label}-${influencer.nickname || influencer.first_name}.${ext}`;
+    a.download =
+      saveAs ??
+      `${label}-${influencer.nickname || influencer.first_name}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(a.href);
   };
 
+  const uploadMemo = async (file: File) => {
+    setError(null);
+    setUploading(true);
+    const oldPath = influencer.memo_file_path;
+    const path = `influencers/${influencer.id}/memo/${Date.now()}_${sanitizeFileName(file.name)}`;
+    const { error: upErr } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .upload(path, file);
+    if (upErr) {
+      setUploading(false);
+      setError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
+      return;
+    }
+    const { error: linkErr } = await supabase
+      .from("influencers")
+      .update({
+        memo_file_path: path,
+        memo_file_name: file.name,
+        memo_uploaded_at: new Date().toISOString(),
+      })
+      .eq("id", influencer.id);
+    setUploading(false);
+    if (linkErr) {
+      // ผูกกับ DB ไม่สำเร็จ — เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
+      try {
+        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([path]);
+      } catch {
+        // เพิกเฉย
+      }
+      setError(`บันทึกไฟล์ไม่สำเร็จ: ${linkErr.message}`);
+      return;
+    }
+    // ลบไฟล์เก่าที่ถูกแทนที่ (best effort — กันไฟล์กำพร้าสะสมใน storage)
+    if (oldPath) {
+      try {
+        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+      } catch {
+        // เพิกเฉย
+      }
+    }
+    router.refresh();
+  };
+
   const goNext = async () => {
+    if (!memoUploaded) return;
     if (
       !window.confirm("ยืนยันว่า Memo ได้รับอนุมัติแล้ว และไป Stage 4 (สัญญา)?")
     )
@@ -290,8 +351,9 @@ function MemoCopyStage({
     <div className="space-y-4">
       <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
         <ClipboardList size={14} className="shrink-0" />
-        คัดลอกข้อความแต่ละส่วนด้านล่างไปสร้างเอกสาร Memo ขออนุมัติเคส — เมื่อ
-        Memo ได้รับอนุมัติแล้วจึงกดปุ่มด้านล่างเพื่อไป Stage ถัดไป
+        คัดลอกข้อความแต่ละส่วนด้านล่างไปสร้างเอกสาร Memo ตามฟอร์มของบริษัท —
+        เมื่อ Memo ได้รับอนุมัติแล้ว ให้อัพโหลดไฟล์กลับเข้ามาเก็บไว้ที่นี่
+        จึงจะไป Stage ถัดไปได้
       </p>
 
       <Card className="space-y-4 p-5">
@@ -371,6 +433,84 @@ function MemoCopyStage({
         </div>
       </Card>
 
+      {/* ไฟล์ Memo ที่อนุมัติแล้ว — อัพโหลดเก็บไว้ที่นี่ จึงจะไป stage ถัดไปได้ */}
+      <Card className="p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <FileText size={14} />
+          ไฟล์ Memo ที่อนุมัติแล้ว
+        </p>
+        {memoUploaded ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-stone-800">
+                {influencer.memo_file_name || "ไฟล์ Memo"}
+              </p>
+              {influencer.memo_uploaded_at && (
+                <p className="text-xs text-stone-500">
+                  อัพโหลดเมื่อ {formatDateTime(influencer.memo_uploaded_at)}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  void download(
+                    influencer.memo_file_path!,
+                    "Memo",
+                    influencer.memo_file_name ?? undefined
+                  )
+                }
+                loading={downloading === influencer.memo_file_path}
+                className="!px-2.5 !py-1 !text-xs"
+              >
+                <Download size={13} />
+                ดาวน์โหลด
+              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  onClick={() => memoInputRef.current?.click()}
+                  loading={uploading}
+                  className="!px-2.5 !py-1 !text-xs"
+                >
+                  <Upload size={13} />
+                  เปลี่ยนไฟล์
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : readOnly ? (
+          <p className="text-xs text-stone-400">ยังไม่มีไฟล์</p>
+        ) : (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => memoInputRef.current?.click()}
+            className="flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-stone-300 bg-white/60 px-4 py-8 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 disabled:cursor-wait"
+          >
+            <Upload size={22} />
+            {uploading
+              ? "กำลังอัพโหลด..."
+              : "กดเพื่ออัพโหลดไฟล์ Memo ที่อนุมัติแล้ว (PDF / รูปภาพ / Word)"}
+          </button>
+        )}
+        {!readOnly && (
+          <input
+            ref={memoInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void uploadMemo(f);
+              e.target.value = "";
+            }}
+          />
+        )}
+      </Card>
+
       {error && (
         <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
           {error}
@@ -378,8 +518,13 @@ function MemoCopyStage({
       )}
 
       {!readOnly && (
-        <div className="flex justify-end">
-          <Button onClick={() => void goNext()}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-stone-500">
+            {memoUploaded
+              ? "อัพโหลดไฟล์ Memo แล้ว — ไป Stage ถัดไปได้เลย"
+              : "ต้องอัพโหลดไฟล์ Memo ที่อนุมัติแล้วก่อน จึงจะไป Stage ถัดไปได้"}
+          </p>
+          <Button onClick={() => void goNext()} disabled={!memoUploaded}>
             <CheckCircle2 size={16} />
             Memo อนุมัติแล้ว — ไป Stage 4 (สัญญา)
           </Button>
