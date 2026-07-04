@@ -18,6 +18,8 @@ export type {
   SalesTargetRow,
   StaffKpiRow,
   PricePromotionRow,
+  PriceOffer,
+  PriceItemRow,
   InfluTier,
   ProcedureChange,
   InfluencerRow,

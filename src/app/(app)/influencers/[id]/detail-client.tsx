@@ -35,7 +35,8 @@ import {
 } from "@/lib/format";
 import {
   contractEndDate,
-  FOLLOWUP_TEMPLATE,
+  INFLU_CHECKLIST,
+  INFLU_CHECKLIST_SECTIONS,
   INFLU_STAGES,
   INFLU_TIERS,
   tierFromFollowers,
@@ -55,7 +56,8 @@ function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
-/** สร้างงาน follow up 10 step จาก template (idempotent) — คืน error message ถ้าล้ม */
+/** สร้าง checklist ติดตามงานจากเอกสาร 5 หมวด (idempotent) — คืน error message ถ้าล้ม
+    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ stage 6" (วันนี้ ณ ตอน generate) */
 async function generateFollowupTasks(
   supabase: ReturnType<typeof createClient>,
   influencer: InfluencerRow
@@ -68,8 +70,7 @@ async function generateFollowupTasks(
   if (exErr) return exErr.message;
   if (existing && existing.length > 0) return null;
 
-  const base = influencer.service_date ?? todayISO();
-  const nick = influencer.nickname || influencer.first_name;
+  const base = todayISO();
   const addDays = (iso: string, days: number) => {
     const d = new Date(iso);
     d.setDate(d.getDate() + days);
@@ -77,13 +78,13 @@ async function generateFollowupTasks(
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
   const { error } = await supabase.from("influ_tasks").insert(
-    FOLLOWUP_TEMPLATE.map((t) => ({
+    INFLU_CHECKLIST.map((t) => ({
       influencer_id: influencer.id,
       step: t.step,
       title: t.title,
-      script: t.script.replaceAll("{ชื่อเล่น}", nick),
-      channel: t.channel.replaceAll("{ชื่อเล่น}", nick),
-      due_date: addDays(base, t.offsetDays),
+      script: t.detail,
+      section: t.section,
+      due_date: t.offsetDays != null ? addDays(base, t.offsetDays) : null,
     }))
   );
   return error?.message ?? null;
@@ -898,10 +899,44 @@ function FollowupStage({
   const [generating, setGenerating] = useState(false);
 
   const doneCount = tasks.filter((t) => t.done).length;
-  const dueCount = tasks.filter(
-    (t) => !t.done && t.due_date && t.due_date <= today
+  /** จำนวนวันจากวันนี้ถึงกำหนด — ติดลบ = เลยกำหนดแล้ว */
+  const daysLeft = (due: string) =>
+    Math.round(
+      (new Date(due.slice(0, 10)).getTime() - new Date(today).getTime()) /
+        86400000
+    );
+  // แจ้งเตือนเฉพาะข้อที่มีกำหนดเวลา: เลยกำหนด หรือใกล้ถึงกำหนด (≤ 7 วัน)
+  const overdueCount = tasks.filter(
+    (t) => !t.done && t.due_date && daysLeft(t.due_date) < 0
+  ).length;
+  const soonCount = tasks.filter(
+    (t) =>
+      !t.done &&
+      t.due_date != null &&
+      daysLeft(t.due_date) >= 0 &&
+      daysLeft(t.due_date) <= 7
   ).length;
   const allDone = tasks.length > 0 && doneCount === tasks.length;
+
+  // จัดกลุ่มตามหมวดของเอกสาร — งานจากเทมเพลตเดิม (ไม่มีหมวด) แสดงท้ายสุด
+  const groups = useMemo(() => {
+    const gs: { section: string; rows: InfluTaskRow[] }[] = [];
+    for (const sec of INFLU_CHECKLIST_SECTIONS) {
+      const rows = tasks
+        .filter((t) => t.section === sec)
+        .sort((a, b) => a.step - b.step);
+      if (rows.length > 0) gs.push({ section: sec, rows });
+    }
+    const legacy = tasks
+      .filter(
+        (t) => !t.section || !INFLU_CHECKLIST_SECTIONS.includes(t.section)
+      )
+      .sort((a, b) => a.step - b.step);
+    if (legacy.length > 0) {
+      gs.push({ section: "รายการติดตามงาน (เทมเพลตเดิม)", rows: legacy });
+    }
+    return gs;
+  }, [tasks]);
 
   const toggleDone = async (t: InfluTaskRow) => {
     if (readOnly) return;
@@ -980,11 +1015,16 @@ function FollowupStage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <Badge className="bg-brand-50 text-brand-700">
-          ทำแล้ว {doneCount}/{tasks.length} step
+          ทำแล้ว {doneCount}/{tasks.length} ข้อ
         </Badge>
-        {dueCount > 0 && (
+        {overdueCount > 0 && (
+          <Badge className="border border-rose-200 bg-rose-50 text-rose-700">
+            <BellRing size={12} /> เลยกำหนด {overdueCount} รายการ
+          </Badge>
+        )}
+        {soonCount > 0 && (
           <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-            <BellRing size={12} /> ถึงกำหนดแล้ว {dueCount} รายการ
+            <BellRing size={12} /> ใกล้ถึงกำหนด {soonCount} รายการ
           </Badge>
         )}
         {contractEnd && (
@@ -1025,28 +1065,33 @@ function FollowupStage({
       {tasks.length === 0 && !readOnly && (
         <Card className="p-6 text-center">
           <p className="text-sm text-stone-500">
-            ยังไม่มีงาน follow up ของรายนี้ (อาจสร้างไม่สำเร็จตอนข้าม stage)
+            ยังไม่มี checklist ติดตามงานของรายนี้ (อาจสร้างไม่สำเร็จตอนข้าม stage)
           </p>
           <Button
             className="mt-3"
             loading={generating}
             onClick={() => void regenerate()}
           >
-            สร้างงาน follow up 10 step
+            สร้าง checklist ติดตามงาน (5 หมวด)
           </Button>
         </Card>
       )}
 
-      <div className="space-y-3">
-        {tasks.map((t) => {
-          const overdue = !t.done && t.due_date && t.due_date <= today;
-          return (
-            <Card
-              key={t.id}
-              className={`p-4 ${t.done ? "opacity-70" : ""} ${
-                overdue ? "!border-amber-300" : ""
-              }`}
-            >
+      <div className="space-y-4">
+        {groups.map((g) => (
+          <Card key={g.section} className="overflow-hidden">
+            {/* หัวหมวดโทนชมพูแบบเอกสารจริง */}
+            <div className="bg-gradient-to-r from-brand-500 to-brand-400 px-4 py-2.5">
+              <h3 className="text-sm font-semibold text-cream">{g.section}</h3>
+            </div>
+            <div className="divide-y divide-stone-100/80">
+              {g.rows.map((t, idx) => {
+                const dl = t.due_date ? daysLeft(t.due_date) : null;
+                return (
+                  <div
+                    key={t.id}
+                    className={`px-4 py-3 ${t.done ? "opacity-70" : ""}`}
+                  >
               <div className="flex items-start gap-3">
                 <button
                   type="button"
@@ -1070,17 +1115,32 @@ function FollowupStage({
                           : "text-stone-900"
                       }`}
                     >
-                      {t.step}. {t.title}
+                      {idx + 1}. {t.title}
                     </p>
-                    {t.due_date && (
-                      <Badge
-                        className={
-                          overdue
-                            ? "border border-amber-300 bg-amber-50 text-amber-700"
-                            : "bg-stone-100 text-stone-500"
-                        }
-                      >
-                        {overdue && <BellRing size={11} />}
+                    {/* เคาน์ดาวน์เฉพาะข้อที่มีกำหนดเวลา — เตือนเมื่อเหลือ ≤ 7 วัน */}
+                    {t.due_date && dl !== null && !t.done && (
+                      dl < 0 ? (
+                        <Badge className="border border-rose-200 bg-rose-50 text-rose-700">
+                          <BellRing size={11} /> เลยกำหนด {Math.abs(dl)} วัน (
+                          {formatDate(t.due_date)})
+                        </Badge>
+                      ) : dl === 0 ? (
+                        <Badge className="border border-amber-300 bg-amber-50 text-amber-700">
+                          <BellRing size={11} /> ครบกำหนดวันนี้
+                        </Badge>
+                      ) : dl <= 7 ? (
+                        <Badge className="border border-amber-300 bg-amber-50 text-amber-700">
+                          <BellRing size={11} /> อีก {dl} วัน — กำหนด{" "}
+                          {formatDate(t.due_date)}
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-stone-100 text-stone-500">
+                          กำหนด {formatDate(t.due_date)} (อีก {dl} วัน)
+                        </Badge>
+                      )
+                    )}
+                    {t.due_date && t.done && (
+                      <Badge className="bg-stone-100 text-stone-400">
                         กำหนด {formatDate(t.due_date)}
                       </Badge>
                     )}
@@ -1118,7 +1178,7 @@ function FollowupStage({
                   <input
                     defaultValue={t.description ?? ""}
                     disabled={readOnly}
-                    placeholder="เขียน description อัพเดทงาน เช่น ทักแล้วรอคิวโพส..."
+                    placeholder="+ เพิ่มหมายเหตุ เช่น ส่งไฟล์แล้ว รอทีมตรวจ..."
                     onChange={(e) =>
                       setDrafts((d) => ({ ...d, [t.id]: e.target.value }))
                     }
@@ -1129,19 +1189,24 @@ function FollowupStage({
                   />
                   {t.done && t.done_at && (
                     <p className="mt-1 text-[11px] text-emerald-600">
-                      ✓ follow up แล้วเมื่อ {formatDateTime(t.done_at)}
+                      ✓ ทำแล้วเมื่อ {formatDateTime(t.done_at)}
                     </p>
                   )}
                 </div>
               </div>
-            </Card>
-          );
-        })}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ))}
       </div>
 
       <p className="text-xs text-stone-400">
-        มีทั้งหมด {formatNumber(tasks.length)} step ย่อย — ระบบจะเตือน (ป้ายเหลือง)
-        เมื่อถึงกำหนดของแต่ละ step และหน้ารวมรายชื่อจะแสดงจำนวนที่ต้องตามด้วย
+        ทั้งหมด {formatNumber(tasks.length)} ข้อ —
+        ข้อที่มีกำหนดเวลาจะเริ่มนับจากวันที่เข้าสู่ stage นี้
+        และขึ้นป้ายเตือนเมื่อใกล้ถึงกำหนด (เหลือ ≤ 7 วัน) หรือเลยกำหนด
+        ส่วนข้อที่ไม่มีกำหนดเวลาไม่มีการแจ้งเตือน
       </p>
     </div>
   );

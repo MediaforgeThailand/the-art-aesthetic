@@ -156,11 +156,15 @@ export function Modal({
   wide?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // เก็บ onClose ใน ref — ผูกเป็น dependency ตรงๆ ไม่ได้ เพราะทุกหน้าส่ง arrow function
+  // ใหม่ทุก render ทำให้ effect รันซ้ำและขโมยโฟกัสจากช่องที่กำลังพิมพ์
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     // โฟกัสเข้ากล่อง + ล็อค scroll พื้นหลัง แล้วคืนโฟกัสเดิมตอนปิด
@@ -173,7 +177,7 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       prevFocus?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

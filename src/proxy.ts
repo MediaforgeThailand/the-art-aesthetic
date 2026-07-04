@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env";
 
 export default async function proxy(request: NextRequest) {
+  // หน้า Price List สาธารณะ — เปิดดูได้โดยไม่ต้องล็อกอิน (แชร์ให้ลูกค้า/ทีมภายนอก)
+  if (request.nextUrl.pathname === "/price-list") {
+    return NextResponse.next({ request });
+  }
   // ยังไม่ได้ตั้งค่า Supabase — ปล่อยผ่านเพื่อให้หน้า setup แสดงได้
   if (!isSupabaseConfigured()) {
     return NextResponse.next({ request });

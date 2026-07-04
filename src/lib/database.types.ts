@@ -211,6 +211,10 @@ export type InfluTaskRow = {
   channel: string | null;
   due_date: string | null;
   description: string | null;
+  /** หมวดของ checklist (เอกสาร 5 หมวด) — null = งานจากเทมเพลตเดิม */
+  section: string | null;
+  /** หมายเหตุเพิ่มเติมรายข้อ */
+  note: string | null;
   done: boolean;
   done_at: string | null;
 };
@@ -238,6 +242,33 @@ export type PricePromotionRow = {
   /** รูปโปรโมชัน — null = ระบบ generate ภาพแบรนด์ให้อัตโนมัติ */
   image_url: string | null;
   created_at: string;
+};
+
+/** ข้อเสนอราคา (โปรโมชัน/คอร์ส) ของรายการใน price list — เก็บใน jsonb */
+export type PriceOffer = {
+  label: string;
+  /** เก็บเป็นข้อความ เช่น "4,990" หรือ "3,745/เส้น" */
+  price: string;
+  /** YYYY-MM-DD */
+  start: string;
+  end: string;
+};
+
+/** รายการใน Price List กลาง — แสดงบนหน้าสาธารณะ /price-list (anon อ่านได้) */
+export type PriceItemRow = {
+  id: string;
+  item_no: number | null;
+  category: string;
+  name: string;
+  benefits: string | null;
+  process: string | null;
+  price_normal: string | null;
+  promos: PriceOffer[];
+  courses: PriceOffer[];
+  sort: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type StaffKpiRow = {
@@ -378,6 +409,15 @@ export interface Database {
           name: string;
         };
         Update: Partial<InfluCampaignRow>;
+        Relationships: [];
+      };
+      price_items: {
+        Row: PriceItemRow;
+        Insert: Partial<PriceItemRow> & {
+          category: string;
+          name: string;
+        };
+        Update: Partial<PriceItemRow>;
         Relationships: [];
       };
       price_promotions: {
