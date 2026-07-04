@@ -31,10 +31,19 @@ export default async function WorkloadPage() {
     return rows;
   };
 
+  // จุดเริ่มเดือนปัจจุบันตามเวลาไทย — ใช้นับ "ส่งงานแก้ไข" เดือนนี้ (วัด KPI รายคน)
+  const bkkNow = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" })
+  );
+  const monthStart = `${bkkNow.getFullYear()}-${String(
+    bkkNow.getMonth() + 1
+  ).padStart(2, "0")}-01T00:00:00+07:00`;
+
   const [
     taskData,
     { data: profileData, error: profilesError },
     { data: sectionData, error: sectionsError },
+    { data: revisionData, error: revisionsError },
   ] = await Promise.all([
     fetchTasks(),
     supabase
@@ -45,6 +54,11 @@ export default async function WorkloadPage() {
       .from("task_sections")
       .select("*")
       .order("position", { ascending: true }),
+    supabase
+      .from("task_comments")
+      .select("task_id")
+      .eq("is_revision", true)
+      .gte("created_at", monthStart),
   ]);
   if (profilesError) {
     throw new Error(`โหลดข้อมูลทีมไม่สำเร็จ: ${profilesError.message}`);
@@ -52,14 +66,25 @@ export default async function WorkloadPage() {
   if (sectionsError) {
     throw new Error(`โหลดข้อมูล section ไม่สำเร็จ: ${sectionsError.message}`);
   }
+  if (revisionsError) {
+    throw new Error(
+      `โหลดข้อมูลการแก้ไขไม่สำเร็จ: ${revisionsError.message}`
+    );
+  }
 
   const tasks = taskData;
   const profiles = profileData ?? [];
   const sections = (sectionData ?? []) as TaskSectionRow[];
+  const monthRevisions = (revisionData ?? []) as { task_id: string }[];
 
   return (
     <PageContainer>
-      <WorkloadClient tasks={tasks} profiles={profiles} sections={sections} />
+      <WorkloadClient
+        tasks={tasks}
+        profiles={profiles}
+        sections={sections}
+        monthRevisions={monthRevisions}
+      />
     </PageContainer>
   );
 }

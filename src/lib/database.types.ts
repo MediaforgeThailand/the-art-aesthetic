@@ -31,6 +31,10 @@ export type TaskRow = {
   section_id: string | null;
   completed: boolean;
   position: number;
+  /** ลิงก์งานที่ได้รับอนุมัติ (เช่น Google Drive) */
+  deliverable_url: string | null;
+  /** ไฟล์งานที่ได้รับอนุมัติ (path ใน storage) */
+  deliverable_file_path: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -57,6 +61,14 @@ export type TaskCommentRow = {
   task_id: string;
   author_id: string | null;
   body: string;
+  /** true = คอมเมนต์นี้เป็นการส่งงานแก้ไข (นับครั้งเพื่อวัด KPI) */
+  is_revision: boolean;
+  /** ลำดับการแก้ไขของ task นี้ (1, 2, ...) — มีค่าเมื่อ is_revision */
+  revision_number: number | null;
+  /** ไฟล์แนบในคอมเมนต์ (path ใน storage) */
+  file_path: string | null;
+  /** ลิงก์แนบในคอมเมนต์ (เช่น Google Drive) */
+  link_url: string | null;
   created_at: string;
 };
 

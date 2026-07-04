@@ -1,8 +1,19 @@
 "use client";
 
-import { Check, Plus, Send, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  Link2,
+  Paperclip,
+  Plus,
+  Send,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  STORAGE_BUCKET_DOCUMENTS,
   TASK_CATEGORIES,
   TASK_PRIORITY,
   TASK_PRIORITY_ORDER,
@@ -17,12 +28,21 @@ import type {
   TaskSubtaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import { useSignedUrl } from "../influencers/use-signed-url";
 import {
   AssigneeAvatar,
   CompleteToggle,
   type ProfileOption,
   profileName,
 } from "./task-card";
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|avif|heic)$/i.test(path);
+}
 
 /** patch ที่ส่งกลับ: ส่วนที่เขียนลง DB + ส่วนที่อัปเดตเฉพาะ state ฝั่งจอ (เช่น assignee object) */
 export type TaskPatch = {
@@ -182,6 +202,52 @@ export function TaskPanel({
     onPatch(task.id, { db: { due_date: value === "" ? null : value } });
   };
 
+  /* ---------- ไฟล์/ลิงก์งานที่ได้รับอนุมัติ ---------- */
+
+  const [deliverableDraft, setDeliverableDraft] = useState(
+    task.deliverable_url ?? ""
+  );
+  const [uploadingDeliverable, setUploadingDeliverable] = useState(false);
+  const deliverableInputRef = useRef<HTMLInputElement>(null);
+  const deliverableFileUrl = useSignedUrl(task.deliverable_file_path);
+
+  const saveDeliverableUrl = () => {
+    const value =
+      deliverableDraft.trim() === "" ? null : deliverableDraft.trim();
+    if (value === task.deliverable_url) return;
+    onPatch(task.id, { db: { deliverable_url: value } });
+  };
+
+  const uploadDeliverable = async (file: File) => {
+    setUploadingDeliverable(true);
+    const oldPath = task.deliverable_file_path;
+    const path = `tasks/${task.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .upload(path, file);
+    setUploadingDeliverable(false);
+    if (error) {
+      showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onPatch(task.id, { db: { deliverable_file_path: path } });
+    // ลบไฟล์เก่าที่ถูกแทนที่ (best effort)
+    if (oldPath) {
+      try {
+        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+      } catch {
+        // เพิกเฉย
+      }
+    }
+  };
+
+  const removeDeliverableFile = () => {
+    const oldPath = task.deliverable_file_path;
+    if (!oldPath) return;
+    onPatch(task.id, { db: { deliverable_file_path: null } });
+    void supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+  };
+
   /* ---------- งานย่อย ---------- */
 
   const [addingSub, setAddingSub] = useState(false);
@@ -285,23 +351,60 @@ export function TaskPanel({
 
   const [commentDraft, setCommentDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [revisionChecked, setRevisionChecked] = useState(false);
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [linkDraft, setLinkDraft] = useState("");
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const commentFileRef = useRef<HTMLInputElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  /** เลขแก้ไขครั้งถัดไปของ task นี้ — ต่อจากเลขสูงสุดที่เคยมี */
+  const nextRevisionNumber =
+    Math.max(0, ...(comments ?? []).map((c) => c.revision_number ?? 0)) + 1;
 
   const sendComment = async () => {
     const body = commentDraft.trim();
-    if (body === "" || sending) return;
+    const link = linkDraft.trim();
+    const isRev = revisionChecked;
+    const file = attachFile;
+    if ((body === "" && !file && link === "") || sending) return;
     setSending(true);
+
+    // อัพไฟล์แนบก่อน (ถ้ามี) — ล้มเหลวก็ยังไม่แตะรายการคอมเมนต์
+    let filePath: string | null = null;
+    if (file) {
+      const p = `tasks/${task.id}/comments/${Date.now()}_${sanitizeFileName(file.name)}`;
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .upload(p, file);
+      if (upErr) {
+        setSending(false);
+        showError(`อัพโหลดไฟล์แนบไม่สำเร็จ: ${upErr.message}`);
+        return;
+      }
+      filePath = p;
+    }
+
+    const revisionNumber = isRev ? nextRevisionNumber : null;
     const tempId = `temp-${Date.now()}`;
     const optimistic: TaskCommentWithAuthor = {
       id: tempId,
       task_id: task.id,
       author_id: userId,
       body,
+      is_revision: isRev,
+      revision_number: revisionNumber,
+      file_path: filePath,
+      link_url: link === "" ? null : link,
       created_at: new Date().toISOString(),
       author: me,
     };
     setComments((cur) => [...(cur ?? []), optimistic]);
     setCommentDraft("");
+    setLinkDraft("");
+    setShowLinkInput(false);
+    setRevisionChecked(false);
+    setAttachFile(null);
     window.setTimeout(
       () => commentsEndRef.current?.scrollIntoView({ block: "nearest" }),
       50
@@ -309,13 +412,23 @@ export function TaskPanel({
 
     const { data, error } = await supabase
       .from("task_comments")
-      .insert({ task_id: task.id, author_id: userId, body })
+      .insert({
+        task_id: task.id,
+        author_id: userId,
+        body,
+        is_revision: isRev,
+        revision_number: revisionNumber,
+        file_path: filePath,
+        link_url: link === "" ? null : link,
+      })
       .select("*, author:profiles!task_comments_author_id_fkey(full_name, email)")
       .single();
     setSending(false);
     if (error || !data) {
       setComments((cur) => (cur ?? []).filter((c) => c.id !== tempId));
       setCommentDraft(body);
+      setLinkDraft(link);
+      setRevisionChecked(isRev);
       showError(`ส่งความคิดเห็นไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
       return;
     }
@@ -513,6 +626,115 @@ export function TaskPanel({
           />
         </div>
 
+        {/* ไฟล์งานที่ได้รับอนุมัติ — ส่ง Approve ผ่าน LINE นอกระบบ แล้วเก็บผลงานที่นี่ */}
+        <div>
+          <p className="mb-1 px-2 text-sm text-stone-500">
+            ไฟล์งานที่ Approve แล้ว
+          </p>
+          <div className="space-y-2 px-2">
+            <div className="flex items-center gap-1.5">
+              <Link2 size={15} className="shrink-0 text-stone-400" />
+              <input
+                value={deliverableDraft}
+                aria-label="ลิงก์งาน (Google Drive)"
+                placeholder="วางลิงก์ Google Drive ของงานที่ได้รับอนุมัติ..."
+                onChange={(e) => setDeliverableDraft(e.target.value)}
+                onBlur={saveDeliverableUrl}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                className={bareControl}
+              />
+              {task.deliverable_url && (
+                <a
+                  href={task.deliverable_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="เปิดลิงก์งาน"
+                  className="shrink-0 rounded-lg p-1.5 text-sky-600 transition-colors hover:bg-sky-50"
+                >
+                  <ExternalLink size={15} />
+                </a>
+              )}
+            </div>
+
+            {task.deliverable_file_path ? (
+              <div className="rounded-lg border border-stone-200/80 bg-white/70 p-2">
+                {deliverableFileUrl ? (
+                  isImagePath(task.deliverable_file_path) ? (
+                    <a
+                      href={deliverableFileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="เปิดรูปเต็ม"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={deliverableFileUrl}
+                        alt="ไฟล์งานที่ได้รับอนุมัติ"
+                        className="max-h-44 w-full rounded-md object-contain"
+                      />
+                    </a>
+                  ) : (
+                    <a
+                      href={deliverableFileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 px-1 py-1.5 text-sm text-brand-700 hover:underline"
+                    >
+                      <Paperclip size={14} />
+                      เปิดไฟล์งานแนบ
+                    </a>
+                  )
+                ) : (
+                  <p className="py-4 text-center text-xs text-stone-400">
+                    กำลังโหลด...
+                  </p>
+                )}
+                <div className="mt-1.5 flex gap-3 px-0.5">
+                  <button
+                    type="button"
+                    onClick={() => deliverableInputRef.current?.click()}
+                    className="cursor-pointer text-xs text-stone-400 transition-colors hover:text-brand-700"
+                  >
+                    เปลี่ยนไฟล์
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeDeliverableFile}
+                    className="cursor-pointer text-xs text-stone-400 transition-colors hover:text-rose-600"
+                  >
+                    ลบไฟล์
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={uploadingDeliverable}
+                onClick={() => deliverableInputRef.current?.click()}
+                className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-stone-200 bg-white/50 px-3 py-3 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-700 disabled:cursor-wait"
+              >
+                <Upload size={14} />
+                {uploadingDeliverable
+                  ? "กำลังอัพโหลด..."
+                  : "อัพโหลดภาพ/ไฟล์งานที่ได้รับอนุมัติ"}
+              </button>
+            )}
+            <input
+              ref={deliverableInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadDeliverable(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+
         {/* subtasks */}
         <div>
           <p className="mb-1 flex items-center gap-2 px-2 text-sm text-stone-500">
@@ -581,20 +803,7 @@ export function TaskPanel({
           <p className="mb-2 px-2 text-sm text-stone-500">ความคิดเห็น</p>
           <div className="space-y-3">
             {(comments ?? []).map((c) => (
-              <div key={c.id} className="flex items-start gap-2.5 px-2">
-                <AssigneeAvatar assignee={c.author} size={7} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-stone-500">
-                    <span className="font-medium text-stone-700">
-                      {profileName(c.author)}
-                    </span>{" "}
-                    · {formatDateTime(c.created_at)}
-                  </p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm leading-6 text-stone-800">
-                    {c.body}
-                  </p>
-                </div>
-              </div>
+              <CommentItem key={c.id} comment={c} />
             ))}
             {comments !== null && comments.length === 0 && (
               <p className="px-2 text-xs text-stone-400">
@@ -617,34 +826,188 @@ export function TaskPanel({
       )}
 
       {/* comment composer — ติดล่างเสมอ */}
-      <div className="flex items-start gap-2.5 border-t border-stone-200/60 bg-white/60 px-4 py-3">
-        <AssigneeAvatar assignee={me} size={7} />
-        <textarea
-          value={commentDraft}
-          rows={commentDraft.includes("\n") ? 3 : 1}
-          placeholder="แสดงความคิดเห็น... (Enter เพื่อส่ง)"
-          aria-label="เขียนความคิดเห็น"
-          onChange={(e) => setCommentDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void sendComment();
+      <div className="border-t border-stone-200/60 bg-white/60 px-4 py-3">
+        {showLinkInput && (
+          <div className="mb-2 flex items-center gap-1.5 pl-9">
+            <Link2 size={14} className="shrink-0 text-stone-400" />
+            <input
+              value={linkDraft}
+              aria-label="ลิงก์ไฟล์แนบ"
+              placeholder="วางลิงก์ไฟล์ที่แก้ไข (Google Drive)..."
+              onChange={(e) => setLinkDraft(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            />
+          </div>
+        )}
+        {attachFile && (
+          <p className="mb-2 flex items-center gap-1.5 pl-9 text-xs text-stone-500">
+            <Paperclip size={12} className="shrink-0" />
+            <span className="min-w-0 truncate">{attachFile.name}</span>
+            <button
+              type="button"
+              onClick={() => setAttachFile(null)}
+              title="เอาไฟล์แนบออก"
+              aria-label="เอาไฟล์แนบออก"
+              className="shrink-0 cursor-pointer text-stone-400 transition-colors hover:text-rose-500"
+            >
+              <X size={12} />
+            </button>
+          </p>
+        )}
+        <div className="flex items-start gap-2.5">
+          <AssigneeAvatar assignee={me} size={7} />
+          <textarea
+            value={commentDraft}
+            rows={commentDraft.includes("\n") ? 3 : 1}
+            placeholder="แสดงความคิดเห็น... (Enter เพื่อส่ง)"
+            aria-label="เขียนความคิดเห็น"
+            onChange={(e) => setCommentDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void sendComment();
+              }
+            }}
+            className="min-h-9 min-w-0 flex-1 resize-none rounded-lg border border-stone-200/80 bg-white/80 px-3 py-1.5 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          />
+          <button
+            type="button"
+            onClick={() => void sendComment()}
+            disabled={
+              (commentDraft.trim() === "" &&
+                !attachFile &&
+                linkDraft.trim() === "") ||
+              sending
             }
-          }}
-          className="min-h-9 min-w-0 flex-1 resize-none rounded-lg border border-stone-200/80 bg-white/80 px-3 py-1.5 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
-        />
-        <button
-          type="button"
-          onClick={() => void sendComment()}
-          disabled={commentDraft.trim() === "" || sending}
-          title="ส่งความคิดเห็น"
-          aria-label="ส่งความคิดเห็น"
-          className="cursor-pointer rounded-lg p-2 text-brand-600 transition-all duration-200 hover:bg-brand-50 active:scale-90 disabled:cursor-not-allowed disabled:text-stone-300"
-        >
-          <Send size={16} />
-        </button>
+            title="ส่งความคิดเห็น"
+            aria-label="ส่งความคิดเห็น"
+            className="cursor-pointer rounded-lg p-2 text-brand-600 transition-all duration-200 hover:bg-brand-50 active:scale-90 disabled:cursor-not-allowed disabled:text-stone-300"
+          >
+            <Send size={16} />
+          </button>
+        </div>
+        <div className="mt-1.5 flex items-center gap-3 pl-9">
+          <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-stone-500">
+            <input
+              type="checkbox"
+              checked={revisionChecked}
+              onChange={(e) => setRevisionChecked(e.target.checked)}
+              className="h-3.5 w-3.5 accent-amber-600"
+            />
+            เป็นการส่งงานแก้ไข
+            {revisionChecked && (
+              <span className="font-semibold text-amber-700">
+                (ครั้งที่ {nextRevisionNumber})
+              </span>
+            )}
+          </label>
+          <button
+            type="button"
+            onClick={() => commentFileRef.current?.click()}
+            title="แนบรูป/ไฟล์"
+            aria-label="แนบรูป/ไฟล์"
+            className="cursor-pointer rounded p-1 text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700"
+          >
+            <Paperclip size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLinkInput((v) => !v)}
+            title="แนบลิงก์ (Google Drive)"
+            aria-label="แนบลิงก์"
+            className={`cursor-pointer rounded p-1 transition-colors hover:bg-brand-50 hover:text-brand-700 ${
+              showLinkInput || linkDraft.trim() !== ""
+                ? "text-brand-600"
+                : "text-stone-400"
+            }`}
+          >
+            <Link2 size={14} />
+          </button>
+          <input
+            ref={commentFileRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setAttachFile(f);
+              e.target.value = "";
+            }}
+          />
+        </div>
       </div>
     </aside>
+  );
+}
+
+/* ---------- คอมเมนต์หนึ่งรายการ — ป้ายแก้ไขครั้งที่ N + ไฟล์/ลิงก์แนบ ---------- */
+
+function CommentItem({ comment: c }: { comment: TaskCommentWithAuthor }) {
+  const fileUrl = useSignedUrl(c.file_path);
+  return (
+    <div className="flex items-start gap-2.5 px-2">
+      <AssigneeAvatar assignee={c.author} size={7} />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-stone-500">
+          <span className="font-medium text-stone-700">
+            {profileName(c.author)}
+          </span>{" "}
+          · {formatDateTime(c.created_at)}
+          {c.is_revision && (
+            <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              แก้ไขครั้งที่ {c.revision_number ?? "-"}
+            </span>
+          )}
+        </p>
+        {c.body !== "" && (
+          <p className="mt-0.5 whitespace-pre-wrap text-sm leading-6 text-stone-800">
+            {c.body}
+          </p>
+        )}
+        {c.link_url && (
+          <a
+            href={c.link_url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex max-w-full items-center gap-1 text-xs text-sky-600 hover:underline"
+          >
+            <Link2 size={12} className="shrink-0" />
+            <span className="min-w-0 truncate">{c.link_url}</span>
+          </a>
+        )}
+        {c.file_path &&
+          (fileUrl ? (
+            isImagePath(c.file_path) ? (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="เปิดรูปเต็ม"
+                className="mt-1.5 block"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={fileUrl}
+                  alt="ไฟล์แนบ"
+                  className="max-h-40 rounded-lg border border-stone-200 object-contain"
+                />
+              </a>
+            ) : (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
+              >
+                <Paperclip size={12} />
+                เปิดไฟล์แนบ
+              </a>
+            )
+          ) : (
+            <p className="mt-1 text-xs text-stone-300">กำลังโหลดไฟล์แนบ...</p>
+          ))}
+      </div>
+    </div>
   );
 }
 

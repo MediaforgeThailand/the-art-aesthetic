@@ -77,6 +77,8 @@ interface PersonStat {
   pending: number;
   done: number;
   overdue: number;
+  /** จำนวนคอมเมนต์ "ส่งงานแก้ไข" บนงานของคนนี้ ในเดือนปัจจุบัน — ใช้วัด KPI */
+  revisions: number;
 }
 
 /* ---------- ส่วนประกอบย่อย ---------- */
@@ -140,10 +142,13 @@ export function WorkloadClient({
   tasks,
   profiles,
   sections,
+  monthRevisions,
 }: {
   tasks: TaskWithAssignee[];
   profiles: ProfileOption[];
   sections: TaskSectionRow[];
+  /** คอมเมนต์ "ส่งงานแก้ไข" ของเดือนนี้ (เวลาไทย) — นับต่อคนจาก task ที่ตนรับผิดชอบ */
+  monthRevisions: { task_id: string }[];
 }) {
   const today = todayISO();
   const hasDemo = tasks.some((t) => t.description === "demo");
@@ -209,6 +214,7 @@ export function WorkloadClient({
       pending: 0,
       done: 0,
       overdue: 0,
+      revisions: 0,
     }));
     const unassigned: PersonStat = {
       key: "none",
@@ -218,6 +224,7 @@ export function WorkloadClient({
       pending: 0,
       done: 0,
       overdue: 0,
+      revisions: 0,
     };
     const byId = new Map(rows.map((r) => [r.key, r]));
 
@@ -229,12 +236,22 @@ export function WorkloadClient({
       if (isOverdue(t, today)) row.overdue += 1;
     }
 
+    // นับ "ส่งงานแก้ไข" เดือนนี้ต่อคน — ผูกกับผู้รับผิดชอบของ task ที่ถูกแก้
+    const taskAssignee = new Map(tasks.map((t) => [t.id, t.assignee_id]));
+    for (const r of monthRevisions) {
+      const assigneeId = taskAssignee.get(r.task_id) ?? null;
+      const row = (assigneeId && byId.get(assigneeId)) || unassigned;
+      row.revisions += 1;
+    }
+
     const result = [...rows];
-    if (unassigned.total > 0) result.push(unassigned);
+    if (unassigned.total > 0 || unassigned.revisions > 0) {
+      result.push(unassigned);
+    }
     return result.sort(
       (a, b) => b.total - a.total || a.name.localeCompare(b.name, "th")
     );
-  }, [tasks, profiles, today]);
+  }, [tasks, profiles, today, monthRevisions]);
 
   /* ---- งานค้างของคนที่เลือก ---- */
   const selected = personStats.find((p) => p.key === selectedKey) ?? null;
@@ -475,6 +492,9 @@ export function WorkloadClient({
                   <th className="px-4 py-3 text-right font-medium">ยังไม่เสร็จ</th>
                   <th className="px-4 py-3 text-right font-medium">เสร็จแล้ว</th>
                   <th className="px-4 py-3 text-right font-medium">เลยกำหนด</th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    แก้ไข (เดือนนี้)
+                  </th>
                   <th className="px-5 py-3 font-medium">อัตราเสร็จ</th>
                 </tr>
               </thead>
@@ -517,7 +537,7 @@ export function WorkloadClient({
                       </td>
                       {p.total === 0 ? (
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           className="px-4 py-3 text-right text-stone-300"
                         >
                           ยังไม่มีงานที่ได้รับมอบหมาย
@@ -541,6 +561,15 @@ export function WorkloadClient({
                             }`}
                           >
                             {formatNumber(p.overdue)}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right tabular-nums ${
+                              p.revisions > 0
+                                ? "font-semibold text-amber-600"
+                                : "text-stone-400"
+                            }`}
+                          >
+                            {formatNumber(p.revisions)}
                           </td>
                         </>
                       )}

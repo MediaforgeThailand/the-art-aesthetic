@@ -12,7 +12,7 @@ import type {
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
-import { KanbanBoard, type QuickAddPlacement } from "./board";
+import { TaskListView, type QuickAddPlacement } from "./list";
 import { isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 
@@ -141,34 +141,6 @@ export function TasksClient({
       });
   };
 
-  /** ตำแหน่งใหม่จากเพื่อนบ้านที่มองเห็น — กึ่งกลางระหว่างสองการ์ด */
-  const positionBetween = (
-    prevPos: number | null,
-    nextPos: number | null
-  ): number => {
-    if (prevPos === null && nextPos === null) return 1024;
-    if (prevPos === null) return (nextPos as number) - 1;
-    if (nextPos === null) return prevPos + 1;
-    return (prevPos + nextPos) / 2;
-  };
-
-  const moveTaskTo = (
-    taskId: string,
-    sectionId: string,
-    prevId: string | null,
-    nextId: string | null
-  ) => {
-    if (isTempId(taskId) || isTempId(sectionId)) return;
-    const task = taskById.get(taskId);
-    if (!task) return;
-    const position = positionBetween(
-      prevId ? (taskById.get(prevId)?.position ?? null) : null,
-      nextId ? (taskById.get(nextId)?.position ?? null) : null
-    );
-    if (task.section_id === sectionId && task.position === position) return;
-    patchTask(taskId, { db: { section_id: sectionId, position } });
-  };
-
   const toggleComplete = (task: TaskWithAssignee) => {
     patchTask(task.id, { db: { completed: !task.completed } });
   };
@@ -211,6 +183,8 @@ export function TasksClient({
       section_id: sectionId,
       completed: false,
       position,
+      deliverable_url: null,
+      deliverable_file_path: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -308,36 +282,6 @@ export function TasksClient({
       return;
     }
     setSections((cur) => cur.map((s) => (s.id === tempId ? data : s)));
-  };
-
-  const reorderSections = (activeId: string, overId: string) => {
-    if (isTempId(activeId) || isTempId(overId)) return;
-    const from = sections.findIndex((s) => s.id === activeId);
-    const to = sections.findIndex((s) => s.id === overId);
-    if (from < 0 || to < 0 || from === to) return;
-
-    const list = [...sections];
-    const [moved] = list.splice(from, 1);
-    list.splice(to, 0, moved);
-    const position = positionBetween(
-      list[to - 1]?.position ?? null,
-      list[to + 1]?.position ?? null
-    );
-
-    const undo = sections;
-    setSections(
-      list.map((s) => (s.id === activeId ? { ...s, position } : s))
-    );
-    void supabase
-      .from("task_sections")
-      .update({ position })
-      .eq("id", activeId)
-      .then(({ error: e }) => {
-        if (e) {
-          setSections(undo);
-          showError(`ย้ายเซคชันไม่สำเร็จ: ${e.message}`);
-        }
-      });
   };
 
   const requestDeleteSection = (sectionId: string) => {
@@ -440,10 +384,11 @@ export function TasksClient({
       {/* ส่วนหัว + ตัวกรอง — ชิดซ้าย ให้พื้นที่ที่เหลือเป็นของบอร์ด */}
       <div className="shrink-0 px-4 pt-5 sm:px-6">
         <div className="mb-3 animate-fade-in-up">
-          <h1 className="text-xl font-semibold text-stone-900">จัดการงาน</h1>
+          <h1 className="text-xl font-semibold text-stone-900">บันทึกงาน</h1>
           <p className="mt-0.5 text-sm text-stone-500">
-            ลากการ์ดเพื่อเรียงลำดับหรือย้ายเซคชัน · คลิกการ์ดเพื่อดูรายละเอียด ·
-            ลากหัวคอลัมน์เพื่อจัดเรียงเซคชัน
+            สร้างงานที่ทำ · คลิกแถวเพื่อเปิดรายละเอียด แนบไฟล์/ลิงก์ Google
+            Drive ที่ได้รับอนุมัติ · เมื่อ Manager อนุมัติผ่าน LINE แล้ว
+            กลับมาติ๊กว่าเสร็จด้วยตนเอง
           </p>
         </div>
 
@@ -516,19 +461,16 @@ export function TasksClient({
         )}
       </div>
 
-      {/* บอร์ด (scroll แนวนอน — แถบเลื่อนอยู่ล่างสุดของจอ) */}
-      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
-        <KanbanBoard
+      {/* ลิสต์งาน (scroll แนวตั้ง) */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <TaskListView
           sections={sections}
           tasksBySection={tasksBySection}
-          taskById={taskById}
           today={today}
           selectedId={selectedId}
           profiles={profiles}
           onAssign={assignTask}
-          onMoveTask={moveTaskTo}
-          onReorderSections={reorderSections}
-          onCardClick={(t) => setSelectedId(t.id)}
+          onRowClick={(t) => setSelectedId(t.id)}
           onToggleComplete={toggleComplete}
           onQuickAdd={(sectionId, title, placement) =>
             void quickAdd(sectionId, title, placement)
