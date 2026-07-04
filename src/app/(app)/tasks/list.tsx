@@ -26,13 +26,26 @@ import {
 
 export type QuickAddPlacement = "top" | "bottom";
 
+/* สีประจำเซคชันแบบ Monday — วนตามลำดับ */
+const SECTION_COLORS = [
+  "#a96a58", // brand copper
+  "#0ea5e9", // sky
+  "#10b981", // emerald
+  "#8b5cf6", // violet
+  "#f59e0b", // amber
+  "#ec4899", // pink
+  "#64748b", // slate
+];
+
 /* คอลัมน์ของลิสต์ — grid เดียวกันทั้งหัวตารางและแถว ให้ตรงกันเสมอ */
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_9.5rem_7.5rem_6.5rem_5.5rem] items-center gap-2";
+  "grid grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_7rem_5.5rem] items-stretch";
+/* เซลล์คอลัมน์ (ตั้งแต่คอลัมน์ 2 เป็นต้นไปมีเส้นแบ่งซ้าย) */
+const CELL = "flex items-center border-l border-stone-200/70 px-3";
 
 /**
- * ลิสต์งานแบบ Monday/Asana — จัดกลุ่มตามเซคชัน แถวละงาน
- * ใช้บันทึกงานที่ทำ + เก็บไฟล์/ลิงก์งานที่ได้รับอนุมัติ (ดูรายละเอียดในแผงขวา)
+ * ลิสต์งานแบบ Monday — ชื่อเซคชันอยู่นอกกล่อง กล่องมีเฉพาะหัวคอลัมน์+แถวงาน
+ * เส้นแบ่งคอลัมน์/แถวชัดเจน แถวสลับสีอ่านง่าย
  */
 export function TaskListView({
   sections,
@@ -78,14 +91,17 @@ export function TaskListView({
     });
 
   return (
-    <div className="space-y-4 px-4 pb-6 sm:px-6">
-      {sections.map((section) => {
+    <div className="space-y-5 px-4 pb-6 sm:px-6">
+      {sections.map((section, si) => {
         const rows = tasksBySection[section.id] ?? [];
         const isCollapsed = collapsed.has(section.id);
+        const color = SECTION_COLORS[si % SECTION_COLORS.length];
         return (
-          <div key={section.id} className="glass-soft rounded-xl">
+          <div key={section.id}>
+            {/* หัวเซคชัน — อยู่นอกกล่อง */}
             <SectionHeader
               section={section}
+              color={color}
               count={rows.length}
               collapsed={isCollapsed}
               onToggleCollapse={() => toggleCollapse(section.id)}
@@ -93,24 +109,28 @@ export function TaskListView({
               onDelete={() => onDeleteSection(section.id)}
             />
 
+            {/* กล่องงาน — มีเฉพาะหัวคอลัมน์ + แถวงาน */}
             {!isCollapsed && (
-              <div className="pb-1">
-                {/* หัวคอลัมน์ */}
+              <div
+                style={{ borderLeftColor: color }}
+                className="overflow-hidden rounded-lg border border-l-4 border-stone-200/90 bg-white/95 shadow-sm"
+              >
                 <div
-                  className={`${ROW_GRID} border-b border-stone-200/60 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-stone-400`}
+                  className={`${ROW_GRID} border-b border-stone-200/80 bg-stone-50/90 text-[11px] font-medium uppercase tracking-wide text-stone-400`}
                 >
-                  <span className="pl-7">งาน</span>
-                  <span>ผู้รับผิดชอบ</span>
-                  <span>กำหนดส่ง</span>
-                  <span>ความสำคัญ</span>
-                  <span>ไฟล์งาน</span>
+                  <span className="px-3 py-1.5 pl-10">งาน</span>
+                  <span className={`${CELL} py-1.5`}>ผู้รับผิดชอบ</span>
+                  <span className={`${CELL} py-1.5`}>กำหนดส่ง</span>
+                  <span className={`${CELL} py-1.5`}>ความสำคัญ</span>
+                  <span className={`${CELL} py-1.5`}>ไฟล์งาน</span>
                 </div>
 
-                {rows.map((task) => (
+                {rows.map((task, idx) => (
                   <TaskRowItem
                     key={task.id}
                     task={task}
                     today={today}
+                    striped={idx % 2 === 1}
                     selected={selectedId === task.id}
                     profiles={profiles}
                     onAssign={(pid) => onAssign(task, pid)}
@@ -120,7 +140,7 @@ export function TaskListView({
                 ))}
 
                 {rows.length === 0 && (
-                  <p className="px-11 py-2.5 text-xs text-stone-400">
+                  <p className="px-10 py-2 text-xs text-stone-400">
                     ยังไม่มีงานในเซคชันนี้
                   </p>
                 )}
@@ -160,13 +180,13 @@ export function TaskListView({
             setAddingSection(false);
             if (name !== "") onAddSection(name);
           }}
-          className="w-72 rounded-lg border border-brand-300 bg-white/90 px-3 py-2 text-sm font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          className="w-72 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-brand-100"
         />
       ) : (
         <button
           type="button"
           onClick={() => setAddingSection(true)}
-          className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-400 transition-colors hover:bg-white/60 hover:text-brand-700"
+          className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-stone-400 transition-colors hover:bg-white/70 hover:text-brand-700"
         >
           <Plus size={15} />
           เพิ่มเซคชัน
@@ -176,10 +196,11 @@ export function TaskListView({
   );
 }
 
-/* ---------- หัวเซคชัน: พับ/กาง + แก้ชื่อ inline + ลบ ---------- */
+/* ---------- หัวเซคชัน (นอกกล่อง): พับ/กาง + แก้ชื่อ inline + ลบ ---------- */
 
 function SectionHeader({
   section,
+  color,
   count,
   collapsed,
   onToggleCollapse,
@@ -187,6 +208,7 @@ function SectionHeader({
   onDelete,
 }: {
   section: TaskSectionRow;
+  color: string;
   count: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -198,16 +220,17 @@ function SectionHeader({
   const temp = isTempId(section.id);
 
   return (
-    <div className="group flex items-center gap-1.5 px-3 py-2.5">
+    <div className="group mb-1 flex items-center gap-1">
       <button
         type="button"
         onClick={onToggleCollapse}
         title={collapsed ? "กางเซคชัน" : "พับเซคชัน"}
         aria-label={collapsed ? "กางเซคชัน" : "พับเซคชัน"}
-        className="cursor-pointer rounded p-1 text-stone-400 transition-all hover:bg-white/70 hover:text-stone-600"
+        style={{ color }}
+        className="cursor-pointer rounded p-0.5 transition-all hover:bg-white/70"
       >
         <ChevronDown
-          size={16}
+          size={17}
           className={`transition-transform duration-200 ${
             collapsed ? "-rotate-90" : ""
           }`}
@@ -217,6 +240,8 @@ function SectionHeader({
         value={draft}
         disabled={temp}
         aria-label="ชื่อเซคชัน"
+        size={Math.max(draft.length, 4)}
+        style={{ color }}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const name = draft.trim();
@@ -231,18 +256,18 @@ function SectionHeader({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="min-w-0 max-w-xs flex-shrink rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold text-stone-800 transition-colors hover:border-stone-200/80 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+        className="max-w-xs rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[15px] font-bold transition-colors hover:border-stone-200/80 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
       />
-      <span className="text-xs text-stone-400">{count}</span>
+      <span className="text-xs font-medium text-stone-400">{count} งาน</span>
       {!temp && (
         <button
           type="button"
           onClick={onDelete}
           title="ลบเซคชัน"
           aria-label="ลบเซคชัน"
-          className="ml-auto cursor-pointer rounded p-1.5 text-stone-300 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+          className="cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
         >
-          <Trash2 size={14} />
+          <Trash2 size={13} />
         </button>
       )}
     </div>
@@ -254,6 +279,7 @@ function SectionHeader({
 function TaskRowItem({
   task,
   today,
+  striped,
   selected,
   profiles,
   onAssign,
@@ -262,6 +288,7 @@ function TaskRowItem({
 }: {
   task: TaskWithAssignee;
   today: string;
+  striped: boolean;
   selected: boolean;
   profiles: ProfileOption[];
   onAssign: (profileId: string | null) => void;
@@ -288,24 +315,28 @@ function TaskRowItem({
           onClick();
         }
       }}
-      className={`${ROW_GRID} border-b border-stone-100/80 px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-300 ${
+      className={`${ROW_GRID} border-b border-stone-100 transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-300 ${
         temp ? "pointer-events-none opacity-60" : "cursor-pointer"
       } ${
         selected
-          ? "bg-brand-50/80 shadow-[inset_2px_0_0_0_theme(colors.brand.500)]"
-          : "hover:bg-white/70"
+          ? "bg-brand-50 shadow-[inset_2px_0_0_0_theme(colors.brand.500)]"
+          : striped
+            ? "bg-stone-50/60 hover:bg-brand-50/50"
+            : "bg-white hover:bg-brand-50/50"
       }`}
     >
       {/* งาน */}
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2.5 px-3 py-1.5">
         <CompleteToggle
           completed={task.completed}
           onToggle={temp ? undefined : onToggleComplete}
           size={17}
         />
         <span
-          className={`truncate text-sm font-medium ${
-            task.completed ? "text-stone-400 line-through" : "text-stone-800"
+          className={`truncate text-sm ${
+            task.completed
+              ? "text-stone-400 line-through"
+              : "font-medium text-stone-800"
           }`}
         >
           {task.title}
@@ -318,19 +349,26 @@ function TaskRowItem({
       </div>
 
       {/* ผู้รับผิดชอบ */}
-      <div onClick={(e) => e.stopPropagation()} className="flex items-center">
+      <div onClick={(e) => e.stopPropagation()} className={`${CELL} py-1.5`}>
         {temp ? null : (
-          <AssigneePicker
-            assignee={task.assignee}
-            profiles={profiles}
-            onAssign={onAssign}
-          />
+          <span className="flex items-center gap-1.5">
+            <AssigneePicker
+              assignee={task.assignee}
+              profiles={profiles}
+              onAssign={onAssign}
+            />
+            {task.assignee && (
+              <span className="max-w-20 truncate text-xs text-stone-500">
+                {task.assignee.full_name ?? task.assignee.email}
+              </span>
+            )}
+          </span>
         )}
       </div>
 
       {/* กำหนดส่ง */}
       <span
-        className={`inline-flex items-center gap-1 text-xs ${
+        className={`${CELL} gap-1 py-1.5 text-xs ${
           overdue ? "font-medium text-rose-600" : "text-stone-500"
         }`}
       >
@@ -339,14 +377,14 @@ function TaskRowItem({
       </span>
 
       {/* ความสำคัญ */}
-      <span>
+      <span className={`${CELL} py-1.5`}>
         <Badge className={TASK_PRIORITY[task.priority].badge}>
           {TASK_PRIORITY[task.priority].label}
         </Badge>
       </span>
 
       {/* ไฟล์งานที่ Approve แล้ว */}
-      <span className="flex items-center gap-1.5">
+      <span className={`${CELL} gap-1 py-1.5`}>
         {task.deliverable_url && (
           <a
             href={task.deliverable_url}
@@ -356,12 +394,12 @@ function TaskRowItem({
             onClick={(e) => e.stopPropagation()}
             className="cursor-pointer rounded p-1 text-sky-600 transition-colors hover:bg-sky-50"
           >
-            <Link2 size={15} />
+            <Link2 size={14} />
           </a>
         )}
         {task.deliverable_file_path && (
           <span title="มีไฟล์งานแนบ" className="p-1 text-brand-600">
-            <ImageIcon size={15} />
+            <ImageIcon size={14} />
           </span>
         )}
         {!hasDeliverable && <span className="text-xs text-stone-300">—</span>}
@@ -381,16 +419,16 @@ function QuickAddRow({ onAdd }: { onAdd: (title: string) => void }) {
       <button
         type="button"
         onClick={() => setActive(true)}
-        className="flex w-full cursor-pointer items-center gap-1.5 px-4 py-2 text-sm text-stone-400 transition-colors hover:bg-white/60 hover:text-brand-700"
+        className="flex w-full cursor-pointer items-center gap-1.5 px-3 py-1.5 text-[13px] text-stone-400 transition-colors hover:bg-brand-50/50 hover:text-brand-700"
       >
-        <Plus size={15} />
+        <Plus size={14} />
         เพิ่มงาน
       </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-2.5 px-4 py-1.5">
+    <div className="flex items-center gap-2.5 px-3 py-1.5">
       <span className="h-[17px] w-[17px] shrink-0 rounded-full border border-stone-300" />
       <input
         autoFocus

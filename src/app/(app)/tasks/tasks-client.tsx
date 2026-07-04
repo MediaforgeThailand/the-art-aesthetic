@@ -56,28 +56,51 @@ export function TasksClient({
   /* ---------- filters ---------- */
 
   const [search, setSearch] = useState("");
+  /** all | me | none | <profileId> */
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
-  const [hideCompleted, setHideCompleted] = useState(false);
+  /** all | pending | done */
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
 
   const hasFilter =
-    search.trim() !== "" || assigneeFilter !== "all" || hideCompleted;
+    search.trim() !== "" ||
+    assigneeFilter !== "all" ||
+    statusFilter !== "all" ||
+    dueFrom !== "" ||
+    dueTo !== "";
+
+  const clearFilters = () => {
+    setSearch("");
+    setAssigneeFilter("all");
+    setStatusFilter("all");
+    setDueFrom("");
+    setDueTo("");
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((t) => {
-      if (hideCompleted && t.completed) return false;
-      if (assigneeFilter === "none") {
+      if (statusFilter === "pending" && t.completed) return false;
+      if (statusFilter === "done" && !t.completed) return false;
+      if (assigneeFilter === "me") {
+        if (userId === null || t.assignee_id !== userId) return false;
+      } else if (assigneeFilter === "none") {
         if (t.assignee_id !== null) return false;
       } else if (assigneeFilter !== "all" && t.assignee_id !== assigneeFilter) {
         return false;
       }
+      // กรองช่วงวันกำหนดส่ง — งานที่ไม่มีกำหนดส่งจะถูกซ่อนเมื่อระบุช่วง
+      const due = t.due_date ? t.due_date.slice(0, 10) : null;
+      if (dueFrom !== "" && (due === null || due < dueFrom)) return false;
+      if (dueTo !== "" && (due === null || due > dueTo)) return false;
       if (q === "") return true;
       return (
         t.title.toLowerCase().includes(q) ||
         (t.description ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, assigneeFilter, hideCompleted]);
+  }, [items, search, assigneeFilter, statusFilter, dueFrom, dueTo, userId]);
 
   /** งานที่ section หายไป (null/ไม่รู้จัก) ถูกพักไว้ที่คอลัมน์แรก — กติกาเดียวกับตอนลบ section */
   const bucketOf = (t: TaskWithAssignee): string | null => {
@@ -421,31 +444,50 @@ export function TasksClient({
               onChange={(e) => setAssigneeFilter(e.target.value)}
             >
               <option value="all">ผู้รับผิดชอบ: ทั้งหมด</option>
+              {userId !== null && <option value="me">งานของฉัน</option>}
               <option value="none">ไม่ระบุ</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {profileName(p)}
-                </option>
-              ))}
+              {profiles
+                .filter((p) => p.id !== userId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {profileName(p)}
+                  </option>
+                ))}
             </Select>
           </div>
-          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-600">
-            <input
-              type="checkbox"
-              checked={hideCompleted}
-              onChange={(e) => setHideCompleted(e.target.checked)}
-              className="h-4 w-4 accent-brand-600"
+          <div className="w-40">
+            <Select
+              aria-label="กรองตามสถานะ"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">สถานะ: ทั้งหมด</option>
+              <option value="pending">ยังไม่เสร็จ</option>
+              <option value="done">เสร็จแล้ว</option>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-stone-500">
+            <span>กำหนดส่ง</span>
+            <Input
+              type="date"
+              aria-label="กำหนดส่งตั้งแต่วันที่"
+              value={dueFrom}
+              onChange={(e) => setDueFrom(e.target.value)}
+              className="!w-36 !py-1.5 !text-xs"
             />
-            ซ่อนงานที่เสร็จแล้ว
-          </label>
+            <span>ถึง</span>
+            <Input
+              type="date"
+              aria-label="กำหนดส่งถึงวันที่"
+              value={dueTo}
+              onChange={(e) => setDueTo(e.target.value)}
+              className="!w-36 !py-1.5 !text-xs"
+            />
+          </div>
           {hasFilter && (
             <button
               type="button"
-              onClick={() => {
-                setSearch("");
-                setAssigneeFilter("all");
-                setHideCompleted(false);
-              }}
+              onClick={clearFilters}
               className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
             >
               <X size={14} />
