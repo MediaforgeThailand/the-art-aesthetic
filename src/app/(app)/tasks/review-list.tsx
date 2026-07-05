@@ -1,0 +1,149 @@
+"use client";
+
+import {
+  AlertCircle,
+  CheckCircle2,
+  ClipboardCheck,
+  Image as ImageIcon,
+  Link2,
+} from "lucide-react";
+import { Badge } from "@/components/ui";
+import { TASK_PRIORITY } from "@/lib/constants";
+import { formatDate } from "@/lib/format";
+import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import { AssigneeAvatar, profileName } from "./task-card";
+
+/**
+ * แท็บ "รอฉันตรวจ" — งานที่ฉันเป็นผู้ตรวจและอยู่สถานะรอตรวจ
+ * กด "อนุมัติผ่านการตรวจ" = task เสร็จสมบูรณ์ · ถ้าไม่ผ่านให้เปิดงานแล้วคอมเมนต์แก้
+ */
+export function ReviewList({
+  queue,
+  sections,
+  today,
+  selectedId,
+  onRowClick,
+  onApprove,
+}: {
+  queue: TaskWithAssignee[];
+  sections: TaskSectionRow[];
+  today: string;
+  selectedId: string | null;
+  onRowClick: (task: TaskWithAssignee) => void;
+  onApprove: (task: TaskWithAssignee) => void;
+}) {
+  const sectionName = (id: string | null) =>
+    sections.find((s) => s.id === id)?.name ?? null;
+
+  if (queue.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
+        <ClipboardCheck size={40} strokeWidth={1.5} className="text-brand-200" />
+        <p className="text-sm font-medium text-stone-600">
+          ไม่มีงานรอตรวจ
+        </p>
+        <p className="max-w-sm text-sm text-stone-400">
+          เมื่อมีคนส่งงานมาให้คุณตรวจ (เลือกคุณเป็นผู้ตรวจงานแล้วกดส่งตรวจ)
+          งานจะมาแสดงที่นี่ให้กดอนุมัติ
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 px-4 pb-6 sm:px-6">
+      <p className="rounded-lg bg-amber-50/80 px-3 py-2 text-xs text-amber-700">
+        งานที่รอคุณตรวจ {queue.length} รายการ — คลิกเพื่อดูรายละเอียด ไฟล์งาน
+        และความคิดเห็น · กด &quot;อนุมัติ&quot; เมื่อผ่าน หรือเปิดงานแล้วคอมเมนต์
+        หากต้องแก้
+      </p>
+
+      {queue.map((task) => {
+        const overdue =
+          task.due_date !== null &&
+          task.due_date.slice(0, 10) < today;
+        const sec = sectionName(task.section_id);
+        return (
+          <div
+            key={task.id}
+            role="button"
+            tabIndex={0}
+            aria-label={`ตรวจงาน ${task.title}`}
+            onClick={() => onRowClick(task)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onRowClick(task);
+            }}
+            className={`flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-white px-4 py-3 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
+              selectedId === task.id
+                ? "border-brand-400 ring-1 ring-brand-300"
+                : "border-stone-200/90 hover:border-brand-300 hover:bg-brand-50/40"
+            }`}
+          >
+            <div className="min-w-0 flex-1 basis-64">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  รอตรวจ
+                </span>
+                {sec && (
+                  <span className="text-xs text-stone-400">{sec}</span>
+                )}
+              </div>
+              <p className="mt-1 truncate text-sm font-medium text-stone-800">
+                {task.title}
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <AssigneeAvatar assignee={task.assignee} size={6} />
+                  {task.assignee ? profileName(task.assignee) : "ไม่ระบุผู้ทำ"}
+                </span>
+                {task.due_date && (
+                  <span
+                    className={`inline-flex items-center gap-1 ${
+                      overdue ? "font-medium text-rose-600" : ""
+                    }`}
+                  >
+                    {overdue && <AlertCircle size={12} />}
+                    กำหนดส่ง {formatDate(task.due_date)}
+                  </span>
+                )}
+                <Badge className={TASK_PRIORITY[task.priority].badge}>
+                  {TASK_PRIORITY[task.priority].label}
+                </Badge>
+                {task.deliverable_url && (
+                  <a
+                    href={task.deliverable_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 text-sky-600 hover:underline"
+                  >
+                    <Link2 size={12} />
+                    ลิงก์งาน
+                  </a>
+                )}
+                {task.deliverable_file_path && (
+                  <span className="inline-flex items-center gap-1 text-brand-600">
+                    <ImageIcon size={12} />
+                    มีไฟล์แนบ
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove(task);
+              }}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
+            >
+              <CheckCircle2 size={15} />
+              อนุมัติ
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

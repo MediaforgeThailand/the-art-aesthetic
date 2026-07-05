@@ -19,9 +19,9 @@ import { formatDate } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import {
   AssigneePicker,
-  CompleteToggle,
   isTempId,
   type ProfileOption,
+  ReviewStatusDot,
 } from "./task-card";
 
 export type QuickAddPlacement = "top" | "bottom";
@@ -55,7 +55,6 @@ export function TaskListView({
   profiles,
   onAssign,
   onRowClick,
-  onToggleComplete,
   onQuickAdd,
   onRenameSection,
   onAddSection,
@@ -68,7 +67,6 @@ export function TaskListView({
   profiles: ProfileOption[];
   onAssign: (task: TaskWithAssignee, profileId: string | null) => void;
   onRowClick: (task: TaskWithAssignee) => void;
-  onToggleComplete: (task: TaskWithAssignee) => void;
   onQuickAdd: (
     sectionId: string,
     title: string,
@@ -135,7 +133,6 @@ export function TaskListView({
                     profiles={profiles}
                     onAssign={(pid) => onAssign(task, pid)}
                     onClick={() => onRowClick(task)}
-                    onToggleComplete={() => onToggleComplete(task)}
                   />
                 ))}
 
@@ -284,7 +281,6 @@ function TaskRowItem({
   profiles,
   onAssign,
   onClick,
-  onToggleComplete,
 }: {
   task: TaskWithAssignee;
   today: string;
@@ -293,7 +289,6 @@ function TaskRowItem({
   profiles: ProfileOption[];
   onAssign: (profileId: string | null) => void;
   onClick: () => void;
-  onToggleComplete: () => void;
 }) {
   const temp = isTempId(task.id);
   const overdue =
@@ -327,11 +322,7 @@ function TaskRowItem({
     >
       {/* งาน */}
       <div className="flex min-w-0 items-center gap-2.5 px-3 py-1.5">
-        <CompleteToggle
-          completed={task.completed}
-          onToggle={temp ? undefined : onToggleComplete}
-          size={17}
-        />
+        <ReviewStatusDot status={task.review_status} size={17} />
         <span
           className={`truncate text-sm ${
             task.completed
@@ -341,6 +332,16 @@ function TaskRowItem({
         >
           {task.title}
         </span>
+        {task.review_status === "pending" && (
+          <Badge className="shrink-0 border border-amber-200 bg-amber-50 text-amber-700">
+            รอตรวจ
+          </Badge>
+        )}
+        {task.review_status === "approved" && (
+          <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 text-emerald-700">
+            เสร็จสมบูรณ์
+          </Badge>
+        )}
         {showCategory && (
           <Badge className={`shrink-0 ${taskCategoryChipClass(task.category)}`}>
             {task.category}

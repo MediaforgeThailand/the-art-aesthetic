@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Clock3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui";
@@ -174,6 +174,42 @@ export function AssigneePicker({
           document.body
         )}
     </>
+  );
+}
+
+/** วงกลมบอกสถานะการตรวจงาน (read-only) — none = ว่าง, รอตรวจ = นาฬิกาเหลือง, ผ่าน = ติ๊กเขียว */
+export function ReviewStatusDot({
+  status,
+  size = 18,
+}: {
+  status: "none" | "pending" | "approved";
+  size?: number;
+}) {
+  const label =
+    status === "approved"
+      ? "เสร็จสมบูรณ์ (ผ่านการตรวจ)"
+      : status === "pending"
+        ? "รอตรวจ"
+        : "ยังไม่ส่งตรวจ";
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`flex shrink-0 items-center justify-center rounded-full border ${
+        status === "approved"
+          ? "border-emerald-500 bg-emerald-500 text-white"
+          : status === "pending"
+            ? "border-amber-400 bg-amber-50 text-amber-600"
+            : "border-stone-300 bg-white text-transparent"
+      }`}
+      style={{ width: size, height: size }}
+    >
+      {status === "approved" ? (
+        <Check size={size - 6} strokeWidth={3} />
+      ) : status === "pending" ? (
+        <Clock3 size={size - 6} strokeWidth={2.5} />
+      ) : null}
+    </span>
   );
 }
 

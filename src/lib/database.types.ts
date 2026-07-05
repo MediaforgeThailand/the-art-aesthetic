@@ -35,6 +35,10 @@ export type TaskRow = {
   deliverable_url: string | null;
   /** ไฟล์งานที่ได้รับอนุมัติ (path ใน storage) */
   deliverable_file_path: string | null;
+  /** ผู้ตรวจงานที่ระบุ — คนที่จะกด approve */
+  reviewer_id: string | null;
+  /** สถานะการตรวจ: none = ยังไม่ส่ง, pending = รอตรวจ, approved = ผ่าน (completed=true) */
+  review_status: "none" | "pending" | "approved";
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -453,6 +457,7 @@ export interface Database {
 /** task พร้อมข้อมูลผู้รับผิดชอบ (join จาก profiles) */
 export type TaskWithAssignee = TaskRow & {
   assignee: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
+  reviewer?: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
 };
 
 /** ลิงก์ไฟล์พร้อมชื่อผู้เพิ่ม (join จาก profiles) */

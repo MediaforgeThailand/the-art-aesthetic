@@ -1,12 +1,15 @@
 "use client";
 
 import {
-  Check,
+  CheckCircle2,
+  Clock3,
   ExternalLink,
   Link2,
   Paperclip,
   Plus,
+  RotateCcw,
   Send,
+  SendHorizontal,
   Trash2,
   Upload,
   X,
@@ -90,6 +93,11 @@ export function TaskPanel({
   onPatch,
   onDelete,
   onClose,
+  onSubmitReview,
+  onCancelReview,
+  onApprove,
+  onReopen,
+  onSetReviewer,
 }: {
   task: TaskWithAssignee;
   sections: TaskSectionRow[];
@@ -100,10 +108,16 @@ export function TaskPanel({
   onPatch: (id: string, patch: TaskPatch) => void;
   onDelete: (task: TaskWithAssignee) => void;
   onClose: () => void;
+  onSubmitReview: (task: TaskWithAssignee) => void;
+  onCancelReview: (task: TaskWithAssignee) => void;
+  onApprove: (task: TaskWithAssignee) => void;
+  onReopen: (task: TaskWithAssignee) => void;
+  onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
+  const isReviewer = task.reviewer_id !== null && task.reviewer_id === userId;
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
@@ -450,22 +464,66 @@ export function TaskPanel({
       aria-label="รายละเอียดงาน"
       className="flex h-full w-[26rem] shrink-0 flex-col border-l border-white/60 bg-white/80 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right"
     >
-      {/* header */}
+      {/* header — ปุ่มตาม workflow: ส่งตรวจ → รอตรวจ → อนุมัติ */}
       <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-3">
-        <button
-          type="button"
-          onClick={() =>
-            onPatch(task.id, { db: { completed: !task.completed } })
-          }
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all duration-200 active:scale-[0.97] ${
-            task.completed
-              ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
-              : "border-stone-300 bg-white/80 text-stone-600 hover:border-emerald-400 hover:text-emerald-600"
-          }`}
-        >
-          <Check size={15} strokeWidth={3} />
-          {task.completed ? "ทำเสร็จแล้ว" : "ทำเครื่องหมายว่าเสร็จ"}
-        </button>
+        {task.review_status === "approved" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">
+            <CheckCircle2 size={15} />
+            เสร็จสิ้นสมบูรณ์
+          </span>
+        ) : task.review_status === "pending" ? (
+          isReviewer ? (
+            <button
+              type="button"
+              onClick={() => onApprove(task)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
+            >
+              <CheckCircle2 size={15} />
+              อนุมัติผ่านการตรวจ
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
+              <Clock3 size={15} />
+              รอตรวจ
+            </span>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSubmitReview(task)}
+            disabled={!task.reviewer_id}
+            title={
+              task.reviewer_id ? undefined : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
+            }
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
+          >
+            <SendHorizontal size={15} />
+            ส่งตรวจงาน
+          </button>
+        )}
+
+        {/* ยกเลิกส่งตรวจ (ผู้ส่ง) / เปิดงานใหม่ (หลังอนุมัติ) */}
+        {task.review_status === "pending" && !isReviewer && (
+          <button
+            type="button"
+            onClick={() => onCancelReview(task)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-500 transition-colors hover:border-stone-400 hover:text-stone-700"
+          >
+            <RotateCcw size={13} />
+            ยกเลิกส่งตรวจ
+          </button>
+        )}
+        {task.review_status === "approved" && (
+          <button
+            type="button"
+            onClick={() => onReopen(task)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-500 transition-colors hover:border-stone-400 hover:text-stone-700"
+          >
+            <RotateCcw size={13} />
+            เปิดงานใหม่
+          </button>
+        )}
+
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -527,6 +585,29 @@ export function TaskPanel({
                 className={`${bareSelect} px-1.5`}
               >
                 <option value="">ไม่ระบุ</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {profileName(p)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
+            <div className="flex items-center gap-2 px-2">
+              <AssigneeAvatar assignee={task.reviewer ?? null} />
+              <select
+                id="task-reviewer"
+                value={task.reviewer_id ?? ""}
+                disabled={task.review_status !== "none"}
+                onChange={(e) => {
+                  const id = e.target.value === "" ? null : e.target.value;
+                  onSetReviewer(task, id);
+                }}
+                className={`${bareSelect} px-1.5 disabled:cursor-not-allowed disabled:opacity-70`}
+              >
+                <option value="">เลือกผู้ตรวจ</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {profileName(p)}

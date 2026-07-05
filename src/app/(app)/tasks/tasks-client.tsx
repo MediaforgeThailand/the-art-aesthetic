@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { ClipboardCheck, ListTodo, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import { ConfirmDialog, Input, Select } from "@/components/ui";
@@ -13,6 +13,7 @@ import type {
   TaskWithAssignee,
 } from "@/lib/types";
 import { TaskListView, type QuickAddPlacement } from "./list";
+import { ReviewList } from "./review-list";
 import { isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 
@@ -45,8 +46,20 @@ export function TasksClient({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"work" | "review">("work");
   useEffect(() => setItems(tasks), [tasks]);
   useEffect(() => setSections(initialSections), [initialSections]);
+
+  // งานที่ฉันเป็นผู้ตรวจและกำลังรอตรวจ — โชว์เลขบนแท็บ
+  const reviewQueue = useMemo(
+    () =>
+      userId === null
+        ? []
+        : items.filter(
+            (t) => t.reviewer_id === userId && t.review_status === "pending"
+          ),
+    [items, userId]
+  );
 
   const showError = (msg: string) => {
     setError(msg);
@@ -81,7 +94,9 @@ export function TasksClient({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((t) => {
-      if (statusFilter === "pending" && t.completed) return false;
+      if (statusFilter === "working" && t.review_status !== "none") return false;
+      if (statusFilter === "pending" && t.review_status !== "pending")
+        return false;
       if (statusFilter === "done" && !t.completed) return false;
       if (assigneeFilter === "me") {
         if (userId === null || t.assignee_id !== userId) return false;
@@ -164,8 +179,40 @@ export function TasksClient({
       });
   };
 
-  const toggleComplete = (task: TaskWithAssignee) => {
-    patchTask(task.id, { db: { completed: !task.completed } });
+  /* ---------- review workflow ---------- */
+
+  /** ส่งตรวจงาน → รอตรวจ (ต้องระบุผู้ตรวจก่อน) */
+  const submitForReview = (task: TaskWithAssignee) => {
+    if (!task.reviewer_id) {
+      showError("เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้");
+      return;
+    }
+    patchTask(task.id, { db: { review_status: "pending", completed: false } });
+  };
+
+  /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) */
+  const cancelReview = (task: TaskWithAssignee) => {
+    patchTask(task.id, { db: { review_status: "none", completed: false } });
+  };
+
+  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ */
+  const approveTask = (task: TaskWithAssignee) => {
+    patchTask(task.id, { db: { review_status: "approved", completed: true } });
+  };
+
+  /** เปิดงานที่เสร็จแล้วกลับมาแก้ */
+  const reopenTask = (task: TaskWithAssignee) => {
+    patchTask(task.id, { db: { review_status: "none", completed: false } });
+  };
+
+  /** เปลี่ยนผู้ตรวจงาน */
+  const setReviewer = (task: TaskWithAssignee, profileId: string | null) => {
+    if (task.reviewer_id === profileId) return;
+    const person = profiles.find((p) => p.id === profileId) ?? null;
+    patchTask(task.id, {
+      db: { reviewer_id: profileId },
+      local: { reviewer: person },
+    });
   };
 
   /** เปลี่ยนผู้รับผิดชอบจากวงกลมบนการ์ดโดยตรง */
@@ -208,10 +255,13 @@ export function TasksClient({
       position,
       deliverable_url: null,
       deliverable_file_path: null,
+      reviewer_id: null,
+      review_status: "none",
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: null,
+      reviewer: null,
     };
     setItems((cur) => [...cur, optimistic]);
 
@@ -223,7 +273,9 @@ export function TasksClient({
         position,
         created_by: userId,
       })
-      .select("*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)")
+      .select(
+        "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email)"
+      )
       .single();
 
     if (e || !data) {
@@ -409,13 +461,51 @@ export function TasksClient({
         <div className="mb-3 animate-fade-in-up">
           <h1 className="text-xl font-semibold text-stone-900">บันทึกงาน</h1>
           <p className="mt-0.5 text-sm text-stone-500">
-            สร้างงานที่ทำ · คลิกแถวเพื่อเปิดรายละเอียด แนบไฟล์/ลิงก์ Google
-            Drive ที่ได้รับอนุมัติ · เมื่อ Manager อนุมัติผ่าน LINE แล้ว
-            กลับมาติ๊กว่าเสร็จด้วยตนเอง
+            สร้างงานที่ทำ · แนบไฟล์/ลิงก์งาน · กด &quot;ส่งตรวจงาน&quot; แล้ว
+            ผู้ตรวจงานที่ระบุจะอนุมัติในแท็บ &quot;รอฉันตรวจ&quot;
           </p>
         </div>
 
-        {hasDemo && <DemoBanner onWhat="งานบางส่วน" />}
+        {/* แท็บ: บันทึกงาน / รอฉันตรวจ */}
+        <div className="mb-3 flex gap-1">
+          <button
+            type="button"
+            onClick={() => setTab("work")}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "work"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <ListTodo size={16} />
+            บันทึกงาน
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("review")}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "review"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <ClipboardCheck size={16} />
+            รอฉันตรวจ
+            {reviewQueue.length > 0 && (
+              <span
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                  tab === "review"
+                    ? "bg-white/25 text-cream"
+                    : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {reviewQueue.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {hasDemo && tab === "work" && <DemoBanner onWhat="งานบางส่วน" />}
 
         {loadError && (
           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
@@ -423,6 +513,7 @@ export function TasksClient({
           </div>
         )}
 
+        {tab === "work" && (
         <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
           <div className="relative min-w-56 flex-1 sm:max-w-xs">
             <Search
@@ -462,8 +553,9 @@ export function TasksClient({
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="all">สถานะ: ทั้งหมด</option>
-              <option value="pending">ยังไม่เสร็จ</option>
-              <option value="done">เสร็จแล้ว</option>
+              <option value="working">กำลังทำ</option>
+              <option value="pending">รอตรวจ</option>
+              <option value="done">เสร็จสมบูรณ์</option>
             </Select>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-stone-500">
@@ -495,6 +587,7 @@ export function TasksClient({
             </button>
           )}
         </div>
+        )}
 
         {error && (
           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
@@ -503,24 +596,34 @@ export function TasksClient({
         )}
       </div>
 
-      {/* ลิสต์งาน (scroll แนวตั้ง) */}
+      {/* เนื้อหา (scroll แนวตั้ง) — สลับตามแท็บ */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <TaskListView
-          sections={sections}
-          tasksBySection={tasksBySection}
-          today={today}
-          selectedId={selectedId}
-          profiles={profiles}
-          onAssign={assignTask}
-          onRowClick={(t) => setSelectedId(t.id)}
-          onToggleComplete={toggleComplete}
-          onQuickAdd={(sectionId, title, placement) =>
-            void quickAdd(sectionId, title, placement)
-          }
-          onRenameSection={renameSection}
-          onAddSection={(name) => void addSection(name)}
-          onDeleteSection={requestDeleteSection}
-        />
+        {tab === "work" ? (
+          <TaskListView
+            sections={sections}
+            tasksBySection={tasksBySection}
+            today={today}
+            selectedId={selectedId}
+            profiles={profiles}
+            onAssign={assignTask}
+            onRowClick={(t) => setSelectedId(t.id)}
+            onQuickAdd={(sectionId, title, placement) =>
+              void quickAdd(sectionId, title, placement)
+            }
+            onRenameSection={renameSection}
+            onAddSection={(name) => void addSection(name)}
+            onDeleteSection={requestDeleteSection}
+          />
+        ) : (
+          <ReviewList
+            queue={reviewQueue}
+            sections={sections}
+            today={today}
+            selectedId={selectedId}
+            onRowClick={(t) => setSelectedId(t.id)}
+            onApprove={approveTask}
+          />
+        )}
       </div>
       </div>
 
@@ -536,6 +639,11 @@ export function TasksClient({
           onPatch={patchTask}
           onDelete={requestDeleteTask}
           onClose={() => setSelectedId(null)}
+          onSubmitReview={submitForReview}
+          onCancelReview={cancelReview}
+          onApprove={approveTask}
+          onReopen={reopenTask}
+          onSetReviewer={setReviewer}
         />
       )}
 
