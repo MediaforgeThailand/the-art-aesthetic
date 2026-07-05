@@ -230,20 +230,39 @@ export function PriceListClient({
 
 /* ---------- popup รายละเอียดสินค้า ---------- */
 
-function DetailRow({
-  label,
-  children,
-}: {
+/** แถวราคาในตาราง popup — สร้างจากข้อเสนอทั้งหมดของรายการ (รวมที่หมดเขต ติดป้ายบอก) */
+type OfferRow = {
   label: string;
-  children: React.ReactNode;
-}) {
+  start: string | null;
+  end: string | null;
+  price: string;
+  state: OfferState | null; // null = ราคาปกติ (ไม่มีสถานะ)
+  isB1g1: boolean;
+};
+
+function StateChip({ state }: { state: OfferState }) {
+  const style =
+    state === "active"
+      ? "bg-emerald-100 text-emerald-700"
+      : state === "ending"
+        ? "bg-amber-100 text-amber-700"
+        : state === "upcoming"
+          ? "bg-sky-100 text-sky-700"
+          : "bg-stone-200 text-stone-500";
+  const label =
+    state === "active"
+      ? "ใช้ได้ตอนนี้"
+      : state === "ending"
+        ? "ใกล้หมดเขต"
+        : state === "upcoming"
+          ? "ยังไม่เริ่ม"
+          : "หมดเขตแล้ว";
   return (
-    <div className="flex flex-col gap-0.5 border-b border-stone-100 py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-3">
-      <p className="w-32 shrink-0 text-xs font-semibold text-stone-400">
-        {label}
-      </p>
-      <div className="min-w-0 flex-1 text-sm text-stone-800">{children}</div>
-    </div>
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${style}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -256,28 +275,53 @@ function ItemDetailModal({
   today: string;
   onClose: () => void;
 }) {
-  // แสดงทุกข้อเสนอที่ยังไม่หมดเขต (รวมที่ยังไม่เริ่ม — ติดป้าย "เริ่ม ...")
-  const promos = item.promos
-    .map((o) => ({ ...o, state: offerState(o, today) }))
-    .filter((o) => o.state !== "expired");
-  const courses = item.courses
-    .map((o) => ({ ...o, state: offerState(o, today) }))
-    .filter((o) => o.state !== "expired");
-  const activePromo = promos.find(
-    (o) =>
-      (o.state === "active" || o.state === "ending") && !o.label.includes("แถม")
-  );
+  // ตารางราคาครบทุกช่องตามไฟล์ต้นฉบับ: ราคาปกติ → โปรโมชันทุกช่วง → 1แถม1 → คอร์สทุกแบบ
+  const rows: OfferRow[] = [];
+  if (item.price_normal != null) {
+    rows.push({
+      label: "ราคาปกติ (Price List)",
+      start: "2026-01-01",
+      end: "2026-12-31",
+      price: item.price_normal,
+      state: null,
+      isB1g1: false,
+    });
+  }
+  for (const o of item.promos) {
+    rows.push({
+      label: o.label,
+      start: o.start,
+      end: o.end,
+      price: o.price,
+      state: offerState(o, today),
+      isB1g1: o.label.includes("แถม"),
+    });
+  }
+  for (const c of item.courses) {
+    rows.push({
+      label: c.label,
+      start: c.start,
+      end: c.end,
+      price: c.price,
+      state: offerState(c, today),
+      isB1g1: false,
+    });
+  }
 
-  const stateChip = (state: OfferState) =>
-    state === "ending" ? (
-      <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-        ใกล้หมดเขต
-      </span>
-    ) : state === "upcoming" ? (
-      <span className="ml-2 inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">
-        ยังไม่เริ่ม
-      </span>
-    ) : null;
+  // ราคาโปรที่ใช้ได้ ณ วันนี้ (ไว้ไฮไลต์แถว) — ถ้าไม่มี ให้ไฮไลต์ราคาปกติ
+  const hasActivePromo = rows.some(
+    (r) =>
+      !r.isB1g1 &&
+      r.state !== null &&
+      (r.state === "active" || r.state === "ending") &&
+      r.label.includes("โปรโมชัน")
+  );
+  const isCurrentRow = (r: OfferRow) =>
+    hasActivePromo
+      ? !r.isB1g1 &&
+        r.label.includes("โปรโมชัน") &&
+        (r.state === "active" || r.state === "ending")
+      : r.state === null;
 
   return (
     <div
@@ -290,7 +334,7 @@ function ItemDetailModal({
         role="dialog"
         aria-modal="true"
         aria-label={item.name}
-        className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl animate-fade-in-up sm:rounded-2xl sm:animate-scale-in"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl animate-fade-in-up sm:rounded-2xl sm:animate-scale-in"
       >
         {/* หัว popup: ปุ่มย้อนกลับ */}
         <div className="flex items-center gap-2 border-b border-stone-100 bg-gradient-to-r from-brand-50 to-cream-soft px-4 py-3">
@@ -322,79 +366,103 @@ function ItemDetailModal({
             {item.name}
           </h2>
 
-          {/* ราคา — แยกบรรทัดชัดเจน */}
-          <div className="mt-3 rounded-xl border border-stone-200/80 bg-cream-soft/60 px-4 py-1.5">
-            <DetailRow label="ราคาปกติ">
-              <span
-                className={
-                  activePromo
-                    ? "text-stone-400 line-through"
-                    : "font-bold text-stone-900"
-                }
-              >
-                {item.price_normal != null ? `${item.price_normal}.-` : "-"}
-              </span>
-            </DetailRow>
-
-            {promos
-              .filter((o) => !o.label.includes("แถม"))
-              .map((o, i) => (
-                <DetailRow key={`p${i}`} label={o.label}>
-                  <span className="text-lg font-bold text-brand-600">
-                    {o.price}.-
-                  </span>
-                  <span className="ml-2 text-xs text-stone-500">
-                    {shortThaiDate(o.start)} – {shortThaiDate(o.end)}
-                  </span>
-                  {stateChip(o.state)}
-                </DetailRow>
-              ))}
-
-            {promos
-              .filter((o) => o.label.includes("แถม"))
-              .map((o, i) => (
-                <DetailRow key={`b${i}`} label="โปร 1 แถม 1">
-                  <span className="inline-flex items-center gap-1.5 font-bold text-pink-600">
-                    <Gift size={14} />
-                    {o.price}.-
-                  </span>
-                  <span className="ml-2 text-xs text-stone-500">
-                    {shortThaiDate(o.start)} – {shortThaiDate(o.end)}
-                  </span>
-                  {stateChip(o.state)}
-                </DetailRow>
-              ))}
-
-            {courses.map((c, i) => (
-              <DetailRow key={`c${i}`} label={c.label}>
-                <span className="font-semibold text-brand-700">
-                  {c.price}.-
-                </span>
-                <span className="ml-2 text-xs text-stone-500">
-                  {shortThaiDate(c.start)} – {shortThaiDate(c.end)}
-                </span>
-                {stateChip(c.state)}
-              </DetailRow>
-            ))}
+          {/* ตารางราคา — โครงเดียวกับไฟล์ Price List (ครบทุกช่อง รวมช่วงที่หมดเขตแล้ว) */}
+          <div className="mt-4 overflow-x-auto rounded-xl border border-stone-300">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-gradient-to-r from-brand-500 to-brand-400 text-cream">
+                  <th className="border-b border-r border-brand-300/50 px-3 py-2.5 text-left text-[13px] font-semibold">
+                    รายการราคา
+                  </th>
+                  <th className="border-b border-r border-brand-300/50 px-3 py-2.5 text-left text-[13px] font-semibold">
+                    ช่วงเวลา
+                  </th>
+                  <th className="border-b border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold">
+                    ราคา
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const expired = r.state === "expired";
+                  const current = isCurrentRow(r);
+                  return (
+                    <tr
+                      key={i}
+                      className={
+                        current
+                          ? "bg-brand-50"
+                          : expired
+                            ? "bg-stone-50 opacity-60"
+                            : i % 2 === 1
+                              ? "bg-cream-soft/40"
+                              : "bg-white"
+                      }
+                    >
+                      <td className="border-b border-r border-stone-200 px-3 py-2.5 font-medium text-stone-800">
+                        <span className="inline-flex items-center gap-1.5">
+                          {r.isB1g1 && (
+                            <Gift size={14} className="shrink-0 text-pink-600" />
+                          )}
+                          {r.label}
+                        </span>
+                      </td>
+                      <td className="border-b border-r border-stone-200 px-3 py-2.5 text-stone-600">
+                        <span className="mr-2 whitespace-nowrap">
+                          {r.start && r.end
+                            ? `${shortThaiDate(r.start)} – ${shortThaiDate(r.end)}`
+                            : "-"}
+                        </span>
+                        {r.state !== null && <StateChip state={r.state} />}
+                        {current && r.state === null && (
+                          <StateChip state="active" />
+                        )}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap border-b border-stone-200 px-3 py-2.5 text-right text-base font-bold tabular-nums ${
+                          expired
+                            ? "text-stone-400 line-through"
+                            : current
+                              ? "text-brand-600"
+                              : "text-stone-900"
+                        }`}
+                      >
+                        {r.price}.-
+                      </td>
+                    </tr>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="px-3 py-4 text-center text-stone-400"
+                    >
+                      ไม่มีข้อมูลราคา
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* รายละเอียด */}
           {item.benefits && (
-            <div className="mt-4">
-              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-700">
+            <div className="mt-5">
+              <p className="mb-1.5 border-l-4 border-brand-400 pl-2 text-sm font-bold text-brand-700">
                 ประโยชน์
               </p>
-              <p className="whitespace-pre-line text-sm leading-6 text-stone-700">
+              <p className="whitespace-pre-line text-[14px] leading-7 text-stone-700">
                 {item.benefits}
               </p>
             </div>
           )}
           {item.process && (
-            <div className="mt-4">
-              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-700">
+            <div className="mt-5">
+              <p className="mb-1.5 border-l-4 border-brand-400 pl-2 text-sm font-bold text-brand-700">
                 ขั้นตอนการทำ
               </p>
-              <p className="whitespace-pre-line text-sm leading-6 text-stone-700">
+              <p className="whitespace-pre-line text-[14px] leading-7 text-stone-700">
                 {item.process}
               </p>
             </div>
