@@ -24,6 +24,8 @@ import {
   formatNumber,
 } from "@/lib/format";
 import {
+  INFLU_CONTRACT_TEMPLATE_NAME,
+  INFLU_CONTRACT_TEMPLATE_PATH,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   MEMO_COMPANY,
@@ -857,7 +859,321 @@ export function MemoFormStage({
   );
 }
 
-/* ---------- Stage 4: สัญญา 2 ฉบับ (mockup — แบบฟอร์มจริงจะแทนที่ภายหลัง) ---------- */
+/* ---------- Stage 4: สัญญา ----------
+   โหมดหลัก = ดาวน์โหลดแม่แบบสัญญา PDF → พิมพ์/เซน → อัพโหลดไฟล์ที่เซนแล้ว (เหมือน Memo)
+   โหมดเซนในระบบ (ContractSignStage) เก็บโค้ดไว้ ยังไม่เปิดใช้ (Coming soon) */
+
+export function ContractStage(props: {
+  influencer: InfluencerRow;
+  signatures: InfluSignatureRow[];
+  readOnly: boolean;
+}) {
+  // เก็บโหมดเซนดิจิทัลไว้แต่ยังไม่เปิดใช้
+  const [mode] = useState<"upload" | "sign">("upload");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
+            mode === "upload"
+              ? "cursor-default bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
+              : "cursor-pointer border border-stone-200 bg-white/50 text-stone-500"
+          }`}
+        >
+          <Upload size={15} />
+          อัพโหลดไฟล์สัญญา
+        </button>
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70"
+        >
+          <FileSignature size={15} />
+          เซนในระบบ (ดิจิทัล)
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            Coming soon
+          </span>
+        </button>
+      </div>
+
+      {mode === "upload" ? (
+        <ContractUploadStage
+          influencer={props.influencer}
+          readOnly={props.readOnly}
+        />
+      ) : (
+        <ContractSignStage {...props} />
+      )}
+    </div>
+  );
+}
+
+/* ---------- โหมดอัพโหลดไฟล์สัญญา (โหมดหลัก) ---------- */
+
+function ContractUploadStage({
+  influencer,
+  readOnly,
+}: {
+  influencer: InfluencerRow;
+  readOnly: boolean;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [error, setError] = useState<string | null>(null);
+  const [downloadingTpl, setDownloadingTpl] = useState(false);
+  const [downloadingSigned, setDownloadingSigned] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const contractUploaded = !!influencer.contract_file_path;
+  const fullName = [influencer.first_name, influencer.last_name]
+    .filter(Boolean)
+    .join(" ");
+
+  /** ดาวน์โหลดไฟล์แม่แบบสัญญา (PDF เปล่า) จาก storage */
+  const downloadTemplate = async () => {
+    setError(null);
+    setDownloadingTpl(true);
+    const { data, error: e } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .download(INFLU_CONTRACT_TEMPLATE_PATH);
+    setDownloadingTpl(false);
+    if (e || !data) {
+      setError(
+        "ยังไม่มีไฟล์แม่แบบสัญญาในระบบ — แจ้งแอดมินให้อัปโหลดไฟล์ PDF สัญญาก่อน"
+      );
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(data);
+    a.download = INFLU_CONTRACT_TEMPLATE_NAME;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
+  /** ดาวน์โหลดไฟล์สัญญาที่เซนแล้ว (ที่อัพไว้) */
+  const downloadSigned = async () => {
+    if (!influencer.contract_file_path) return;
+    setError(null);
+    setDownloadingSigned(true);
+    const { data, error: e } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .download(influencer.contract_file_path);
+    setDownloadingSigned(false);
+    if (e || !data) {
+      setError(`ดาวน์โหลดไฟล์ไม่สำเร็จ${e ? `: ${e.message}` : ""}`);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(data);
+    a.download =
+      influencer.contract_file_name ||
+      `สัญญา-${influencer.nickname || influencer.first_name}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const uploadSigned = async (file: File) => {
+    setError(null);
+    setUploading(true);
+    const oldPath = influencer.contract_file_path;
+    const path = `influencers/${influencer.id}/contract/${Date.now()}_${sanitizeFileName(file.name)}`;
+    const { error: upErr } = await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .upload(path, file);
+    if (upErr) {
+      setUploading(false);
+      setError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
+      return;
+    }
+    const { error: linkErr } = await supabase
+      .from("influencers")
+      .update({
+        contract_file_path: path,
+        contract_file_name: file.name,
+        contract_uploaded_at: new Date().toISOString(),
+      })
+      .eq("id", influencer.id);
+    setUploading(false);
+    if (linkErr) {
+      try {
+        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([path]);
+      } catch {
+        // เพิกเฉย
+      }
+      setError(`บันทึกไฟล์ไม่สำเร็จ: ${linkErr.message}`);
+      return;
+    }
+    if (oldPath) {
+      try {
+        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+      } catch {
+        // เพิกเฉย
+      }
+    }
+    router.refresh();
+  };
+
+  const goNext = async () => {
+    if (!contractUploaded) return;
+    if (
+      !window.confirm(
+        "ยืนยันว่าเซนสัญญาครบและอัพโหลดไฟล์แล้ว — เริ่มนับสัญญา 6 เดือน และไป Stage 5?"
+      )
+    )
+      return;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const d = new Date();
+    const { error: e } = await supabase
+      .from("influencers")
+      .update({
+        stage: 5,
+        // เริ่มนับสัญญา 6 เดือน = วันที่ยืนยันเซนสัญญาครบ
+        contract_start: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      })
+      .eq("id", influencer.id);
+    if (e) {
+      setError(`ไป stage ถัดไปไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    router.refresh();
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
+        <FileSignature size={14} className="shrink-0" />
+        ดาวน์โหลดไฟล์แม่แบบสัญญาไปพิมพ์ให้ Influencer เซน แล้วอัพโหลดไฟล์ที่เซนแล้ว
+        (สแกน/ถ่ายรูป) กลับเข้ามาเก็บไว้ที่นี่ — อัพโหลดครบจึงจะไป Stage ถัดไปได้
+        (เริ่มนับสัญญา 6 เดือนทันทีที่ยืนยัน)
+      </p>
+
+      {/* แม่แบบสัญญา PDF */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <FileText size={20} className="shrink-0 text-brand-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-stone-800">
+              ไฟล์แม่แบบสัญญา (PDF)
+            </p>
+            <p className="text-xs text-stone-500">
+              ดาวน์โหลดไปพิมพ์ให้ Influencer เซน
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => void downloadTemplate()}
+            loading={downloadingTpl}
+          >
+            <Download size={15} />
+            ดาวน์โหลดแม่แบบสัญญา
+          </Button>
+        </div>
+      </Card>
+
+      {/* ไฟล์สัญญาที่เซนแล้ว */}
+      <Card className="p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <FileText size={14} />
+          ไฟล์สัญญาที่เซนแล้ว (ของ คุณ{fullName})
+        </p>
+        {contractUploaded ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-stone-800">
+                {influencer.contract_file_name || "ไฟล์สัญญา"}
+              </p>
+              {influencer.contract_uploaded_at && (
+                <p className="text-xs text-stone-500">
+                  อัพโหลดเมื่อ {formatDateTime(influencer.contract_uploaded_at)}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => void downloadSigned()}
+                loading={downloadingSigned}
+                className="!px-2.5 !py-1 !text-xs"
+              >
+                <Download size={13} />
+                ดาวน์โหลด
+              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                  loading={uploading}
+                  className="!px-2.5 !py-1 !text-xs"
+                >
+                  <Upload size={13} />
+                  เปลี่ยนไฟล์
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : readOnly ? (
+          <p className="text-xs text-stone-400">ยังไม่มีไฟล์</p>
+        ) : (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-stone-300 bg-white/60 px-4 py-8 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 disabled:cursor-wait"
+          >
+            <Upload size={22} />
+            {uploading
+              ? "กำลังอัพโหลด..."
+              : "กดเพื่ออัพโหลดไฟล์สัญญาที่เซนแล้ว (PDF / รูปภาพ / Word)"}
+          </button>
+        )}
+        {!readOnly && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void uploadSigned(f);
+              e.target.value = "";
+            }}
+          />
+        )}
+      </Card>
+
+      {error && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+          {error}
+        </p>
+      )}
+
+      {!readOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-stone-500">
+            {contractUploaded
+              ? "อัพโหลดไฟล์สัญญาแล้ว — ไป Stage ถัดไปได้เลย"
+              : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน จึงจะไป Stage ถัดไปได้"}
+          </p>
+          <Button onClick={() => void goNext()} disabled={!contractUploaded}>
+            <CheckCircle2 size={16} />
+            เซนสัญญาครบแล้ว — เริ่มสัญญา 6 เดือน + ไป Stage 5
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- โหมดเซนในระบบ (mockup — เก็บโค้ดไว้ ยังไม่เปิดใช้) ---------- */
 
 const CONTRACTS: { doc: string; title: string; body: string[] }[] = [
   {
@@ -881,7 +1197,7 @@ const CONTRACTS: { doc: string; title: string; body: string[] }[] = [
   },
 ];
 
-export function ContractStage({
+function ContractSignStage({
   influencer,
   signatures,
   readOnly,

@@ -116,6 +116,11 @@ export const MEMO_COMPANY = {
     "ทางฝ่ายการตลาดมีความประสงค์ขออนุมัติเคสทางการตลาดเพื่อใช้โปรโมทหัตถการ Aesthetic เพื่อใช้โปรโมทสร้างภาพลักษณ์ให้กับองค์กร โดยทำสัญญา ระยะเวลา 6 เดือน ตามรายละเอียด ดังนี้",
 };
 
+/** ไฟล์แม่แบบสัญญา Influencer (PDF เปล่าให้ดาวน์โหลดไปพิมพ์/เซน) — เก็บในบัคเก็ต documents
+    อัปโหลดไฟล์จริงไปที่ path นี้เมื่อได้ PDF จากบริษัท (ใช้ร่วมทุก influencer) */
+export const INFLU_CONTRACT_TEMPLATE_PATH = "templates/influencer-contract.pdf";
+export const INFLU_CONTRACT_TEMPLATE_NAME = "สัญญา-Influencer-The-ART.pdf";
+
 /* ---------- Stage 6: checklist ติดตามงาน Influencer (ตามเอกสารแนบท้ายสัญญาของโรงพยาบาล) ----------
    แบ่ง 5 หมวด เรียงตามเอกสารจริง
    offsetDays: null = ไม่มีกำหนดเวลา (ไม่ต้องเตือน/นับถอยหลัง)
