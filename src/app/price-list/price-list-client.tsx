@@ -32,6 +32,18 @@ function shortThaiDate(iso: string): string {
   return formatDate(iso).replace(/ (\d{4})$/, (_, y) => ` ${y.slice(2)}`);
 }
 
+/** แสดงราคา: เติม ".-" เฉพาะส่วนที่เป็นตัวเลขล้วน — คงข้อความ/หน่วยไว้ตามไฟล์
+ *  เช่น "3,745 / เส้น" → "3,745.- / เส้น", "3,900 / 6,900 / 6,900" → "3,900.- / 6,900.- / 6,900.-" */
+function fmtPrice(price: string): string {
+  return price
+    .split("/")
+    .map((seg) => {
+      const t = seg.trim();
+      return /^[\d,]+$/.test(t) ? `${t}.-` : t;
+    })
+    .join(" / ");
+}
+
 export function PriceListClient({
   items,
   loadError,
@@ -427,7 +439,7 @@ function ItemDetailModal({
                               : "text-stone-900"
                         }`}
                       >
-                        {r.price}.-
+                        {fmtPrice(r.price)}
                       </td>
                     </tr>
                   );
@@ -537,10 +549,10 @@ function PriceRow({
         }}
         className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors hover:bg-brand-50/40 sm:px-4"
       >
-        {/* ชื่อ */}
+        {/* ชื่อ (แพ็กเกจหลายบรรทัด → ย่อเป็นบรรทัดเดียวในลิสต์, กดดูเต็มใน popup) */}
         <div className="flex min-w-0 flex-1 basis-52 items-center gap-1.5">
-          <p className="min-w-0 whitespace-pre-line text-[13px] font-medium leading-5 text-stone-800">
-            {item.name}
+          <p className="line-clamp-2 min-w-0 text-[13px] font-medium leading-5 text-stone-800">
+            {item.name.replace(/\n/g, " ")}
           </p>
           <ChevronRight size={13} className="shrink-0 text-stone-300" />
         </div>
@@ -549,7 +561,7 @@ function PriceRow({
         <div className="flex items-baseline gap-2 whitespace-nowrap">
           {showNormalStruck && (
             <span className="text-xs text-stone-400 line-through">
-              {item.price_normal}.-
+              {fmtPrice(item.price_normal!)}
             </span>
           )}
           <span
@@ -557,7 +569,11 @@ function PriceRow({
               activePromo ? "text-brand-600" : "text-stone-800"
             }`}
           >
-            {(activePromo?.price ?? item.price_normal ?? "-") + ".-"}
+            {activePromo
+              ? fmtPrice(activePromo.price)
+              : item.price_normal != null
+                ? fmtPrice(item.price_normal)
+                : "-"}
           </span>
         </div>
 
@@ -578,16 +594,17 @@ function PriceRow({
           )}
           {b1g1 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-semibold text-pink-700">
-              <Gift size={10} />1 แถม 1 {b1g1.price}.- ถึง {shortThaiDate(b1g1.end)}
+              <Gift size={10} />1 แถม 1 {fmtPrice(b1g1.price)} ถึง{" "}
+              {shortThaiDate(b1g1.end)}
             </span>
           )}
           {courses.map((c, i) => (
             <span
               key={i}
-              title={`${c.label} ${c.price}.- (${shortThaiDate(c.start)} - ${shortThaiDate(c.end)})`}
+              title={`${c.label} ${fmtPrice(c.price)} (${shortThaiDate(c.start)} - ${shortThaiDate(c.end)})`}
               className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700"
             >
-              {c.label} {c.price}.-
+              {c.label} {fmtPrice(c.price)}
               {c.state === "ending" && (
                 <span className="ml-1 text-amber-600">ใกล้หมดเขต</span>
               )}
