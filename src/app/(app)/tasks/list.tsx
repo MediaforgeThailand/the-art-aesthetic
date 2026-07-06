@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   Link2,
   Plus,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -296,7 +297,13 @@ function TaskRowItem({
     !task.completed &&
     task.due_date.slice(0, 10) < today;
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
-  const hasDeliverable = !!(task.deliverable_url || task.deliverable_file_path);
+  const fileCount = task.files?.length ?? 0;
+  const hasDeliverable = !!(task.deliverable_url || fileCount > 0);
+  const influ = task.influencer;
+  const influName = influ
+    ? (influ.nickname ??
+      [influ.first_name, influ.last_name].filter(Boolean).join(" "))
+    : null;
 
   return (
     <div
@@ -345,6 +352,11 @@ function TaskRowItem({
         {showCategory && (
           <Badge className={`shrink-0 ${taskCategoryChipClass(task.category)}`}>
             {task.category}
+          </Badge>
+        )}
+        {influName && (
+          <Badge className="shrink-0 border border-brand-200 bg-brand-50 text-brand-700">
+            <Sparkles size={10} /> {influName}
           </Badge>
         )}
       </div>
@@ -398,9 +410,15 @@ function TaskRowItem({
             <Link2 size={14} />
           </a>
         )}
-        {task.deliverable_file_path && (
-          <span title="มีไฟล์งานแนบ" className="p-1 text-brand-600">
+        {fileCount > 0 && (
+          <span
+            title={`มีไฟล์งานแนบ ${fileCount} ไฟล์`}
+            className="inline-flex items-center gap-0.5 p-1 text-brand-600"
+          >
             <ImageIcon size={14} />
+            {fileCount > 1 && (
+              <span className="text-[10px] font-semibold">{fileCount}</span>
+            )}
           </span>
         )}
         {!hasDeliverable && <span className="text-xs text-stone-300">—</span>}

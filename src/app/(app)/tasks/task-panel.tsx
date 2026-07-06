@@ -8,12 +8,15 @@ import {
   Paperclip,
   Plus,
   RotateCcw,
+  Search,
   Send,
   SendHorizontal,
+  Sparkles,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   STORAGE_BUCKET_DOCUMENTS,
@@ -24,7 +27,9 @@ import {
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  InfluencerLite,
   TaskCommentWithAuthor,
+  TaskFileRow,
   TaskPriority,
   TaskRow,
   TaskSectionRow,
@@ -45,6 +50,16 @@ function sanitizeFileName(fileName: string): string {
 
 function isImagePath(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|avif|heic)$/i.test(path);
+}
+
+function isVideoPath(path: string): boolean {
+  return /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(path);
+}
+
+/** ชื่อที่แสดงของ influencer */
+function influLabel(i: InfluencerLite): string {
+  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
+  return i.nickname ? `${full} (${i.nickname})` : full;
 }
 
 /** patch ที่ส่งกลับ: ส่วนที่เขียนลง DB + ส่วนที่อัปเดตเฉพาะ state ฝั่งจอ (เช่น assignee object) */
@@ -88,6 +103,7 @@ export function TaskPanel({
   task,
   sections,
   profiles,
+  influencers,
   userId,
   suspendEsc = false,
   onPatch,
@@ -98,10 +114,12 @@ export function TaskPanel({
   onApprove,
   onReopen,
   onSetReviewer,
+  onSetInfluencer,
 }: {
   task: TaskWithAssignee;
   sections: TaskSectionRow[];
   profiles: ProfileOption[];
+  influencers: InfluencerLite[];
   userId: string | null;
   /** true เมื่อมี dialog อื่นเปิดอยู่ — ให้ Esc เป็นของ dialog นั้น */
   suspendEsc?: boolean;
@@ -113,7 +131,12 @@ export function TaskPanel({
   onApprove: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
   onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
+  onSetInfluencer: (
+    task: TaskWithAssignee,
+    influencerId: string | null
+  ) => void;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
@@ -216,14 +239,36 @@ export function TaskPanel({
     onPatch(task.id, { db: { due_date: value === "" ? null : value } });
   };
 
-  /* ---------- ไฟล์/ลิงก์งานที่ได้รับอนุมัติ ---------- */
+  /* ---------- influencer ที่ผูกกับงาน (เลือกได้ ค้นหาได้ ไม่บังคับ) ---------- */
+
+  const [influOpen, setInfluOpen] = useState(false);
+  const [influQuery, setInfluQuery] = useState("");
+  const influRef = useRef<HTMLDivElement>(null);
+  const influMatches = useMemo(() => {
+    const q = influQuery.trim().toLowerCase();
+    const list = q === "" ? influencers : influencers.filter((i) =>
+      influLabel(i).toLowerCase().includes(q)
+    );
+    return list.slice(0, 30);
+  }, [influencers, influQuery]);
+
+  useEffect(() => {
+    if (!influOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!influRef.current?.contains(e.target as Node)) setInfluOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [influOpen]);
+
+  /* ---------- ลิงก์งาน (Google Drive) + ไฟล์งานหลายไฟล์ (รูป/วิดีโอ) ---------- */
 
   const [deliverableDraft, setDeliverableDraft] = useState(
     task.deliverable_url ?? ""
   );
-  const [uploadingDeliverable, setUploadingDeliverable] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const deliverableInputRef = useRef<HTMLInputElement>(null);
-  const deliverableFileUrl = useSignedUrl(task.deliverable_file_path);
+  const files = task.files ?? [];
 
   const saveDeliverableUrl = () => {
     const value =
@@ -232,34 +277,53 @@ export function TaskPanel({
     onPatch(task.id, { db: { deliverable_url: value } });
   };
 
-  const uploadDeliverable = async (file: File) => {
-    setUploadingDeliverable(true);
-    const oldPath = task.deliverable_file_path;
-    const path = `tasks/${task.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET_DOCUMENTS)
-      .upload(path, file);
-    setUploadingDeliverable(false);
-    if (error) {
-      showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
-      return;
+  const uploadFiles = async (fileList: FileList) => {
+    setUploadingFiles(true);
+    const rows: { task_id: string; file_path: string; file_name: string }[] =
+      [];
+    for (const file of Array.from(fileList)) {
+      const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${sanitizeFileName(file.name)}`;
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .upload(path, file);
+      if (error) {
+        setUploadingFiles(false);
+        showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
+        return;
+      }
+      rows.push({ task_id: task.id, file_path: path, file_name: file.name });
     }
-    onPatch(task.id, { db: { deliverable_file_path: path } });
-    // ลบไฟล์เก่าที่ถูกแทนที่ (best effort)
-    if (oldPath) {
+    const { error: insErr } = await supabase.from("task_files").insert(rows);
+    setUploadingFiles(false);
+    if (insErr) {
+      // เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
       try {
-        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+        await supabase.storage
+          .from(STORAGE_BUCKET_DOCUMENTS)
+          .remove(rows.map((r) => r.file_path));
       } catch {
         // เพิกเฉย
       }
+      showError(`บันทึกไฟล์ไม่สำเร็จ: ${insErr.message}`);
+      return;
     }
+    router.refresh();
   };
 
-  const removeDeliverableFile = () => {
-    const oldPath = task.deliverable_file_path;
-    if (!oldPath) return;
-    onPatch(task.id, { db: { deliverable_file_path: null } });
-    void supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+  const removeFile = async (f: TaskFileRow) => {
+    const { error } = await supabase.from("task_files").delete().eq("id", f.id);
+    if (error) {
+      showError(`ลบไฟล์ไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    try {
+      await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .remove([f.file_path]);
+    } catch {
+      // เพิกเฉย
+    }
+    router.refresh();
   };
 
   /* ---------- งานย่อย ---------- */
@@ -617,6 +681,84 @@ export function TaskPanel({
             </div>
           </FieldRow>
 
+          {/* influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ ค้นหาได้ ไม่บังคับ */}
+          <FieldRow label="Influencer">
+            <div ref={influRef} className="relative px-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setInfluOpen((v) => !v);
+                  setInfluQuery("");
+                }}
+                className={`${bareControl} flex items-center gap-2 text-left`}
+              >
+                <Sparkles size={14} className="shrink-0 text-brand-400" />
+                <span
+                  className={`min-w-0 flex-1 truncate ${task.influencer ? "text-stone-800" : "text-stone-400"}`}
+                >
+                  {task.influencer
+                    ? influLabel(task.influencer)
+                    : "ไม่ระบุ (เลือก influencer)"}
+                </span>
+                {task.influencer && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="ลบ influencer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetInfluencer(task, null);
+                    }}
+                    className="shrink-0 cursor-pointer rounded p-0.5 text-stone-400 hover:text-rose-500"
+                  >
+                    <X size={13} />
+                  </span>
+                )}
+              </button>
+              {influOpen && (
+                <div className="absolute left-2 right-2 z-20 mt-1 max-h-64 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl">
+                  <div className="flex items-center gap-1.5 border-b border-stone-100 px-2.5 py-2">
+                    <Search size={13} className="shrink-0 text-stone-400" />
+                    <input
+                      autoFocus
+                      value={influQuery}
+                      onChange={(e) => setInfluQuery(e.target.value)}
+                      placeholder="ค้นหาชื่อ / ชื่อเล่น..."
+                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {influMatches.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-stone-400">
+                        ไม่พบ influencer
+                      </p>
+                    )}
+                    {influMatches.map((i) => (
+                      <button
+                        key={i.id}
+                        type="button"
+                        onClick={() => {
+                          onSetInfluencer(task, i.id);
+                          setInfluOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-brand-50 ${
+                          task.influencer_id === i.id
+                            ? "bg-brand-50/60 font-medium text-brand-700"
+                            : "text-stone-700"
+                        }`}
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream">
+                          {i.first_name.charAt(0)}
+                        </span>
+                        <span className="min-w-0 truncate">{influLabel(i)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </FieldRow>
+
           <FieldRow label="กำหนดส่ง" htmlFor="task-due">
             <input
               id="task-due"
@@ -707,10 +849,13 @@ export function TaskPanel({
           />
         </div>
 
-        {/* ไฟล์งานที่ได้รับอนุมัติ — ส่ง Approve ผ่าน LINE นอกระบบ แล้วเก็บผลงานที่นี่ */}
+        {/* ไฟล์/ลิงก์งานที่ได้รับอนุมัติ — ลิงก์ Drive 1 อัน + ไฟล์รูป/วิดีโอได้หลายไฟล์ */}
         <div>
-          <p className="mb-1 px-2 text-sm text-stone-500">
+          <p className="mb-1 flex items-center gap-2 px-2 text-sm text-stone-500">
             ไฟล์งานที่ Approve แล้ว
+            {files.length > 0 && (
+              <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
+            )}
           </p>
           <div className="space-y-2 px-2">
             <div className="flex items-center gap-1.5">
@@ -739,77 +884,38 @@ export function TaskPanel({
               )}
             </div>
 
-            {task.deliverable_file_path ? (
-              <div className="rounded-lg border border-stone-200/80 bg-white/70 p-2">
-                {deliverableFileUrl ? (
-                  isImagePath(task.deliverable_file_path) ? (
-                    <a
-                      href={deliverableFileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="เปิดรูปเต็ม"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={deliverableFileUrl}
-                        alt="ไฟล์งานที่ได้รับอนุมัติ"
-                        className="max-h-44 w-full rounded-md object-contain"
-                      />
-                    </a>
-                  ) : (
-                    <a
-                      href={deliverableFileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 px-1 py-1.5 text-sm text-brand-700 hover:underline"
-                    >
-                      <Paperclip size={14} />
-                      เปิดไฟล์งานแนบ
-                    </a>
-                  )
-                ) : (
-                  <p className="py-4 text-center text-xs text-stone-400">
-                    กำลังโหลด...
-                  </p>
-                )}
-                <div className="mt-1.5 flex gap-3 px-0.5">
-                  <button
-                    type="button"
-                    onClick={() => deliverableInputRef.current?.click()}
-                    className="cursor-pointer text-xs text-stone-400 transition-colors hover:text-brand-700"
-                  >
-                    เปลี่ยนไฟล์
-                  </button>
-                  <button
-                    type="button"
-                    onClick={removeDeliverableFile}
-                    className="cursor-pointer text-xs text-stone-400 transition-colors hover:text-rose-600"
-                  >
-                    ลบไฟล์
-                  </button>
-                </div>
+            {files.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {files.map((f) => (
+                  <DeliverableFileThumb
+                    key={f.id}
+                    file={f}
+                    onRemove={() => void removeFile(f)}
+                  />
+                ))}
               </div>
-            ) : (
-              <button
-                type="button"
-                disabled={uploadingDeliverable}
-                onClick={() => deliverableInputRef.current?.click()}
-                className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-stone-200 bg-white/50 px-3 py-3 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-700 disabled:cursor-wait"
-              >
-                <Upload size={14} />
-                {uploadingDeliverable
-                  ? "กำลังอัพโหลด..."
-                  : "อัพโหลดภาพ/ไฟล์งานที่ได้รับอนุมัติ"}
-              </button>
             )}
+
+            <button
+              type="button"
+              disabled={uploadingFiles}
+              onClick={() => deliverableInputRef.current?.click()}
+              className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-stone-200 bg-white/50 px-3 py-3 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-700 disabled:cursor-wait"
+            >
+              <Upload size={14} />
+              {uploadingFiles
+                ? "กำลังอัพโหลด..."
+                : "อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์)"}
+            </button>
             <input
               ref={deliverableInputRef}
               type="file"
-              accept="image/*,.pdf"
+              accept="image/*,video/*,.pdf"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void uploadDeliverable(f);
+                const fl = e.target.files;
+                if (fl && fl.length > 0) void uploadFiles(fl);
                 e.target.value = "";
               }}
             />
@@ -1155,6 +1261,83 @@ function SubtaskRowItem({
           <X size={13} />
         </button>
       )}
+    </div>
+  );
+}
+
+/* ---------- รูป/วิดีโอไฟล์งาน (thumbnail + ลบ) ---------- */
+
+function DeliverableFileThumb({
+  file,
+  onRemove,
+}: {
+  file: TaskFileRow;
+  onRemove: () => void;
+}) {
+  const url = useSignedUrl(file.file_path);
+  const isImg = isImagePath(file.file_path);
+  const isVid = isVideoPath(file.file_path);
+  return (
+    <div className="group relative aspect-square overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
+      {url ? (
+        isImg ? (
+          <a href={url} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={file.file_name ?? "ไฟล์งาน"}
+              className="h-full w-full object-cover"
+            />
+          </a>
+        ) : isVid ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            title={file.file_name ?? "วิดีโอ"}
+            className="block h-full w-full"
+          >
+            <video
+              src={url}
+              className="h-full w-full object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white">
+                ▶ วิดีโอ
+              </span>
+            </span>
+          </a>
+        ) : (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            title={file.file_name ?? "ไฟล์"}
+            className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-stone-500"
+          >
+            <Paperclip size={16} />
+            <span className="line-clamp-2 break-all">
+              {file.file_name ?? "ไฟล์"}
+            </span>
+          </a>
+        )
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[10px] text-stone-300">
+          กำลังโหลด...
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        title="ลบไฟล์"
+        aria-label="ลบไฟล์"
+        className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+      >
+        <X size={12} />
+      </button>
     </div>
   );
 }

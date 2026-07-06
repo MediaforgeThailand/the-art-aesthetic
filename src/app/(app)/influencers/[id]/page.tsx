@@ -7,6 +7,7 @@ import type {
   InfluFollowupRow,
   InfluSignatureRow,
   InfluTaskRow,
+  TaskWithAssignee,
 } from "@/lib/types";
 import { InfluDetailClient } from "./detail-client";
 
@@ -30,6 +31,7 @@ export default async function InfluencerDetailPage({
     { data: followups },
     { data: signatures },
     { data: tasks },
+    { data: contentTasks },
     { data: profile },
   ] = await Promise.all([
     supabase.from("influencers").select("*").eq("id", id).single(),
@@ -44,6 +46,14 @@ export default async function InfluencerDetailPage({
       .select("*")
       .eq("influencer_id", id)
       .order("step", { ascending: true }),
+    // งานคอนเทนต์ (จากหน้า "งาน") ที่ผูกกับ influencer คนนี้
+    supabase
+      .from("tasks")
+      .select(
+        "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), files:task_files(id, task_id, file_path, file_name, created_at)"
+      )
+      .eq("influencer_id", id)
+      .order("created_at", { ascending: false }),
     userId
       ? supabase
           .from("profiles")
@@ -62,6 +72,7 @@ export default async function InfluencerDetailPage({
         followups={(followups ?? []) as InfluFollowupRow[]}
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
+        contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         userName={profile?.full_name || profile?.email || ""}
       />
     </PageContainer>

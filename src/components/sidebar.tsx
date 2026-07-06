@@ -3,6 +3,7 @@
 import {
   BarChart3,
   ClipboardList,
+  IdCard,
   LayoutDashboard,
   Link2,
   LogOut,
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/reports", label: "รายงาน", icon: BarChart3 },
   { href: "/pricing", label: "Product Pricing", icon: Tags },
   { href: "/influencers", label: "Influ Management", icon: Sparkles },
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard },
   { href: "/tasks", label: "งาน", icon: ClipboardList },
   { href: "/workload", label: "ภาระงานทีม", icon: Users },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2 },

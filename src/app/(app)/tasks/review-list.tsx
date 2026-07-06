@@ -121,10 +121,10 @@ export function ReviewList({
                     ลิงก์งาน
                   </a>
                 )}
-                {task.deliverable_file_path && (
+                {(task.files?.length ?? 0) > 0 && (
                   <span className="inline-flex items-center gap-1 text-brand-600">
                     <ImageIcon size={12} />
-                    มีไฟล์แนบ
+                    มีไฟล์แนบ {task.files!.length} ไฟล์
                   </span>
                 )}
               </div>

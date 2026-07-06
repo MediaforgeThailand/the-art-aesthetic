@@ -39,9 +39,20 @@ export type TaskRow = {
   reviewer_id: string | null;
   /** สถานะการตรวจ: none = ยังไม่ส่ง, pending = รอตรวจ, approved = ผ่าน (completed=true) */
   review_status: "none" | "pending" | "approved";
+  /** ผูกกับ influencer ที่ใช้ทำคอนเทนต์ (เลือกได้ ไม่บังคับ) */
+  influencer_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** ไฟล์งานแนบของ task (รูป/วิดีโอ หลายไฟล์) */
+export type TaskFileRow = {
+  id: string;
+  task_id: string;
+  file_path: string;
+  file_name: string | null;
+  created_at: string;
 };
 
 export type TaskSectionRow = {
@@ -362,6 +373,12 @@ export interface Database {
         Update: Partial<TaskCommentRow>;
         Relationships: [];
       };
+      task_files: {
+        Row: TaskFileRow;
+        Insert: Partial<TaskFileRow> & { task_id: string; file_path: string };
+        Update: Partial<TaskFileRow>;
+        Relationships: [];
+      };
       admin_records: {
         Row: AdminRecordRow;
         Insert: Partial<AdminRecordRow> & { record_date: string };
@@ -459,9 +476,17 @@ export interface Database {
 }
 
 /** task พร้อมข้อมูลผู้รับผิดชอบ (join จาก profiles) */
+/** influencer แบบย่อ (ใช้แสดงบน task) */
+export type InfluencerLite = Pick<
+  InfluencerRow,
+  "id" | "first_name" | "last_name" | "nickname"
+>;
+
 export type TaskWithAssignee = TaskRow & {
   assignee: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
   reviewer?: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
+  influencer?: InfluencerLite | null;
+  files?: TaskFileRow[];
 };
 
 /** ลิงก์ไฟล์พร้อมชื่อผู้เพิ่ม (join จาก profiles) */

@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import type {
+  InfluencerLite,
+  TaskSectionRow,
+  TaskWithAssignee,
+} from "@/lib/types";
 import { TasksClient } from "./tasks-client";
 
 export const metadata: Metadata = {
@@ -21,7 +25,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })
@@ -33,21 +37,27 @@ export default async function TasksPage() {
     return { rows, error: null as string | null };
   };
 
-  const [sectionsResult, tasksResult, profilesResult] = await Promise.all([
-    supabase
-      .from("task_sections")
-      .select("*")
-      .order("position", { ascending: true }),
-    fetchTasks(),
-    supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .order("full_name", { ascending: true }),
-  ]);
+  const [sectionsResult, tasksResult, profilesResult, influencersResult] =
+    await Promise.all([
+      supabase
+        .from("task_sections")
+        .select("*")
+        .order("position", { ascending: true }),
+      fetchTasks(),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .order("full_name", { ascending: true }),
+      supabase
+        .from("influencers")
+        .select("id, first_name, last_name, nickname")
+        .order("created_at", { ascending: false }),
+    ]);
 
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
   const tasks = tasksResult.rows;
   const profiles = profilesResult.data ?? [];
+  const influencers = (influencersResult.data ?? []) as InfluencerLite[];
   const loadError =
     sectionsResult.error?.message ??
     tasksResult.error ??
@@ -59,6 +69,7 @@ export default async function TasksPage() {
       sections={sections}
       tasks={tasks}
       profiles={profiles}
+      influencers={influencers}
       userId={userId}
       loadError={loadError}
     />

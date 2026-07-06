@@ -6,8 +6,12 @@ import {
   BellRing,
   Check,
   CheckCircle2,
+  ClipboardList,
   Copy,
+  Image as ImageIcon,
   ImagePlus,
+  Link2,
+  ListChecks,
   MessageSquarePlus,
   PenLine,
   PhoneCall,
@@ -48,6 +52,7 @@ import type {
   InfluSignatureRow,
   InfluTaskRow,
   ProcedureChange,
+  TaskWithAssignee,
 } from "@/lib/types";
 import { useSignedUrl } from "../use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
@@ -144,12 +149,14 @@ export function InfluDetailClient({
   followups,
   signatures,
   tasks,
+  contentTasks,
   userName,
 }: {
   influencer: InfluencerRow;
   followups: InfluFollowupRow[];
   signatures: InfluSignatureRow[];
   tasks: InfluTaskRow[];
+  contentTasks: TaskWithAssignee[];
   userName: string;
 }) {
   const [viewStage, setViewStage] = useState(influencer.stage);
@@ -161,6 +168,10 @@ export function InfluDetailClient({
 
   const maxStage = influencer.completed ? 6 : influencer.stage;
   const readOnly = viewStage < influencer.stage || influencer.completed;
+
+  // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ)
+  const followupLeft = tasks.filter((t) => !t.done).length;
+  const followupTotal = tasks.length;
 
   return (
     <div>
@@ -187,6 +198,26 @@ export function InfluDetailClient({
         {influencer.completed && (
           <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
             <CheckCircle2 size={12} /> จบงานแล้ว
+          </Badge>
+        )}
+        {/* follow-up ที่เหลือ (เฉพาะ stage 6) */}
+        {influencer.stage === 6 &&
+          !influencer.completed &&
+          followupTotal > 0 &&
+          (followupLeft > 0 ? (
+            <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+              <ListChecks size={12} /> follow-up เหลือ {followupLeft}/
+              {followupTotal} ข้อ
+            </Badge>
+          ) : (
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> follow-up ครบทุกข้อ
+            </Badge>
+          ))}
+        {/* จำนวนงานคอนเทนต์ที่ผูกกับคนนี้ */}
+        {contentTasks.length > 0 && (
+          <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+            <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
           </Badge>
         )}
       </div>
@@ -269,7 +300,122 @@ export function InfluDetailClient({
           />
         )}
       </div>
+
+      {/* งานคอนเทนต์ที่ผูกกับ Influencer คนนี้ (จากหน้า "งาน") */}
+      <ContentTasksSection tasks={contentTasks} />
     </div>
+  );
+}
+
+/* ============ งานคอนเทนต์ที่ผูกกับ influencer ============ */
+
+function ContentTasksSection({ tasks }: { tasks: TaskWithAssignee[] }) {
+  const today = todayISO();
+  return (
+    <Card className="mt-6 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <ClipboardList size={16} className="text-brand-600" />
+        <h2 className="text-sm font-semibold text-stone-900">
+          งานคอนเทนต์ที่ใช้ Influencer คนนี้
+        </h2>
+        <span className="text-xs text-stone-400">{tasks.length} งาน</span>
+        <Link
+          href="/tasks"
+          className="ml-auto text-xs font-medium text-brand-600 hover:underline"
+        >
+          ไปหน้างาน
+        </Link>
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-stone-200 px-3 py-4 text-center text-xs text-stone-400">
+          ยังไม่มีงานที่เลือก Influencer คนนี้ — ไปที่หน้า &quot;งาน&quot;
+          แล้วเลือก Influencer ในช่องรายละเอียดงาน
+        </p>
+      ) : (
+        <div className="divide-y divide-stone-100">
+          {tasks.map((t) => {
+            const overdue =
+              t.due_date != null &&
+              !t.completed &&
+              t.due_date.slice(0, 10) < today;
+            const fileCount = t.files?.length ?? 0;
+            return (
+              <div
+                key={t.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                    t.review_status === "approved"
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : t.review_status === "pending"
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-stone-300 bg-white"
+                  }`}
+                >
+                  {t.review_status === "approved" && (
+                    <Check size={10} strokeWidth={3} />
+                  )}
+                </span>
+                <span
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    t.completed
+                      ? "text-stone-400 line-through"
+                      : "font-medium text-stone-800"
+                  }`}
+                >
+                  {t.title}
+                </span>
+                {t.review_status === "pending" && (
+                  <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                    รอตรวจ
+                  </Badge>
+                )}
+                {t.review_status === "approved" && (
+                  <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                    เสร็จสมบูรณ์
+                  </Badge>
+                )}
+                {t.due_date && (
+                  <span
+                    className={`text-xs ${
+                      overdue ? "font-medium text-rose-600" : "text-stone-500"
+                    }`}
+                  >
+                    {formatDate(t.due_date)}
+                  </span>
+                )}
+                {t.deliverable_url && (
+                  <a
+                    href={t.deliverable_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="เปิดลิงก์งาน"
+                    className="text-sky-600 hover:text-sky-700"
+                  >
+                    <Link2 size={14} />
+                  </a>
+                )}
+                {fileCount > 0 && (
+                  <span
+                    title={`มีไฟล์แนบ ${fileCount} ไฟล์`}
+                    className="inline-flex items-center gap-0.5 text-brand-600"
+                  >
+                    <ImageIcon size={14} />
+                    {fileCount > 1 && (
+                      <span className="text-[10px] font-semibold">
+                        {fileCount}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -8,6 +8,7 @@ import { DEFAULT_TASK_CATEGORY } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  InfluencerLite,
   ProfileRow,
   TaskSectionRow,
   TaskWithAssignee,
@@ -29,12 +30,14 @@ export function TasksClient({
   sections: initialSections,
   tasks,
   profiles,
+  influencers,
   userId,
   loadError,
 }: {
   sections: TaskSectionRow[];
   tasks: TaskWithAssignee[];
   profiles: ProfileOption[];
+  influencers: InfluencerLite[];
   userId: string | null;
   loadError: string | null;
 }) {
@@ -215,6 +218,16 @@ export function TasksClient({
     });
   };
 
+  /** ผูก/ยกเลิก influencer ของงาน */
+  const setInfluencer = (task: TaskWithAssignee, influencerId: string | null) => {
+    if (task.influencer_id === influencerId) return;
+    const inf = influencers.find((i) => i.id === influencerId) ?? null;
+    patchTask(task.id, {
+      db: { influencer_id: influencerId },
+      local: { influencer: inf },
+    });
+  };
+
   /** เปลี่ยนผู้รับผิดชอบจากวงกลมบนการ์ดโดยตรง */
   const assignTask = (task: TaskWithAssignee, profileId: string | null) => {
     if (task.assignee_id === profileId) return;
@@ -257,11 +270,14 @@ export function TasksClient({
       deliverable_file_path: null,
       reviewer_id: null,
       review_status: "none",
+      influencer_id: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: null,
       reviewer: null,
+      influencer: null,
+      files: [],
     };
     setItems((cur) => [...cur, optimistic]);
 
@@ -274,7 +290,7 @@ export function TasksClient({
         created_by: userId,
       })
       .select(
-        "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email)"
+        "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
       )
       .single();
 
@@ -634,6 +650,7 @@ export function TasksClient({
           task={selectedTask}
           sections={sections}
           profiles={profiles}
+          influencers={influencers}
           userId={userId}
           suspendEsc={confirm !== null}
           onPatch={patchTask}
@@ -644,6 +661,7 @@ export function TasksClient({
           onApprove={approveTask}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
+          onSetInfluencer={setInfluencer}
         />
       )}
 
