@@ -19,7 +19,8 @@ import type { PriceItemRow, PriceOffer } from "@/lib/types";
 type OfferState = "upcoming" | "active" | "ending" | "expired";
 
 function offerState(o: PriceOffer, today: string): OfferState {
-  if (today < o.start) return "upcoming";
+  if (o.start && today < o.start) return "upcoming";
+  if (!o.end) return "active"; // ไม่ระบุวันหมดเขต = เปิดตลอด ไม่ใช่หมดเขต
   if (today > o.end) return "expired";
   const daysLeft = Math.round(
     (new Date(o.end).getTime() - new Date(today).getTime()) / 86400000
@@ -242,7 +243,7 @@ export function PriceListClient({
 
 /* ---------- popup รายละเอียดสินค้า ---------- */
 
-/** แถวราคาในตาราง popup — สร้างจากข้อเสนอทั้งหมดของรายการ (รวมที่หมดเขต ติดป้ายบอก) */
+/** แถวราคาในตาราง popup — เฉพาะข้อเสนอที่ยังไม่หมดเขต (โปรหมดเขตถูกซ่อน ไม่แสดงเลย) */
 type OfferRow = {
   label: string;
   start: string | null;
@@ -287,7 +288,8 @@ function ItemDetailModal({
   today: string;
   onClose: () => void;
 }) {
-  // ตารางราคาครบทุกช่องตามไฟล์ต้นฉบับ: ราคาปกติ → โปรโมชันทุกช่วง → 1แถม1 → คอร์สทุกแบบ
+  // ตารางราคา: ราคาปกติ → โปรโมชัน → 1แถม1 → คอร์ส — เฉพาะช่วงที่ยังไม่หมดเขต
+  // (โปรหมดเขตไม่แสดง — ราคากลับไปเป็นราคาปกติเอง เหมือนกติกาในลิสต์หน้าแรก)
   const rows: OfferRow[] = [];
   if (item.price_normal != null) {
     rows.push({
@@ -300,22 +302,26 @@ function ItemDetailModal({
     });
   }
   for (const o of item.promos) {
+    const state = offerState(o, today);
+    if (state === "expired") continue;
     rows.push({
       label: o.label,
       start: o.start,
       end: o.end,
       price: o.price,
-      state: offerState(o, today),
+      state,
       isB1g1: o.label.includes("แถม"),
     });
   }
   for (const c of item.courses) {
+    const state = offerState(c, today);
+    if (state === "expired") continue;
     rows.push({
       label: c.label,
       start: c.start,
       end: c.end,
       price: c.price,
-      state: offerState(c, today),
+      state,
       isB1g1: false,
     });
   }
@@ -378,7 +384,7 @@ function ItemDetailModal({
             {item.name}
           </h2>
 
-          {/* ตารางราคา — โครงเดียวกับไฟล์ Price List (ครบทุกช่อง รวมช่วงที่หมดเขตแล้ว) */}
+          {/* ตารางราคา — โครงเดียวกับไฟล์ Price List (เฉพาะช่วงที่ยังไม่หมดเขต, แถวโปรที่ใช้ได้ถูกเน้นเด่น) */}
           <div className="mt-4 overflow-x-auto rounded-xl border border-stone-300">
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -396,23 +402,32 @@ function ItemDetailModal({
               </thead>
               <tbody>
                 {rows.map((r, i) => {
-                  const expired = r.state === "expired";
                   const current = isCurrentRow(r);
                   return (
                     <tr
                       key={i}
                       className={
                         current
-                          ? "bg-brand-50"
-                          : expired
-                            ? "bg-stone-50 opacity-60"
-                            : i % 2 === 1
-                              ? "bg-cream-soft/40"
-                              : "bg-white"
+                          ? "bg-gradient-to-r from-brand-100/90 via-brand-50 to-amber-50/70"
+                          : i % 2 === 1
+                            ? "bg-cream-soft/40"
+                            : "bg-white"
                       }
                     >
-                      <td className="border-b border-r border-stone-200 px-3 py-2.5 font-medium text-stone-800">
+                      <td
+                        className={`border-b border-r border-stone-200 px-3 py-2.5 ${
+                          current
+                            ? "font-bold text-brand-800"
+                            : "font-medium text-stone-800"
+                        }`}
+                      >
                         <span className="inline-flex items-center gap-1.5">
+                          {current && r.state !== null && (
+                            <Sparkles
+                              size={14}
+                              className="shrink-0 text-brand-500"
+                            />
+                          )}
                           {r.isB1g1 && (
                             <Gift size={14} className="shrink-0 text-pink-600" />
                           )}
@@ -425,18 +440,32 @@ function ItemDetailModal({
                             ? `${shortThaiDate(r.start)} – ${shortThaiDate(r.end)}`
                             : "-"}
                         </span>
-                        {r.state !== null && <StateChip state={r.state} />}
+                        {r.state !== null &&
+                          (current ? (
+                            <span
+                              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${
+                                r.state === "ending"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-gradient-to-r from-brand-800 to-brand-700 text-cream"
+                              }`}
+                            >
+                              <Sparkles size={11} />
+                              {r.state === "ending"
+                                ? "โปรตอนนี้ · ใกล้หมดเขต"
+                                : "โปรตอนนี้"}
+                            </span>
+                          ) : (
+                            <StateChip state={r.state} />
+                          ))}
                         {current && r.state === null && (
                           <StateChip state="active" />
                         )}
                       </td>
                       <td
-                        className={`whitespace-nowrap border-b border-stone-200 px-3 py-2.5 text-right text-base font-bold tabular-nums ${
-                          expired
-                            ? "text-stone-400 line-through"
-                            : current
-                              ? "text-brand-600"
-                              : "text-stone-900"
+                        className={`whitespace-nowrap border-b border-stone-200 px-3 py-2.5 text-right tabular-nums ${
+                          current
+                            ? "text-lg font-extrabold text-brand-600"
+                            : "text-base font-bold text-stone-900"
                         }`}
                       >
                         {fmtPrice(r.price)}
