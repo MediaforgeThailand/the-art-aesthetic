@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo";
-import { formatDate, todayISO } from "@/lib/format";
+import { formatDate, formatDateBangkok, todayISO } from "@/lib/format";
 import { MEMO_COMPANY } from "@/lib/influ-constants";
 import type { PriceItemRow, PriceOffer } from "@/lib/types";
 
@@ -26,6 +26,17 @@ function offerState(o: PriceOffer, today: string): OfferState {
     (new Date(o.end).getTime() - new Date(today).getTime()) / 86400000
   );
   return daysLeft <= 14 ? "ending" : "active";
+}
+
+/** โปร "ที่ใช้ได้ตอนนี้" = state active/ending และไม่ใช่โปรแถม (1 แถม 1)
+ *  — กติกาเดียวกันทั้งราคาที่โชว์ในแถวลิสต์ (PriceRow) และแถวที่เน้นเด่นในตาราง popup */
+function isCurrentPromo(o: {
+  label: string;
+  state: OfferState | null;
+}): boolean {
+  return (
+    (o.state === "active" || o.state === "ending") && !o.label.includes("แถม")
+  );
 }
 
 /** วันที่แบบสั้นสำหรับป้ายโปร เช่น "31 มี.ค. 69" */
@@ -75,7 +86,8 @@ export function PriceListClient({
   const updatedAt = useMemo(() => {
     let max = "";
     for (const i of items) if (i.updated_at > max) max = i.updated_at;
-    return max ? formatDate(max) : "-";
+    // updated_at เป็น timestamptz — ต้องตรึงโซนไทย ไม่งั้น SSR/CSR แสดงคนละวัน (hydration mismatch)
+    return max ? formatDateBangkok(max) : "-";
   }, [items]);
 
   const filtered = useMemo(() => {
@@ -301,17 +313,20 @@ function ItemDetailModal({
       isB1g1: false,
     });
   }
+  const promoRows: OfferRow[] = [];
   for (const o of item.promos) {
     const state = offerState(o, today);
     if (state === "expired") continue;
-    rows.push({
+    const row: OfferRow = {
       label: o.label,
       start: o.start,
       end: o.end,
       price: o.price,
       state,
       isB1g1: o.label.includes("แถม"),
-    });
+    };
+    rows.push(row);
+    promoRows.push(row);
   }
   for (const c of item.courses) {
     const state = offerState(c, today);
@@ -326,20 +341,12 @@ function ItemDetailModal({
     });
   }
 
-  // ราคาโปรที่ใช้ได้ ณ วันนี้ (ไว้ไฮไลต์แถว) — ถ้าไม่มี ให้ไฮไลต์ราคาปกติ
-  const hasActivePromo = rows.some(
-    (r) =>
-      !r.isB1g1 &&
-      r.state !== null &&
-      (r.state === "active" || r.state === "ending") &&
-      r.label.includes("โปรโมชัน")
-  );
+  // แถวที่เน้นเด่น = โปรที่ใช้ได้ ณ วันนี้แถวแรก — ใช้ isCurrentPromo กติกาเดียวกับ
+  // ราคาที่โชว์ในแถวลิสต์ (PriceRow) เพื่อให้ popup ไฮไลต์ราคาเดียวกับที่ลิสต์แสดง
+  // ถ้าไม่มีโปรที่ใช้ได้เลย ค่อยไฮไลต์แถวราคาปกติ
+  const currentPromoRow = promoRows.find(isCurrentPromo) ?? null;
   const isCurrentRow = (r: OfferRow) =>
-    hasActivePromo
-      ? !r.isB1g1 &&
-        r.label.includes("โปรโมชัน") &&
-        (r.state === "active" || r.state === "ending")
-      : r.state === null;
+    currentPromoRow !== null ? r === currentPromoRow : r.state === null;
 
   return (
     <div
@@ -551,11 +558,8 @@ function PriceRow({
     .map((o) => ({ ...o, state: offerState(o, today) }))
     .filter((o) => o.state !== "expired");
 
-  const activePromo = promos.find(
-    (o) =>
-      (o.state === "active" || o.state === "ending") &&
-      !o.label.includes("แถม")
-  );
+  // โปรที่ใช้ได้ตอนนี้ — กติกาเดียวกับแถวไฮไลต์ใน popup (isCurrentPromo)
+  const activePromo = promos.find((o) => isCurrentPromo(o));
   const b1g1 = promos.find(
     (o) => (o.state === "active" || o.state === "ending") && o.label.includes("แถม")
   );

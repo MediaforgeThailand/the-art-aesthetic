@@ -595,8 +595,9 @@ function CaseDetailStage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const photoUrl = useSignedUrl(influencer.photo_path);
-  const channelUrl = useSignedUrl(influencer.channel_photo_path);
+  // failed ไม่ต้องใช้ — PhotoBox แสดงกล่องอัพโหลด (placeholder นิ่ง) เมื่อไม่มี url อยู่แล้ว
+  const { url: photoUrl } = useSignedUrl(influencer.photo_path);
+  const { url: channelUrl } = useSignedUrl(influencer.channel_photo_path);
 
   const followersNum = Number(followers.replace(/[^0-9]/g, "")) || 0;
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
@@ -841,11 +842,15 @@ function ServiceDayStage({
   const [newProcedure, setNewProcedure] = useState("");
   const [supervisor, setSupervisor] = useState("");
   const [padOpen, setPadOpen] = useState(false);
+  const [savingChange, setSavingChange] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const history = influencer.procedure_history ?? [];
 
   const saveChange = async (signatureData: string) => {
+    // กันกดบันทึกลายเซนซ้ำ — ไม่งั้น history โดนต่อท้ายรายการเดิม 2 รอบ
+    if (savingChange) return;
+    setSavingChange(true);
     setPadOpen(false);
     setEditOpen(false);
     setError(null);
@@ -871,7 +876,13 @@ function ServiceDayStage({
         procedure_history: [...freshHistory, change],
       })
       .eq("id", influencer.id);
-    if (e) setError(`บันทึกไม่สำเร็จ: ${e.message}`);
+    setSavingChange(false);
+    if (e) {
+      // บันทึกล้ม — คงหัตถการใหม่/ชื่อหัวหน้างานที่กรอกไว้ แล้วเปิด modal กลับมาให้ลองใหม่
+      setError(`บันทึกไม่สำเร็จ: ${e.message}`);
+      setEditOpen(true);
+      return;
+    }
     setNewProcedure("");
     setSupervisor("");
     router.refresh();
@@ -954,7 +965,13 @@ function ServiceDayStage({
 
         {!readOnly && (
           <div className="mt-4 flex items-center justify-between gap-3">
-            <Button variant="secondary" onClick={() => setEditOpen(true)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setError(null);
+                setEditOpen(true);
+              }}
+            >
               <PenLine size={15} />
               แก้ไขหัตถการ (ต้องลงนามหัวหน้างาน)
             </Button>
@@ -998,6 +1015,12 @@ function ServiceDayStage({
               placeholder="เช่น คุณปิยะวัฒน์ วรสิงห์"
             />
           </div>
+          {/* error ตอนบันทึกล้ม — โชว์ใน modal เพราะข้อความใน Card ถูก modal บัง */}
+          {error && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+              {error}
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>
               ยกเลิก

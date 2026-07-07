@@ -43,7 +43,11 @@ export default async function StaffReportPage() {
     if (!data || data.length < pageSize) break;
   }
 
-  const { data: kpiData } = await kpisPromise;
+  const { data: kpiData, error: kpiError } = await kpisPromise;
+  // เป้า KPI โหลดพลาดต้อง throw — ถ้าปล่อยผ่านหน้าจะแสดงเหมือน "ยังไม่ตั้งเป้า" ซึ่งชวนเข้าใจผิด
+  if (kpiError) {
+    throw new Error(`โหลดเป้า KPI ไม่สำเร็จ: ${kpiError.message}`);
+  }
   const salesDemo = sales.some((r) => r.note === "demo");
 
   return (

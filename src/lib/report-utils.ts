@@ -109,17 +109,11 @@ export function sumTargetsForPeriod(
     if (m < cutoffMonth || m > currentMonth) continue;
     const [y, mo] = m.split("-").map(Number);
     const daysInMonth = new Date(y, mo, 0).getDate();
-    let fraction = 1;
-    if (m === currentMonth) {
-      fraction = Number(todayISO.slice(8, 10)) / daysInMonth;
-    }
-    if (m === cutoffMonth) {
-      const startDay = Number(cutoffISO.slice(8, 10));
-      fraction = Math.min(
-        fraction,
-        (daysInMonth - startDay + 1) / daysInMonth
-      );
-    }
+    // สัดส่วน = จำนวนวันของเดือนนี้ที่อยู่ "ในช่วง" จริงๆ (start–end อาจอยู่เดือนเดียวกัน
+    // เช่น Today/7 วัน — ห้ามใช้ min ของสองสัดส่วนแยกกัน จะได้ค่าเกินจริง)
+    const startDay = m === cutoffMonth ? Number(cutoffISO.slice(8, 10)) : 1;
+    const endDay = m === currentMonth ? Number(todayISO.slice(8, 10)) : daysInMonth;
+    const fraction = Math.max(0, endDay - startDay + 1) / daysInMonth;
     sum += t.target_amount * fraction;
   }
   return sum;

@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import { PageContainer } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
-import type { InfluencerRow } from "@/lib/types";
+import type { InfluencerListRow } from "../influencers/influencers-client";
 import { InfluGalleryClient } from "./gallery-client";
 
 export const metadata: Metadata = {
   title: "โปรไฟล์ Influencer",
 };
+
+// คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
+// (~10-30KB/รายการ) หน้าการ์ดไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
+const INFLU_LIST_COLUMNS =
+  "id, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, created_by, created_at, updated_at";
 
 export default async function InfluGalleryPage() {
   const supabase = await createClient();
@@ -15,7 +20,7 @@ export default async function InfluGalleryPage() {
     await Promise.all([
       supabase
         .from("influencers")
-        .select("*")
+        .select(INFLU_LIST_COLUMNS)
         .order("created_at", { ascending: false }),
       // follow-up checklist ที่ยังไม่ทำ (stage 6)
       supabase.from("influ_tasks").select("influencer_id, done"),
@@ -45,7 +50,7 @@ export default async function InfluGalleryPage() {
   return (
     <PageContainer>
       <InfluGalleryClient
-        influencers={(influencers ?? []) as InfluencerRow[]}
+        influencers={(influencers ?? []) as InfluencerListRow[]}
         followupRemaining={followupRemaining}
         contentTaskCount={contentTaskCount}
         loadError={error?.message ?? null}

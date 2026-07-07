@@ -161,6 +161,7 @@ export function DashboardClient({
   kpis,
   pendingTasks,
   salesDemo,
+  adminDemo,
   tasksDemo,
 }: {
   sales: SalesRecordRow[];
@@ -169,6 +170,7 @@ export function DashboardClient({
   kpis: StaffKpiRow[];
   pendingTasks: number;
   salesDemo: boolean;
+  adminDemo: boolean;
   tasksDemo: boolean;
 }) {
   // default = วันที่ 1 ของเดือนนี้ถึงวันนี้ (เวลาไทย)
@@ -437,7 +439,9 @@ export function DashboardClient({
         description="รายงานทุกส่วนในหน้าเดียว — เลื่อนลงเพื่อดูครบทุก section ตัวกรองด้านล่างใช้ร่วมกันทั้งหน้า"
       />
 
-      {(salesDemo || tasksDemo) && <DemoBanner onWhat="ข้อมูลยอดขายและผลงานทีม" />}
+      {(salesDemo || adminDemo || tasksDemo) && (
+        <DemoBanner onWhat="ข้อมูลยอดขายและผลงานทีม" />
+      )}
 
       {/* ---------- ตัวกรองรวม: กล่องกระจกลอย sticky ตาม scroll ---------- */}
       <div className="sticky top-2 z-30 mb-6">
@@ -517,7 +521,7 @@ export function DashboardClient({
                   ? `ทักใหม่ ${formatNumber(adminTotals.leads)} · conversion ${((adminTotals.bookings / adminTotals.leads) * 100).toFixed(1)}%`
                   : PERIOD_LABEL[period]
               }
-              demo={salesDemo}
+              demo={adminDemo}
               delay={120}
             />
             <HeroCard
@@ -547,7 +551,7 @@ export function DashboardClient({
             <SectionTitle
               icon={TrendingUp}
               title={`แนวโน้มรายเดือน — Income ทีมขาย เทียบยอดปิดแชท (${period === "12m" ? "12" : "6"} เดือนล่าสุด)`}
-              demo={salesDemo}
+              demo={salesDemo || adminDemo}
             />
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -762,7 +766,7 @@ export function DashboardClient({
             <SectionTitle
               icon={MessageCircle}
               title="ลูกค้าทักใหม่ vs จองนัด (รายวัน)"
-              demo={salesDemo}
+              demo={adminDemo}
               iconClass="text-sky-600"
             />
             <div className="h-56">

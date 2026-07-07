@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import { PageContainer } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
-import type { InfluencerRow, InfluTaskRow } from "@/lib/types";
-import { InfluencersClient } from "./influencers-client";
+import type { InfluTaskRow } from "@/lib/types";
+import { InfluencersClient, type InfluencerListRow } from "./influencers-client";
 
 export const metadata: Metadata = {
   title: "Influ Management",
 };
+
+// คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
+// (~10-30KB/รายการ) หน้า list ไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
+const INFLU_LIST_COLUMNS =
+  "id, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, created_by, created_at, updated_at";
 
 export default async function InfluencersPage() {
   const supabase = await createClient();
@@ -14,7 +19,7 @@ export default async function InfluencersPage() {
   const [{ data: influencers, error }, { data: tasks }] = await Promise.all([
     supabase
       .from("influencers")
-      .select("*")
+      .select(INFLU_LIST_COLUMNS)
       .order("created_at", { ascending: false }),
     // ดึงทั้ง done/ไม่ done — ใช้คำนวณ countdown ครบกำหนด และ "follow แล้วกี่วัน"
     supabase
@@ -25,7 +30,7 @@ export default async function InfluencersPage() {
   return (
     <PageContainer>
       <InfluencersClient
-        influencers={(influencers ?? []) as InfluencerRow[]}
+        influencers={(influencers ?? []) as InfluencerListRow[]}
         tasks={
           (tasks ?? []) as Pick<
             InfluTaskRow,

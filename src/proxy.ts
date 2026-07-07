@@ -39,16 +39,22 @@ export default async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isLoginPage = path === "/login";
 
-  if (!claims && !isLoginPage) {
+  // redirect ต้องพกคุกกี้ที่เพิ่ง refresh มาด้วย — ไม่งั้น refresh token ที่ถูก rotate
+  // หายไปกับ response เดิม แล้ว request ถัดไปใช้ token เก่าโดน revoke ทั้ง session
+  const redirectTo = (pathname: string) => {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    url.pathname = pathname;
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
+  };
+
+  if (!claims && !isLoginPage) {
+    return redirectTo("/login");
   }
 
   if (claims && isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    return redirectTo("/dashboard");
   }
 
   return response;

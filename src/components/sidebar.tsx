@@ -9,10 +9,12 @@ import {
   LogOut,
   Sparkles,
   Tags,
+  UserCog,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { LogoMark, LogoWordmark } from "@/components/logo";
 import { createClient } from "@/lib/supabase/client";
 
@@ -27,6 +29,9 @@ const navItems = [
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2 },
 ];
 
+/** เมนูเฉพาะ admin — หน้า /accounts มี server-side guard อีกชั้น เมนูนี้แค่ซ่อน/โชว์ */
+const adminNavItem = { href: "/accounts", label: "จัดการบัญชี", icon: UserCog };
+
 export function Sidebar({
   userName,
   userEmail,
@@ -36,10 +41,41 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // อ่าน role จาก profiles ครั้งเดียวตอน mount (sidebar อยู่ยาวข้ามการนำทางฝั่ง client)
+    let alive = true;
+    const supabase = createClient();
+    void supabase.auth.getClaims().then(({ data }) => {
+      const uid = data?.claims?.sub;
+      if (!uid || typeof uid !== "string") return;
+      void supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", uid)
+        .single()
+        .then(({ data: profile }) => {
+          if (alive && profile?.role === "admin") setIsAdmin(true);
+        });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function handleLogout() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      // เซิร์ฟเวอร์ไม่ตอบ/เน็ตล่ม — ล้าง session เฉพาะเบราว์เซอร์นี้แทน
+      // ไม่งั้น session ยังอยู่ proxy จะเด้งกลับเข้าหน้าเดิม เหมือนปุ่มไม่ทำงาน
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // เพิกเฉย — พาไปหน้า login ต่อไม่ว่ากรณีใด
+      }
+    }
     router.push("/login");
     router.refresh();
   }
@@ -52,7 +88,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {[...navItems, ...(isAdmin ? [adminNavItem] : [])].map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

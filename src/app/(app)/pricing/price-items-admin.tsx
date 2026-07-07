@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
+  Badge,
   Button,
   Card,
   ConfirmDialog,
@@ -34,6 +35,8 @@ type ItemDraft = {
   price_normal: string;
   promos: OfferDraft[];
   courses: OfferDraft[];
+  /** แสดงบนหน้าสาธารณะหรือไม่ — false = ซ่อนจาก /price-list แต่ยังอยู่ในหลังบ้าน */
+  active: boolean;
 };
 
 const emptyDraft: ItemDraft = {
@@ -45,6 +48,7 @@ const emptyDraft: ItemDraft = {
   price_normal: "",
   promos: [],
   courses: [],
+  active: true,
 };
 
 function toDraft(item: PriceItemRow): ItemDraft {
@@ -57,6 +61,7 @@ function toDraft(item: PriceItemRow): ItemDraft {
     price_normal: item.price_normal ?? "",
     promos: item.promos.map((o) => ({ ...o })),
     courses: item.courses.map((o) => ({ ...o })),
+    active: item.active,
   };
 }
 
@@ -144,7 +149,13 @@ function OfferEditor({
 
 /* ---------- ส่วนจัดการ Price List (หลังบ้าน) ---------- */
 
-export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
+export function PriceItemsAdmin({
+  items,
+  loadError,
+}: {
+  items: PriceItemRow[];
+  loadError: string | null;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
@@ -215,23 +226,34 @@ export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
         draft.price_normal.trim() === "" ? null : draft.price_normal.trim(),
       promos: cleanOffers(draft.promos),
       courses: cleanOffers(draft.courses),
-      updated_at: new Date().toISOString(),
+      active: draft.active,
+      // updated_at ไม่ต้องส่ง — DB trigger ตั้งให้เอง (migration 0023)
     };
+    // sort ถัดไปของหมวด: ต่อท้ายหมวดนั้น (ถ้ามี) หรือท้ายสุดของทั้งลิสต์
+    const nextSort = (category: string) =>
+      Math.max(
+        0,
+        ...items.filter((i) => i.category === category).map((i) => i.sort),
+        ...(items.some((i) => i.category === category)
+          ? []
+          : items.map((i) => i.sort))
+      ) + 1;
     const q = editing
-      ? supabase.from("price_items").update(payload).eq("id", editing.id)
+      ? supabase
+          .from("price_items")
+          .update({
+            ...payload,
+            // ย้ายหมวด → คำนวณ sort ใหม่ให้ต่อท้ายหมวดปลายทาง
+            // (หน้าเว็บจัดกลุ่มหมวดตามลำดับ sort — ถ้าคง sort เดิมไว้ รายการจะไปแทรกกลางหมวดอื่นแล้วลำดับหมวดทั้งหน้าเพี้ยน)
+            ...(payload.category !== editing.category
+              ? { sort: nextSort(payload.category) }
+              : {}),
+          })
+          .eq("id", editing.id)
       : supabase.from("price_items").insert({
           ...payload,
           // รายการใหม่ต่อท้ายหมวดเดิม (ถ้ามี) หรือท้ายสุด
-          sort:
-            Math.max(
-              0,
-              ...items
-                .filter((i) => i.category === payload.category)
-                .map((i) => i.sort),
-              ...(items.some((i) => i.category === payload.category)
-                ? []
-                : items.map((i) => i.sort))
-            ) + 1,
+          sort: nextSort(payload.category),
         });
     const { error: e } = await q;
     setSaving(false);
@@ -286,6 +308,13 @@ export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
         โปรโมชันที่เลยวันหมดเขตจะหายจากหน้าเว็บเองอัตโนมัติ
       </p>
 
+      {loadError && (
+        <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+          โหลดข้อมูลไม่สำเร็จ: {loadError} — รายการที่แสดงอาจไม่ครบ
+          ลองรีเฟรชหน้าอีกครั้ง
+        </div>
+      )}
+
       <div className="relative mb-3 max-w-sm">
         <Search
           size={15}
@@ -319,7 +348,10 @@ export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
           </thead>
           <tbody className="divide-y divide-stone-100 bg-white/60">
             {filtered.map((item) => (
-              <tr key={item.id} className="hover:bg-brand-50/40">
+              <tr
+                key={item.id}
+                className={`hover:bg-brand-50/40 ${item.active ? "" : "opacity-50"}`}
+              >
                 <td className="max-w-36 truncate px-3 py-2 text-xs text-stone-500">
                   {item.category.split(":")[0].trim()}
                 </td>
@@ -327,6 +359,11 @@ export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
                   <p className="truncate font-medium text-stone-800">
                     {item.name}
                   </p>
+                  {!item.active && (
+                    <Badge className="mt-0.5 bg-stone-200 text-stone-600">
+                      ซ่อนจากหน้าเว็บ
+                    </Badge>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-stone-700">
                   {item.price_normal ?? "-"}
@@ -463,6 +500,27 @@ export function PriceItemsAdmin({ items }: { items: PriceItemRow[] }) {
               value={draft.process}
               onChange={(e) => setDraft({ ...draft, process: e.target.value })}
             />
+          </div>
+
+          {/* ซ่อน/แสดงจากหน้าสาธารณะ (คอลัมน์ active) */}
+          <div>
+            <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={draft.active}
+                onChange={(e) =>
+                  setDraft({ ...draft, active: e.target.checked })
+                }
+                className="h-4 w-4 accent-brand-600"
+              />
+              แสดงบนหน้า Price List สาธารณะ
+            </label>
+            {!draft.active && (
+              <p className="mt-1.5 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-500">
+                รายการนี้จะถูกซ่อนจากหน้าเว็บสาธารณะ
+                แต่ยังอยู่ในหลังบ้านและกลับมาติ๊กแสดงได้ทุกเมื่อ
+              </p>
+            )}
           </div>
 
           {error && (

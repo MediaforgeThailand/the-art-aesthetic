@@ -23,7 +23,8 @@ export function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
 
-/** แสดงวันที่แบบไทย เช่น "3 ก.ค. 2569" */
+/** แสดงวันที่แบบไทย เช่น "3 ก.ค. 2569"
+    ตรึงโซนเวลาไทยเสมอ — server บน Vercel เป็น UTC ถ้าไม่ตรึง SSR/CSR จะ render คนละวัน (hydration mismatch) */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const d = typeof value === "string" ? new Date(value) : value;
@@ -32,6 +33,7 @@ export function formatDate(value: string | Date | null | undefined): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Bangkok",
   });
 }
 
@@ -51,7 +53,7 @@ export function formatDateBangkok(
   });
 }
 
-/** แสดงวันที่+เวลาแบบไทย เช่น "3 ก.ค. 2569 14:30" */
+/** แสดงวันที่+เวลาแบบไทย เช่น "3 ก.ค. 2569 14:30" — ตรึงโซนเวลาไทยกัน hydration mismatch เช่นกัน */
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const d = typeof value === "string" ? new Date(value) : value;
@@ -62,6 +64,7 @@ export function formatDateTime(value: string | Date | null | undefined): string 
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Bangkok",
   });
 }
 

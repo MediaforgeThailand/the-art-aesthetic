@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   STORAGE_BUCKET_DOCUMENTS,
   TASK_CATEGORIES,
@@ -151,10 +151,10 @@ export function TaskPanel({
     task.due_date ? task.due_date.slice(0, 10) : ""
   );
   const [panelError, setPanelError] = useState<string | null>(null);
-  const showError = (msg: string) => {
+  const showError = useCallback((msg: string) => {
     setPanelError(msg);
     window.setTimeout(() => setPanelError(null), 5000);
-  };
+  }, []);
 
   /* ---------- งานย่อย + ความคิดเห็น (โหลดเมื่อเปิดงาน) ---------- */
 
@@ -179,24 +179,34 @@ export function TaskPanel({
         .order("created_at", { ascending: true }),
     ]).then(([s, c]) => {
       if (!alive) return;
+      // โหลดพลาดฝั่งไหน คง state ฝั่งนั้นเป็น null (กำลังโหลด) — ไม่ให้โชว์ "ยังไม่มี" ผิดๆ
+      if (s.error || c.error) {
+        showError(
+          `โหลดข้อมูลงานไม่สำเร็จ: ${(s.error ?? c.error)?.message ?? "ไม่ทราบสาเหตุ"}`
+        );
+      }
       // merge กับของที่ผู้ใช้เพิ่งเพิ่มระหว่างรอโหลด — ไม่ทับทิ้ง
-      const fetchedSubs = (s.data ?? []) as TaskSubtaskRow[];
-      setSubtasks((cur) => {
-        if (cur === null) return fetchedSubs;
-        const ids = new Set(fetchedSubs.map((x) => x.id));
-        return [...fetchedSubs, ...cur.filter((x) => !ids.has(x.id))];
-      });
-      const fetchedComments = (c.data ?? []) as unknown as TaskCommentWithAuthor[];
-      setComments((cur) => {
-        if (cur === null) return fetchedComments;
-        const ids = new Set(fetchedComments.map((x) => x.id));
-        return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
-      });
+      if (!s.error) {
+        const fetchedSubs = (s.data ?? []) as TaskSubtaskRow[];
+        setSubtasks((cur) => {
+          if (cur === null) return fetchedSubs;
+          const ids = new Set(fetchedSubs.map((x) => x.id));
+          return [...fetchedSubs, ...cur.filter((x) => !ids.has(x.id))];
+        });
+      }
+      if (!c.error) {
+        const fetchedComments = (c.data ?? []) as unknown as TaskCommentWithAuthor[];
+        setComments((cur) => {
+          if (cur === null) return fetchedComments;
+          const ids = new Set(fetchedComments.map((x) => x.id));
+          return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
+        });
+      }
     });
     return () => {
       alive = false;
     };
-  }, [supabase, task.id]);
+  }, [supabase, task.id, showError]);
 
   /* ---------- Esc: blur ช่องที่พิมพ์อยู่ก่อน (บันทึก) — กดซ้ำจึงปิดแผง ---------- */
 
@@ -277,6 +287,10 @@ export function TaskPanel({
     const value =
       deliverableDraft.trim() === "" ? null : deliverableDraft.trim();
     if (value === task.deliverable_url) return;
+    if (value !== null && !/^https?:\/\//i.test(value)) {
+      showError("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://");
+      return;
+    }
     onPatch(task.id, { db: { deliverable_url: value } });
   };
 
@@ -290,6 +304,16 @@ export function TaskPanel({
         .from(STORAGE_BUCKET_DOCUMENTS)
         .upload(path, file);
       if (error) {
+        // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ (best effort) — ยังไม่มีแถว task_files อ้างถึง
+        if (rows.length > 0) {
+          try {
+            await supabase.storage
+              .from(STORAGE_BUCKET_DOCUMENTS)
+              .remove(rows.map((r) => r.file_path));
+          } catch {
+            // เพิกเฉย
+          }
+        }
         setUploadingFiles(false);
         showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
         return;
@@ -439,7 +463,7 @@ export function TaskPanel({
   const commentFileRef = useRef<HTMLInputElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
-  /** เลขแก้ไขครั้งถัดไปของ task นี้ — ต่อจากเลขสูงสุดที่เคยมี */
+  /** เลขแก้ไขครั้งถัดไปของ task นี้ (ประมาณจาก state ฝั่งจอ — ตอนส่งจะเช็คกับ DB อีกชั้น) */
   const nextRevisionNumber =
     Math.max(0, ...(comments ?? []).map((c) => c.revision_number ?? 0)) + 1;
 
@@ -449,6 +473,10 @@ export function TaskPanel({
     const isRev = revisionChecked;
     const file = attachFile;
     if ((body === "" && !file && link === "") || sending) return;
+    if (link !== "" && !/^https?:\/\//i.test(link)) {
+      showError("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://");
+      return;
+    }
     setSending(true);
 
     // อัพไฟล์แนบก่อน (ถ้ามี) — ล้มเหลวก็ยังไม่แตะรายการคอมเมนต์
@@ -466,7 +494,20 @@ export function TaskPanel({
       filePath = p;
     }
 
-    const revisionNumber = isRev ? nextRevisionNumber : null;
+    // เลขแก้ไข: เช็คเลขสูงสุดจริงจาก DB ก่อน insert — state ฝั่งจออาจยังโหลดไม่ครบ
+    let revisionNumber: number | null = null;
+    if (isRev) {
+      const { data: maxRow } = await supabase
+        .from("task_comments")
+        .select("revision_number")
+        .eq("task_id", task.id)
+        .eq("is_revision", true)
+        .order("revision_number", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      revisionNumber =
+        Math.max(maxRow?.revision_number ?? 0, nextRevisionNumber - 1) + 1;
+    }
     const tempId = `temp-${Date.now()}`;
     const optimistic: TaskCommentWithAuthor = {
       id: tempId,
@@ -510,6 +551,17 @@ export function TaskPanel({
       setCommentDraft(body);
       setLinkDraft(link);
       setRevisionChecked(isRev);
+      setAttachFile(file); // คืนไฟล์แนบให้กดส่งใหม่ได้
+      // เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort) — คอมเมนต์ไม่ถูกบันทึกจึงไม่มีแถวอ้างถึง
+      if (filePath) {
+        try {
+          await supabase.storage
+            .from(STORAGE_BUCKET_DOCUMENTS)
+            .remove([filePath]);
+        } catch {
+          // เพิกเฉย
+        }
+      }
       showError(`ส่งความคิดเห็นไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
       return;
     }
@@ -1085,12 +1137,20 @@ export function TaskPanel({
           </button>
         </div>
         <div className="mt-1.5 flex items-center gap-3 pl-9">
-          <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-stone-500">
+          <label
+            title={
+              comments === null
+                ? "รอโหลดความคิดเห็นก่อน จึงจะระบุเลขครั้งแก้ไขได้"
+                : undefined
+            }
+            className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-stone-500"
+          >
             <input
               type="checkbox"
               checked={revisionChecked}
+              disabled={comments === null}
               onChange={(e) => setRevisionChecked(e.target.checked)}
-              className="h-3.5 w-3.5 accent-amber-600"
+              className="h-3.5 w-3.5 accent-amber-600 disabled:cursor-not-allowed"
             />
             เป็นการส่งงานแก้ไข
             {revisionChecked && (
@@ -1141,7 +1201,7 @@ export function TaskPanel({
 /* ---------- คอมเมนต์หนึ่งรายการ — ป้ายแก้ไขครั้งที่ N + ไฟล์/ลิงก์แนบ ---------- */
 
 function CommentItem({ comment: c }: { comment: TaskCommentWithAuthor }) {
-  const fileUrl = useSignedUrl(c.file_path);
+  const { url: fileUrl, failed: fileFailed } = useSignedUrl(c.file_path);
   return (
     <div className="flex items-start gap-2.5 px-2">
       <AssigneeAvatar assignee={c.author} size={7} />
@@ -1201,6 +1261,10 @@ function CommentItem({ comment: c }: { comment: TaskCommentWithAuthor }) {
                 เปิดไฟล์แนบ
               </a>
             )
+          ) : fileFailed ? (
+            <p className="mt-1 text-xs text-stone-300">
+              เปิดไฟล์แนบไม่ได้ — ไฟล์อาจถูกลบไปแล้ว
+            </p>
           ) : (
             <p className="mt-1 text-xs text-stone-300">กำลังโหลดไฟล์แนบ...</p>
           ))}
@@ -1285,7 +1349,7 @@ function DeliverableFileThumb({
   file: TaskFileRow;
   onRemove: () => void;
 }) {
-  const url = useSignedUrl(file.file_path);
+  const { url, failed } = useSignedUrl(file.file_path);
   const isImg = isImagePath(file.file_path);
   const isVid = isVideoPath(file.file_path);
   return (
@@ -1336,8 +1400,8 @@ function DeliverableFileThumb({
           </a>
         )
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-[10px] text-stone-300">
-          กำลังโหลด...
+        <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-stone-300">
+          {failed ? "เปิดไฟล์ไม่ได้" : "กำลังโหลด..."}
         </div>
       )}
       <button

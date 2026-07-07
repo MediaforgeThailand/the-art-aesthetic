@@ -9,15 +9,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ระบบหลังบ้านแผนก Aesthetic (โรงพยาบาลศัลยกรรม The ART): งาน / รายงาน / Product Pricing (โปรโมชันที่อนุมัติ — ตาราง `price_promotions` โทนชมพู + จัดการ Price List กลาง — ตาราง `price_items`) / Influ Management / คลังลิงก์ไฟล์+อัปโหลด / แดชบอร์ดยอดขาย (ข้อมูลจากไฟล์ทีม DA)
 **Price List สาธารณะ `/price-list`**: หน้า standalone ไม่ต้องล็อกอิน (proxy ปล่อยผ่าน, RLS ให้ anon อ่าน `price_items`) — เมนูราคาแบบ e-book responsive มีค้นหา/หมวด/สถานะโปร (ซ่อนโปรหมดเขตเอง**ทั้งในลิสต์และตารางใน popup** — ไม่แสดงเลย, "ใกล้หมดเขต" = เหลือ ≤14 วัน; แถวโปรที่ใช้ได้ใน popup ถูกเน้นเด่น: bg gradient + ชิป "โปรตอนนี้" ให้ sales โฟกัสราคาโปร); ข้อมูลจริง 248 รายการ import จากชีท "Aesthetic Price List 2026" (2026-07-05); ราคาเก็บเป็น text, โปร/คอร์ส = jsonb `{label,price,start,end}`; จัดการเพิ่ม/แก้/ลบใน /pricing (`price-items-admin.tsx`) แล้วหน้าสาธารณะอัพเดททันที (dynamic)
 **Influ Management** (`/influencers`): pipeline 6 stage (ติดต่อ+followup → รายละเอียดเคส → Memo ขออนุมัติ → เซนสัญญา 2 ฉบับ → เซนสัญญา (stage 4 = ดาวน์โหลดแม่แบบสัญญา PDF จาก storage `documents/templates/influencer-contract.pdf` → อัพโหลดไฟล์ที่เซนแล้ว `contract_file_path/name/uploaded_at` (migration 0018) เหมือน memo → กด next ตั้ง contract_start=วันนี้; โหมดเซนดิจิทัลเดิม ContractSignStage เก็บโค้ดไว้ Coming soon) → วันรับบริการ(แก้หัตถการ+ลายเซนหัวหน้ากำกับใน procedure_history jsonb) → stage 6 = checklist ติดตามงาน 5 หมวดตามเอกสารแนบท้ายสัญญา (INFLU_CHECKLIST ใน influ-constants.ts — ข้อที่มี offsetDays นับจากวันเข้าสู่ stage 6, เตือนเมื่อเหลือ ≤7 วัน/เลยกำหนด, หมายเหตุรายข้อเก็บใน influ_tasks.description; งานเก่าจาก FOLLOWUP_TEMPLATE เดิม section=null แสดงเป็นกลุ่ม "เทมเพลตเดิม")) — ตาราง influencers/influ_followups/influ_signatures/influ_tasks/influ_campaigns, ลายเซนดิจิทัลวาดผ่าน `src/components/signature-pad.tsx` เก็บเป็น PNG data URL, Tier auto จากยอดผู้ติดตาม, preset ผู้เซน memo ใน `src/lib/influ-constants.ts`, หน้า `/influencers/contracts` = อายุสัญญา 6 เดือน + Sub Campaign (เพิ่มได้เฉพาะสัญญายังไม่หมด), รูป influ อัพเข้า bucket documents path `influencers/{id}/`
+**จัดการบัญชี (`/accounts`, migration 0022/0023):** ระบบปิดสมัครเอง — สมัครผ่าน API ได้เฉพาะอีเมลใน `allowed_emails` (trigger `handle_new_user` raise exception ถ้าไม่อยู่ใน allowlist; หน้า login ไม่มีปุ่มสมัครแล้ว) — เพิ่ม/ลบบัญชี+ตั้งรหัสผ่านใหม่+กำหนดสิทธิ์ ทำผ่าน edge function **`admin-users`** (service role; mirror โค้ดที่ `supabase/functions/admin-users/index.ts`, deploy ผ่าน Supabase MCP; ผู้เรียกต้องเป็น admin — กัน last_admin/ลบตัวเอง, ลบ user แล้วถอน allowlist ให้) เรียกจาก `accounts-client.tsx` ผ่าน `supabase.functions.invoke`. สิทธิ์ = `profiles.role` ('admin'|'member', trigger `profiles_guard_role_change` กัน member เปลี่ยน role เอง) — หน้า /accounts server-guard เฉพาะ admin, เมนู "จัดการบัญชี" ใน sidebar โชว์เฉพาะ admin (fetch role client-side ตอน mount). FK ทุกตัวที่ชี้ profiles เป็น SET NULL/CASCADE — ลบบัญชีแล้วงาน/ข้อมูลเก่าอยู่ครบ (ผู้รับผิดชอบว่าง)
 UI เป็นภาษาไทยทั้งหมด — desktop-first เท่านั้น ไม่ต้องเผื่อมือถือ
-**หน้าที่ถูกถอดออกแล้ว (อย่าสร้างกลับ/อย่าลิงก์ไป):** /documents (ย้ายความสามารถอัปโหลดไปรวมใน /files แล้ว) และ /import — โค้ดเก่าอยู่ที่ `archive/removed-pages-20260704/` (excluded จาก tsconfig)
+**หน้าที่ถูกถอดออกแล้ว (อย่าสร้างกลับ/อย่าลิงก์ไป):** /documents (ย้ายความสามารถอัปโหลดไปรวมใน /files แล้ว) และ /import — โค้ดเก่าอยู่ที่ `archive/removed-pages-20260704/` (excluded จาก tsconfig; ตัด dependency xlsx/papaparse/date-fns ออกจาก package.json แล้ว — ติดตั้งใหม่เมื่อจะทำ DA import จริง)
 
 ## Stack & เวอร์ชัน
 
 - Next.js 16.2 (App Router, `src/` dir, Turbopack) + React 19 + TypeScript strict
 - Tailwind CSS v4 (theme ใน `src/app/globals.css`, ไม่มี tailwind.config)
 - Supabase: Postgres + Auth (email/password) + Storage (bucket `documents`)
-- Recharts (กราฟ), SheetJS `xlsx` + PapaParse (อ่านไฟล์ DA), lucide-react (ไอคอน)
+- Recharts (กราฟ), lucide-react (ไอคอน) — xlsx/papaparse ถูกถอดออกแล้วจนกว่าจะทำ DA import จริง
 
 ## กติกาสำคัญ
 
@@ -41,9 +42,7 @@ UI เป็นภาษาไทยทั้งหมด — desktop-first เ�
 
 ## เครื่องของผู้ใช้ (Windows)
 
-- Node ไม่อยู่ใน PATH ของ shell เดิม — ใช้:
-  PowerShell: `$env:Path = "C:\Users\User\nodejs\node-v24.18.0-win-x64;" + $env:Path`
-  Git Bash: `export PATH="/c/Users/User/nodejs/node-v24.18.0-win-x64:$PATH"`
+- Node อยู่ที่ `C:\Program Files\nodejs` (อยู่ใน PATH แล้ว — เครื่องเก่าที่ path `C:\Users\User\nodejs\...` เลิกใช้แล้ว); ถ้า shell หา node ไม่เจอ: PowerShell `$env:Path = "C:\Program Files\nodejs;" + $env:Path`
 - **เครื่องนี้มี TLS interception** (antivirus/proxy) — Node fetch ฝั่ง server จะเจอ `UNABLE_TO_VERIFY_LEAF_SIGNATURE` ถ้าไม่เปิด `--use-system-ca` (ตั้ง `NODE_OPTIONS=--use-system-ca` ใน user env แล้ว และ `.claude/launch.json` ส่ง flag นี้ให้ dev server แล้ว) — ห้ามแก้ด้วย NODE_TLS_REJECT_UNAUTHORIZED=0
 - Build: `npm run build` / Dev: `npm run dev`
 

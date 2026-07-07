@@ -13,7 +13,12 @@ export default async function PricingPage() {
   const supabase = await createClient();
 
   // รายการ price list (สำหรับหน้าสาธารณะ) — ดึงแบบแบ่งหน้า
-  const fetchPriceItems = async () => {
+  // หลังบ้านต้องเห็นทุกรายการรวมที่ซ่อนจากหน้าเว็บ (active=false) — ห้ามกรอง active ที่นี่
+  // ถ้าหน้าไหนโหลดพลาดต้องส่ง error กลับไปแจ้งผู้ใช้ด้วย (แถวที่ได้มาแล้วอาจไม่ครบ)
+  const fetchPriceItems = async (): Promise<{
+    rows: PriceItemRow[];
+    error: string | null;
+  }> => {
     const rows: PriceItemRow[] = [];
     for (let offset = 0; ; offset += 1000) {
       const { data, error } = await supabase
@@ -21,14 +26,14 @@ export default async function PricingPage() {
         .select("*")
         .order("sort", { ascending: true })
         .range(offset, offset + 999);
-      if (error) return rows;
+      if (error) return { rows, error: error.message };
       rows.push(...((data ?? []) as PriceItemRow[]));
       if (!data || data.length < 1000) break;
     }
-    return rows;
+    return { rows, error: null };
   };
 
-  const [{ data, error }, priceItems] = await Promise.all([
+  const [{ data, error }, priceItemsResult] = await Promise.all([
     supabase
       .from("price_promotions")
       .select("*")
@@ -42,7 +47,10 @@ export default async function PricingPage() {
 
   return (
     <PageContainer>
-      <PriceItemsAdmin items={priceItems} />
+      <PriceItemsAdmin
+        items={priceItemsResult.rows}
+        loadError={priceItemsResult.error}
+      />
       <PricingClient
         promotions={promotions}
         demo={demo}

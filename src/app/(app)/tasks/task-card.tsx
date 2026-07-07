@@ -317,10 +317,18 @@ function useCachedSignedUrl(path: string): {
   return { url, failed };
 }
 
-function CardMediaThumb({ file, tall }: { file: TaskFileRow; tall: boolean }) {
+function CardMediaThumb({
+  file,
+  variant,
+}: {
+  file: TaskFileRow;
+  /** natural = ไฟล์เดี่ยวเต็มความกว้าง สูงยืดตามสัดส่วนจริงของรูป (รูปแนวตั้งไม่ถูก crop),
+      tile = ช่องใน grid หลายไฟล์ สูงคงที่ crop กลาง */
+  variant: "natural" | "tile";
+}) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
-  const height = tall ? "h-28" : "h-16";
+  const height = variant === "natural" ? "h-28" : "h-16";
   if (failed || broken) {
     // ไฟล์เปิดไม่ได้ (ถูกลบจาก storage/ไฟล์เสีย) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
     return (
@@ -359,6 +367,22 @@ function CardMediaThumb({ file, tall }: { file: TaskFileRow; tall: boolean }) {
       </div>
     );
   }
+  if (variant === "natural") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={file.file_name ?? "ไฟล์งาน"}
+        title={file.file_name ?? undefined}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        // กว้างเต็มการ์ดคงที่ สูงตามสัดส่วนจริง — รูปแนวตั้งแสดงเต็มไม่โดน crop
+        // (480px ครอบคลุมถึงสัดส่วน ~1:2 ที่ความกว้างคอลัมน์บอร์ด) รูปยาวกว่านั้น
+        // เช่น screenshot แชทยาวๆ ถูก crop กลางด้วย object-cover เฉพาะตอนชนเพดาน
+        className="h-auto max-h-[480px] w-full rounded-md object-cover"
+      />
+    );
+  }
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -372,7 +396,7 @@ function CardMediaThumb({ file, tall }: { file: TaskFileRow; tall: boolean }) {
   );
 }
 
-/** แถบ preview บนการ์ด — 1 ไฟล์แสดงเต็มความกว้าง, หลายไฟล์เรียง grid 2 คอลัมน์ (สูงสุด 4 + ป้ายจำนวนที่เหลือ) */
+/** แถบ preview บนการ์ด — 1 ไฟล์แสดงเต็มความกว้างสูงตามสัดส่วนจริง, หลายไฟล์เรียง grid 2 คอลัมน์ (สูงสุด 4 + ป้ายจำนวนที่เหลือ) */
 function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
   const media = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
@@ -381,7 +405,7 @@ function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
   if (media.length === 1) {
     return (
       <div className="mt-2">
-        <CardMediaThumb file={media[0]} tall />
+        <CardMediaThumb file={media[0]} variant="natural" />
       </div>
     );
   }
@@ -391,7 +415,7 @@ function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
     <div className="mt-2 grid grid-cols-2 gap-1">
       {shown.map((f, i) => (
         <div key={f.id} className="relative">
-          <CardMediaThumb file={f} tall={false} />
+          <CardMediaThumb file={f} variant="tile" />
           {extra > 0 && i === shown.length - 1 && (
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-black/45 text-sm font-bold text-white">
               +{extra}

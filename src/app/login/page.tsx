@@ -7,62 +7,37 @@ import { Button, Input, Label } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 
-type Mode = "login" | "signup";
-
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   const configured = isSupabaseConfigured();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setInfo(null);
     setLoading(true);
 
     const supabase = createClient();
 
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) {
-          setError(
-            error.message === "Invalid login credentials"
-              ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-              : error.message
-          );
-          return;
-        }
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } },
-        });
-        if (error) {
-          setError(error.message);
-          return;
-        }
-        if (data.session) {
-          router.push("/dashboard");
-          router.refresh();
-        } else {
-          setInfo("สมัครสำเร็จ! กรุณาตรวจสอบอีเมลเพื่อยืนยันบัญชี แล้วกลับมาเข้าสู่ระบบ");
-          setMode("login");
-        }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        setError(
+          error.message === "Invalid login credentials"
+            ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+            : error.message
+        );
+        return;
       }
+      router.push("/dashboard");
+      router.refresh();
     } finally {
       setLoading(false);
     }
@@ -118,18 +93,6 @@ export default function LoginPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === "signup" && (
-                <div>
-                  <Label htmlFor="fullName">ชื่อ-นามสกุล</Label>
-                  <Input
-                    id="fullName"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="เช่น สมหญิง ใจดี"
-                    required
-                  />
-                </div>
-              )}
               <div>
                 <Label htmlFor="email">อีเมล</Label>
                 <Input
@@ -152,20 +115,13 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   required
                   minLength={6}
-                  autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
-                  }
+                  autoComplete="current-password"
                 />
               </div>
 
               {error && (
                 <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
                   {error}
-                </p>
-              )}
-              {info && (
-                <p className="rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700 animate-fade-in">
-                  {info}
                 </p>
               )}
 
@@ -175,38 +131,13 @@ export default function LoginPage() {
                 disabled={!configured}
                 className="w-full"
               >
-                {mode === "login" ? "เข้าสู่ระบบ" : "สมัครใช้งาน"}
+                เข้าสู่ระบบ
               </Button>
             </form>
 
+            {/* การสมัครเองถูกปิด — บัญชีใหม่เพิ่มได้จากหน้า "จัดการบัญชี" โดย admin เท่านั้น */}
             <p className="mt-4 text-center text-sm text-stone-500">
-              {mode === "login" ? (
-                <>
-                  ยังไม่มีบัญชี?{" "}
-                  <button
-                    onClick={() => {
-                      setMode("signup");
-                      setError(null);
-                    }}
-                    className="font-medium text-brand-600 transition-colors hover:text-brand-800 hover:underline cursor-pointer"
-                  >
-                    สมัครใช้งาน
-                  </button>
-                </>
-              ) : (
-                <>
-                  มีบัญชีแล้ว?{" "}
-                  <button
-                    onClick={() => {
-                      setMode("login");
-                      setError(null);
-                    }}
-                    className="font-medium text-brand-600 transition-colors hover:text-brand-800 hover:underline cursor-pointer"
-                  >
-                    เข้าสู่ระบบ
-                  </button>
-                </>
-              )}
+              ยังไม่มีบัญชี? ติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชีให้
             </p>
           </div>
         </div>

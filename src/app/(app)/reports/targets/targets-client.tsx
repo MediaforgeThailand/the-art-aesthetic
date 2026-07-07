@@ -111,7 +111,10 @@ export function TargetsClient({
     return s + (r.target ?? 0);
   }, 0);
   const overallPct = totalTarget > 0 ? (totalActual / totalTarget) * 100 : null;
-  const monthsHit = withTarget.filter(
+  // นับเฉพาะเดือนที่จบแล้ว (ก่อนเดือนปัจจุบันตามเวลาไทย) — เดือนที่ยังไม่จบแทบจะยังไม่ถึงเป้าเสมอ
+  // ถ้านับรวมจะกดอัตราสำเร็จต่ำเกินจริง (แดชบอร์ดหลักก็นับแบบเดียวกัน)
+  const finishedWithTarget = withTarget.filter((r) => r.month < currentMonth);
+  const monthsHit = finishedWithTarget.filter(
     (r) => r.pct !== null && r.pct >= 100
   ).length;
 
@@ -165,8 +168,8 @@ export function TargetsClient({
               {
                 icon: Trophy,
                 label: "เดือนที่ทำได้ตามเป้า",
-                value: `${monthsHit} / ${withTarget.length} เดือน`,
-                sub: "นับเฉพาะเดือนที่ตั้งเป้าไว้",
+                value: `${monthsHit} / ${finishedWithTarget.length} เดือน`,
+                sub: "นับเฉพาะเดือนที่จบแล้วและตั้งเป้าไว้",
               },
             ].map((kpi, i) => (
               <div

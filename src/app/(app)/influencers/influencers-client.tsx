@@ -34,7 +34,11 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluTaskRow } from "@/lib/types";
 
-export function influName(i: InfluencerRow): string {
+/** แถว influencer สำหรับหน้า list — ตัด procedure_history ออก
+    (jsonb เก็บลายเซน base64 ก้อนใหญ่ ~10-30KB/รายการ หน้า list ไม่ได้ใช้ เลยไม่ต้อง fetch) */
+export type InfluencerListRow = Omit<InfluencerRow, "procedure_history">;
+
+export function influName(i: InfluencerListRow): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
 }
@@ -43,6 +47,13 @@ type TaskLite = Pick<
   InfluTaskRow,
   "influencer_id" | "due_date" | "done" | "done_at"
 >;
+
+/** วันที่ตามปฏิทินไทยของ timestamptz (YYYY-MM-DD) —
+    กัน done_at ช่วง 00:00-07:00 น. ที่ .slice(0,10) แบบ UTC จะเพี้ยนไปเป็นวันก่อนหน้า */
+const thaiDateISO = (timestamp: string): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(
+    new Date(timestamp)
+  );
 
 /** สถิติ follow up ต่อ influ: งานเกินกำหนด, กำหนดถัดไป, follow ล่าสุด */
 type InfluStats = {
@@ -140,7 +151,7 @@ export function InfluencersClient({
   tasks,
   loadError,
 }: {
-  influencers: InfluencerRow[];
+  influencers: InfluencerListRow[];
   tasks: TaskLite[];
   loadError: string | null;
 }) {
@@ -191,14 +202,15 @@ export function InfluencersClient({
      1) เกินกำหนด/ครบวันนี้ (เกินมากสุดขึ้นก่อน)  2) ใกล้ครบกำหนด (≤14 วัน, ใกล้ก่อน)
      3) กำลังดีล (stage 1-5, ใหม่ก่อน)            4) follow แล้ว/รอรอบถัดไป (follow ล่าสุดก่อน)
      5) จบงานแล้ว */
-  const orderKey = (i: InfluencerRow): [number, number] => {
+  const orderKey = (i: InfluencerListRow): [number, number] => {
     if (i.completed) return [4, 0];
     if (i.stage === 6) {
       const s = statsByInflu.get(i.id);
       const du = s?.nextDue ? dayDiff(s.nextDue) : null;
       if (du !== null && du <= 0) return [0, du];
       if (du !== null && du <= 14) return [1, du];
-      return [3, s?.lastDone ? -Date.parse(s.lastDone) : 0];
+      // เรียงตามวันปฏิทินไทยของ follow ล่าสุด — ให้ตรงกับป้าย "follow แล้ว · X วันก่อน"
+      return [3, s?.lastDone ? -Date.parse(thaiDateISO(s.lastDone)) : 0];
     }
     return [2, -Date.parse(i.created_at)];
   };
@@ -391,7 +403,7 @@ export function InfluencersClient({
               i.stage === 6 && stats?.nextDue ? dayDiff(stats.nextDue) : null;
             const daysSinceDone =
               stats?.lastDone != null
-                ? Math.max(0, -dayDiff(stats.lastDone.slice(0, 10)))
+                ? Math.max(0, -dayDiff(thaiDateISO(stats.lastDone)))
                 : null;
             const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
             // ขอบสีแยกกลุ่ม: stage 6 (มาใช้บริการแล้ว) = ขอบ brand, จบงาน = ขอบเขียว, กำลังดีล = ปกติ

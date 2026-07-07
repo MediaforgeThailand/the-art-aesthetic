@@ -185,7 +185,12 @@ export function Modal({
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-900/30 p-4 pt-16 backdrop-blur-sm animate-fade-in"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        // overlay เป็นทั้งพื้นที่ปิด modal และกล่อง scroll — คลิก/ลาก scrollbar แนวตั้ง
+        // จะโดน e.target === overlay ด้วย ทำให้ modal ปิดและฟอร์มที่กรอกค้างหายหมด
+        // clientWidth ไม่รวม scrollbar จึงใช้กรองคลิกที่ตกในโซน scrollbar ออก
+        if (e.target === e.currentTarget && e.clientX < e.currentTarget.clientWidth) {
+          onClose();
+        }
       }}
     >
       <div

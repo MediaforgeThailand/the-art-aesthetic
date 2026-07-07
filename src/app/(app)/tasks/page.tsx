@@ -69,6 +69,7 @@ export default async function TasksPage() {
     sectionsResult.error?.message ??
     tasksResult.error ??
     profilesResult.error?.message ??
+    influencersResult.error?.message ??
     reviewersResult.error?.message ??
     null;
 

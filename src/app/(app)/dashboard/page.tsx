@@ -46,8 +46,8 @@ export default async function DashboardPage() {
   const [
     sales,
     adminRecords,
-    { data: targets },
-    { data: kpis },
+    targetsResult,
+    kpisResult,
     { count: pendingCount },
     { data: demoTask },
   ] = await Promise.all([
@@ -87,7 +87,16 @@ export default async function DashboardPage() {
     supabase.from("tasks").select("id").eq("description", "demo").limit(1),
   ]);
 
+  // เป้า/เป้า KPI โหลดพลาดต้อง throw — ถ้าปล่อยผ่านหน้าจะแสดงเหมือน "ยังไม่ตั้งเป้า" ซึ่งชวนเข้าใจผิด
+  if (targetsResult.error) {
+    throw new Error(`โหลดเป้าการขายไม่สำเร็จ: ${targetsResult.error.message}`);
+  }
+  if (kpisResult.error) {
+    throw new Error(`โหลดเป้า KPI รายคนไม่สำเร็จ: ${kpisResult.error.message}`);
+  }
+
   const salesDemo = sales.some((r) => r.note === "demo");
+  const adminDemo = adminRecords.some((r) => r.note === "demo");
   const tasksDemo = (demoTask ?? []).length > 0;
 
   return (
@@ -95,10 +104,11 @@ export default async function DashboardPage() {
       <DashboardClient
         sales={sales}
         adminRecords={adminRecords}
-        targets={(targets ?? []) as SalesTargetRow[]}
-        kpis={(kpis ?? []) as StaffKpiRow[]}
+        targets={(targetsResult.data ?? []) as SalesTargetRow[]}
+        kpis={(kpisResult.data ?? []) as StaffKpiRow[]}
         pendingTasks={pendingCount ?? 0}
         salesDemo={salesDemo}
+        adminDemo={adminDemo}
         tasksDemo={tasksDemo}
       />
     </PageContainer>

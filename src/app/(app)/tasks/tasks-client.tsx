@@ -11,7 +11,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import { ConfirmDialog, Input, Modal, Select } from "@/components/ui";
-import { DEFAULT_TASK_CATEGORY } from "@/lib/constants";
+import {
+  DEFAULT_TASK_CATEGORY,
+  STORAGE_BUCKET_DOCUMENTS,
+} from "@/lib/constants";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -520,7 +523,26 @@ export function TasksClient({
                 cur.some((t) => t.id === task.id) ? cur : [...cur, task]
               );
               showError(`ลบงานไม่สำเร็จ: ${e.message}`);
+              return;
             }
+            // เก็บกวาดไฟล์ของงานใน storage (best effort) — cascade ลบให้เฉพาะแถวใน DB
+            // โครง path มี 2 ระดับ: ไฟล์งาน tasks/{id}/ และไฟล์แนบคอมเมนต์ tasks/{id}/comments/
+            const storage = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
+            void (async () => {
+              const paths: string[] = [];
+              for (const prefix of [
+                `tasks/${task.id}`,
+                `tasks/${task.id}/comments`,
+              ]) {
+                const { data } = await storage.list(prefix, { limit: 1000 });
+                for (const obj of data ?? []) {
+                  paths.push(`${prefix}/${obj.name}`);
+                }
+              }
+              if (paths.length > 0) await storage.remove(paths);
+            })().catch(() => {
+              // เพิกเฉย — แถวใน DB ถูกลบไปแล้ว
+            });
           });
       },
     });

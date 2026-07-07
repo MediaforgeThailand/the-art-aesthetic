@@ -22,6 +22,7 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
+  todayISO,
 } from "@/lib/format";
 import {
   INFLU_CONTRACT_TEMPLATE_NAME,
@@ -51,17 +52,23 @@ export function PhotosModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const photoUrl = useSignedUrl(open ? influencer.photo_path : null);
-  const channelUrl = useSignedUrl(open ? influencer.channel_photo_path : null);
+  const photo = useSignedUrl(open ? influencer.photo_path : null);
+  const channel = useSignedUrl(open ? influencer.channel_photo_path : null);
 
   return (
     <Modal open={open} onClose={onClose} title="รูปภาพของ Influencer" wide>
       <div className="grid gap-4 sm:grid-cols-2">
         {[
-          { label: "รูป Influencer", url: photoUrl, path: influencer.photo_path },
+          {
+            label: "รูป Influencer",
+            url: photo.url,
+            failed: photo.failed,
+            path: influencer.photo_path,
+          },
           {
             label: "รูปช่องทาง (Channel)",
-            url: channelUrl,
+            url: channel.url,
+            failed: channel.failed,
             path: influencer.channel_photo_path,
           },
         ].map((p) => (
@@ -75,6 +82,11 @@ export function PhotosModal({
                   alt={p.label}
                   className="w-full rounded-xl border border-stone-200 object-contain"
                 />
+              ) : p.failed ? (
+                // ขอ signed URL ไม่ได้ (ไฟล์อาจถูกลบ) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
+                <div className="flex h-40 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
+                  เปิดรูปไม่ได้ — ไฟล์อาจถูกลบจากระบบ
+                </div>
               ) : (
                 <div className="flex h-40 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
                   กำลังโหลด...
@@ -214,8 +226,8 @@ function MemoCopyStage({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const memoInputRef = useRef<HTMLInputElement>(null);
-  const photoUrl = useSignedUrl(influencer.photo_path);
-  const channelUrl = useSignedUrl(influencer.channel_photo_path);
+  const photo = useSignedUrl(influencer.photo_path);
+  const channel = useSignedUrl(influencer.channel_photo_path);
 
   const memoUploaded = !!influencer.memo_file_path;
 
@@ -341,10 +353,16 @@ function MemoCopyStage({
   };
 
   const photos = [
-    { label: "รูป Influencer", url: photoUrl, path: influencer.photo_path },
+    {
+      label: "รูป Influencer",
+      url: photo.url,
+      failed: photo.failed,
+      path: influencer.photo_path,
+    },
     {
       label: "รูปช่องทาง (Channel)",
-      url: channelUrl,
+      url: channel.url,
+      failed: channel.failed,
       path: influencer.channel_photo_path,
     },
   ];
@@ -420,6 +438,11 @@ function MemoCopyStage({
                     alt={p.label}
                     className="w-full rounded-xl border border-stone-200 object-contain"
                   />
+                ) : p.failed ? (
+                  // ขอ signed URL ไม่ได้ (ไฟล์อาจถูกลบ) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
+                  <div className="flex h-40 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
+                    เปิดรูปไม่ได้ — ไฟล์อาจถูกลบจากระบบ
+                  </div>
                 ) : (
                   <div className="flex h-40 items-center justify-center rounded-xl bg-stone-100 text-xs text-stone-400">
                     กำลังโหลด...
@@ -557,8 +580,9 @@ export function MemoFormStage({
   );
   const [photosOpen, setPhotosOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const photoUrl = useSignedUrl(influencer.photo_path);
-  const channelUrl = useSignedUrl(influencer.channel_photo_path);
+  // ใช้เฉพาะ url — รูปในตัวเอกสารซ่อนไปเลยเมื่อโหลดไม่ได้ ไม่ต้องมี placeholder
+  const { url: photoUrl } = useSignedUrl(influencer.photo_path);
+  const { url: channelUrl } = useSignedUrl(influencer.channel_photo_path);
 
   const memoSigs = useMemo(() => {
     const map = new Map<string, InfluSignatureRow>();
@@ -1029,14 +1053,12 @@ function ContractUploadStage({
       )
     )
       return;
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const d = new Date();
     const { error: e } = await supabase
       .from("influencers")
       .update({
         stage: 5,
-        // เริ่มนับสัญญา 6 เดือน = วันที่ยืนยันเซนสัญญาครบ
-        contract_start: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+        // เริ่มนับสัญญา 6 เดือน = วันที่ยืนยันเซนสัญญาครบ (วันนี้ตามเวลาไทย — ไม่อิงนาฬิกาเครื่องผู้ใช้)
+        contract_start: todayISO(),
       })
       .eq("id", influencer.id);
     if (e) {
@@ -1238,14 +1260,12 @@ function ContractSignStage({
 
   const goNext = async () => {
     if (!allSigned) return;
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const d = new Date();
     await supabase
       .from("influencers")
       .update({
         stage: 5,
-        // วันเริ่มสัญญา 6 เดือน = วันที่เซนสัญญาครบ
-        contract_start: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+        // วันเริ่มสัญญา 6 เดือน = วันที่เซนสัญญาครบ (วันนี้ตามเวลาไทย — ไม่อิงนาฬิกาเครื่องผู้ใช้)
+        contract_start: todayISO(),
       })
       .eq("id", influencer.id);
     router.refresh();

@@ -14,9 +14,11 @@ import { useMemo, useState } from "react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import { contractEndDate, INFLU_STAGES, INFLU_TIERS } from "@/lib/influ-constants";
-import type { InfluencerRow } from "@/lib/types";
 import { useSignedUrl } from "../influencers/use-signed-url";
-import { influName } from "../influencers/influencers-client";
+import {
+  influName,
+  type InfluencerListRow,
+} from "../influencers/influencers-client";
 
 export function InfluGalleryClient({
   influencers,
@@ -24,7 +26,7 @@ export function InfluGalleryClient({
   contentTaskCount,
   loadError,
 }: {
-  influencers: InfluencerRow[];
+  influencers: InfluencerListRow[];
   followupRemaining: Record<string, number>;
   contentTaskCount: Record<string, number>;
   loadError: string | null;
@@ -118,12 +120,13 @@ function InfluCard({
   followupLeft,
   contentTasks,
 }: {
-  influ: InfluencerRow;
+  influ: InfluencerListRow;
   today: string;
   followupLeft: number;
   contentTasks: number;
 }) {
-  const photoUrl = useSignedUrl(i.photo_path);
+  // ถ้าขอ signed URL ไม่สำเร็จ (failed) จะ fallback ไปแสดงอวตารตัวอักษรด้านล่างเอง
+  const { url: photoUrl } = useSignedUrl(i.photo_path);
   const followerText =
     i.follower_note ||
     (i.followers != null ? `${formatNumber(i.followers)} followers` : null);

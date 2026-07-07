@@ -167,12 +167,7 @@ export function StaffClient({
             <HeroCard
               icon={Receipt}
               label="ยอดบิลรวม"
-              value={formatCurrency(totalAmount)}
-              delta={
-                <span className="text-sm font-medium tabular-nums text-stone-500">
-                  ({formatNumber(filtered.length)} บิล)
-                </span>
-              }
+              value={`${formatNumber(filtered.length)} บิล`}
               sub={PERIOD_LABEL[period]}
               demo={salesDemo}
               delay={60}

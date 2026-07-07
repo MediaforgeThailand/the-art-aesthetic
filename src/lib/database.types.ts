@@ -326,6 +326,13 @@ export type FileLinkRow = {
   created_at: string;
 };
 
+/** อีเมลที่ได้รับอนุญาตให้มีบัญชี — จัดการผ่าน edge function `admin-users` เท่านั้น (RLS ไม่มี policy) */
+export type AllowedEmailRow = {
+  email: string;
+  note: string | null;
+  created_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -333,6 +340,12 @@ export interface Database {
         Row: ProfileRow;
         Insert: Partial<ProfileRow> & { id: string };
         Update: Partial<ProfileRow>;
+        Relationships: [];
+      };
+      allowed_emails: {
+        Row: AllowedEmailRow;
+        Insert: Partial<AllowedEmailRow> & { email: string };
+        Update: Partial<AllowedEmailRow>;
         Relationships: [];
       };
       task_reviewers: {
