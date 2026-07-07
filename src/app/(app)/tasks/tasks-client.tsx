@@ -1,9 +1,16 @@
 "use client";
 
-import { ClipboardCheck, ListTodo, Search, X } from "lucide-react";
+import {
+  BadgeCheck,
+  ClipboardCheck,
+  ListTodo,
+  Search,
+  UserCog,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
-import { ConfirmDialog, Input, Select } from "@/components/ui";
+import { ConfirmDialog, Input, Modal, Select } from "@/components/ui";
 import { DEFAULT_TASK_CATEGORY } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -13,12 +20,26 @@ import type {
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
-import { TaskListView, type QuickAddPlacement } from "./list";
+import { ApprovedList } from "./approved-list";
+import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ReviewList } from "./review-list";
-import { isTempId, profileName } from "./task-card";
+import { AssigneeAvatar, isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 
 type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
+/** โปรไฟล์พร้อมค่าผู้ตรวจอัตโนมัติ (ใช้เฉพาะในหน้านี้) */
+type ProfileWithDefault = ProfileOption & {
+  default_reviewer_id: string | null;
+};
+
+/** วันตามเวลาไทยของ timestamp — ใช้กรองช่วงวันที่แท็บ "ตรวจแล้ว"
+    (formatter สร้างครั้งเดียวระดับโมดูล — สร้างต่อ call แพงมากเมื่องานหลักพันแถว) */
+const BANGKOK_DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Bangkok",
+});
+function bangkokDay(iso: string): string {
+  return BANGKOK_DAY_FORMAT.format(new Date(iso));
+}
 
 type ConfirmState = {
   title: string;
@@ -31,13 +52,15 @@ export function TasksClient({
   tasks,
   profiles,
   influencers,
+  reviewerIds,
   userId,
   loadError,
 }: {
   sections: TaskSectionRow[];
   tasks: TaskWithAssignee[];
-  profiles: ProfileOption[];
+  profiles: ProfileWithDefault[];
   influencers: InfluencerLite[];
+  reviewerIds: string[];
   userId: string | null;
   loadError: string | null;
 }) {
@@ -49,9 +72,35 @@ export function TasksClient({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"work" | "review">("work");
+  const [tab, setTab] = useState<"work" | "review" | "approved">("work");
   useEffect(() => setItems(tasks), [tasks]);
   useEffect(() => setSections(initialSections), [initialSections]);
+
+  /* ---------- roster ผู้ตรวจ + ผู้ตรวจอัตโนมัติของฉัน ---------- */
+
+  const [reviewerSet, setReviewerSet] = useState<Set<string>>(
+    () => new Set(reviewerIds)
+  );
+  useEffect(() => setReviewerSet(new Set(reviewerIds)), [reviewerIds]);
+  const [reviewerModalOpen, setReviewerModalOpen] = useState(false);
+
+  /** คนที่เลือกเป็นผู้ตรวจงานได้ (ตามลำดับชื่อจาก profiles) */
+  const reviewerProfiles = useMemo(
+    () => profiles.filter((p) => reviewerSet.has(p.id)),
+    [profiles, reviewerSet]
+  );
+
+  const myProfile = useMemo(
+    () => profiles.find((p) => p.id === userId) ?? null,
+    [profiles, userId]
+  );
+  const [myDefaultReviewerId, setMyDefaultReviewerId] = useState<string | null>(
+    myProfile?.default_reviewer_id ?? null
+  );
+  useEffect(
+    () => setMyDefaultReviewerId(myProfile?.default_reviewer_id ?? null),
+    [myProfile?.default_reviewer_id]
+  );
 
   // งานที่ฉันเป็นผู้ตรวจและกำลังรอตรวจ — โชว์เลขบนแท็บ
   const reviewQueue = useMemo(
@@ -67,6 +116,57 @@ export function TasksClient({
   const showError = (msg: string) => {
     setError(msg);
     window.setTimeout(() => setError(null), 6000);
+  };
+
+  /** เพิ่มคนเข้า roster ผู้ตรวจ — upsert แบบข้าม conflict: อีก session อาจเพิ่มไปก่อนแล้ว ถือว่าสำเร็จ */
+  const addReviewer = async (profileId: string) => {
+    setReviewerSet((cur) => new Set(cur).add(profileId));
+    const { error: e } = await supabase
+      .from("task_reviewers")
+      .upsert(
+        { profile_id: profileId },
+        { onConflict: "profile_id", ignoreDuplicates: true }
+      );
+    if (e) {
+      setReviewerSet((cur) => {
+        const n = new Set(cur);
+        n.delete(profileId);
+        return n;
+      });
+      showError(`เพิ่มผู้ตรวจไม่สำเร็จ: ${e.message}`);
+    }
+  };
+
+  /** เอาคนออกจาก roster ผู้ตรวจ (งานเดิมที่คนนี้ตรวจอยู่ไม่ถูกแตะ) */
+  const removeReviewer = async (profileId: string) => {
+    setReviewerSet((cur) => {
+      const n = new Set(cur);
+      n.delete(profileId);
+      return n;
+    });
+    const { error: e } = await supabase
+      .from("task_reviewers")
+      .delete()
+      .eq("profile_id", profileId);
+    if (e) {
+      setReviewerSet((cur) => new Set(cur).add(profileId));
+      showError(`เอาผู้ตรวจออกไม่สำเร็จ: ${e.message}`);
+    }
+  };
+
+  /** ตั้ง/ยกเลิกผู้ตรวจอัตโนมัติของฉัน — บันทึกลงโปรไฟล์ตัวเอง */
+  const saveDefaultReviewer = async (id: string | null) => {
+    if (userId === null) return;
+    const prev = myDefaultReviewerId;
+    setMyDefaultReviewerId(id);
+    const { error: e } = await supabase
+      .from("profiles")
+      .update({ default_reviewer_id: id })
+      .eq("id", userId);
+    if (e) {
+      setMyDefaultReviewerId(prev);
+      showError(`บันทึกผู้ตรวจอัตโนมัติไม่สำเร็จ: ${e.message}`);
+    }
   };
 
   /* ---------- filters ---------- */
@@ -147,6 +247,84 @@ export function TasksClient({
     [items]
   );
 
+  /* ---------- แท็บ "ตรวจแล้ว" + ตัวกรองของแท็บ ---------- */
+
+  const [apSearch, setApSearch] = useState("");
+  /** all | me | none | <profileId> */
+  const [apAssignee, setApAssignee] = useState<string>("all");
+  /** all | me | <profileId> */
+  const [apReviewer, setApReviewer] = useState<string>("all");
+  const [apFrom, setApFrom] = useState("");
+  const [apTo, setApTo] = useState("");
+
+  const hasApFilter =
+    apSearch.trim() !== "" ||
+    apAssignee !== "all" ||
+    apReviewer !== "all" ||
+    apFrom !== "" ||
+    apTo !== "";
+
+  const clearApFilters = () => {
+    setApSearch("");
+    setApAssignee("all");
+    setApReviewer("all");
+    setApFrom("");
+    setApTo("");
+  };
+
+  const approvedAll = useMemo(
+    () => items.filter((t) => t.review_status === "approved"),
+    [items]
+  );
+
+  const approvedFiltered = useMemo(() => {
+    const q = apSearch.trim().toLowerCase();
+    return approvedAll
+      .filter((t) => {
+        if (apAssignee === "me") {
+          if (userId === null || t.assignee_id !== userId) return false;
+        } else if (apAssignee === "none") {
+          if (t.assignee_id !== null) return false;
+        } else if (apAssignee !== "all" && t.assignee_id !== apAssignee) {
+          return false;
+        }
+        if (apReviewer === "me") {
+          if (userId === null || t.reviewer_id !== userId) return false;
+        } else if (apReviewer !== "all" && t.reviewer_id !== apReviewer) {
+          return false;
+        }
+        // กรองช่วงวันที่ตรวจผ่าน — เทียบเป็นวันตามเวลาไทย (คิดเฉพาะเมื่อตั้งช่วงไว้)
+        if (apFrom !== "" || apTo !== "") {
+          const day = bangkokDay(t.approved_at ?? t.updated_at);
+          if (apFrom !== "" && day < apFrom) return false;
+          if (apTo !== "" && day > apTo) return false;
+        }
+        if (q === "") return true;
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.description ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) =>
+        (b.approved_at ?? b.updated_at).localeCompare(
+          a.approved_at ?? a.updated_at
+        )
+      );
+  }, [approvedAll, apSearch, apAssignee, apReviewer, apFrom, apTo, userId]);
+
+  /** ตัวเลือกกรองผู้ตรวจ = roster ปัจจุบัน + คนที่เคยตรวจงานใน "ตรวจแล้ว" แม้ถูกถอดจาก roster ไปแล้ว */
+  const apReviewerOptions = useMemo(() => {
+    const seen = new Map<string, ProfileOption>(
+      reviewerProfiles.map((p) => [p.id, p] as const)
+    );
+    for (const t of approvedAll) {
+      if (t.reviewer && !seen.has(t.reviewer.id)) {
+        seen.set(t.reviewer.id, t.reviewer);
+      }
+    }
+    return [...seen.values()];
+  }, [reviewerProfiles, approvedAll]);
+
   const hasDemo = items.some((t) => t.description === "demo");
   const today = todayISO();
   const selectedTask = selectedId ? (taskById.get(selectedId) ?? null) : null;
@@ -198,14 +376,22 @@ export function TasksClient({
     patchTask(task.id, { db: { review_status: "none", completed: false } });
   };
 
-  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ */
+  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "ตรวจแล้ว") */
   const approveTask = (task: TaskWithAssignee) => {
-    patchTask(task.id, { db: { review_status: "approved", completed: true } });
+    patchTask(task.id, {
+      db: {
+        review_status: "approved",
+        completed: true,
+        approved_at: new Date().toISOString(),
+      },
+    });
   };
 
   /** เปิดงานที่เสร็จแล้วกลับมาแก้ */
   const reopenTask = (task: TaskWithAssignee) => {
-    patchTask(task.id, { db: { review_status: "none", completed: false } });
+    patchTask(task.id, {
+      db: { review_status: "none", completed: false, approved_at: null },
+    });
   };
 
   /** เปลี่ยนผู้ตรวจงาน */
@@ -253,6 +439,15 @@ export function TasksClient({
           ? Math.min(...inSection.map((t) => t.position)) - 1
           : Math.max(...inSection.map((t) => t.position)) + 1;
 
+    // ผู้ตรวจอัตโนมัติของฉัน — auto เลือกให้ตอนสร้างงาน (ต้องยังอยู่ใน roster)
+    const autoReviewerId =
+      myDefaultReviewerId !== null && reviewerSet.has(myDefaultReviewerId)
+        ? myDefaultReviewerId
+        : null;
+    const autoReviewer = autoReviewerId
+      ? (profiles.find((p) => p.id === autoReviewerId) ?? null)
+      : null;
+
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
       id: tempId,
@@ -268,14 +463,15 @@ export function TasksClient({
       position,
       deliverable_url: null,
       deliverable_file_path: null,
-      reviewer_id: null,
+      reviewer_id: autoReviewerId,
       review_status: "none",
       influencer_id: null,
+      approved_at: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: null,
-      reviewer: null,
+      reviewer: autoReviewer,
       influencer: null,
       files: [],
     };
@@ -287,6 +483,7 @@ export function TasksClient({
         title,
         section_id: sectionId,
         position,
+        reviewer_id: autoReviewerId,
         created_by: userId,
       })
       .select(
@@ -327,6 +524,95 @@ export function TasksClient({
           });
       },
     });
+  };
+
+  /* ---------- ลากการ์ด/เรียงเซคชันบนบอร์ด ---------- */
+
+  /** ย้าย/เรียงการ์ด — position เป็น float กึ่งกลางเพื่อนบ้าน (กติกาเดิมของบอร์ด)
+      คิดจากลิสต์เต็มของ section เสมอ: บอร์ดส่งเพื่อนบ้านเฉพาะที่มองเห็น (หลังกรอง)
+      ถ้าคิดกึ่งกลางจากคู่ที่มองเห็น position อาจชนกับงานที่ถูกซ่อนแล้วลำดับเพี้ยน */
+  const moveTask = (
+    taskId: string,
+    sectionId: string,
+    prevId: string | null,
+    nextId: string | null
+  ) => {
+    if (isTempId(sectionId)) return;
+    const prev = prevId ? taskById.get(prevId) : null;
+    const next = nextId ? taskById.get(nextId) : null;
+    const full = items
+      .filter((t) => t.id !== taskId && bucketOf(t) === sectionId)
+      .sort((a, b) => a.position - b.position);
+    let position: number;
+    if (prev) {
+      // วางถัดจากเพื่อนบ้านบนที่มองเห็นทันที — เพื่อนบ้านล่างจริงคือแถวถัดไปในลิสต์เต็ม
+      const i = full.findIndex((t) => t.id === prev.id);
+      const after = i >= 0 ? full[i + 1] : undefined;
+      position = after
+        ? (prev.position + after.position) / 2
+        : prev.position + 1;
+    } else if (next) {
+      const i = full.findIndex((t) => t.id === next.id);
+      const before = i > 0 ? full[i - 1] : undefined;
+      position = before
+        ? (before.position + next.position) / 2
+        : next.position - 1;
+    } else {
+      position =
+        full.length > 0 ? Math.max(...full.map((t) => t.position)) + 1 : 1024;
+    }
+    patchTask(taskId, { db: { section_id: sectionId, position } });
+  };
+
+  /** ลากหัวคอลัมน์เพื่อเรียงเซคชัน — อัพเดตเฉพาะตัวที่ลาก (float กึ่งกลางเพื่อนบ้าน) */
+  const reorderSections = (activeId: string, overId: string) => {
+    if (isTempId(activeId) || isTempId(overId)) return;
+    const from = sections.findIndex((s) => s.id === activeId);
+    const to = sections.findIndex((s) => s.id === overId);
+    if (from < 0 || to < 0 || from === to) return;
+
+    const prevPosition = sections[from].position;
+    const prevBeforeId = from > 0 ? sections[from - 1].id : null;
+    const next = [...sections];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    const idx = next.findIndex((s) => s.id === activeId);
+    const before = next[idx - 1];
+    const after = next[idx + 1];
+    const position =
+      before && after
+        ? (before.position + after.position) / 2
+        : before
+          ? before.position + 1
+          : after
+            ? after.position - 1
+            : 1;
+
+    setSections(next.map((s) => (s.id === activeId ? { ...s, position } : s)));
+    void supabase
+      .from("task_sections")
+      .update({ position })
+      .eq("id", activeId)
+      .then(({ error: e }) => {
+        if (e) {
+          // คืนเฉพาะคอลัมน์ที่ลาก (ทั้งค่า position และช่องใน array) —
+          // ไม่ทับ rename/เพิ่ม/ลบเซคชันอื่นที่สำเร็จไประหว่างรอ
+          setSections((cur) => {
+            const dragged = cur.find((s) => s.id === activeId);
+            if (!dragged) return cur;
+            const rest = cur.filter((s) => s.id !== activeId);
+            const at = prevBeforeId
+              ? rest.findIndex((s) => s.id === prevBeforeId) + 1
+              : 0;
+            rest.splice(at < 0 ? 0 : at, 0, {
+              ...dragged,
+              position: prevPosition,
+            });
+            return rest;
+          });
+          showError(`เรียงเซคชันไม่สำเร็จ: ${e.message}`);
+        }
+      });
   };
 
   /* ---------- section mutations ---------- */
@@ -519,6 +805,38 @@ export function TasksClient({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("approved")}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "approved"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <BadgeCheck size={16} />
+            ตรวจแล้ว
+            {approvedAll.length > 0 && (
+              <span
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                  tab === "approved"
+                    ? "bg-white/25 text-cream"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}
+              >
+                {approvedAll.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setReviewerModalOpen(true)}
+            title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจอัตโนมัติของฉัน"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
+          >
+            <UserCog size={16} />
+            จัดการผู้ตรวจ
+          </button>
         </div>
 
         {hasDemo && tab === "work" && <DemoBanner onWhat="งานบางส่วน" />}
@@ -605,6 +923,87 @@ export function TasksClient({
         </div>
         )}
 
+        {tab === "approved" && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
+            <div className="relative min-w-56 flex-1 sm:max-w-xs">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+              />
+              <Input
+                type="search"
+                placeholder="ค้นหางานที่ตรวจแล้ว..."
+                className="pl-9"
+                value={apSearch}
+                onChange={(e) => setApSearch(e.target.value)}
+              />
+            </div>
+            <div className="w-44">
+              <Select
+                aria-label="กรองตามผู้รับผิดชอบ"
+                value={apAssignee}
+                onChange={(e) => setApAssignee(e.target.value)}
+              >
+                <option value="all">ผู้รับผิดชอบ: ทั้งหมด</option>
+                {userId !== null && <option value="me">งานของฉัน</option>}
+                <option value="none">ไม่ระบุ</option>
+                {profiles
+                  .filter((p) => p.id !== userId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {profileName(p)}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+            <div className="w-44">
+              <Select
+                aria-label="กรองตามผู้ตรวจ"
+                value={apReviewer}
+                onChange={(e) => setApReviewer(e.target.value)}
+              >
+                <option value="all">ผู้ตรวจ: ทั้งหมด</option>
+                {userId !== null && <option value="me">ฉันเป็นผู้ตรวจ</option>}
+                {apReviewerOptions
+                  .filter((p) => p.id !== userId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {profileName(p)}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+              <span>ตรวจผ่านตั้งแต่</span>
+              <Input
+                type="date"
+                aria-label="ตรวจผ่านตั้งแต่วันที่"
+                value={apFrom}
+                onChange={(e) => setApFrom(e.target.value)}
+                className="!w-36 !py-1.5 !text-xs"
+              />
+              <span>ถึง</span>
+              <Input
+                type="date"
+                aria-label="ตรวจผ่านถึงวันที่"
+                value={apTo}
+                onChange={(e) => setApTo(e.target.value)}
+                className="!w-36 !py-1.5 !text-xs"
+              />
+            </div>
+            {hasApFilter && (
+              <button
+                type="button"
+                onClick={clearApFilters}
+                className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
+              >
+                <X size={14} />
+                ล้างตัวกรอง
+              </button>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
             {error}
@@ -612,17 +1011,24 @@ export function TasksClient({
         )}
       </div>
 
-      {/* เนื้อหา (scroll แนวตั้ง) — สลับตามแท็บ */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* เนื้อหา — บอร์ดเลื่อนแนวนอน (แบบ Trello), แท็บรอตรวจ scroll แนวตั้ง */}
+      <div
+        className={`min-h-0 flex-1 ${
+          tab === "work" ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto"
+        }`}
+      >
         {tab === "work" ? (
-          <TaskListView
+          <KanbanBoard
             sections={sections}
             tasksBySection={tasksBySection}
+            taskById={taskById}
             today={today}
             selectedId={selectedId}
             profiles={profiles}
             onAssign={assignTask}
-            onRowClick={(t) => setSelectedId(t.id)}
+            onMoveTask={moveTask}
+            onReorderSections={reorderSections}
+            onCardClick={(t) => setSelectedId(t.id)}
             onQuickAdd={(sectionId, title, placement) =>
               void quickAdd(sectionId, title, placement)
             }
@@ -630,7 +1036,7 @@ export function TasksClient({
             onAddSection={(name) => void addSection(name)}
             onDeleteSection={requestDeleteSection}
           />
-        ) : (
+        ) : tab === "review" ? (
           <ReviewList
             queue={reviewQueue}
             sections={sections}
@@ -638,6 +1044,14 @@ export function TasksClient({
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onApprove={approveTask}
+          />
+        ) : (
+          <ApprovedList
+            tasks={approvedFiltered}
+            totalApproved={approvedAll.length}
+            sections={sections}
+            selectedId={selectedId}
+            onRowClick={(t) => setSelectedId(t.id)}
           />
         )}
       </div>
@@ -650,9 +1064,10 @@ export function TasksClient({
           task={selectedTask}
           sections={sections}
           profiles={profiles}
+          reviewerProfiles={reviewerProfiles}
           influencers={influencers}
           userId={userId}
-          suspendEsc={confirm !== null}
+          suspendEsc={confirm !== null || reviewerModalOpen}
           onPatch={patchTask}
           onDelete={requestDeleteTask}
           onClose={() => setSelectedId(null)}
@@ -664,6 +1079,104 @@ export function TasksClient({
           onSetInfluencer={setInfluencer}
         />
       )}
+
+      {/* จัดการผู้ตรวจ: เพิ่ม/ลบ roster + ตั้งผู้ตรวจอัตโนมัติของฉัน */}
+      <Modal
+        open={reviewerModalOpen}
+        onClose={() => setReviewerModalOpen(false)}
+        title="จัดการผู้ตรวจงาน"
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="text-sm font-medium text-stone-700">
+              รายชื่อผู้ตรวจ
+            </p>
+            <p className="mb-2 mt-0.5 text-xs text-stone-400">
+              เฉพาะคนที่อยู่ในรายชื่อนี้จะถูกเลือกเป็น
+              &quot;ผู้ตรวจงาน&quot; ได้ — งานเดิมที่ตรวจอยู่ไม่ถูกกระทบ
+            </p>
+            <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+              {profiles.map((p) => {
+                const isReviewer = reviewerSet.has(p.id);
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+                      isReviewer
+                        ? "border-brand-200 bg-brand-50/60"
+                        : "border-stone-200/80 bg-white/80"
+                    }`}
+                  >
+                    <AssigneeAvatar assignee={p} />
+                    <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                      {profileName(p)}
+                      {p.id === userId && (
+                        <span className="ml-1.5 text-xs text-stone-400">
+                          (ฉัน)
+                        </span>
+                      )}
+                    </span>
+                    {isReviewer ? (
+                      <button
+                        type="button"
+                        onClick={() => void removeReviewer(p.id)}
+                        className="shrink-0 cursor-pointer rounded-md border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 active:scale-95"
+                      >
+                        เอาออก
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void addReviewer(p.id)}
+                        className="shrink-0 cursor-pointer rounded-md border border-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50 active:scale-95"
+                      >
+                        เพิ่มเป็นผู้ตรวจ
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="border-t border-stone-100 pt-4">
+            <label
+              htmlFor="my-default-reviewer"
+              className="text-sm font-medium text-stone-700"
+            >
+              ผู้ตรวจอัตโนมัติของฉัน
+            </label>
+            <p className="mb-2 mt-0.5 text-xs text-stone-400">
+              เวลาฉันสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
+              (เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
+            </p>
+            <Select
+              id="my-default-reviewer"
+              value={myDefaultReviewerId ?? ""}
+              disabled={userId === null}
+              onChange={(e) =>
+                void saveDefaultReviewer(
+                  e.target.value === "" ? null : e.target.value
+                )
+              }
+            >
+              <option value="">ไม่ตั้งอัตโนมัติ (เลือกเองทุกครั้ง)</option>
+              {reviewerProfiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {profileName(p)}
+                </option>
+              ))}
+            </Select>
+            {myDefaultReviewerId !== null &&
+              !reviewerSet.has(myDefaultReviewerId) && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  ผู้ตรวจอัตโนมัติที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
+                  ระบบจะไม่เลือกให้จนกว่าจะตั้งใหม่
+                </p>
+              )}
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={confirm !== null}

@@ -37,31 +37,39 @@ export default async function TasksPage() {
     return { rows, error: null as string | null };
   };
 
-  const [sectionsResult, tasksResult, profilesResult, influencersResult] =
-    await Promise.all([
-      supabase
-        .from("task_sections")
-        .select("*")
-        .order("position", { ascending: true }),
-      fetchTasks(),
-      supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .order("full_name", { ascending: true }),
-      supabase
-        .from("influencers")
-        .select("id, first_name, last_name, nickname")
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    sectionsResult,
+    tasksResult,
+    profilesResult,
+    influencersResult,
+    reviewersResult,
+  ] = await Promise.all([
+    supabase
+      .from("task_sections")
+      .select("*")
+      .order("position", { ascending: true }),
+    fetchTasks(),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, default_reviewer_id")
+      .order("full_name", { ascending: true }),
+    supabase
+      .from("influencers")
+      .select("id, first_name, last_name, nickname")
+      .order("created_at", { ascending: false }),
+    supabase.from("task_reviewers").select("profile_id"),
+  ]);
 
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
   const tasks = tasksResult.rows;
   const profiles = profilesResult.data ?? [];
   const influencers = (influencersResult.data ?? []) as InfluencerLite[];
+  const reviewerIds = (reviewersResult.data ?? []).map((r) => r.profile_id);
   const loadError =
     sectionsResult.error?.message ??
     tasksResult.error ??
     profilesResult.error?.message ??
+    reviewersResult.error?.message ??
     null;
 
   return (
@@ -70,6 +78,7 @@ export default async function TasksPage() {
       tasks={tasks}
       profiles={profiles}
       influencers={influencers}
+      reviewerIds={reviewerIds}
       userId={userId}
       loadError={loadError}
     />

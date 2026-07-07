@@ -40,20 +40,14 @@ import { useSignedUrl } from "../influencers/use-signed-url";
 import {
   AssigneeAvatar,
   CompleteToggle,
+  isImagePath,
+  isVideoPath,
   type ProfileOption,
   profileName,
 } from "./task-card";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-}
-
-function isImagePath(path: string): boolean {
-  return /\.(png|jpe?g|gif|webp|avif|heic)$/i.test(path);
-}
-
-function isVideoPath(path: string): boolean {
-  return /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(path);
 }
 
 /** ชื่อที่แสดงของ influencer */
@@ -103,6 +97,7 @@ export function TaskPanel({
   task,
   sections,
   profiles,
+  reviewerProfiles,
   influencers,
   userId,
   suspendEsc = false,
@@ -119,6 +114,8 @@ export function TaskPanel({
   task: TaskWithAssignee;
   sections: TaskSectionRow[];
   profiles: ProfileOption[];
+  /** roster ผู้ตรวจ — ตัวเลือกในช่อง "ผู้ตรวจงาน" จำกัดเฉพาะรายชื่อนี้ */
+  reviewerProfiles: ProfileOption[];
   influencers: InfluencerLite[];
   userId: string | null;
   /** true เมื่อมี dialog อื่นเปิดอยู่ — ให้ Esc เป็นของ dialog นั้น */
@@ -141,6 +138,12 @@ export function TaskPanel({
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
   const isReviewer = task.reviewer_id !== null && task.reviewer_id === userId;
+
+  // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
+  const reviewerOptions =
+    task.reviewer && !reviewerProfiles.some((p) => p.id === task.reviewer!.id)
+      ? [...reviewerProfiles, task.reviewer]
+      : reviewerProfiles;
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
@@ -659,25 +662,33 @@ export function TaskPanel({
           </FieldRow>
 
           <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
-            <div className="flex items-center gap-2 px-2">
-              <AssigneeAvatar assignee={task.reviewer ?? null} />
-              <select
-                id="task-reviewer"
-                value={task.reviewer_id ?? ""}
-                disabled={task.review_status !== "none"}
-                onChange={(e) => {
-                  const id = e.target.value === "" ? null : e.target.value;
-                  onSetReviewer(task, id);
-                }}
-                className={`${bareSelect} px-1.5 disabled:cursor-not-allowed disabled:opacity-70`}
-              >
-                <option value="">เลือกผู้ตรวจ</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {profileName(p)}
-                  </option>
-                ))}
-              </select>
+            <div className="px-2">
+              <div className="flex items-center gap-2">
+                <AssigneeAvatar assignee={task.reviewer ?? null} />
+                <select
+                  id="task-reviewer"
+                  value={task.reviewer_id ?? ""}
+                  disabled={task.review_status !== "none"}
+                  onChange={(e) => {
+                    const id = e.target.value === "" ? null : e.target.value;
+                    onSetReviewer(task, id);
+                  }}
+                  className={`${bareSelect} px-1.5 disabled:cursor-not-allowed disabled:opacity-70`}
+                >
+                  <option value="">เลือกผู้ตรวจ</option>
+                  {reviewerOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {profileName(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {reviewerOptions.length === 0 && (
+                <p className="mt-0.5 text-xs text-amber-600">
+                  ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
+                  &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
+                </p>
+              )}
             </div>
           </FieldRow>
 

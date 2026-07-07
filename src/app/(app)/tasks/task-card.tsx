@@ -2,19 +2,38 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertCircle, Check, Clock3 } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Clock3,
+  Image as ImageIcon,
+  Paperclip,
+  Play,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui";
 import {
   DEFAULT_TASK_CATEGORY,
+  STORAGE_BUCKET_DOCUMENTS,
   TASK_PRIORITY,
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
-import type { ProfileRow, TaskWithAssignee } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 
 export type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
+
+/* เฉพาะฟอร์แมตที่ Chrome/Edge เปิดได้จริง — .heic/.avi ไม่รองรับ ให้ตกไปเป็นไฟล์แนบธรรมดา */
+export function isImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|avif)$/i.test(path);
+}
+
+export function isVideoPath(path: string): boolean {
+  return /\.(mp4|mov|webm|m4v)$/i.test(path);
+}
 
 /** id ชั่วคราวของแถว optimistic ที่ยังไม่ได้คำตอบจาก DB */
 export function isTempId(id: string): boolean {
@@ -247,13 +266,149 @@ export function CompleteToggle({
   );
 }
 
+/* ---------- preview รูป/วิดีโอบนการ์ด ---------- */
+
+/** cache signed URL ต่อ path — การ์ดถูก unmount/mount ระหว่างลากย้ายคอลัมน์ ไม่ต้องขอใหม่ทุกรอบ */
+const signedUrlCache = new Map<string, { url: string; at: number }>();
+const SIGNED_URL_CACHE_MS = 50 * 60 * 1000; // ขอใหม่ก่อน URL หมดอายุจริง (1 ชม.)
+
+function useCachedSignedUrl(path: string): {
+  url: string | null;
+  failed: boolean;
+} {
+  const hit = signedUrlCache.get(path);
+  const fresh =
+    hit && Date.now() - hit.at < SIGNED_URL_CACHE_MS ? hit.url : null;
+  const [url, setUrl] = useState<string | null>(fresh);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+    const cached = signedUrlCache.get(path);
+    if (cached && Date.now() - cached.at < SIGNED_URL_CACHE_MS) {
+      setUrl(cached.url);
+      return;
+    }
+    let alive = true;
+    const supabase = createClient();
+    void supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .createSignedUrl(path, 3600)
+      .then(
+        ({ data }) => {
+          if (data?.signedUrl) {
+            signedUrlCache.set(path, { url: data.signedUrl, at: Date.now() });
+          }
+          if (alive) {
+            setUrl(data?.signedUrl ?? null);
+            // ขอ URL ไม่ได้ (เช่นไฟล์ถูกลบจาก bucket) — แสดง placeholder แทนโครงกำลังโหลดค้าง
+            setFailed(!data?.signedUrl);
+          }
+        },
+        () => {
+          if (alive) setFailed(true);
+        }
+      );
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+
+  return { url, failed };
+}
+
+function CardMediaThumb({ file, tall }: { file: TaskFileRow; tall: boolean }) {
+  const { url, failed } = useCachedSignedUrl(file.file_path);
+  const [broken, setBroken] = useState(false);
+  const height = tall ? "h-28" : "h-16";
+  if (failed || broken) {
+    // ไฟล์เปิดไม่ได้ (ถูกลบจาก storage/ไฟล์เสีย) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
+    return (
+      <div
+        title={file.file_name ?? undefined}
+        className={`flex ${height} w-full items-center justify-center rounded-md bg-stone-100 text-stone-300`}
+      >
+        <ImageIcon size={16} />
+      </div>
+    );
+  }
+  if (!url) {
+    return (
+      <div className={`${height} w-full animate-pulse rounded-md bg-stone-100`} />
+    );
+  }
+  if (isVideoPath(file.file_path)) {
+    return (
+      <div
+        className={`relative ${height} w-full overflow-hidden rounded-md bg-stone-100`}
+        title={file.file_name ?? "วิดีโอ"}
+      >
+        <video
+          src={url}
+          className="h-full w-full object-cover"
+          muted
+          playsInline
+          preload="metadata"
+          onError={() => setBroken(true)}
+        />
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white shadow-sm">
+            <Play size={13} className="ml-0.5 fill-white" />
+          </span>
+        </span>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={file.file_name ?? "ไฟล์งาน"}
+      title={file.file_name ?? undefined}
+      loading="lazy"
+      onError={() => setBroken(true)}
+      className={`${height} w-full rounded-md object-cover`}
+    />
+  );
+}
+
+/** แถบ preview บนการ์ด — 1 ไฟล์แสดงเต็มความกว้าง, หลายไฟล์เรียง grid 2 คอลัมน์ (สูงสุด 4 + ป้ายจำนวนที่เหลือ) */
+function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
+  const media = files.filter(
+    (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
+  );
+  if (media.length === 0) return null;
+  if (media.length === 1) {
+    return (
+      <div className="mt-2">
+        <CardMediaThumb file={media[0]} tall />
+      </div>
+    );
+  }
+  const shown = media.slice(0, 4);
+  const extra = media.length - shown.length;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-1">
+      {shown.map((f, i) => (
+        <div key={f.id} className="relative">
+          <CardMediaThumb file={f} tall={false} />
+          {extra > 0 && i === shown.length - 1 && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-black/45 text-sm font-bold text-white">
+              +{extra}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** เนื้อการ์ด — ใช้ทั้งบนบอร์ดและใน DragOverlay */
 export function TaskCardContent({
   task,
   today,
   overlay = false,
   selected = false,
-  onToggleComplete,
   profiles,
   onAssign,
 }: {
@@ -261,7 +416,6 @@ export function TaskCardContent({
   today: string;
   overlay?: boolean;
   selected?: boolean;
-  onToggleComplete?: () => void;
   /** ส่งมาเมื่อต้องการให้วงกลมผู้รับผิดชอบกดเลือกคนได้ (ไม่ส่ง = แสดงเฉยๆ เช่นใน DragOverlay) */
   profiles?: ProfileOption[];
   onAssign?: (profileId: string | null) => void;
@@ -272,6 +426,16 @@ export function TaskCardContent({
     task.due_date.slice(0, 10) < today;
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
   const showPriority = task.priority === "high" || task.priority === "urgent";
+  const files = task.files ?? [];
+  const mediaCount = files.filter(
+    (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
+  ).length;
+  const otherFileCount = files.length - mediaCount;
+  const influ = task.influencer;
+  const influName = influ
+    ? (influ.nickname ??
+      [influ.first_name, influ.last_name].filter(Boolean).join(" "))
+    : null;
 
   return (
     <div
@@ -287,10 +451,7 @@ export function TaskCardContent({
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5">
-          <CompleteToggle
-            completed={task.completed}
-            onToggle={onToggleComplete}
-          />
+          <ReviewStatusDot status={task.review_status} size={18} />
         </div>
         <p
           className={`line-clamp-3 min-w-0 flex-1 text-sm font-medium leading-snug ${
@@ -301,8 +462,25 @@ export function TaskCardContent({
         </p>
       </div>
 
-      {(showCategory || showPriority) && (
+      {/* preview รูป/วิดีโอ — แสดงใน overlay ด้วย (URL มี cache แล้ว) ให้ขนาดการ์ดตรงกับต้นทาง
+          ไม่งั้น dnd-kit วัดความสูงจากการ์ดจริงแล้วการ์ดที่ลากลอยหลุดจากเมาส์ */}
+      <CardMediaPreview files={files} />
+
+      {(showCategory ||
+        showPriority ||
+        task.review_status !== "none" ||
+        influName) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-6">
+          {task.review_status === "pending" && (
+            <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+              รอตรวจ
+            </Badge>
+          )}
+          {task.review_status === "approved" && (
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+              เสร็จสมบูรณ์
+            </Badge>
+          )}
           {showCategory && (
             <Badge className={taskCategoryChipClass(task.category)}>
               {task.category}
@@ -311,6 +489,11 @@ export function TaskCardContent({
           {showPriority && (
             <Badge className={TASK_PRIORITY[task.priority].badge}>
               {TASK_PRIORITY[task.priority].label}
+            </Badge>
+          )}
+          {influName && (
+            <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+              <Sparkles size={10} /> {influName}
             </Badge>
           )}
         </div>
@@ -336,6 +519,15 @@ export function TaskCardContent({
             {formatDate(task.due_date)}
           </span>
         )}
+        {otherFileCount > 0 && (
+          <span
+            title={`ไฟล์แนบอื่น ${otherFileCount} ไฟล์`}
+            className="ml-auto inline-flex items-center gap-0.5 text-xs text-stone-400"
+          >
+            <Paperclip size={12} />
+            {otherFileCount}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -348,7 +540,6 @@ export function TaskCard({
   today,
   selected,
   onClick,
-  onToggleComplete,
   profiles,
   onAssign,
 }: {
@@ -357,7 +548,6 @@ export function TaskCard({
   today: string;
   selected: boolean;
   onClick: () => void;
-  onToggleComplete: () => void;
   profiles: ProfileOption[];
   onAssign: (profileId: string | null) => void;
 }) {
@@ -395,7 +585,6 @@ export function TaskCard({
         task={task}
         today={today}
         selected={selected}
-        onToggleComplete={temp ? undefined : onToggleComplete}
         profiles={temp ? undefined : profiles}
         onAssign={temp ? undefined : onAssign}
       />

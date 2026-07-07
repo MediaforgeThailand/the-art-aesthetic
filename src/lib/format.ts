@@ -35,6 +35,22 @@ export function formatDate(value: string | Date | null | undefined): string {
   });
 }
 
+/** แสดงวันที่แบบไทย ตรึงโซนเวลาไทย — ใช้กับ timestamptz ที่ถูกกรอง/จัดกลุ่มเป็นวันไทย
+    (formatDate ปกติใช้ timezone เครื่องผู้ชม — วันที่โชว์อาจไม่ตรงกับตัวกรองวันไทย) */
+export function formatDateBangkok(
+  value: string | Date | null | undefined
+): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 /** แสดงวันที่+เวลาแบบไทย เช่น "3 ก.ค. 2569 14:30" */
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";

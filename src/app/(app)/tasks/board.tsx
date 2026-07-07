@@ -227,7 +227,6 @@ function BoardColumn({
   profiles,
   onAssign,
   onCardClick,
-  onToggleComplete,
   onQuickAdd,
   onRename,
   onDelete,
@@ -240,7 +239,6 @@ function BoardColumn({
   profiles: ProfileOption[];
   onAssign: (task: TaskWithAssignee, profileId: string | null) => void;
   onCardClick: (task: TaskWithAssignee) => void;
-  onToggleComplete: (task: TaskWithAssignee) => void;
   onQuickAdd: (title: string, placement: QuickAddPlacement) => void;
   onRename: (name: string) => void;
   onDelete: () => void;
@@ -334,7 +332,6 @@ function BoardColumn({
               today={today}
               selected={selectedId === task.id}
               onClick={() => onCardClick(task)}
-              onToggleComplete={() => onToggleComplete(task)}
               profiles={profiles}
               onAssign={(profileId) => onAssign(task, profileId)}
             />
@@ -454,7 +451,6 @@ export function KanbanBoard({
   onMoveTask,
   onReorderSections,
   onCardClick,
-  onToggleComplete,
   onQuickAdd,
   onRenameSection,
   onAddSection,
@@ -475,7 +471,6 @@ export function KanbanBoard({
   ) => void;
   onReorderSections: (activeId: string, overId: string) => void;
   onCardClick: (task: TaskWithAssignee) => void;
-  onToggleComplete: (task: TaskWithAssignee) => void;
   onQuickAdd: (
     sectionId: string,
     title: string,
@@ -608,7 +603,11 @@ export function KanbanBoard({
     const container = findContainer(activeId, o);
     if (!container) return;
 
-    let arr = o[container];
+    // ตัด id ที่ตายไปแล้วออกจาก snapshot (เช่นแถว optimistic ที่เพิ่งสลับเป็น id จริงระหว่างลาก)
+    // ไม่งั้นเพื่อนบ้านชี้ไปแถวที่ไม่มีอยู่ แล้ว position ตกไปค่า fallback ผิดที่
+    let arr = o[container].filter(
+      (id) => id === activeId || taskById.has(id)
+    );
     if (over && over.data.current?.type === "task") {
       const overId = String(over.id);
       if (findContainer(overId, o) === container && overId !== activeId) {
@@ -693,7 +692,6 @@ export function KanbanBoard({
                 profiles={profiles}
                 onAssign={onAssign}
                 onCardClick={handleCardClick}
-                onToggleComplete={onToggleComplete}
                 onQuickAdd={(title, placement) =>
                   onQuickAdd(section.id, title, placement)
                 }

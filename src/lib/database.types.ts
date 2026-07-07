@@ -15,6 +15,14 @@ export type ProfileRow = {
   email: string | null;
   full_name: string | null;
   role: "admin" | "member";
+  /** ผู้ตรวจอัตโนมัติของฉัน — auto เลือกเป็นผู้ตรวจตอนสร้างงานใหม่ (null = ไม่ตั้ง) */
+  default_reviewer_id: string | null;
+  created_at: string;
+};
+
+/** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
+export type TaskReviewerRow = {
+  profile_id: string;
   created_at: string;
 };
 
@@ -41,6 +49,8 @@ export type TaskRow = {
   review_status: "none" | "pending" | "approved";
   /** ผูกกับ influencer ที่ใช้ทำคอนเทนต์ (เลือกได้ ไม่บังคับ) */
   influencer_id: string | null;
+  /** เวลาที่ผ่านการตรวจ (review_status เปลี่ยนเป็น approved) — ใช้เรียง/กรองแท็บ "ตรวจแล้ว" */
+  approved_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -323,6 +333,12 @@ export interface Database {
         Row: ProfileRow;
         Insert: Partial<ProfileRow> & { id: string };
         Update: Partial<ProfileRow>;
+        Relationships: [];
+      };
+      task_reviewers: {
+        Row: TaskReviewerRow;
+        Insert: Partial<TaskReviewerRow> & { profile_id: string };
+        Update: Partial<TaskReviewerRow>;
         Relationships: [];
       };
       tasks: {
