@@ -25,8 +25,7 @@ import {
   todayISO,
 } from "@/lib/format";
 import {
-  INFLU_CONTRACT_TEMPLATE_NAME,
-  INFLU_CONTRACT_TEMPLATE_PATH,
+  INFLU_CONTRACT_TEMPLATES,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   MEMO_COMPANY,
@@ -947,7 +946,8 @@ function ContractUploadStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingTpl, setDownloadingTpl] = useState(false);
+  // path ของแม่แบบที่กำลังดาวน์โหลด (มี 2 ฉบับ) — null = ไม่มีอันไหนกำลังโหลด
+  const [downloadingTpl, setDownloadingTpl] = useState<string | null>(null);
   const [downloadingSigned, setDownloadingSigned] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -957,14 +957,14 @@ function ContractUploadStage({
     .filter(Boolean)
     .join(" ");
 
-  /** ดาวน์โหลดไฟล์แม่แบบสัญญา (PDF เปล่า) จาก storage */
-  const downloadTemplate = async () => {
+  /** ดาวน์โหลดไฟล์แม่แบบสัญญาฉบับที่เลือก (PDF) จาก storage */
+  const downloadTemplate = async (tpl: (typeof INFLU_CONTRACT_TEMPLATES)[number]) => {
     setError(null);
-    setDownloadingTpl(true);
+    setDownloadingTpl(tpl.path);
     const { data, error: e } = await supabase.storage
       .from(STORAGE_BUCKET_DOCUMENTS)
-      .download(INFLU_CONTRACT_TEMPLATE_PATH);
-    setDownloadingTpl(false);
+      .download(tpl.path);
+    setDownloadingTpl(null);
     if (e || !data) {
       setError(
         "ยังไม่มีไฟล์แม่แบบสัญญาในระบบ — แจ้งแอดมินให้อัปโหลดไฟล์ PDF สัญญาก่อน"
@@ -973,7 +973,7 @@ function ContractUploadStage({
     }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(data);
-    a.download = INFLU_CONTRACT_TEMPLATE_NAME;
+    a.download = tpl.name;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1077,26 +1077,33 @@ function ContractUploadStage({
         (เริ่มนับสัญญา 6 เดือนทันทีที่ยืนยัน)
       </p>
 
-      {/* แม่แบบสัญญา PDF */}
+      {/* แม่แบบสัญญา PDF — 2 ฉบับ (สัญญาหลัก + เอกสารแนบท้าย) */}
       <Card className="p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <FileText size={20} className="shrink-0 text-brand-600" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-stone-800">
-              ไฟล์แม่แบบสัญญา (PDF)
-            </p>
-            <p className="text-xs text-stone-500">
-              ดาวน์โหลดไปพิมพ์ให้ Influencer เซน
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => void downloadTemplate()}
-            loading={downloadingTpl}
-          >
-            <Download size={15} />
-            ดาวน์โหลดแม่แบบสัญญา
-          </Button>
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <FileText size={14} />
+          ไฟล์แม่แบบสัญญา (PDF) — ดาวน์โหลดไปพิมพ์ให้ Influencer เซน
+        </p>
+        <div className="space-y-2">
+          {INFLU_CONTRACT_TEMPLATES.map((tpl) => (
+            <div
+              key={tpl.path}
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-stone-200 bg-white/60 px-4 py-3"
+            >
+              <FileText size={20} className="shrink-0 text-brand-600" />
+              <p className="min-w-0 flex-1 text-sm font-medium text-stone-800">
+                {tpl.label}
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => void downloadTemplate(tpl)}
+                loading={downloadingTpl === tpl.path}
+                className="!px-3 !py-1.5 !text-xs"
+              >
+                <Download size={14} />
+                ดาวน์โหลด
+              </Button>
+            </div>
+          ))}
         </div>
       </Card>
 
