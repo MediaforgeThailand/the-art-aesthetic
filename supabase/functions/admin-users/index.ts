@@ -1,7 +1,10 @@
 // admin-users — จัดการบัญชีผู้ใช้ (เรียกจากหน้า /accounts เท่านั้น, ผู้เรียกต้องเป็น admin)
-// actions: list | create | delete | set_role | reset_password
+// actions: list | create | delete | set_role | set_permissions | reset_password
 // ไฟล์นี้เป็น mirror ของ edge function ที่ deploy บน Supabase แล้ว (deploy ผ่าน MCP/CLI)
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+// สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ (pricing/influencer เปิดทุกคน, admin role = เห็นทุกอย่าง)
+const VALID_PERMISSIONS = new Set(["data", "team"]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +18,16 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function sanitizePerms(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const out = new Set<string>();
+  for (const p of input) {
+    const key = String(p);
+    if (VALID_PERMISSIONS.has(key)) out.add(key);
+  }
+  return [...out];
 }
 
 Deno.serve(async (req: Request) => {
@@ -76,6 +89,7 @@ Deno.serve(async (req: Request) => {
       const password = String(body.password ?? "");
       const fullName = String(body.full_name ?? "").trim();
       const role = body.role === "admin" ? "admin" : "member";
+      const permissions = sanitizePerms(body.permissions);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return json({ ok: false, error: "invalid_email" }, 400);
       }
@@ -102,8 +116,12 @@ Deno.serve(async (req: Request) => {
           400
         );
       }
-      if (role === "admin") {
-        await admin.from("profiles").update({ role }).eq("id", created.user.id);
+      // ตั้ง role/permissions ตามที่ admin เลือก (profile ถูกสร้างโดย trigger แล้ว)
+      if (role === "admin" || permissions.length > 0) {
+        await admin
+          .from("profiles")
+          .update({ role, permissions })
+          .eq("id", created.user.id);
       }
       return json({ ok: true, user_id: created.user.id });
     }
@@ -130,6 +148,18 @@ Deno.serve(async (req: Request) => {
       const { error } = await admin
         .from("profiles")
         .update({ role })
+        .eq("id", userId);
+      if (error) return json({ ok: false, error: error.message }, 500);
+      return json({ ok: true });
+    }
+
+    if (action === "set_permissions") {
+      const userId = String(body.user_id ?? "");
+      if (!userId) return json({ ok: false, error: "missing_user_id" }, 400);
+      const permissions = sanitizePerms(body.permissions);
+      const { error } = await admin
+        .from("profiles")
+        .update({ permissions })
         .eq("id", userId);
       if (error) return json({ ok: false, error: error.message }, 500);
       return json({ ok: true });

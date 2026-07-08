@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { SalesRecordRow, StaffKpiRow } from "@/lib/types";
 import { StaffClient } from "./staff-client";
@@ -9,6 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function StaffReportPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "data")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   const now = new Date();

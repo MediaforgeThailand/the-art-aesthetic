@@ -7,7 +7,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer, PageHeader } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 
 export const metadata: Metadata = {
   title: "รายงาน",
@@ -50,7 +52,10 @@ const REPORTS: {
   },
 ];
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "data")) return <AccessNotice />;
+
   return (
     <PageContainer>
       <PageHeader

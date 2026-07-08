@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AdminRecordRow,
@@ -33,6 +35,9 @@ async function fetchAllRows<T>(
 }
 
 export default async function DashboardPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "data")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   // วันแรกของเดือนเมื่อ 11 เดือนก่อน → ครอบคลุมข้อมูลย้อนหลัง 12 เดือน

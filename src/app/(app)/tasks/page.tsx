@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   InfluencerLite,
@@ -12,10 +14,12 @@ export const metadata: Metadata = {
 };
 
 export default async function TasksPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "team")) return <AccessNotice />;
+
   const supabase = await createClient();
 
-  const { data: claimsData } = await supabase.auth.getClaims();
-  const userId = claimsData?.claims.sub ?? null;
+  const userId = access.uid;
 
   // ดึง tasks แบบแบ่งหน้า — PostgREST ตัดที่ ~1,000 แถว
   const fetchTasks = async () => {
@@ -81,6 +85,7 @@ export default async function TasksPage() {
       influencers={influencers}
       reviewerIds={reviewerIds}
       userId={userId}
+      isAdmin={access.isAdmin}
       loadError={loadError}
     />
   );

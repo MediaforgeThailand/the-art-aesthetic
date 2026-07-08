@@ -15,10 +15,16 @@ export type ProfileRow = {
   email: string | null;
   full_name: string | null;
   role: "admin" | "member";
+  /** สิทธิ์การมองเห็นรายคน (admin เปิดให้): 'data' = แดชบอร์ด+รายงาน, 'team' = งาน+ภาระทีม+ไฟล์
+      (admin role เห็นทุกอย่างอยู่แล้ว; pricing/influencer เปิดให้ทุกคน) */
+  permissions: AppPermission[];
   /** ผู้ตรวจอัตโนมัติของฉัน — auto เลือกเป็นผู้ตรวจตอนสร้างงานใหม่ (null = ไม่ตั้ง) */
   default_reviewer_id: string | null;
   created_at: string;
 };
+
+/** สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ */
+export type AppPermission = "data" | "team";
 
 /** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
 export type TaskReviewerRow = {

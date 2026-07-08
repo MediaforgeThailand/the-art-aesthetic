@@ -16,21 +16,28 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark, LogoWordmark } from "@/components/logo";
+import type { AppPermission } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
 
-const navItems = [
-  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard },
-  { href: "/reports", label: "รายงาน", icon: BarChart3 },
-  { href: "/pricing", label: "Product Pricing", icon: Tags },
-  { href: "/influencers", label: "Influ Management", icon: Sparkles },
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard },
-  { href: "/tasks", label: "งาน", icon: ClipboardList },
-  { href: "/workload", label: "ภาระงานทีม", icon: Users },
-  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2 },
-];
+/** perm = สิทธิ์ที่ต้องมีถึงจะเห็นเมนู; null = เห็นได้ทุกคน; "admin" = เฉพาะ admin */
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  perm: AppPermission | "admin" | null;
+};
 
-/** เมนูเฉพาะ admin — หน้า /accounts มี server-side guard อีกชั้น เมนูนี้แค่ซ่อน/โชว์ */
-const adminNavItem = { href: "/accounts", label: "จัดการบัญชี", icon: UserCog };
+const navItems: NavItem[] = [
+  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data" },
+  { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
+  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: null },
+  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: null },
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: null },
+  { href: "/tasks", label: "งาน", icon: ClipboardList, perm: "team" },
+  { href: "/workload", label: "ภาระงานทีม", icon: Users, perm: "team" },
+  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
+  { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
+];
 
 export function Sidebar({
   userName,
@@ -42,9 +49,10 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [permissions, setPermissions] = useState<AppPermission[]>([]);
 
   useEffect(() => {
-    // อ่าน role จาก profiles ครั้งเดียวตอน mount (sidebar อยู่ยาวข้ามการนำทางฝั่ง client)
+    // อ่าน role + permissions ครั้งเดียวตอน mount (sidebar อยู่ยาวข้ามการนำทางฝั่ง client)
     let alive = true;
     const supabase = createClient();
     void supabase.auth.getClaims().then(({ data }) => {
@@ -52,17 +60,27 @@ export function Sidebar({
       if (!uid || typeof uid !== "string") return;
       void supabase
         .from("profiles")
-        .select("role")
+        .select("role, permissions")
         .eq("id", uid)
         .single()
         .then(({ data: profile }) => {
-          if (alive && profile?.role === "admin") setIsAdmin(true);
+          if (!alive || !profile) return;
+          if (profile.role === "admin") setIsAdmin(true);
+          setPermissions((profile.permissions ?? []) as AppPermission[]);
         });
     });
     return () => {
       alive = false;
     };
   }, []);
+
+  // admin เห็นทุกเมนู; นอกนั้นเห็นเมนูเปิด (perm null) + เมนูที่มีสิทธิ์ตรง
+  const visibleNav = navItems.filter((item) => {
+    if (item.perm === null) return true;
+    if (isAdmin) return true;
+    if (item.perm === "admin") return false;
+    return permissions.includes(item.perm);
+  });
 
   async function handleLogout() {
     const supabase = createClient();
@@ -88,7 +106,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {[...navItems, ...(isAdmin ? [adminNavItem] : [])].map(({ href, label, icon: Icon }) => {
+        {visibleNav.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

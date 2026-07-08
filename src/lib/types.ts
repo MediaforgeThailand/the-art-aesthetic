@@ -5,6 +5,7 @@ export type {
   TaskPriority,
   SalesSource,
   ProfileRow,
+  AppPermission,
   TaskRow,
   TaskSectionRow,
   TaskSubtaskRow,

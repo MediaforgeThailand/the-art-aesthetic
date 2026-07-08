@@ -4,6 +4,7 @@ import {
   Dices,
   KeyRound,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   UserPlus,
   Users,
@@ -20,9 +21,10 @@ import {
   Label,
   Modal,
   PageHeader,
-  Select,
 } from "@/components/ui";
+import type { AppPermission } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
+import { PERMISSION_META } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
 
 type AccountProfile = {
@@ -30,6 +32,7 @@ type AccountProfile = {
   email: string | null;
   full_name: string | null;
   role: string;
+  permissions: AppPermission[] | null;
   created_at: string;
 };
 
@@ -85,11 +88,41 @@ async function callAdminUsers(
 
 /** สุ่มรหัสผ่าน 10 ตัว (ตัดตัวอักษรที่อ่านสับสน 0/O, 1/l/I ออก) */
 function generatePassword(): string {
-  const charset =
-    "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const charset = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const bytes = new Uint32Array(10);
   crypto.getRandomValues(bytes);
   return [...bytes].map((b) => charset[b % charset.length]).join("");
+}
+
+function permsOf(p: AccountProfile): AppPermission[] {
+  return p.permissions ?? [];
+}
+
+/** ชิปสรุปสิทธิ์ในตาราง */
+function PermissionSummary({ profile }: { profile: AccountProfile }) {
+  if (profile.role === "admin") {
+    return (
+      <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+        <ShieldCheck size={12} /> ผู้ดูแลระบบ · เห็นทุกอย่าง
+      </Badge>
+    );
+  }
+  const perms = permsOf(profile);
+  if (perms.length === 0) {
+    return <span className="text-xs text-stone-400">ยังไม่เปิดสิทธิ์</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {PERMISSION_META.filter((m) => perms.includes(m.key)).map((m) => (
+        <Badge
+          key={m.key}
+          className="border border-stone-200 bg-stone-50 text-stone-600"
+        >
+          {m.label}
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 export function AccountsClient({
@@ -110,8 +143,16 @@ export function AccountsClient({
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"member" | "admin">("member");
+  const [newPerms, setNewPerms] = useState<Set<AppPermission>>(new Set());
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // จัดการสิทธิ์รายคน
+  const [permTarget, setPermTarget] = useState<AccountProfile | null>(null);
+  const [permRole, setPermRole] = useState<"member" | "admin">("member");
+  const [permSet, setPermSet] = useState<Set<AppPermission>>(new Set());
+  const [permSaving, setPermSaving] = useState(false);
+  const [permError, setPermError] = useState<string | null>(null);
 
   // เปลี่ยนรหัสผ่าน
   const [resetTarget, setResetTarget] = useState<AccountProfile | null>(null);
@@ -128,9 +169,9 @@ export function AccountsClient({
     const supabase = createClient();
     const { data } = await supabase
       .from("profiles")
-      .select("id, email, full_name, role, created_at")
+      .select("id, email, full_name, role, permissions, created_at")
       .order("created_at", { ascending: true });
-    if (data) setProfiles(data);
+    if (data) setProfiles(data as AccountProfile[]);
     router.refresh();
   }, [router]);
 
@@ -165,12 +206,14 @@ export function AccountsClient({
         password: newPassword,
         full_name: newName,
         role: newRole,
+        permissions: [...newPerms],
       });
       setCreateOpen(false);
       setNewName("");
       setNewEmail("");
       setNewPassword("");
       setNewRole("member");
+      setNewPerms(new Set());
       await Promise.all([reload(), loadAuthInfo()]);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
@@ -179,21 +222,40 @@ export function AccountsClient({
     }
   }
 
-  async function handleSetRole(target: AccountProfile, role: string) {
-    setError(null);
-    setBusyId(target.id);
-    const prev = profiles;
-    setProfiles((ps) =>
-      ps.map((p) => (p.id === target.id ? { ...p, role } : p))
-    );
+  function openPermissions(p: AccountProfile) {
+    setPermTarget(p);
+    setPermRole(p.role === "admin" ? "admin" : "member");
+    setPermSet(new Set(permsOf(p)));
+    setPermError(null);
+  }
+
+  async function handleSavePermissions() {
+    if (!permTarget) return;
+    setPermError(null);
+    setPermSaving(true);
     try {
-      await callAdminUsers({ action: "set_role", user_id: target.id, role });
+      const roleChanged =
+        permRole !== (permTarget.role === "admin" ? "admin" : "member");
+      // ตั้ง role ก่อน (มีการเช็ค last_admin ฝั่ง server)
+      if (roleChanged) {
+        await callAdminUsers({
+          action: "set_role",
+          user_id: permTarget.id,
+          role: permRole,
+        });
+      }
+      // เก็บ permissions เสมอ (admin เห็นทุกอย่างอยู่แล้ว แต่เก็บค่าไว้ให้ตอนถอด admin)
+      await callAdminUsers({
+        action: "set_permissions",
+        user_id: permTarget.id,
+        permissions: [...permSet],
+      });
+      setPermTarget(null);
       await reload();
     } catch (err) {
-      setProfiles(prev);
-      setError(err instanceof Error ? err.message : String(err));
+      setPermError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyId(null);
+      setPermSaving(false);
     }
   }
 
@@ -236,13 +298,31 @@ export function AccountsClient({
     setResetDone(false);
   }
 
+  function toggleNewPerm(key: AppPermission) {
+    setNewPerms((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function togglePermSet(key: AppPermission) {
+    setPermSet((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const admins = profiles.filter((p) => p.role === "admin").length;
 
   return (
     <>
       <PageHeader
-        title="จัดการบัญชีผู้ใช้"
-        description="เพิ่ม/ลบบัญชีที่เข้าสู่ระบบได้ และกำหนดสิทธิ์ผู้ดูแล — การสมัครเองจากหน้า login ถูกปิดแล้ว"
+        title="จัดการบัญชีและสิทธิ์ผู้ใช้"
+        description="เพิ่ม/ลบบัญชี ตั้งรหัสผ่าน และเปิดสิทธิ์การมองเห็นให้แต่ละคน — หน้า Product Pricing และ Influencer เปิดให้ทุกคนอยู่แล้ว"
         action={
           <Button
             onClick={() => {
@@ -270,7 +350,7 @@ export function AccountsClient({
             <thead>
               <tr className="border-b border-brand-100/70 text-left text-xs text-stone-500">
                 <th className="px-5 py-3 font-medium">ผู้ใช้</th>
-                <th className="px-3 py-3 font-medium">สิทธิ์</th>
+                <th className="px-3 py-3 font-medium">สิทธิ์การเข้าถึง</th>
                 <th className="px-3 py-3 font-medium">เข้าระบบล่าสุด</th>
                 <th className="px-3 py-3 font-medium">สร้างเมื่อ</th>
                 <th className="px-5 py-3 text-right font-medium">จัดการ</th>
@@ -307,22 +387,7 @@ export function AccountsClient({
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      {isMe ? (
-                        <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
-                          <ShieldCheck size={12} />
-                          {p.role === "admin" ? "ผู้ดูแลระบบ" : "สมาชิก"}
-                        </Badge>
-                      ) : (
-                        <Select
-                          value={p.role}
-                          disabled={busyId === p.id}
-                          onChange={(e) => handleSetRole(p, e.target.value)}
-                          className="w-36"
-                        >
-                          <option value="member">สมาชิก</option>
-                          <option value="admin">ผู้ดูแลระบบ</option>
-                        </Select>
-                      )}
+                      <PermissionSummary profile={p} />
                     </td>
                     <td className="px-3 py-3 text-stone-500">
                       {lastSignIn ? formatDateTime(lastSignIn) : "-"}
@@ -332,6 +397,16 @@ export function AccountsClient({
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        {!isMe && (
+                          <button
+                            type="button"
+                            title="จัดการสิทธิ์"
+                            onClick={() => openPermissions(p)}
+                            className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 cursor-pointer active:scale-90"
+                          >
+                            <SlidersHorizontal size={16} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           title="ตั้งรหัสผ่านใหม่"
@@ -363,7 +438,8 @@ export function AccountsClient({
 
       <p className="mt-3 text-xs text-stone-400">
         ผู้ดูแลระบบ {admins} คน · บัญชีทั้งหมด {profiles.length} บัญชี ·
-        บัญชีที่ถูกลบจะเข้าสู่ระบบไม่ได้ทันที ส่วนงาน/ข้อมูลที่เคยบันทึกยังอยู่ครบ
+        พนักงาน @artsurgery.co.th ตั้งรหัสผ่านเองครั้งแรกได้ (เริ่มต้นยังไม่มีสิทธิ์
+        รอเปิดให้) · บัญชีที่ถูกลบจะเข้าสู่ระบบไม่ได้ทันที ข้อมูลที่บันทึกไว้ยังอยู่ครบ
       </p>
 
       {/* เพิ่มบัญชี */}
@@ -390,7 +466,7 @@ export function AccountsClient({
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="somying@example.com"
+              placeholder="somying@artsurgery.co.th"
               required
             />
           </div>
@@ -418,21 +494,14 @@ export function AccountsClient({
               จดรหัสผ่านนี้ส่งให้เจ้าของบัญชี — ระบบจะไม่แสดงอีกครั้ง
             </p>
           </div>
-          <div>
-            <Label htmlFor="acc-role">สิทธิ์</Label>
-            <Select
-              id="acc-role"
-              value={newRole}
-              onChange={(e) =>
-                setNewRole(e.target.value === "admin" ? "admin" : "member")
-              }
-            >
-              <option value="member">สมาชิก — ใช้งานระบบได้ทุกหน้า</option>
-              <option value="admin">
-                ผู้ดูแลระบบ — เพิ่ม/ลบบัญชีและกำหนดสิทธิ์ได้
-              </option>
-            </Select>
-          </div>
+
+          <PermissionEditor
+            role={newRole}
+            onRoleChange={setNewRole}
+            permSet={newPerms}
+            onToggle={toggleNewPerm}
+          />
+
           {createError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
               {createError}
@@ -451,6 +520,43 @@ export function AccountsClient({
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* จัดการสิทธิ์รายคน */}
+      <Modal
+        open={permTarget !== null}
+        onClose={() => setPermTarget(null)}
+        title={`จัดการสิทธิ์ — ${permTarget?.full_name || permTarget?.email || ""}`}
+      >
+        <div className="space-y-4">
+          <PermissionEditor
+            role={permRole}
+            onRoleChange={setPermRole}
+            permSet={permSet}
+            onToggle={togglePermSet}
+          />
+          {permError && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+              {permError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setPermTarget(null)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              type="button"
+              loading={permSaving}
+              onClick={handleSavePermissions}
+            >
+              บันทึกสิทธิ์
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* ตั้งรหัสผ่านใหม่ */}
@@ -537,5 +643,81 @@ export function AccountsClient({
         onClose={() => setDeleteTarget(null)}
       />
     </>
+  );
+}
+
+/** ตัวเลือก role (admin) + สิทธิ์รายหมวด — ใช้ทั้งฟอร์มสร้างและ modal จัดการสิทธิ์ */
+function PermissionEditor({
+  role,
+  onRoleChange,
+  permSet,
+  onToggle,
+}: {
+  role: "member" | "admin";
+  onRoleChange: (role: "member" | "admin") => void;
+  permSet: Set<AppPermission>;
+  onToggle: (key: AppPermission) => void;
+}) {
+  const isAdmin = role === "admin";
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>สิทธิ์การเข้าถึง</Label>
+        <p className="-mt-1 mb-2 text-xs text-stone-400">
+          หน้า Product Pricing และ Influencer เปิดให้ทุกคนอยู่แล้ว ไม่ต้องเปิดสิทธิ์
+        </p>
+      </div>
+
+      {/* ผู้ดูแลระบบ */}
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-stone-200 bg-white/60 px-3 py-2.5 transition-colors hover:bg-brand-50/40">
+        <input
+          type="checkbox"
+          checked={isAdmin}
+          onChange={(e) => onRoleChange(e.target.checked ? "admin" : "member")}
+          className="mt-0.5 h-4 w-4 accent-brand-600"
+        />
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-stone-800">
+            <ShieldCheck size={14} className="text-brand-600" /> ผู้ดูแลระบบ
+            (admin)
+          </span>
+          <span className="mt-0.5 block text-xs text-stone-400">
+            เห็นทุกหน้า + จัดการบัญชี/สิทธิ์ และจัดการผู้ตรวจงานในหน้างาน
+          </span>
+        </span>
+      </label>
+
+      {/* สิทธิ์รายหมวด — admin ครอบคลุมอยู่แล้ว จึงล็อกช่องเมื่อเป็น admin */}
+      {PERMISSION_META.map((m) => {
+        const checked = isAdmin || permSet.has(m.key);
+        return (
+          <label
+            key={m.key}
+            className={`flex items-start gap-2.5 rounded-lg border border-stone-200 px-3 py-2.5 transition-colors ${
+              isAdmin
+                ? "cursor-not-allowed bg-stone-50 opacity-70"
+                : "cursor-pointer bg-white/60 hover:bg-brand-50/40"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={isAdmin}
+              onChange={() => onToggle(m.key)}
+              className="mt-0.5 h-4 w-4 accent-brand-600"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-stone-800">
+                {m.label}
+              </span>
+              <span className="mt-0.5 block text-xs text-stone-400">
+                {m.detail}
+                {isAdmin && " (รวมอยู่ในสิทธิ์ผู้ดูแลระบบแล้ว)"}
+              </span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
   );
 }

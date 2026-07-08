@@ -57,6 +57,7 @@ export function TasksClient({
   influencers,
   reviewerIds,
   userId,
+  isAdmin,
   loadError,
 }: {
   sections: TaskSectionRow[];
@@ -65,6 +66,7 @@ export function TasksClient({
   influencers: InfluencerLite[];
   reviewerIds: string[];
   userId: string | null;
+  isAdmin: boolean;
   loadError: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -850,15 +852,18 @@ export function TasksClient({
               </span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => setReviewerModalOpen(true)}
-            title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจอัตโนมัติของฉัน"
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
-          >
-            <UserCog size={16} />
-            จัดการผู้ตรวจ
-          </button>
+          {/* จัดการผู้ตรวจ = สิทธิ์ admin เท่านั้น */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setReviewerModalOpen(true)}
+              title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจอัตโนมัติของฉัน"
+              className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
+            >
+              <UserCog size={16} />
+              จัดการผู้ตรวจ
+            </button>
+          )}
         </div>
 
         {hasDemo && tab === "work" && <DemoBanner onWhat="งานบางส่วน" />}

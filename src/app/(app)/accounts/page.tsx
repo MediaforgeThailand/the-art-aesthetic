@@ -18,7 +18,7 @@ export default async function AccountsPage() {
       : Promise.resolve({ data: null }),
     supabase
       .from("profiles")
-      .select("id, email, full_name, role, created_at")
+      .select("id, email, full_name, role, permissions, created_at")
       .order("created_at", { ascending: true }),
   ]);
 

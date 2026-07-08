@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { PageContainer } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import { getAccess, hasPermission } from "@/lib/access";
+import { AccessNotice } from "@/components/access-notice";
 import { WorkloadClient } from "./workload-client";
 
 export const metadata: Metadata = {
@@ -9,6 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function WorkloadPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "team")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   // ดึง tasks แบบแบ่งหน้า — PostgREST ตัดที่ ~1,000 แถว
