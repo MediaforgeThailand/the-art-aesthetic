@@ -295,6 +295,20 @@ function BoardColumn({
         onQuickAddTop={() => setComposer("top")}
       />
 
+      {/* ปุ่มเพิ่มงานอยู่บนสุดของคอลัมน์ — งานใหม่โผล่ด้านบน */}
+      {!temp && (
+        <div className="px-2.5 pb-1.5">
+          <button
+            type="button"
+            onClick={() => setComposer("top")}
+            className="flex w-full cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-brand-200/80 px-2 py-1.5 text-sm text-stone-400 transition-colors duration-200 hover:border-brand-300 hover:bg-white hover:text-brand-700 active:scale-[0.98]"
+          >
+            <Plus size={15} />
+            เพิ่มงาน
+          </button>
+        </div>
+      )}
+
       <div
         ref={(el) => {
           setBodyDropRef(el);
@@ -337,27 +351,7 @@ function BoardColumn({
             />
           ))}
         </SortableContext>
-
-        {composer === "bottom" && (
-          <TaskComposer
-            onSubmit={(title) => onQuickAdd(title, "bottom")}
-            onClose={() => setComposer(null)}
-          />
-        )}
       </div>
-
-      {!temp && (
-        <div className="px-2.5 pb-2.5">
-          <button
-            type="button"
-            onClick={() => setComposer("bottom")}
-            className="flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-stone-400 transition-colors duration-200 hover:bg-white hover:text-brand-700 active:scale-[0.98]"
-          >
-            <Plus size={15} />
-            เพิ่มงาน
-          </button>
-        </div>
-      )}
     </div>
   );
 }

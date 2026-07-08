@@ -56,6 +56,8 @@ export function TasksClient({
   profiles,
   influencers,
   reviewerIds,
+  defaultReviewerId,
+  categories: initialCategories,
   userId,
   isAdmin,
   loadError,
@@ -65,11 +67,32 @@ export function TasksClient({
   profiles: ProfileWithDefault[];
   influencers: InfluencerLite[];
   reviewerIds: string[];
+  /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน */
+  defaultReviewerId: string | null;
+  /** หมวดหมู่งานที่จัดการได้ (task_categories) */
+  categories: string[];
   userId: string | null;
   isAdmin: boolean;
   loadError: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
+
+  /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
+  const [categories, setCategories] = useState<string[]>(initialCategories);
+  useEffect(() => setCategories(initialCategories), [initialCategories]);
+
+  const addCategory = async (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed === "" || categories.includes(trimmed)) return;
+    setCategories((cur) => [...cur, trimmed]); // optimistic
+    const { error: e } = await supabase
+      .from("task_categories")
+      .insert({ name: trimmed });
+    if (e) {
+      setCategories((cur) => cur.filter((c) => c !== trimmed));
+      showError(`เพิ่มหมวดหมู่ไม่สำเร็จ: ${e.message}`);
+    }
+  };
 
   // state ฝั่งจอเป็นแหล่งความจริงระหว่างใช้งาน — ทุกการแก้ไข optimistic ทันที
   const [items, setItems] = useState<TaskWithAssignee[]>(tasks);
@@ -95,17 +118,11 @@ export function TasksClient({
     [profiles, reviewerSet]
   );
 
-  const myProfile = useMemo(
-    () => profiles.find((p) => p.id === userId) ?? null,
-    [profiles, userId]
+  // ผู้ตรวจเริ่มต้นของทั้งทีม (คนเดียวกันทุกคน) — ตั้งค่าโดย admin, เก็บใน app_settings
+  const [globalReviewerId, setGlobalReviewerId] = useState<string | null>(
+    defaultReviewerId
   );
-  const [myDefaultReviewerId, setMyDefaultReviewerId] = useState<string | null>(
-    myProfile?.default_reviewer_id ?? null
-  );
-  useEffect(
-    () => setMyDefaultReviewerId(myProfile?.default_reviewer_id ?? null),
-    [myProfile?.default_reviewer_id]
-  );
+  useEffect(() => setGlobalReviewerId(defaultReviewerId), [defaultReviewerId]);
 
   // งานที่ฉันเป็นผู้ตรวจและกำลังรอตรวจ — โชว์เลขบนแท็บ
   const reviewQueue = useMemo(
@@ -159,30 +176,67 @@ export function TasksClient({
     }
   };
 
-  /** ตั้ง/ยกเลิกผู้ตรวจอัตโนมัติของฉัน — บันทึกลงโปรไฟล์ตัวเอง */
+  /** ตั้งผู้ตรวจเริ่มต้นของทั้งทีม (admin) — บันทึกลง app_settings, ใช้กับทุกคน */
   const saveDefaultReviewer = async (id: string | null) => {
-    if (userId === null) return;
-    const prev = myDefaultReviewerId;
-    setMyDefaultReviewerId(id);
+    const prev = globalReviewerId;
+    setGlobalReviewerId(id);
     const { error: e } = await supabase
-      .from("profiles")
-      .update({ default_reviewer_id: id })
-      .eq("id", userId);
+      .from("app_settings")
+      .upsert(
+        { key: "default_reviewer_id", value: id, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
     if (e) {
-      setMyDefaultReviewerId(prev);
-      showError(`บันทึกผู้ตรวจอัตโนมัติไม่สำเร็จ: ${e.message}`);
+      setGlobalReviewerId(prev);
+      showError(`บันทึกผู้ตรวจเริ่มต้นไม่สำเร็จ: ${e.message}`);
     }
   };
 
-  /* ---------- filters ---------- */
+  /* ---------- filters (จำค่าไว้ใน localStorage, เริ่มต้น = งานของฉัน) ---------- */
 
-  const [search, setSearch] = useState("");
+  // อ่านค่าตัวกรองที่เคยตั้งไว้ (ต่อผู้ใช้) — ครั้งแรกที่ไม่มีค่า ตั้ง assignee เป็น "me"
+  const filterStorageKey = `tasks-filters:${userId ?? "anon"}`;
+  const savedFilters = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(filterStorageKey);
+      return raw ? (JSON.parse(raw) as Record<string, string>) : null;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [search, setSearch] = useState(savedFilters?.search ?? "");
   /** all | me | none | <profileId> */
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(
+    savedFilters?.assignee ?? (userId ? "me" : "all")
+  );
   /** all | pending | done */
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dueFrom, setDueFrom] = useState("");
-  const [dueTo, setDueTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    savedFilters?.status ?? "all"
+  );
+  const [dueFrom, setDueFrom] = useState(savedFilters?.dueFrom ?? "");
+  const [dueTo, setDueTo] = useState(savedFilters?.dueTo ?? "");
+
+  // จำค่าตัวกรองทุกครั้งที่เปลี่ยน
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        filterStorageKey,
+        JSON.stringify({
+          search,
+          assignee: assigneeFilter,
+          status: statusFilter,
+          dueFrom,
+          dueTo,
+        })
+      );
+    } catch {
+      // เพิกเฉย — localStorage เต็ม/ปิดอยู่ ไม่กระทบการใช้งาน
+    }
+  }, [search, assigneeFilter, statusFilter, dueFrom, dueTo, filterStorageKey]);
 
   const hasFilter =
     search.trim() !== "" ||
@@ -444,14 +498,16 @@ export function TasksClient({
           ? Math.min(...inSection.map((t) => t.position)) - 1
           : Math.max(...inSection.map((t) => t.position)) + 1;
 
-    // ผู้ตรวจอัตโนมัติของฉัน — auto เลือกให้ตอนสร้างงาน (ต้องยังอยู่ใน roster)
+    // ผู้ตรวจเริ่มต้นของทีม — auto เลือกให้ตอนสร้างงาน (ต้องยังอยู่ใน roster)
     const autoReviewerId =
-      myDefaultReviewerId !== null && reviewerSet.has(myDefaultReviewerId)
-        ? myDefaultReviewerId
+      globalReviewerId !== null && reviewerSet.has(globalReviewerId)
+        ? globalReviewerId
         : null;
     const autoReviewer = autoReviewerId
       ? (profiles.find((p) => p.id === autoReviewerId) ?? null)
       : null;
+    // ผู้รับผิดชอบเริ่มต้น = ตัวเอง
+    const selfAssignee = profiles.find((p) => p.id === userId) ?? null;
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
@@ -462,7 +518,7 @@ export function TasksClient({
       priority: "medium",
       category: DEFAULT_TASK_CATEGORY,
       due_date: null,
-      assignee_id: null,
+      assignee_id: userId,
       section_id: sectionId,
       completed: false,
       position,
@@ -475,7 +531,7 @@ export function TasksClient({
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      assignee: null,
+      assignee: selfAssignee,
       reviewer: autoReviewer,
       influencer: null,
       files: [],
@@ -488,6 +544,7 @@ export function TasksClient({
         title,
         section_id: sectionId,
         position,
+        assignee_id: userId,
         reviewer_id: autoReviewerId,
         created_by: userId,
       })
@@ -785,7 +842,7 @@ export function TasksClient({
       {/* ส่วนหัว + ตัวกรอง — ชิดซ้าย ให้พื้นที่ที่เหลือเป็นของบอร์ด */}
       <div className="shrink-0 px-4 pt-5 sm:px-6">
         <div className="mb-3 animate-fade-in-up">
-          <h1 className="text-xl font-semibold text-stone-900">บันทึกงาน</h1>
+          <h1 className="text-xl font-semibold text-stone-900">Task</h1>
           <p className="mt-0.5 text-sm text-stone-500">
             สร้างงานที่ทำ · แนบไฟล์/ลิงก์งาน · กด &quot;ส่งตรวจงาน&quot; แล้ว
             ผู้ตรวจงานที่ระบุจะอนุมัติในแท็บ &quot;รอฉันตรวจ&quot;
@@ -857,7 +914,7 @@ export function TasksClient({
             <button
               type="button"
               onClick={() => setReviewerModalOpen(true)}
-              title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจอัตโนมัติของฉัน"
+              title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจเริ่มต้นของทีม"
               className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
             >
               <UserCog size={16} />
@@ -1089,10 +1146,11 @@ export function TasksClient({
         <TaskPanel
           key={selectedTask.id}
           task={selectedTask}
-          sections={sections}
           profiles={profiles}
           reviewerProfiles={reviewerProfiles}
           influencers={influencers}
+          categories={categories}
+          onAddCategory={addCategory}
           userId={userId}
           suspendEsc={confirm !== null || reviewerModalOpen}
           onPatch={patchTask}
@@ -1168,19 +1226,18 @@ export function TasksClient({
 
           <div className="border-t border-stone-100 pt-4">
             <label
-              htmlFor="my-default-reviewer"
+              htmlFor="default-reviewer"
               className="text-sm font-medium text-stone-700"
             >
-              ผู้ตรวจอัตโนมัติของฉัน
+              ผู้ตรวจเริ่มต้น (ใช้กับทุกคน)
             </label>
             <p className="mb-2 mt-0.5 text-xs text-stone-400">
-              เวลาฉันสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
-              (เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
+              เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
+              (ตั้งได้เฉพาะ admin — เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
             </p>
             <Select
-              id="my-default-reviewer"
-              value={myDefaultReviewerId ?? ""}
-              disabled={userId === null}
+              id="default-reviewer"
+              value={globalReviewerId ?? ""}
               onChange={(e) =>
                 void saveDefaultReviewer(
                   e.target.value === "" ? null : e.target.value
@@ -1194,10 +1251,10 @@ export function TasksClient({
                 </option>
               ))}
             </Select>
-            {myDefaultReviewerId !== null &&
-              !reviewerSet.has(myDefaultReviewerId) && (
+            {globalReviewerId !== null &&
+              !reviewerSet.has(globalReviewerId) && (
                 <p className="mt-1.5 text-xs text-amber-600">
-                  ผู้ตรวจอัตโนมัติที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
+                  ผู้ตรวจเริ่มต้นที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
                   ระบบจะไม่เลือกให้จนกว่าจะตั้งใหม่
                 </p>
               )}

@@ -47,6 +47,8 @@ export default async function TasksPage() {
     profilesResult,
     influencersResult,
     reviewersResult,
+    categoriesResult,
+    settingsResult,
   ] = await Promise.all([
     supabase
       .from("task_sections")
@@ -62,6 +64,15 @@ export default async function TasksPage() {
       .select("id, first_name, last_name, nickname")
       .order("created_at", { ascending: false }),
     supabase.from("task_reviewers").select("profile_id"),
+    supabase
+      .from("task_categories")
+      .select("name")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "default_reviewer_id")
+      .maybeSingle(),
   ]);
 
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
@@ -69,12 +80,15 @@ export default async function TasksPage() {
   const profiles = profilesResult.data ?? [];
   const influencers = (influencersResult.data ?? []) as InfluencerLite[];
   const reviewerIds = (reviewersResult.data ?? []).map((r) => r.profile_id);
+  const categories = (categoriesResult.data ?? []).map((c) => c.name);
+  const defaultReviewerId = settingsResult.data?.value ?? null;
   const loadError =
     sectionsResult.error?.message ??
     tasksResult.error ??
     profilesResult.error?.message ??
     influencersResult.error?.message ??
     reviewersResult.error?.message ??
+    categoriesResult.error?.message ??
     null;
 
   return (
@@ -84,6 +98,8 @@ export default async function TasksPage() {
       profiles={profiles}
       influencers={influencers}
       reviewerIds={reviewerIds}
+      defaultReviewerId={defaultReviewerId}
+      categories={categories}
       userId={userId}
       isAdmin={access.isAdmin}
       loadError={loadError}

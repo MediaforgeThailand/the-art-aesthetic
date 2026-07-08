@@ -19,10 +19,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
-  TASK_CATEGORIES,
-  TASK_PRIORITY,
-  TASK_PRIORITY_ORDER,
 } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -30,9 +28,8 @@ import type {
   InfluencerLite,
   TaskCommentWithAuthor,
   TaskFileRow,
-  TaskPriority,
   TaskRow,
-  TaskSectionRow,
+  TaskSubtaskFileRow,
   TaskSubtaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
@@ -61,6 +58,9 @@ export type TaskPatch = {
   db: Partial<TaskRow>;
   local?: Partial<TaskWithAssignee>;
 };
+
+/** งานย่อยพร้อมไฟล์แนบ */
+type SubtaskWithFiles = TaskSubtaskRow & { files: TaskSubtaskFileRow[] };
 
 /* สไตล์ field แบบ "ไร้กล่อง" (Asana) — โผล่ขอบเฉพาะตอน hover/focus */
 const bareControl =
@@ -95,10 +95,11 @@ function FieldRow({
  */
 export function TaskPanel({
   task,
-  sections,
   profiles,
   reviewerProfiles,
   influencers,
+  categories,
+  onAddCategory,
   userId,
   suspendEsc = false,
   onPatch,
@@ -112,11 +113,13 @@ export function TaskPanel({
   onSetInfluencer,
 }: {
   task: TaskWithAssignee;
-  sections: TaskSectionRow[];
   profiles: ProfileOption[];
   /** roster ผู้ตรวจ — ตัวเลือกในช่อง "ผู้ตรวจงาน" จำกัดเฉพาะรายชื่อนี้ */
   reviewerProfiles: ProfileOption[];
   influencers: InfluencerLite[];
+  /** หมวดหมู่งานที่เลือกได้ (เพิ่มได้) */
+  categories: string[];
+  onAddCategory: (name: string) => void;
   userId: string | null;
   /** true เมื่อมี dialog อื่นเปิดอยู่ — ให้ Esc เป็นของ dialog นั้น */
   suspendEsc?: boolean;
@@ -158,7 +161,7 @@ export function TaskPanel({
 
   /* ---------- งานย่อย + ความคิดเห็น (โหลดเมื่อเปิดงาน) ---------- */
 
-  const [subtasks, setSubtasks] = useState<TaskSubtaskRow[] | null>(null);
+  const [subtasks, setSubtasks] = useState<SubtaskWithFiles[] | null>(null);
   const [comments, setComments] = useState<TaskCommentWithAuthor[] | null>(
     null
   );
@@ -168,7 +171,9 @@ export function TaskPanel({
     void Promise.all([
       supabase
         .from("task_subtasks")
-        .select("*")
+        .select(
+          "*, files:task_subtask_files(id, subtask_id, file_path, file_name, created_at)"
+        )
         .eq("task_id", task.id)
         .order("position", { ascending: true })
         .order("created_at", { ascending: true }),
@@ -187,7 +192,7 @@ export function TaskPanel({
       }
       // merge กับของที่ผู้ใช้เพิ่งเพิ่มระหว่างรอโหลด — ไม่ทับทิ้ง
       if (!s.error) {
-        const fetchedSubs = (s.data ?? []) as TaskSubtaskRow[];
+        const fetchedSubs = (s.data ?? []) as unknown as SubtaskWithFiles[];
         setSubtasks((cur) => {
           if (cur === null) return fetchedSubs;
           const ids = new Set(fetchedSubs.map((x) => x.id));
@@ -364,13 +369,14 @@ export function TaskPanel({
         ? Math.max(...subtasks.map((s) => s.position)) + 1
         : 1;
     const tempId = `temp-${Date.now()}`;
-    const optimistic: TaskSubtaskRow = {
+    const optimistic: SubtaskWithFiles = {
       id: tempId,
       task_id: task.id,
       title,
       completed: false,
       position,
       created_at: new Date().toISOString(),
+      files: [],
     };
     setSubtasks((cur) => [...(cur ?? []), optimistic]);
     const { data, error } = await supabase
@@ -384,11 +390,65 @@ export function TaskPanel({
       return;
     }
     setSubtasks((cur) =>
-      (cur ?? []).map((s) => (s.id === tempId ? (data as TaskSubtaskRow) : s))
+      (cur ?? []).map((s) =>
+        s.id === tempId ? { ...(data as TaskSubtaskRow), files: [] } : s
+      )
     );
   };
 
-  const toggleSubtask = (sub: TaskSubtaskRow) => {
+  /** แนบไฟล์ (หลายไฟล์) เข้างานย่อย */
+  const uploadSubtaskFiles = async (sub: TaskSubtaskRow, fileList: FileList) => {
+    if (sub.id.startsWith("temp-")) return;
+    const added: TaskSubtaskFileRow[] = [];
+    for (const file of Array.from(fileList)) {
+      const path = `tasks/${task.id}/subtasks/${sub.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .upload(path, file);
+      if (upErr) {
+        showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
+        break;
+      }
+      const { data, error: insErr } = await supabase
+        .from("task_subtask_files")
+        .insert({ subtask_id: sub.id, file_path: path, file_name: file.name })
+        .select()
+        .single();
+      if (insErr || !data) {
+        try {
+          await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([path]);
+        } catch {
+          // เพิกเฉย
+        }
+        showError(`บันทึกไฟล์ไม่สำเร็จ: ${insErr?.message ?? "ไม่ทราบสาเหตุ"}`);
+        break;
+      }
+      added.push(data as TaskSubtaskFileRow);
+    }
+    if (added.length > 0) {
+      setSubtasks((cur) =>
+        (cur ?? []).map((s) =>
+          s.id === sub.id ? { ...s, files: [...s.files, ...added] } : s
+        )
+      );
+    }
+  };
+
+  const removeSubtaskFile = (sub: TaskSubtaskRow, file: TaskSubtaskFileRow) => {
+    setSubtasks((cur) =>
+      (cur ?? []).map((s) =>
+        s.id === sub.id
+          ? { ...s, files: s.files.filter((f) => f.id !== file.id) }
+          : s
+      )
+    );
+    void supabase.from("task_subtask_files").delete().eq("id", file.id);
+    void supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .remove([file.file_path]);
+  };
+
+  const toggleSubtask = (sub: SubtaskWithFiles) => {
     if (sub.id.startsWith("temp-")) return;
     const next = !sub.completed;
     setSubtasks((cur) =>
@@ -410,7 +470,7 @@ export function TaskPanel({
       });
   };
 
-  const renameSubtask = (sub: TaskSubtaskRow, name: string) => {
+  const renameSubtask = (sub: SubtaskWithFiles, name: string) => {
     const trimmed = name.trim();
     if (sub.id.startsWith("temp-") || trimmed === "" || trimmed === sub.title) {
       return;
@@ -435,7 +495,7 @@ export function TaskPanel({
       });
   };
 
-  const deleteSubtask = (sub: TaskSubtaskRow) => {
+  const deleteSubtask = (sub: SubtaskWithFiles) => {
     if (sub.id.startsWith("temp-")) return;
     setSubtasks((cur) => (cur ?? []).filter((s) => s.id !== sub.id));
     void supabase
@@ -665,28 +725,24 @@ export function TaskPanel({
         </div>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {/* title */}
-        <textarea
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        {/* title — บรรทัดเดียวกะทัดรัด */}
+        <input
           value={title}
-          rows={2}
           aria-label="ชื่องาน"
           onChange={(e) => setTitle(e.target.value)}
           onBlur={saveTitle}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLTextAreaElement).blur();
-            }
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
           placeholder="ชื่องาน"
-          className={`w-full resize-none rounded-md border border-transparent px-2 py-1 text-xl font-semibold leading-snug transition-colors hover:border-stone-200/80 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100 ${
+          className={`w-full rounded-md border border-transparent px-2 py-1 text-base font-semibold leading-snug transition-colors hover:border-stone-200/80 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100 ${
             task.completed ? "text-stone-400 line-through" : "text-stone-900"
           }`}
         />
 
-        {/* fields — ไร้กล่องแบบ Asana */}
-        <div className="space-y-0.5">
+        {/* fields — ไร้กล่องแบบ Asana (กะทัดรัด ~30% ให้เนื้อหาเหลือพื้นที่มากสุด) */}
+        <div className="space-y-0.5 border-b border-stone-100 pb-2">
           <FieldRow label="ผู้รับผิดชอบ" htmlFor="task-assignee">
             <div className="flex items-center gap-2 px-2">
               <AssigneeAvatar assignee={task.assignee} />
@@ -836,64 +892,35 @@ export function TaskPanel({
             />
           </FieldRow>
 
-          <FieldRow label="เซคชัน" htmlFor="task-section">
-            <select
-              id="task-section"
-              value={task.section_id ?? ""}
-              onChange={(e) =>
-                onPatch(task.id, { db: { section_id: e.target.value } })
-              }
-              className={bareSelect}
-            >
-              {task.section_id === null && (
-                <option value="" disabled>
-                  ยังไม่ระบุ
-                </option>
-              )}
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </FieldRow>
-
-          <FieldRow label="ความสำคัญ" htmlFor="task-priority">
-            <select
-              id="task-priority"
-              value={task.priority}
-              onChange={(e) =>
-                onPatch(task.id, {
-                  db: { priority: e.target.value as TaskPriority },
-                })
-              }
-              className={bareSelect}
-            >
-              {TASK_PRIORITY_ORDER.map((p) => (
-                <option key={p} value={p}>
-                  {TASK_PRIORITY[p].label}
-                </option>
-              ))}
-            </select>
-          </FieldRow>
-
           <FieldRow label="หมวดหมู่" htmlFor="task-category">
             <select
               id="task-category"
               value={task.category}
-              onChange={(e) =>
-                onPatch(task.id, { db: { category: e.target.value } })
-              }
+              onChange={(e) => {
+                if (e.target.value === "__add__") {
+                  const name = window.prompt("ชื่อหมวดหมู่ใหม่")?.trim();
+                  if (name) {
+                    onAddCategory(name);
+                    onPatch(task.id, { db: { category: name } });
+                  }
+                  return;
+                }
+                onPatch(task.id, { db: { category: e.target.value } });
+              }}
               className={bareSelect}
             >
-              {TASK_CATEGORIES.map((c) => (
+              <option value={DEFAULT_TASK_CATEGORY}>ไม่ระบุ</option>
+              {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
-              {!(TASK_CATEGORIES as readonly string[]).includes(
-                task.category
-              ) && <option value={task.category}>{task.category}</option>}
+              {/* หมวดเดิมของงานที่ไม่อยู่ในลิสต์ (เช่นถูกลบไปแล้ว) ยังแสดงได้ */}
+              {task.category !== DEFAULT_TASK_CATEGORY &&
+                !categories.includes(task.category) && (
+                  <option value={task.category}>{task.category}</option>
+                )}
+              <option value="__add__">+ เพิ่มหมวดหมู่...</option>
             </select>
           </FieldRow>
         </div>
@@ -1003,6 +1030,8 @@ export function TaskPanel({
                 onToggle={() => toggleSubtask(sub)}
                 onRename={(name) => renameSubtask(sub, name)}
                 onDelete={() => deleteSubtask(sub)}
+                onUploadFiles={(fl) => void uploadSubtaskFiles(sub, fl)}
+                onRemoveFile={(f) => removeSubtaskFile(sub, f)}
               />
             ))}
             {addingSub ? (
@@ -1280,63 +1309,148 @@ function SubtaskRowItem({
   onToggle,
   onRename,
   onDelete,
+  onUploadFiles,
+  onRemoveFile,
 }: {
-  sub: TaskSubtaskRow;
+  sub: SubtaskWithFiles;
   onToggle: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onUploadFiles: (files: FileList) => void;
+  onRemoveFile: (file: TaskSubtaskFileRow) => void;
 }) {
   const [draft, setDraft] = useState(sub.title);
   useEffect(() => setDraft(sub.title), [sub.title]);
   const temp = sub.id.startsWith("temp-");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div
-      className={`group flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-white/70 ${
+      className={`group rounded-md px-2 py-1 transition-colors hover:bg-white/70 ${
         temp ? "opacity-60" : ""
       }`}
     >
-      <CompleteToggle
-        completed={sub.completed}
-        onToggle={temp ? undefined : onToggle}
-        size={16}
-      />
-      <input
-        value={draft}
-        aria-label="ชื่องานย่อย"
-        disabled={temp}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          if (draft.trim() === "") {
-            setDraft(sub.title);
-          } else {
-            onRename(draft);
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") {
-            e.stopPropagation();
-            setDraft(sub.title);
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        className={`min-w-0 flex-1 border-none bg-transparent text-sm focus:outline-none ${
-          sub.completed ? "text-stone-400 line-through" : "text-stone-800"
-        }`}
-      />
-      {!temp && (
-        <button
-          type="button"
-          onClick={onDelete}
-          title="ลบงานย่อย"
-          aria-label="ลบงานย่อย"
-          className="cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
-        >
-          <X size={13} />
-        </button>
+      <div className="flex items-center gap-2">
+        <CompleteToggle
+          completed={sub.completed}
+          onToggle={temp ? undefined : onToggle}
+          size={16}
+        />
+        <input
+          value={draft}
+          aria-label="ชื่องานย่อย"
+          disabled={temp}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            if (draft.trim() === "") {
+              setDraft(sub.title);
+            } else {
+              onRename(draft);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setDraft(sub.title);
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className={`min-w-0 flex-1 border-none bg-transparent text-sm focus:outline-none ${
+            sub.completed ? "text-stone-400 line-through" : "text-stone-800"
+          }`}
+        />
+        {!temp && (
+          <>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="แนบไฟล์ (หลายไฟล์ได้)"
+              aria-label="แนบไฟล์งานย่อย"
+              className="relative cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-brand-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+            >
+              <Paperclip size={13} />
+              {sub.files.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-brand-500 text-[8px] font-bold text-cream">
+                  {sub.files.length}
+                </span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  onUploadFiles(e.target.files);
+                }
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={onDelete}
+              title="ลบงานย่อย"
+              aria-label="ลบงานย่อย"
+              className="cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+            >
+              <X size={13} />
+            </button>
+          </>
+        )}
+      </div>
+      {/* ไฟล์แนบของงานย่อย — ชิปเล็กๆ กดเปิด/ลบได้ */}
+      {sub.files.length > 0 && (
+        <div className="ml-6 mt-1 flex flex-wrap gap-1">
+          {sub.files.map((f) => (
+            <SubtaskFileChip
+              key={f.id}
+              file={f}
+              onRemove={() => onRemoveFile(f)}
+            />
+          ))}
+        </div>
       )}
     </div>
+  );
+}
+
+/** ชิปไฟล์แนบงานย่อย — คลิกเปิดผ่าน signed URL, กด × เพื่อลบ */
+function SubtaskFileChip({
+  file,
+  onRemove,
+}: {
+  file: TaskSubtaskFileRow;
+  onRemove: () => void;
+}) {
+  const { url } = useSignedUrl(file.file_path);
+  const name = file.file_name ?? "ไฟล์";
+  return (
+    <span className="inline-flex max-w-40 items-center gap-1 rounded-full border border-stone-200 bg-white/80 py-0.5 pl-2 pr-1 text-xs text-stone-600">
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          title={name}
+          className="min-w-0 truncate hover:text-brand-700 hover:underline"
+        >
+          {name}
+        </a>
+      ) : (
+        <span className="min-w-0 truncate">{name}</span>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        title="ลบไฟล์"
+        aria-label="ลบไฟล์แนบ"
+        className="shrink-0 cursor-pointer rounded-full p-0.5 text-stone-300 hover:text-rose-500 active:scale-90"
+      >
+        <X size={11} />
+      </button>
+    </span>
   );
 }
 

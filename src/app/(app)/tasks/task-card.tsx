@@ -17,7 +17,6 @@ import { Badge } from "@/components/ui";
 import {
   DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
-  TASK_PRIORITY,
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
@@ -448,7 +447,6 @@ export function TaskCardContent({
     !task.completed &&
     task.due_date.slice(0, 10) < today;
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
-  const showPriority = task.priority === "high" || task.priority === "urgent";
   const files = task.files ?? [];
   const mediaCount = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
@@ -489,40 +487,8 @@ export function TaskCardContent({
           ไม่งั้น dnd-kit วัดความสูงจากการ์ดจริงแล้วการ์ดที่ลากลอยหลุดจากเมาส์ */}
       <CardMediaPreview files={files} />
 
-      {(showCategory ||
-        showPriority ||
-        task.review_status !== "none" ||
-        influName) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-6">
-          {task.review_status === "pending" && (
-            <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-              รอตรวจ
-            </Badge>
-          )}
-          {task.review_status === "approved" && (
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              เสร็จสมบูรณ์
-            </Badge>
-          )}
-          {showCategory && (
-            <Badge className={taskCategoryChipClass(task.category)}>
-              {task.category}
-            </Badge>
-          )}
-          {showPriority && (
-            <Badge className={TASK_PRIORITY[task.priority].badge}>
-              {TASK_PRIORITY[task.priority].label}
-            </Badge>
-          )}
-          {influName && (
-            <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
-              <Sparkles size={10} /> {influName}
-            </Badge>
-          )}
-        </div>
-      )}
-
-      <div className="mt-2 flex items-center gap-2 pl-6">
+      {/* แถวเดียว ชิดซ้าย: ผู้รับผิดชอบ · สถานะ · วันที่ · หมวดหมู่ · influ (ไฟล์แนบดันขวา) */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6">
         {profiles && onAssign ? (
           <AssigneePicker
             assignee={task.assignee}
@@ -531,6 +497,16 @@ export function TaskCardContent({
           />
         ) : (
           <AssigneeAvatar assignee={task.assignee} />
+        )}
+        {task.review_status === "pending" && (
+          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+            รอตรวจ
+          </Badge>
+        )}
+        {task.review_status === "approved" && (
+          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+            เสร็จ
+          </Badge>
         )}
         {task.due_date && (
           <span
@@ -541,6 +517,16 @@ export function TaskCardContent({
             {overdue && <AlertCircle size={13} />}
             {formatDate(task.due_date)}
           </span>
+        )}
+        {showCategory && (
+          <Badge className={taskCategoryChipClass(task.category)}>
+            {task.category}
+          </Badge>
+        )}
+        {influName && (
+          <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+            <Sparkles size={10} /> {influName}
+          </Badge>
         )}
         {otherFileCount > 0 && (
           <span

@@ -87,6 +87,29 @@ export type TaskSubtaskRow = {
   created_at: string;
 };
 
+/** ไฟล์แนบของงานย่อย (แนบได้หลายไฟล์ต่อ 1 งานย่อย) */
+export type TaskSubtaskFileRow = {
+  id: string;
+  subtask_id: string;
+  file_path: string;
+  file_name: string | null;
+  created_at: string;
+};
+
+/** หมวดหมู่งานที่จัดการได้ (เพิ่มได้จากหน้างาน) */
+export type TaskCategoryRow = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+/** ตั้งค่ากลางของระบบ (key/value) เช่น default_reviewer_id */
+export type AppSettingRow = {
+  key: string;
+  value: string | null;
+  updated_at: string;
+};
+
 export type TaskCommentRow = {
   id: string;
   task_id: string;
@@ -400,6 +423,27 @@ export interface Database {
         Row: TaskSubtaskRow;
         Insert: Partial<TaskSubtaskRow> & { task_id: string; title: string };
         Update: Partial<TaskSubtaskRow>;
+        Relationships: [];
+      };
+      task_subtask_files: {
+        Row: TaskSubtaskFileRow;
+        Insert: Partial<TaskSubtaskFileRow> & {
+          subtask_id: string;
+          file_path: string;
+        };
+        Update: Partial<TaskSubtaskFileRow>;
+        Relationships: [];
+      };
+      task_categories: {
+        Row: TaskCategoryRow;
+        Insert: Partial<TaskCategoryRow> & { name: string };
+        Update: Partial<TaskCategoryRow>;
+        Relationships: [];
+      };
+      app_settings: {
+        Row: AppSettingRow;
+        Insert: Partial<AppSettingRow> & { key: string };
+        Update: Partial<AppSettingRow>;
         Relationships: [];
       };
       task_comments: {
