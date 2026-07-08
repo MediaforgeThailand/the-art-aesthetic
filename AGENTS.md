@@ -40,14 +40,22 @@ UI เป็นภาษาไทยทั้งหมด — desktop-first เ�
 - ส่วนที่แสดงข้อมูล demo ต้องติด DemoBadge/DemoBanner (src/components/demo-badge.tsx) — ตรวจจาก sales_records.note='demo' หรือ tasks.description='demo' (admin_records/sales_targets/staff_kpis ก็ใช้ note='demo')
 - **รายงาน/แดชบอร์ดผู้บริหาร:** `/dashboard` เป็น landing รายงานรวมหน้าเดียว (5 section คนละโทนสี + ตัวกรองช่วงเวลา sticky ใช้ร่วมทั้งหน้า, default `mtd` = 1 เดือนนี้–วันนี้ เวลาไทย; PeriodKey มี today/7d/30d/mtd/90d/6m/12m ใน report-utils); component ภาพกลางอยู่ที่ `src/components/report-viz.tsx` (HeroCard, DeltaChip, PersonKpiBar แบบ bullet เทียบเป้า, TargetProgress, MiniStat) + helper ใน report-utils (`sumTargetsForPeriod` prorate เดือนปัจจุบัน, `achievementTone` เขียว≥100/เหลือง80–99/แดง<80, `TEAM_COLORS` ทีมขาย=brand ทีมแอดมิน=sky) — เป้า KPI รายคนอยู่ตาราง `staff_kpis` (month, person_name, team 'sales'|'admin', target_amount)
 
-## เครื่องของผู้ใช้ (Windows)
+## เครื่องของผู้ใช้ / เริ่มงานบนเครื่องใหม่ (Windows)
 
-- Node อยู่ที่ `C:\Program Files\nodejs` (อยู่ใน PATH แล้ว — เครื่องเก่าที่ path `C:\Users\User\nodejs\...` เลิกใช้แล้ว); ถ้า shell หา node ไม่เจอ: PowerShell `$env:Path = "C:\Program Files\nodejs;" + $env:Path`
-- **เครื่องนี้มี TLS interception** (antivirus/proxy) — Node fetch ฝั่ง server จะเจอ `UNABLE_TO_VERIFY_LEAF_SIGNATURE` ถ้าไม่เปิด `--use-system-ca` (ตั้ง `NODE_OPTIONS=--use-system-ca` ใน user env แล้ว และ `.claude/launch.json` ส่ง flag นี้ให้ dev server แล้ว) — ห้ามแก้ด้วย NODE_TLS_REJECT_UNAUTHORIZED=0
+- ผู้ใช้ทำงานหลายเครื่อง — **GitHub คือ source of truth เพียงแหล่งเดียว** (repo private `MediaforgeThailand/the-art-aesthetic`) และ memory ของ Claude เป็นของต่อเครื่อง ไม่ติดตามไปด้วย — ความรู้เชิงปฏิบัติการสำคัญถูกรวมไว้ในไฟล์นี้แล้ว
+- **เช็คลิสต์เครื่องใหม่:** (1) ติดตั้ง Node LTS + git, (2) clone repo, (3) `npm install`, (4) **ตั้ง git identity ระดับ repo ก่อน commit ใดๆ** (ดูกฎ deploy ด้านล่าง — ถ้า author ผิด deploy จะ BLOCKED):
+  `git config user.name "MediaforgeThailand"`
+  `git config user.email "259400457+MediaforgeThailand@users.noreply.github.com"`
+  (5) `npm run dev` ได้เลย — **ไม่ต้องมี `.env.local`**: ค่า publishable ของ Supabase ฝังเป็น fallback ใน `src/lib/env.ts` แล้ว (สร้างจาก `.env.example` เฉพาะเมื่อจะชี้ Supabase โปรเจกต์อื่น)
+- Node บนเครื่องเดสก์ท็อปหลักอยู่ที่ `C:\Program Files\nodejs` (อยู่ใน PATH); `.claude/launch.json` เรียก `node` จาก PATH + autoPort จึงพกไปได้ทุกเครื่อง; ถ้า shell หา node ไม่เจอ: PowerShell `$env:Path = "C:\Program Files\nodejs;" + $env:Path`
+- **เครื่องเดสก์ท็อปหลักมี TLS interception** (antivirus/proxy) — Node fetch ฝั่ง server จะเจอ `UNABLE_TO_VERIFY_LEAF_SIGNATURE` ถ้าไม่เปิด `--use-system-ca` (ตั้ง `NODE_OPTIONS=--use-system-ca` ใน user env แล้ว และ `.claude/launch.json` ส่ง flag นี้ให้ dev server แล้ว) — ห้ามแก้ด้วย NODE_TLS_REJECT_UNAUTHORIZED=0; เครื่องอื่นอาจไม่มีปัญหานี้แต่ flag เปิดทิ้งไว้ไม่เสียหาย
 - Build: `npm run build` / Dev: `npm run dev`
 
 ## Backend / Deployment (พร้อมใช้งานแล้ว)
 
 - Supabase: โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, org oxrqcyrbjfhseaitvkdo, ap-southeast-2) — schema + RLS + storage bucket `documents` + seed demo แล้ว (ลบ demo: `delete from sales_records where note='demo'; delete from tasks where description='demo';`)
-- Vercel: โปรเจกต์ `the-art-aesthetic` (team mediaforge2026-9756s-projects) — production alias **https://the-art-aesthetic.vercel.app** — env vars ตั้งใน Vercel แล้ว (production+preview), deploy ด้วย `npx vercel deploy --prod --yes`
+- Vercel: โปรเจกต์ `the-art-aesthetic` (team mediaforge2026-9756s-projects) — production alias **https://the-art-aesthetic.vercel.app** — env vars ตั้งใน Vercel แล้ว (production+preview)
+- **Deploy = push `main` → Vercel auto-deploy** (ผูก GitHub ตั้งแต่ 2026-07-05; `npx vercel deploy --prod --yes` เป็นทางสำรอง) — **กฎเหล็ก: commit author ต้องเป็น `MediaforgeThailand <259400457+MediaforgeThailand@users.noreply.github.com>`** (Hobby plan เช็ค author — identity อื่นเช่น taksintaeprasert จะทำ deployment ค้างสถานะ BLOCKED); ตรวจสถานะ deploy ผ่าน Vercel MCP `list_deployments`
+- **ข้อมูลรายงานยังเป็น demo ทั้งหมด** — auto-sync จาก Google Sheets ทีม DA ยังไม่ได้สร้าง (งานค้างใหญ่): ใบขอแชร์ไฟล์อยู่ที่ `DATA-REQUEST.md`, service account `dataaesthetic@dataartaesthetic.iam.gserviceaccount.com` (GCP project `dataartaesthetic`) สร้างแล้ว — จะทำต่อต้องมี JSON key + ลิงก์ชีทจริงจากทีม DA
+- **จัดการบัญชี — ข้อควรระวังเชิงปฏิบัติการ:** ปุ่ม "Invite user" ใน Supabase dashboard จะโดน trigger `handle_new_user` บล็อคเหมือน signup (ต้อง insert อีเมลเข้า `allowed_emails` ก่อน หรือใช้หน้า /accounts แทน); ถ้า admin ถูกล็อคหมดทุกคน กู้ผ่าน SQL editor ได้: `update public.profiles set role='admin' where email='...'` (จาก SQL/MCP `auth.uid()` เป็น null trigger ปล่อยผ่าน) แล้วรีเซ็ตรหัสผ่านจาก dashboard; แก้โค้ด edge function ที่ `supabase/functions/admin-users/index.ts` แล้วต้อง deploy ซ้ำผ่าน Supabase MCP เอง (ไม่ auto)
 - RLS เป็นแบบ "authenticated เข้าถึงได้ทั้งหมด" โดยตั้งใจ (ระบบภายในแผนก) — advisor จะเตือน rls_policy_always_true เป็นเรื่องปกติ
