@@ -74,11 +74,11 @@ export function Sidebar({
     };
   }, []);
 
-  // admin เห็นทุกเมนู; นอกนั้นเห็นเมนูเปิด (perm null) + เมนูที่มีสิทธิ์ตรง
+  // แต่ละเมนูขึ้นกับสิทธิ์ของเมนูนั้นแยกอิสระ (แบบ Discord)
+  // เมนู "จัดการบัญชี" (perm 'admin') = เฉพาะ role admin; ที่เหลือดูจาก permissions รายคน
   const visibleNav = navItems.filter((item) => {
     if (item.perm === null) return true;
-    if (isAdmin) return true;
-    if (item.perm === "admin") return false;
+    if (item.perm === "admin") return isAdmin;
     return permissions.includes(item.perm);
   });
 

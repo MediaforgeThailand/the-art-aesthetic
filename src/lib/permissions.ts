@@ -41,7 +41,8 @@ export type Access = {
   permissions: AppPermission[];
 };
 
-/** admin เห็นทุกอย่าง; นอกนั้นเช็คตาม permissions รายคน */
+/** สิทธิ์การมองเห็นแยกอิสระต่อบัญชี (แบบ Discord) — เช็คจาก permissions รายคนตรงๆ
+    ไม่ผูกกับ role: การเป็น admin (จัดการบัญชี/ผู้ตรวจ) เป็นสิทธิ์แยก ไม่เหมาเห็นทุกหน้า */
 export function hasPermission(access: Access, perm: AppPermission): boolean {
-  return access.isAdmin || access.permissions.includes(perm);
+  return access.permissions.includes(perm);
 }

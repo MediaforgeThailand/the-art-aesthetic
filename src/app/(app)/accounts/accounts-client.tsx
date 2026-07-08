@@ -98,21 +98,20 @@ function permsOf(p: AccountProfile): AppPermission[] {
   return p.permissions ?? [];
 }
 
-/** ชิปสรุปสิทธิ์ในตาราง */
+/** ชิปสรุปสิทธิ์ในตาราง — แต่ละสิทธิ์เป็นชิปอิสระ (แนวคิดแบบ Discord ไม่ใช่ยศ) */
 function PermissionSummary({ profile }: { profile: AccountProfile }) {
-  if (profile.role === "admin") {
-    return (
-      <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
-        <ShieldCheck size={12} /> ผู้ดูแลระบบ · เห็นทุกอย่าง
-      </Badge>
-    );
-  }
   const perms = permsOf(profile);
-  if (perms.length === 0) {
+  const isAdmin = profile.role === "admin";
+  if (!isAdmin && perms.length === 0) {
     return <span className="text-xs text-stone-400">ยังไม่เปิดสิทธิ์</span>;
   }
   return (
     <div className="flex flex-wrap gap-1">
+      {isAdmin && (
+        <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+          <ShieldCheck size={12} /> ผู้ดูแลระบบ
+        </Badge>
+      )}
       {PERMISSION_META.filter((m) => perms.includes(m.key)).map((m) => (
         <Badge
           key={m.key}
@@ -646,7 +645,8 @@ export function AccountsClient({
   );
 }
 
-/** ตัวเลือก role (admin) + สิทธิ์รายหมวด — ใช้ทั้งฟอร์มสร้างและ modal จัดการสิทธิ์ */
+/** ตัวเลือกสิทธิ์แบบ Discord — แต่ละสิทธิ์เปิด/ปิดแยกกันได้อิสระต่อบัญชี (ไม่มีแนวคิดยศ)
+    "ผู้ดูแลระบบ" เป็นสิทธิ์หนึ่ง (จัดการบัญชี/ผู้ตรวจ) map ไปที่ role; ที่เหลือ map ไป permissions[] */
 function PermissionEditor({
   role,
   onRoleChange,
@@ -658,66 +658,56 @@ function PermissionEditor({
   permSet: Set<AppPermission>;
   onToggle: (key: AppPermission) => void;
 }) {
-  const isAdmin = role === "admin";
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div>
         <Label>สิทธิ์การเข้าถึง</Label>
-        <p className="-mt-1 mb-2 text-xs text-stone-400">
-          หน้า Product Pricing และ Influencer เปิดให้ทุกคนอยู่แล้ว ไม่ต้องเปิดสิทธิ์
+        <p className="-mt-1 mb-1 text-xs text-stone-400">
+          ติ๊กเปิดเฉพาะส่วนที่ต้องการให้บัญชีนี้เห็น — แต่ละสิทธิ์แยกกันอิสระ
+          (หน้า /price-list สาธารณะเปิดให้ทุกคนอยู่แล้ว)
         </p>
       </div>
 
-      {/* ผู้ดูแลระบบ */}
+      {/* ผู้ดูแลระบบ = สิทธิ์จัดการบัญชี/ผู้ตรวจ (แยกอิสระเหมือนสิทธิ์อื่น) */}
       <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-stone-200 bg-white/60 px-3 py-2.5 transition-colors hover:bg-brand-50/40">
         <input
           type="checkbox"
-          checked={isAdmin}
+          checked={role === "admin"}
           onChange={(e) => onRoleChange(e.target.checked ? "admin" : "member")}
           className="mt-0.5 h-4 w-4 accent-brand-600"
         />
         <span className="min-w-0">
           <span className="flex items-center gap-1.5 text-sm font-medium text-stone-800">
             <ShieldCheck size={14} className="text-brand-600" /> ผู้ดูแลระบบ
-            (admin)
           </span>
           <span className="mt-0.5 block text-xs text-stone-400">
-            เห็นทุกหน้า + จัดการบัญชี/สิทธิ์ และจัดการผู้ตรวจงานในหน้างาน
+            เข้าหน้าจัดการบัญชี/สิทธิ์ และจัดการผู้ตรวจงานในหน้างาน
           </span>
         </span>
       </label>
 
-      {/* สิทธิ์รายหมวด — admin ครอบคลุมอยู่แล้ว จึงล็อกช่องเมื่อเป็น admin */}
-      {PERMISSION_META.map((m) => {
-        const checked = isAdmin || permSet.has(m.key);
-        return (
-          <label
-            key={m.key}
-            className={`flex items-start gap-2.5 rounded-lg border border-stone-200 px-3 py-2.5 transition-colors ${
-              isAdmin
-                ? "cursor-not-allowed bg-stone-50 opacity-70"
-                : "cursor-pointer bg-white/60 hover:bg-brand-50/40"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={isAdmin}
-              onChange={() => onToggle(m.key)}
-              className="mt-0.5 h-4 w-4 accent-brand-600"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-stone-800">
-                {m.label}
-              </span>
-              <span className="mt-0.5 block text-xs text-stone-400">
-                {m.detail}
-                {isAdmin && " (รวมอยู่ในสิทธิ์ผู้ดูแลระบบแล้ว)"}
-              </span>
+      {/* สิทธิ์รายส่วน — เปิด/ปิดแยกกันได้อิสระ */}
+      {PERMISSION_META.map((m) => (
+        <label
+          key={m.key}
+          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-stone-200 bg-white/60 px-3 py-2.5 transition-colors hover:bg-brand-50/40"
+        >
+          <input
+            type="checkbox"
+            checked={permSet.has(m.key)}
+            onChange={() => onToggle(m.key)}
+            className="mt-0.5 h-4 w-4 accent-brand-600"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-stone-800">
+              {m.label}
             </span>
-          </label>
-        );
-      })}
+            <span className="mt-0.5 block text-xs text-stone-400">
+              {m.detail}
+            </span>
+          </span>
+        </label>
+      ))}
     </div>
   );
 }
