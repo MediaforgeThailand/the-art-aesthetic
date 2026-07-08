@@ -9,22 +9,25 @@ import {
   Search,
   Sparkles,
   Timer,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   Input,
   Label,
   Modal,
   PageHeader,
 } from "@/components/ui";
+import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
   contractEndDate,
@@ -159,10 +162,61 @@ export function InfluencersClient({
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
 
+  // สำเนา state ฝั่งจอ — ลบแล้วหายจากลิสต์ทันที (optimistic) แล้วค่อย sync กับ server
+  const [items, setItems] = useState<InfluencerListRow[]>(influencers);
+  useEffect(() => setItems(influencers), [influencers]);
+
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<number | "all" | "done">(
     "all"
   );
+
+  // ลบ influencer
+  const [deleteTarget, setDeleteTarget] = useState<InfluencerListRow | null>(
+    null
+  );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  /** ลบไฟล์ใน storage ของ influencer (best-effort) — รูป/memo/สัญญา */
+  const cleanupStorage = async (influId: string) => {
+    const store = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
+    for (const prefix of [
+      `influencers/${influId}`,
+      `influencers/${influId}/memo`,
+      `influencers/${influId}/contract`,
+    ]) {
+      try {
+        const { data } = await store.list(prefix, { limit: 1000 });
+        const paths = (data ?? [])
+          .filter((o) => o.id) // เฉพาะไฟล์จริง ไม่ใช่ชื่อโฟลเดอร์ย่อย
+          .map((o) => `${prefix}/${o.name}`);
+        if (paths.length > 0) await store.remove(paths);
+      } catch {
+        // เพิกเฉย — ลบ record สำเร็จแล้ว ไฟล์ค้างไม่กระทบการใช้งาน
+      }
+    }
+  };
+
+  const handleDelete = async (target: InfluencerListRow) => {
+    setDeletingId(target.id);
+    setDeleteError(null);
+    const prev = items;
+    setItems((cur) => cur.filter((i) => i.id !== target.id)); // optimistic
+    const { error } = await supabase
+      .from("influencers")
+      .delete()
+      .eq("id", target.id);
+    if (error) {
+      setItems(prev); // คืนค่าถ้าลบไม่สำเร็จ
+      setDeleteError(`ลบไม่สำเร็จ: ${error.message}`);
+      setDeletingId(null);
+      return;
+    }
+    void cleanupStorage(target.id); // fire-and-forget หลังลบ record สำเร็จ
+    setDeletingId(null);
+    router.refresh();
+  };
 
   const dayDiff = (dateISO: string) =>
     Math.round(
@@ -217,7 +271,7 @@ export function InfluencersClient({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return influencers
+    return items
       .filter((i) => {
         if (stageFilter === "done" && !i.completed) return false;
         if (typeof stageFilter === "number") {
@@ -236,7 +290,7 @@ export function InfluencersClient({
         return ga !== gb ? ga - gb : va - vb;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [influencers, search, stageFilter, statsByInflu, today]);
+  }, [items, search, stageFilter, statsByInflu, today]);
 
   /* ---- modal เพิ่ม influ (stage 1: ชื่อ นามสกุล เบอร์) ---- */
   const [addOpen, setAddOpen] = useState(false);
@@ -278,10 +332,10 @@ export function InfluencersClient({
 
   const countFor = (key: number | "all" | "done") =>
     key === "all"
-      ? influencers.length
+      ? items.length
       : key === "done"
-        ? influencers.filter((i) => i.completed).length
-        : influencers.filter((i) => !i.completed && i.stage === key).length;
+        ? items.filter((i) => i.completed).length
+        : items.filter((i) => !i.completed && i.stage === key).length;
 
   return (
     <>
@@ -373,7 +427,13 @@ export function InfluencersClient({
         )}
       </div>
 
-      {influencers.length === 0 ? (
+      {deleteError && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+          {deleteError}
+        </div>
+      )}
+
+      {items.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}
@@ -503,6 +563,22 @@ export function InfluencersClient({
                         ? "จบงานแล้ว"
                         : `${i.stage}. ${stageInfo?.short ?? ""}`}
                     </Badge>
+                    {/* ลบ influencer — กันไม่ให้ Link พาไปหน้า detail */}
+                    <button
+                      type="button"
+                      title="ลบ Influencer"
+                      aria-label={`ลบ ${influName(i)}`}
+                      disabled={deletingId === i.id}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDeleteError(null);
+                        setDeleteTarget(i);
+                      }}
+                      className="shrink-0 cursor-pointer rounded-lg p-2 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </Card>
               </Link>
@@ -576,6 +652,28 @@ export function InfluencersClient({
           </div>
         </form>
       </Modal>
+
+      {/* ยืนยันลบ influencer */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="ลบ Influencer"
+        message={
+          <>
+            ลบ{" "}
+            <span className="font-medium text-stone-800">
+              {deleteTarget ? influName(deleteTarget) : ""}
+            </span>{" "}
+            ออกจากระบบถาวร? ข้อมูลทุก stage — follow-up, ลายเซน, สัญญา,
+            แคมเปญ และไฟล์ที่อัปโหลด — จะถูกลบทั้งหมด (กู้คืนไม่ได้)
+            ส่วนงานคอนเทนต์ที่เคยผูกไว้จะยังอยู่ แต่ไม่ผูกกับ influencer คนนี้แล้ว
+          </>
+        }
+        confirmLabel="ลบถาวร"
+        onConfirm={() => {
+          if (deleteTarget) void handleDelete(deleteTarget);
+        }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </>
   );
 }
