@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   InfluencerRow,
@@ -21,6 +23,10 @@ export default async function InfluencerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  const access = await getAccess();
+  if (!hasPermission(access, "influ")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   const { data: claimsData } = await supabase.auth.getClaims();

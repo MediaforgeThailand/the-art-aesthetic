@@ -10,6 +10,7 @@ import {
   Copy,
   Image as ImageIcon,
   ImagePlus,
+  LayoutList,
   Link2,
   ListChecks,
   MessageSquarePlus,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { SignaturePad } from "@/components/signature-pad";
 import {
   Badge,
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
+  formatCurrency,
   formatDate,
   formatDateTime,
   formatNumber,
@@ -159,15 +161,24 @@ export function InfluDetailClient({
   contentTasks: TaskWithAssignee[];
   userName: string;
 }) {
-  const [viewStage, setViewStage] = useState(influencer.stage);
-  // เมื่อ stage เลื่อน (หลัง router.refresh) ให้พาไปหน้าของ stage ใหม่เสมอ
-  useEffect(() => setViewStage(influencer.stage), [influencer.stage]);
+  // view = "overview" (หน้าสรุป) หรือเลข stage 1-6 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
+  const [view, setView] = useState<"overview" | number>("overview");
+  // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
+  // แต่ตอน mount ครั้งแรกให้อยู่ที่ภาพรวมเสมอ
+  const prevStageRef = useRef(influencer.stage);
+  useEffect(() => {
+    if (prevStageRef.current !== influencer.stage) {
+      prevStageRef.current = influencer.stage;
+      setView(influencer.stage);
+    }
+  }, [influencer.stage]);
   const fullName = [influencer.first_name, influencer.last_name]
     .filter(Boolean)
     .join(" ");
 
   const maxStage = influencer.completed ? 6 : influencer.stage;
-  const readOnly = viewStage < influencer.stage || influencer.completed;
+  const readOnly =
+    influencer.completed || (typeof view === "number" && view < influencer.stage);
 
   // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ)
   const followupLeft = tasks.filter((t) => !t.done).length;
@@ -222,8 +233,20 @@ export function InfluDetailClient({
         )}
       </div>
 
-      {/* stepper */}
+      {/* stepper — มีปุ่ม "ภาพรวม" นำหน้า */}
       <div className="mb-6 flex flex-wrap gap-2 animate-fade-in-up">
+        <button
+          type="button"
+          onClick={() => setView("overview")}
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] ${
+            view === "overview"
+              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
+              : "border border-stone-200 bg-white/60 text-stone-600 hover:bg-white"
+          }`}
+        >
+          <LayoutList size={15} />
+          ภาพรวม
+        </button>
         {INFLU_STAGES.map((s) => {
           const passed = influencer.completed || influencer.stage > s.step;
           const current = !influencer.completed && influencer.stage === s.step;
@@ -233,11 +256,11 @@ export function InfluDetailClient({
               key={s.step}
               type="button"
               disabled={!clickable}
-              onClick={() => setViewStage(s.step)}
+              onClick={() => setView(s.step)}
               className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
                 clickable ? "cursor-pointer active:scale-[0.97]" : "cursor-not-allowed opacity-50"
               } ${
-                viewStage === s.step
+                view === s.step
                   ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
                   : passed
                     ? "border border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100"
@@ -248,7 +271,7 @@ export function InfluDetailClient({
             >
               <span
                 className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
-                  viewStage === s.step
+                  view === s.step
                     ? "bg-white/25"
                     : passed
                       ? "bg-emerald-500 text-white"
@@ -263,18 +286,26 @@ export function InfluDetailClient({
         })}
       </div>
 
-      <div className="animate-fade-in" key={viewStage}>
-        {viewStage === 1 && (
+      <div className="animate-fade-in" key={String(view)}>
+        {view === "overview" && (
+          <OverviewPanel
+            influencer={influencer}
+            followupTasks={tasks}
+            contentTasks={contentTasks}
+            onGoStage={(step) => setView(step)}
+          />
+        )}
+        {view === 1 && (
           <ContactStage
             influencer={influencer}
             followups={followups}
             readOnly={readOnly}
           />
         )}
-        {viewStage === 2 && (
+        {view === 2 && (
           <CaseDetailStage influencer={influencer} readOnly={readOnly} />
         )}
-        {viewStage === 3 && (
+        {view === 3 && (
           <MemoStage
             influencer={influencer}
             signatures={signatures}
@@ -282,17 +313,17 @@ export function InfluDetailClient({
             readOnly={readOnly}
           />
         )}
-        {viewStage === 4 && (
+        {view === 4 && (
           <ContractStage
             influencer={influencer}
             signatures={signatures}
             readOnly={readOnly}
           />
         )}
-        {viewStage === 5 && (
+        {view === 5 && (
           <ServiceDayStage influencer={influencer} readOnly={readOnly} />
         )}
-        {viewStage === 6 && (
+        {view === 6 && (
           <FollowupStage
             influencer={influencer}
             tasks={tasks}
@@ -303,6 +334,292 @@ export function InfluDetailClient({
 
       {/* งานคอนเทนต์ที่ผูกกับ Influencer คนนี้ (จากหน้า "งาน") */}
       <ContentTasksSection tasks={contentTasks} />
+    </div>
+  );
+}
+
+/* ============ ภาพรวม (overview) — สรุปข้อมูลที่กรอกแล้ว + ความคืบหน้า stage ============ */
+
+/** ช่องแสดงข้อมูล 1 คู่ (หัวข้อ + ค่า) — ค่าว่างแสดงขีด */
+function Field({ label, value }: { label: string; value: ReactNode }) {
+  const empty =
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    (typeof value === "number" && Number.isNaN(value));
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs text-stone-400">{label}</dt>
+      <dd className="text-sm text-stone-800">
+        {empty ? <span className="text-stone-300">—</span> : value}
+      </dd>
+    </div>
+  );
+}
+
+function OverviewPhoto({ path }: { path: string }) {
+  const { url, failed } = useSignedUrl(path);
+  if (failed) return null;
+  if (!url)
+    return <div className="h-20 w-20 shrink-0 animate-pulse rounded-xl bg-stone-100" />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt="รูป influencer"
+      className="h-20 w-20 shrink-0 rounded-xl object-cover shadow-sm"
+    />
+  );
+}
+
+function OverviewPanel({
+  influencer,
+  followupTasks,
+  contentTasks,
+  onGoStage,
+}: {
+  influencer: InfluencerRow;
+  followupTasks: InfluTaskRow[];
+  contentTasks: TaskWithAssignee[];
+  onGoStage: (step: number) => void;
+}) {
+  const fullName =
+    [influencer.first_name, influencer.last_name].filter(Boolean).join(" ") ||
+    null;
+  const tier = influencer.tier ? INFLU_TIERS[influencer.tier] : null;
+  const followupLeft = followupTasks.filter((t) => !t.done).length;
+  const followupTotal = followupTasks.length;
+  const contractEnd =
+    influencer.contract_start && influencer.contract_months
+      ? contractEndDate(influencer.contract_start, influencer.contract_months)
+      : null;
+  const maxStage = influencer.completed ? 6 : influencer.stage;
+
+  return (
+    <div className="space-y-5">
+      {/* ความคืบหน้า stage */}
+      <Card className="p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <ListChecks size={16} className="text-brand-600" />
+          <h2 className="text-sm font-semibold text-stone-900">
+            ความคืบหน้าตามขั้นตอน
+          </h2>
+          <span className="text-xs text-stone-400">
+            {influencer.completed
+              ? "จบงานแล้ว"
+              : `กำลังอยู่ขั้นที่ ${influencer.stage} จาก 6`}
+          </span>
+        </div>
+        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {INFLU_STAGES.map((s) => {
+            const passed = influencer.completed || influencer.stage > s.step;
+            const current = !influencer.completed && influencer.stage === s.step;
+            const clickable = s.step <= maxStage;
+            return (
+              <li key={s.step}>
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => onGoStage(s.step)}
+                  className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    clickable
+                      ? "cursor-pointer hover:bg-white"
+                      : "cursor-not-allowed opacity-60"
+                  } ${
+                    current
+                      ? "border-brand-300 bg-brand-50/60"
+                      : passed
+                        ? "border-emerald-200 bg-emerald-50/50"
+                        : "border-stone-200 bg-white/50"
+                  }`}
+                >
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                      passed
+                        ? "bg-emerald-500 text-white"
+                        : current
+                          ? "bg-brand-500 text-cream"
+                          : "bg-stone-200 text-stone-500"
+                    }`}
+                  >
+                    {passed ? <Check size={13} strokeWidth={3} /> : s.step}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-stone-800">
+                      {s.title}
+                    </span>
+                    <span
+                      className={`text-xs ${
+                        passed
+                          ? "text-emerald-600"
+                          : current
+                            ? "text-brand-600"
+                            : "text-stone-400"
+                      }`}
+                    >
+                      {passed ? "ผ่านแล้ว" : current ? "กำลังทำ" : "ยังไม่ถึง"}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </Card>
+
+      {/* ข้อมูลที่กรอกแล้ว */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card className="p-5">
+          <h3 className="mb-3 text-sm font-semibold text-stone-900">
+            ข้อมูล Influencer
+          </h3>
+          <div className="flex gap-4">
+            {influencer.photo_path && (
+              <OverviewPhoto path={influencer.photo_path} />
+            )}
+            <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3">
+              <Field label="ชื่อเล่น" value={influencer.nickname} />
+              <Field label="ชื่อ-นามสกุล" value={fullName} />
+              <Field label="เบอร์โทร" value={influencer.phone} />
+              <Field label="อาชีพ" value={influencer.occupation} />
+              <Field
+                label="ผู้ติดตาม"
+                value={
+                  influencer.followers != null
+                    ? formatNumber(influencer.followers)
+                    : null
+                }
+              />
+              <Field
+                label="ระดับ (Tier)"
+                value={
+                  tier ? (
+                    <Badge className={tier.badge}>{tier.label}</Badge>
+                  ) : null
+                }
+              />
+              <Field label="ช่องทาง/หมายเหตุผู้ติดตาม" value={influencer.follower_note} />
+              <Field label="ผู้ดูแล (ผู้จัดทำ)" value={influencer.maker_name} />
+            </dl>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <h3 className="mb-3 text-sm font-semibold text-stone-900">
+            รายละเอียดเคส
+          </h3>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="หัตถการที่รับ" value={influencer.procedure_text} />
+            <Field
+              label="มูลค่าเคส"
+              value={
+                influencer.case_value != null
+                  ? formatCurrency(influencer.case_value)
+                  : null
+              }
+            />
+            <Field
+              label="วันเข้ารับบริการ"
+              value={
+                influencer.service_date
+                  ? formatDate(influencer.service_date)
+                  : null
+              }
+            />
+            <Field label="แพทย์ผู้ดูแล" value={influencer.doctor_name} />
+          </dl>
+          {influencer.procedure_history.length > 0 && (
+            <p className="mt-3 text-xs text-stone-400">
+              มีการแก้ไขหัตถการหน้างาน {influencer.procedure_history.length} ครั้ง
+              (ดูใน &quot;วันเข้ารับบริการ&quot;)
+            </p>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <h3 className="mb-3 text-sm font-semibold text-stone-900">
+            เอกสาร & สัญญา
+          </h3>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field
+              label="Memo ขออนุมัติ"
+              value={
+                influencer.memo_file_path ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-700">
+                    <Check size={13} /> อัปโหลดแล้ว
+                  </span>
+                ) : (
+                  "ยังไม่มี"
+                )
+              }
+            />
+            <Field
+              label="สัญญาที่เซนแล้ว"
+              value={
+                influencer.contract_file_path ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-700">
+                    <Check size={13} /> อัปโหลดแล้ว
+                  </span>
+                ) : (
+                  "ยังไม่มี"
+                )
+              }
+            />
+            <Field
+              label="เริ่มสัญญา"
+              value={
+                influencer.contract_start
+                  ? formatDate(influencer.contract_start)
+                  : null
+              }
+            />
+            <Field
+              label="ครบกำหนดสัญญา"
+              value={
+                contractEnd
+                  ? `${formatDate(contractEnd)} (${influencer.contract_months} เดือน)`
+                  : null
+              }
+            />
+          </dl>
+        </Card>
+
+        <Card className="p-5">
+          <h3 className="mb-3 text-sm font-semibold text-stone-900">
+            การติดตามงาน
+          </h3>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field
+              label="สถานะรวม"
+              value={
+                influencer.completed
+                  ? "จบงานแล้ว"
+                  : `กำลังทำขั้นที่ ${influencer.stage}`
+              }
+            />
+            <Field
+              label="Follow-up (ขั้นที่ 6)"
+              value={
+                followupTotal > 0
+                  ? `เหลือ ${followupLeft} / ${followupTotal} ข้อ`
+                  : "ยังไม่เริ่ม"
+              }
+            />
+            <Field
+              label="งานคอนเทนต์ที่ผูก"
+              value={`${contentTasks.length} งาน`}
+            />
+            <Field
+              label="อัปเดตล่าสุด"
+              value={
+                influencer.updated_at
+                  ? formatDateTime(influencer.updated_at)
+                  : null
+              }
+            />
+          </dl>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -19,6 +19,16 @@ export const PERMISSION_META: {
     label: "งานทีม",
     detail: "เข้าหน้างาน ภาระงานทีม และคลังลิงก์ไฟล์",
   },
+  {
+    key: "influ",
+    label: "Influencer",
+    detail: "เข้า Influ Management และหน้าโปรไฟล์ Influencer",
+  },
+  {
+    key: "pricing",
+    label: "Product Pricing",
+    detail: "เข้าหน้าจัดการราคา (Price List) — หน้าราคาสาธารณะยังเปิดให้ทุกคน",
+  },
 ];
 
 export const ALL_PERMISSIONS: AppPermission[] = PERMISSION_META.map(

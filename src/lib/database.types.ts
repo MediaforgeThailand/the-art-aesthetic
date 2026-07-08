@@ -24,7 +24,7 @@ export type ProfileRow = {
 };
 
 /** สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ */
-export type AppPermission = "data" | "team";
+export type AppPermission = "data" | "team" | "influ" | "pricing";
 
 /** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
 export type TaskReviewerRow = {

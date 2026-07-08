@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { InfluCampaignRow, InfluencerRow } from "@/lib/types";
 import { ContractsClient } from "./contracts-client";
@@ -9,6 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function InfluContractsPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "influ")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   const [{ data: influencers }, { data: campaigns }] = await Promise.all([

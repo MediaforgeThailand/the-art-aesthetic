@@ -30,9 +30,9 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data" },
   { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
-  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: null },
-  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: null },
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: null },
+  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
+  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: "influ" },
   { href: "/tasks", label: "งาน", icon: ClipboardList, perm: "team" },
   { href: "/workload", label: "ภาระงานทีม", icon: Users, perm: "team" },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },

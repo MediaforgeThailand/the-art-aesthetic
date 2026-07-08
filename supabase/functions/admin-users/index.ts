@@ -3,8 +3,8 @@
 // ไฟล์นี้เป็น mirror ของ edge function ที่ deploy บน Supabase แล้ว (deploy ผ่าน MCP/CLI)
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ (pricing/influencer เปิดทุกคน, admin role = เห็นทุกอย่าง)
-const VALID_PERMISSIONS = new Set(["data", "team"]);
+// สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ (admin role = เห็นทุกอย่าง)
+const VALID_PERMISSIONS = new Set(["data", "team", "influ", "pricing"]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

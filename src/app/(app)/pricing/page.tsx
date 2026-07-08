@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { PriceItemRow, PricePromotionRow } from "@/lib/types";
 import { PriceItemsAdmin } from "./price-items-admin";
@@ -10,6 +12,9 @@ export const metadata: Metadata = {
 };
 
 export default async function PricingPage() {
+  const access = await getAccess();
+  if (!hasPermission(access, "pricing")) return <AccessNotice />;
+
   const supabase = await createClient();
 
   // รายการ price list (สำหรับหน้าสาธารณะ) — ดึงแบบแบ่งหน้า
