@@ -277,7 +277,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex max-h-full w-[280px] shrink-0 flex-col rounded-xl transition-colors duration-200 ${
+      className={`flex w-[240px] shrink-0 flex-col rounded-xl transition-colors duration-200 ${
         highlight
           ? "border border-brand-300/60 bg-brand-100/50 ring-2 ring-brand-300 backdrop-blur-md"
           : "glass-soft"
@@ -300,7 +300,7 @@ function BoardColumn({
           setBodyDropRef(el);
           bodyRef.current = el;
         }}
-        className="flex min-h-[60px] flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-2"
+        className="flex min-h-[60px] flex-col gap-2 px-2.5 pb-2"
       >
         {composer === "top" && (
           <TaskComposer
@@ -376,7 +376,7 @@ function AddSectionColumn({ onAdd }: { onAdd: (name: string) => void }) {
   };
 
   return (
-    <div className="w-64 shrink-0">
+    <div className="w-[240px] shrink-0">
       {open ? (
         <div className="glass-soft rounded-xl p-2.5">
           <div className="flex items-center gap-1.5">
@@ -669,7 +669,8 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex h-full items-start gap-3 px-4 pb-3 pt-1 sm:px-6 animate-fade-in">
+      {/* min-h-full = อย่างน้อยเต็มจอ แต่ยืดสูงตามคอลัมน์ที่ยาวสุด → เลื่อนทั้งหน้าจอ (ไม่เลื่อนในคอลัมน์) */}
+      <div className="flex min-h-full items-start gap-3 px-4 pb-3 pt-1 sm:px-6 animate-fade-in">
         <SortableContext
           items={sections.map((s) => `sec:${s.id}`)}
           strategy={horizontalListSortingStrategy}

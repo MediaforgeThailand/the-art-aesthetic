@@ -1038,10 +1038,10 @@ export function TasksClient({
         )}
       </div>
 
-      {/* เนื้อหา — บอร์ดเลื่อนแนวนอน (แบบ Trello), แท็บรอตรวจ scroll แนวตั้ง */}
+      {/* เนื้อหา — บอร์ดเลื่อนได้ทั้งแนวนอน+แนวตั้งทั้งจอ (คอลัมน์ไม่ scroll ในตัวเอง), แท็บรอตรวจ scroll แนวตั้ง */}
       <div
         className={`min-h-0 flex-1 ${
-          tab === "work" ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto"
+          tab === "work" ? "overflow-auto" : "overflow-y-auto"
         }`}
       >
         {tab === "work" ? (

@@ -376,10 +376,9 @@ function CardMediaThumb({
         title={file.file_name ?? undefined}
         loading="lazy"
         onError={() => setBroken(true)}
-        // กว้างเต็มการ์ดคงที่ สูงตามสัดส่วนจริง — รูปแนวตั้งแสดงเต็มไม่โดน crop
-        // (480px ครอบคลุมถึงสัดส่วน ~1:2 ที่ความกว้างคอลัมน์บอร์ด) รูปยาวกว่านั้น
-        // เช่น screenshot แชทยาวๆ ถูก crop กลางด้วย object-cover เฉพาะตอนชนเพดาน
-        className="h-auto max-h-[480px] w-full rounded-md object-cover"
+        // กว้างเต็มการ์ดคงที่ สูงตามสัดส่วนจริง — รูปแนวตั้งยังดูเป็นแนวตั้ง แต่ไม่สูงจนการ์ดเต็มจอ
+        // เพดาน 256px: รูปที่ยาวกว่านี้ถูก crop กลางด้วย object-cover (การ์ดกะทัดรัด เลื่อนดูง่าย)
+        className="h-auto max-h-64 w-full rounded-md object-cover"
       />
     );
   }
