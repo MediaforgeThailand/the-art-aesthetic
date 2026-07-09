@@ -172,9 +172,6 @@ export function TaskPanel({
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
-  const [dueDraft, setDueDraft] = useState(
-    task.due_date ? task.due_date.slice(0, 10) : ""
-  );
   const [panelError, setPanelError] = useState<string | null>(null);
   const showError = useCallback((msg: string) => {
     setPanelError(msg);
@@ -275,12 +272,6 @@ export function TaskPanel({
     const value = description.trim() === "" ? null : description.trim();
     if (value === task.description) return;
     onPatch(task.id, { db: { description: value } });
-  };
-
-  const saveDueDate = (value: string) => {
-    const current = task.due_date ? task.due_date.slice(0, 10) : "";
-    if (value === current) return;
-    onPatch(task.id, { db: { due_date: value === "" ? null : value } });
   };
 
   /* ---------- influencer ที่ผูกกับงาน (เลือกได้ ค้นหาได้ ไม่บังคับ) ---------- */
@@ -819,7 +810,7 @@ export function TaskPanel({
         )}
 
         {/* fields — ไร้กล่องแบบ Asana (กะทัดรัด ~30% ให้เนื้อหาเหลือพื้นที่มากสุด) */}
-        <div className="space-y-0.5 border-b border-stone-100 pb-2">
+        <div className="space-y-0.5 pb-1">
           <FieldRow
             label={isBrief ? "ส่งมอบให้" : "ผู้รับผิดชอบ"}
             htmlFor="task-assignee"
@@ -981,20 +972,6 @@ export function TaskPanel({
                 </div>
               )}
             </div>
-          </FieldRow>
-
-          <FieldRow label="กำหนดส่ง" htmlFor="task-due">
-            <input
-              id="task-due"
-              type="date"
-              value={dueDraft}
-              onChange={(e) => {
-                setDueDraft(e.target.value);
-                if (e.target.value.length === 10) saveDueDate(e.target.value);
-              }}
-              onBlur={(e) => saveDueDate(e.target.value)}
-              className={`${bareControl} cursor-pointer`}
-            />
           </FieldRow>
 
           <FieldRow label="หมวดหมู่" htmlFor="task-category">
@@ -1183,16 +1160,22 @@ export function TaskPanel({
           </div>
         </div>
 
-        {/* comments */}
-        <div className="border-t border-stone-200/60 pt-3">
-          <p className="mb-2 px-2 text-sm text-stone-500">ความคิดเห็น</p>
-          <div className="space-y-3">
+        {/* แชทงานนี้ — ฟองแชท ไม่มีเส้นแบ่ง */}
+        <div className="pt-1">
+          <p className="mb-2.5 px-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+            พูดคุย
+          </p>
+          <div className="space-y-2.5">
             {(comments ?? []).map((c) => (
-              <CommentItem key={c.id} comment={c} />
+              <CommentItem
+                key={c.id}
+                comment={c}
+                mine={c.author_id !== null && c.author_id === userId}
+              />
             ))}
             {comments !== null && comments.length === 0 && (
-              <p className="px-2 text-xs text-stone-400">
-                ยังไม่มีความคิดเห็น — เริ่มคุยเรื่องงานนี้ได้เลย
+              <p className="py-2 text-center text-xs text-stone-400">
+                ยังไม่มีข้อความ — เริ่มคุยเรื่องงานนี้ได้เลย
               </p>
             )}
             <div ref={commentsEndRef} />
@@ -1210,8 +1193,8 @@ export function TaskPanel({
         </div>
       )}
 
-      {/* comment composer — ติดล่างเสมอ */}
-      <div className="border-t border-stone-200/60 bg-white/60 px-4 py-3">
+      {/* ช่องพิมพ์แชท — ติดล่างเสมอ */}
+      <div className="border-t border-stone-100 bg-white/70 px-4 py-3">
         {showLinkInput && (
           <div className="mb-2 flex items-center gap-1.5 pl-9">
             <Link2 size={14} className="shrink-0 text-stone-400" />
@@ -1244,8 +1227,8 @@ export function TaskPanel({
           <textarea
             value={commentDraft}
             rows={commentDraft.includes("\n") ? 3 : 1}
-            placeholder="แสดงความคิดเห็น... (Enter เพื่อส่ง)"
-            aria-label="เขียนความคิดเห็น"
+            placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง)"
+            aria-label="พิมพ์ข้อความ"
             onChange={(e) => setCommentDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -1253,7 +1236,7 @@ export function TaskPanel({
                 void sendComment();
               }
             }}
-            className="min-h-9 min-w-0 flex-1 resize-none rounded-lg border border-stone-200/80 bg-white/80 px-3 py-1.5 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="min-h-9 min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-stone-100 px-3.5 py-2 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
           <button
             type="button"
@@ -1343,76 +1326,108 @@ export function TaskPanel({
   );
 }
 
-/* ---------- คอมเมนต์หนึ่งรายการ — ป้ายแก้ไขครั้งที่ N + ไฟล์/ลิงก์แนบ ---------- */
+/* ---------- ข้อความแชทหนึ่งฟอง — ของฉันชิดขวา (โทน brand), ของคนอื่นชิดซ้าย (เทา) ---------- */
 
-function CommentItem({ comment: c }: { comment: TaskCommentWithAuthor }) {
+function CommentItem({
+  comment: c,
+  mine,
+}: {
+  comment: TaskCommentWithAuthor;
+  mine: boolean;
+}) {
   const { url: fileUrl, failed: fileFailed } = useSignedUrl(c.file_path);
   return (
-    <div className="flex items-start gap-2.5 px-2">
-      <AssigneeAvatar assignee={c.author} size={7} />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-stone-500">
-          <span className="font-medium text-stone-700">
+    <div className={`flex items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
+      {!mine && <AssigneeAvatar assignee={c.author} size={7} />}
+      <div
+        className={`flex min-w-0 max-w-[82%] flex-col ${
+          mine ? "items-end" : "items-start"
+        }`}
+      >
+        {!mine && (
+          <span className="mb-0.5 px-1 text-[11px] font-medium text-stone-500">
             {profileName(c.author)}
-          </span>{" "}
-          · {formatDateTime(c.created_at)}
+          </span>
+        )}
+        <div
+          className={`min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 ${
+            mine
+              ? "rounded-br-md bg-gradient-to-b from-brand-500 to-brand-600 text-cream"
+              : "rounded-bl-md bg-stone-100 text-stone-800"
+          }`}
+        >
           {c.is_revision && (
-            <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-              แก้ไขครั้งที่ {c.revision_number ?? "-"}
+            <span
+              className={`mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                mine ? "bg-white/25 text-cream" : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              ส่งงานแก้ไข ครั้งที่ {c.revision_number ?? "-"}
             </span>
           )}
-        </p>
-        {c.body !== "" && (
-          <p className="mt-0.5 whitespace-pre-wrap text-sm leading-6 text-stone-800">
-            {c.body}
-          </p>
-        )}
-        {c.link_url && (
-          <a
-            href={c.link_url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1 inline-flex max-w-full items-center gap-1 text-xs text-sky-600 hover:underline"
-          >
-            <Link2 size={12} className="shrink-0" />
-            <span className="min-w-0 truncate">{c.link_url}</span>
-          </a>
-        )}
-        {c.file_path &&
-          (fileUrl ? (
-            isImagePath(c.file_path) ? (
-              <a
-                href={fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="เปิดรูปเต็ม"
-                className="mt-1.5 block"
+          {c.body !== "" && (
+            <p className="whitespace-pre-wrap break-words">{c.body}</p>
+          )}
+          {c.link_url && (
+            <a
+              href={c.link_url}
+              target="_blank"
+              rel="noreferrer"
+              className={`mt-1 inline-flex max-w-full items-center gap-1 text-xs hover:underline ${
+                mine ? "text-cream/90" : "text-sky-600"
+              }`}
+            >
+              <Link2 size={12} className="shrink-0" />
+              <span className="min-w-0 truncate">{c.link_url}</span>
+            </a>
+          )}
+          {c.file_path &&
+            (fileUrl ? (
+              isImagePath(c.file_path) ? (
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="เปิดรูปเต็ม"
+                  className="mt-1.5 block"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={fileUrl}
+                    alt="ไฟล์แนบ"
+                    className="max-h-44 rounded-lg object-contain"
+                  />
+                </a>
+              ) : (
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`mt-1 inline-flex items-center gap-1 text-xs hover:underline ${
+                    mine ? "text-cream/90" : "text-brand-700"
+                  }`}
+                >
+                  <Paperclip size={12} />
+                  เปิดไฟล์แนบ
+                </a>
+              )
+            ) : fileFailed ? (
+              <p
+                className={`mt-1 text-xs ${mine ? "text-cream/70" : "text-stone-400"}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={fileUrl}
-                  alt="ไฟล์แนบ"
-                  className="max-h-40 rounded-lg border border-stone-200 object-contain"
-                />
-              </a>
+                เปิดไฟล์แนบไม่ได้
+              </p>
             ) : (
-              <a
-                href={fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
+              <p
+                className={`mt-1 text-xs ${mine ? "text-cream/70" : "text-stone-400"}`}
               >
-                <Paperclip size={12} />
-                เปิดไฟล์แนบ
-              </a>
-            )
-          ) : fileFailed ? (
-            <p className="mt-1 text-xs text-stone-300">
-              เปิดไฟล์แนบไม่ได้ — ไฟล์อาจถูกลบไปแล้ว
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-stone-300">กำลังโหลดไฟล์แนบ...</p>
-          ))}
+                กำลังโหลด...
+              </p>
+            ))}
+        </div>
+        <span className="mt-0.5 px-1 text-[10px] text-stone-400">
+          {formatDateTime(c.created_at)}
+        </span>
       </div>
     </div>
   );
