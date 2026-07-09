@@ -803,29 +803,6 @@ export function TasksClient({
       });
   };
 
-  const addSection = async (name: string) => {
-    const position =
-      sections.length > 0
-        ? Math.max(...sections.map((s) => s.position)) + 1
-        : 1;
-    const tempId = `temp-${Date.now()}`;
-    setSections((cur) => [
-      ...cur,
-      { id: tempId, name, position, created_at: new Date().toISOString() },
-    ]);
-    const { data, error: e } = await supabase
-      .from("task_sections")
-      .insert({ name, position })
-      .select()
-      .single();
-    if (e || !data) {
-      setSections((cur) => cur.filter((s) => s.id !== tempId));
-      showError(`สร้างเซคชันไม่สำเร็จ: ${e?.message ?? "ไม่ทราบสาเหตุ"}`);
-      return;
-    }
-    setSections((cur) => cur.map((s) => (s.id === tempId ? data : s)));
-  };
-
   const requestDeleteSection = (sectionId: string) => {
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
@@ -1210,7 +1187,6 @@ export function TasksClient({
               void quickAdd(sectionId, title, placement)
             }
             onRenameSection={renameSection}
-            onAddSection={(name) => void addSection(name)}
             onDeleteSection={requestDeleteSection}
           />
         ) : tab === "review" ? (

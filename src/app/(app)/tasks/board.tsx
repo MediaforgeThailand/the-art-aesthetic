@@ -20,13 +20,13 @@ import {
 import {
   arrayMove,
   horizontalListSortingStrategy,
+  rectSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ListPlus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ListPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineInput } from "@/components/ui";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
@@ -277,7 +277,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex w-[240px] shrink-0 flex-col rounded-xl transition-colors duration-200 ${
+      className={`flex min-w-[520px] flex-1 flex-col rounded-xl transition-colors duration-200 ${
         highlight
           ? "border border-brand-300/60 bg-brand-100/50 ring-2 ring-brand-300 backdrop-blur-md"
           : "glass-soft"
@@ -314,120 +314,49 @@ function BoardColumn({
           setBodyDropRef(el);
           bodyRef.current = el;
         }}
-        className="flex min-h-[60px] flex-col gap-2 px-2.5 pb-2"
+        className="min-h-[60px] px-2.5 pb-2"
       >
         {composer === "top" && (
-          <TaskComposer
-            onSubmit={(title) => onQuickAdd(title, "top")}
-            onClose={() => setComposer(null)}
-          />
+          <div className="mb-2">
+            <TaskComposer
+              onSubmit={(title) => onQuickAdd(title, "top")}
+              onClose={() => setComposer(null)}
+            />
+          </div>
         )}
 
         <SortableContext
           items={tasks.map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
+          strategy={rectSortingStrategy}
         >
-          {tasks.length === 0 && composer === null && (
-            <div
-              className={`flex items-center justify-center rounded-lg border-2 border-dashed py-6 text-xs transition-colors duration-200 ${
-                highlight
-                  ? "border-brand-300 text-brand-500"
-                  : "border-stone-200 text-stone-300"
-              }`}
-            >
-              วางการ์ดที่นี่
-            </div>
-          )}
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              sectionId={section.id}
-              today={today}
-              selected={selectedId === task.id}
-              onClick={() => onCardClick(task)}
-              profiles={profiles}
-              onAssign={(profileId) => onAssign(task, profileId)}
-            />
-          ))}
+          {/* การ์ดเรียง 2 คอลัมน์ต่อเซคชัน (row ไม่จำกัด) */}
+          <div className="grid grid-cols-2 gap-2">
+            {tasks.length === 0 && composer === null && (
+              <div
+                className={`col-span-2 flex items-center justify-center rounded-lg border-2 border-dashed py-6 text-xs transition-colors duration-200 ${
+                  highlight
+                    ? "border-brand-300 text-brand-500"
+                    : "border-stone-200 text-stone-300"
+                }`}
+              >
+                วางการ์ดที่นี่
+              </div>
+            )}
+            {tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                sectionId={section.id}
+                today={today}
+                selected={selectedId === task.id}
+                onClick={() => onCardClick(task)}
+                profiles={profiles}
+                onAssign={(profileId) => onAssign(task, profileId)}
+              />
+            ))}
+          </div>
         </SortableContext>
       </div>
-    </div>
-  );
-}
-
-/* ---------- เพิ่มเซคชันใหม่ ---------- */
-
-function AddSectionColumn({ onAdd }: { onAdd: (name: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-
-  const commit = () => {
-    const trimmed = name.trim();
-    setOpen(false);
-    setName("");
-    if (trimmed !== "") onAdd(trimmed);
-  };
-
-  return (
-    <div className="w-[240px] shrink-0">
-      {open ? (
-        <div className="glass-soft rounded-xl p-2.5">
-          <div className="flex items-center gap-1.5">
-            <InlineInput
-              autoFocus
-              value={name}
-              placeholder="ชื่อเซคชัน เช่น งานด่วน"
-              aria-label="ชื่อเซคชันใหม่"
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") commit();
-                if (e.key === "Escape") {
-                  setName("");
-                  setOpen(false);
-                }
-              }}
-              onBlur={commit}
-              className="px-2 py-1.5 text-sm font-semibold"
-            />
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                commit();
-              }}
-              className="cursor-pointer rounded-md p-1.5 text-emerald-600 hover:bg-white active:scale-90"
-              title="สร้าง"
-              aria-label="สร้างเซคชัน"
-            >
-              <Check size={15} />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setName("");
-                setOpen(false);
-              }}
-              className="cursor-pointer rounded-md p-1.5 text-stone-400 hover:bg-white active:scale-90"
-              title="ยกเลิก"
-              aria-label="ยกเลิก"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-brand-200/70 px-3 py-4 text-sm text-stone-400 transition-all duration-200 hover:border-brand-300 hover:bg-white/40 hover:text-brand-700 active:scale-[0.98]"
-        >
-          <Plus size={15} />
-          เพิ่มเซคชัน
-        </button>
-      )}
     </div>
   );
 }
@@ -447,7 +376,6 @@ export function KanbanBoard({
   onCardClick,
   onQuickAdd,
   onRenameSection,
-  onAddSection,
   onDeleteSection,
 }: {
   sections: TaskSectionRow[];
@@ -471,7 +399,6 @@ export function KanbanBoard({
     placement: QuickAddPlacement
   ) => void;
   onRenameSection: (sectionId: string, name: string) => void;
-  onAddSection: (name: string) => void;
   onDeleteSection: (sectionId: string) => void;
 }) {
   const [activeTask, setActiveTask] = useState<TaskWithAssignee | null>(null);
@@ -645,10 +572,9 @@ export function KanbanBoard({
           <EmptyState
             icon={<ListPlus size={40} />}
             title="ยังไม่มีเซคชัน"
-            description="สร้างเซคชันแรก เช่น To do / Doing / Done เพื่อเริ่มจัดการงาน"
+            description="เซคชันถูกกำหนดจากระบบ — ติดต่อผู้ดูแลหากยังไม่มีเซคชัน"
           />
         </div>
-        <AddSectionColumn onAdd={onAddSection} />
       </div>
     );
   }
@@ -696,7 +622,6 @@ export function KanbanBoard({
             );
           })}
         </SortableContext>
-        <AddSectionColumn onAdd={onAddSection} />
       </div>
 
       <DragOverlay>

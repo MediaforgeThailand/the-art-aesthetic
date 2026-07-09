@@ -487,8 +487,8 @@ export function TaskCardContent({
           ไม่งั้น dnd-kit วัดความสูงจากการ์ดจริงแล้วการ์ดที่ลากลอยหลุดจากเมาส์ */}
       <CardMediaPreview files={files} />
 
-      {/* แถวเดียว ชิดซ้าย: ผู้รับผิดชอบ · สถานะ · วันที่ · หมวดหมู่ · influ (ไฟล์แนบดันขวา) */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6">
+      {/* แถวเดียว ชิดซ้ายสุด: ผู้รับผิดชอบ · สถานะ · วันที่ · หมวดหมู่ · influ (ไฟล์แนบดันขวา) */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {profiles && onAssign ? (
           <AssigneePicker
             assignee={task.assignee}
