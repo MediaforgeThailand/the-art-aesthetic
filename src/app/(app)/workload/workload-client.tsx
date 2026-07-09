@@ -8,8 +8,10 @@ import {
   ExternalLink,
   ListTodo,
   PieChart as PieChartIcon,
+  SlidersHorizontal,
   Tags,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,7 +29,7 @@ import {
   YAxis,
 } from "recharts";
 import { DemoBadge, DemoBanner } from "@/components/demo-badge";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Card, EmptyState, PageHeader, Select } from "@/components/ui";
 import { TASK_PRIORITY, taskCategoryChipClass } from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import type {
@@ -155,15 +157,72 @@ export function WorkloadClient({
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
+  /* ---- ตัวกรอง — เลือกดู performance เฉพาะกลุ่ม (คน / section / หมวดหมู่ / สถานะ) ---- */
+  const [personFilter, setPersonFilter] = useState<string>("all"); // all | none | <profileId>
+  const [sectionFilter, setSectionFilter] = useState<string>("all"); // all | none | <sectionId>
+  const [categoryFilter, setCategoryFilter] = useState<string>("all"); // all | <category>
+  const [statusFilter, setStatusFilter] = useState<string>("all"); // all | pending | done | overdue
+
+  // ตัวเลือกหมวดหมู่ + มีงานไร้ section ไหม — คิดจากงานทั้งหมดเพื่อให้ตัวเลือกคงที่
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) set.add(t.category?.trim() || "ทั่วไป");
+    return [...set].sort((a, b) => a.localeCompare(b, "th"));
+  }, [tasks]);
+  const hasOrphanSection = useMemo(
+    () =>
+      tasks.some(
+        (t) => !t.section_id || !sections.some((s) => s.id === t.section_id)
+      ),
+    [tasks, sections]
+  );
+
+  const hasFilter =
+    personFilter !== "all" ||
+    sectionFilter !== "all" ||
+    categoryFilter !== "all" ||
+    statusFilter !== "all";
+
+  const clearFilters = () => {
+    setPersonFilter("all");
+    setSectionFilter("all");
+    setCategoryFilter("all");
+    setStatusFilter("all");
+  };
+
+  // ชุดงานหลังกรอง — เป็นฐานของ KPI/กราฟ/ตารางทั้งหมด
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (personFilter === "none") {
+        if (t.assignee_id !== null) return false;
+      } else if (personFilter !== "all" && t.assignee_id !== personFilter) {
+        return false;
+      }
+      if (sectionFilter !== "all") {
+        const known =
+          t.section_id && sections.some((s) => s.id === t.section_id);
+        const bucket = known ? t.section_id : "none";
+        if (bucket !== sectionFilter) return false;
+      }
+      if (categoryFilter !== "all") {
+        if ((t.category?.trim() || "ทั่วไป") !== categoryFilter) return false;
+      }
+      if (statusFilter === "pending" && t.completed) return false;
+      if (statusFilter === "done" && !t.completed) return false;
+      if (statusFilter === "overdue" && !isOverdue(t, today)) return false;
+      return true;
+    });
+  }, [tasks, personFilter, sectionFilter, categoryFilter, statusFilter, sections, today]);
+
   /* ---- ภาพรวม ---- */
   const summary = useMemo(
     () => ({
-      total: tasks.length,
-      pending: tasks.filter((t) => !t.completed).length,
-      done: tasks.filter((t) => t.completed).length,
-      overdue: tasks.filter((t) => isOverdue(t, today)).length,
+      total: filteredTasks.length,
+      pending: filteredTasks.filter((t) => !t.completed).length,
+      done: filteredTasks.filter((t) => t.completed).length,
+      overdue: filteredTasks.filter((t) => isOverdue(t, today)).length,
     }),
-    [tasks, today]
+    [filteredTasks, today]
   );
 
   /* ---- donut: งานตาม section ---- */
@@ -171,10 +230,10 @@ export function WorkloadClient({
     const rows = sections.map((s, i) => ({
       key: s.id,
       name: s.name,
-      value: tasks.filter((t) => t.section_id === s.id).length,
+      value: filteredTasks.filter((t) => t.section_id === s.id).length,
       color: SECTION_PALETTE[i % SECTION_PALETTE.length],
     }));
-    const orphan = tasks.filter(
+    const orphan = filteredTasks.filter(
       (t) => !t.section_id || !sections.some((s) => s.id === t.section_id)
     ).length;
     if (orphan > 0) {
@@ -186,13 +245,13 @@ export function WorkloadClient({
       });
     }
     return rows.filter((r) => r.value > 0);
-  }, [tasks, sections]);
+  }, [filteredTasks, sections]);
   const sectionTotal = sectionData.reduce((sum, d) => sum + d.value, 0);
 
   /* ---- งานตามหมวดหมู่ (stack เสร็จ/ค้าง) ---- */
   const categoryData = useMemo(() => {
     const map = new Map<string, { name: string; pending: number; done: number }>();
-    for (const t of tasks) {
+    for (const t of filteredTasks) {
       const key = t.category?.trim() || "ทั่วไป";
       const row = map.get(key) ?? { name: key, pending: 0, done: 0 };
       if (t.completed) row.done += 1;
@@ -202,7 +261,7 @@ export function WorkloadClient({
     return [...map.values()].sort(
       (a, b) => b.pending + b.done - (a.pending + a.done)
     );
-  }, [tasks]);
+  }, [filteredTasks]);
 
   /* ---- Stats รายบุคคล ---- */
   const personStats = useMemo<PersonStat[]>(() => {
@@ -228,7 +287,7 @@ export function WorkloadClient({
     };
     const byId = new Map(rows.map((r) => [r.key, r]));
 
-    for (const t of tasks) {
+    for (const t of filteredTasks) {
       const row = (t.assignee_id && byId.get(t.assignee_id)) || unassigned;
       row.total += 1;
       if (t.completed) row.done += 1;
@@ -237,9 +296,11 @@ export function WorkloadClient({
     }
 
     // นับ "ส่งงานแก้ไข" เดือนนี้ต่อคน — ผูกกับผู้รับผิดชอบของ task ที่ถูกแก้
-    const taskAssignee = new Map(tasks.map((t) => [t.id, t.assignee_id]));
+    // เฉพาะงานที่อยู่ในชุดหลังกรอง (งานที่ถูกกรองออกไม่นับ)
+    const assigneeById = new Map(filteredTasks.map((t) => [t.id, t.assignee_id]));
     for (const r of monthRevisions) {
-      const assigneeId = taskAssignee.get(r.task_id) ?? null;
+      if (!assigneeById.has(r.task_id)) continue;
+      const assigneeId = assigneeById.get(r.task_id) ?? null;
       const row = (assigneeId && byId.get(assigneeId)) || unassigned;
       row.revisions += 1;
     }
@@ -251,15 +312,24 @@ export function WorkloadClient({
     return result.sort(
       (a, b) => b.total - a.total || a.name.localeCompare(b.name, "th")
     );
-  }, [tasks, profiles, today, monthRevisions]);
+  }, [filteredTasks, profiles, today, monthRevisions]);
+
+  // แถวที่แสดงในตาราง — เมื่อเจาะจงคน ให้เหลือเฉพาะคนนั้น เพื่อโฟกัส performance รายคน
+  const visibleStats = useMemo(
+    () =>
+      personFilter === "all"
+        ? personStats
+        : personStats.filter((p) => p.key === personFilter),
+    [personStats, personFilter]
+  );
 
   /* ---- งานค้างของคนที่เลือก ---- */
-  const selected = personStats.find((p) => p.key === selectedKey) ?? null;
+  const selected = visibleStats.find((p) => p.key === selectedKey) ?? null;
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? "-";
   const selectedTasks = useMemo(() => {
     if (!selectedKey) return [];
-    return tasks
+    return filteredTasks
       .filter(
         (t) =>
           !t.completed &&
@@ -275,13 +345,13 @@ export function WorkloadClient({
           b.due_date ?? "9999-99-99"
         );
       });
-  }, [tasks, selectedKey, today]);
+  }, [filteredTasks, selectedKey, today]);
 
   if (tasks.length === 0) {
     return (
       <div>
         <PageHeader
-          title="ภาระงานทีม"
+          title="Team Workload"
           description="ภาพรวมภาระงานและผลงานรายบุคคลของแผนก"
         />
         <Card>
@@ -307,12 +377,95 @@ export function WorkloadClient({
   return (
     <div>
       <PageHeader
-        title="ภาระงานทีม"
+        title="Team Workload"
         description="ภาพรวมภาระงานและผลงานรายบุคคลของแผนก"
       />
 
       {hasDemo && <DemoBanner onWhat="งานบางส่วน" />}
 
+      {/* ตัวกรอง — เจาะดู performance เฉพาะกลุ่ม (คน / section / หมวดหมู่ / สถานะ) */}
+      <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in-up">
+        <div className="flex items-center gap-1.5 text-sm text-stone-500">
+          <SlidersHorizontal size={15} className="text-brand-600" />
+          <span className="font-medium">ตัวกรอง</span>
+        </div>
+        <div className="w-48">
+          <Select
+            aria-label="กรองตามผู้รับผิดชอบ"
+            value={personFilter}
+            onChange={(e) => setPersonFilter(e.target.value)}
+          >
+            <option value="all">ผู้รับผิดชอบ: ทั้งทีม</option>
+            <option value="none">ไม่ระบุผู้รับผิดชอบ</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {displayName(p)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-44">
+          <Select
+            aria-label="กรองตาม section"
+            value={sectionFilter}
+            onChange={(e) => setSectionFilter(e.target.value)}
+          >
+            <option value="all">Section: ทั้งหมด</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+            {hasOrphanSection && <option value="none">ไม่มี section</option>}
+          </Select>
+        </div>
+        <div className="w-44">
+          <Select
+            aria-label="กรองตามหมวดหมู่"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="all">หมวดหมู่: ทั้งหมด</option>
+            {categoryOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-40">
+          <Select
+            aria-label="กรองตามสถานะ"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">สถานะ: ทั้งหมด</option>
+            <option value="pending">ยังไม่เสร็จ</option>
+            <option value="done">เสร็จแล้ว</option>
+            <option value="overdue">เลยกำหนด</option>
+          </Select>
+        </div>
+        {hasFilter && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
+          >
+            <X size={14} />
+            ล้างตัวกรอง
+          </button>
+        )}
+      </div>
+
+      {filteredTasks.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Users size={40} strokeWidth={1.5} />}
+            title="ไม่มีงานที่ตรงกับตัวกรอง"
+            description="ลองปรับหรือล้างตัวกรองเพื่อดูข้อมูลของทีม"
+          />
+        </Card>
+      ) : (
       <div className="space-y-6">
         {/* KPI */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -499,7 +652,7 @@ export function WorkloadClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {personStats.map((p) => {
+                {visibleStats.map((p) => {
                   const rate = p.total > 0 ? (p.done / p.total) * 100 : null;
                   const active = selectedKey === p.key;
                   return (
@@ -660,6 +813,7 @@ export function WorkloadClient({
           </Card>
         )}
       </div>
+      )}
     </div>
   );
 }

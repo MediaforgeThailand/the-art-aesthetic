@@ -34,6 +34,7 @@ import type {
   TaskWithAssignee,
 } from "@/lib/types";
 import { useSignedUrl } from "../influencers/use-signed-url";
+import { MediaLightbox } from "./media-lightbox";
 import {
   AssigneeAvatar,
   CompleteToggle,
@@ -159,6 +160,9 @@ export function TaskPanel({
     window.setTimeout(() => setPanelError(null), 5000);
   }, []);
 
+  // ไฟล์ที่กำลังเปิดดูใน lightbox (index ใน task.files) — null = ปิด
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   /* ---------- งานย่อย + ความคิดเห็น (โหลดเมื่อเปิดงาน) ---------- */
 
   const [subtasks, setSubtasks] = useState<SubtaskWithFiles[] | null>(null);
@@ -217,7 +221,8 @@ export function TaskPanel({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || suspendEsc) return;
+      // lightbox เปิดอยู่ → ปล่อยให้ lightbox จัดการ Esc เอง ไม่ปิดแผง
+      if (e.key !== "Escape" || suspendEsc || lightboxIndex !== null) return;
       const el = document.activeElement as HTMLElement | null;
       // กำลังพิมพ์อยู่ที่ไหนก็ตาม (รวมช่องค้นหานอกแผง) — Esc แค่ blur ไม่ปิดแผง
       if (el && ["TEXTAREA", "INPUT", "SELECT"].includes(el.tagName)) {
@@ -228,7 +233,7 @@ export function TaskPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, suspendEsc]);
+  }, [onClose, suspendEsc, lightboxIndex]);
 
   useEffect(() => {
     asideRef.current?.focus({ preventScroll: true });
@@ -976,10 +981,11 @@ export function TaskPanel({
 
             {files.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
-                {files.map((f) => (
+                {files.map((f, i) => (
                   <DeliverableFileThumb
                     key={f.id}
                     file={f}
+                    onOpen={() => setLightboxIndex(i)}
                     onRemove={() => void removeFile(f)}
                   />
                 ))}
@@ -1223,6 +1229,16 @@ export function TaskPanel({
           />
         </div>
       </div>
+
+      {/* lightbox ดูไฟล์แนบใหญ่ + เลื่อนดูไฟล์อื่น */}
+      {lightboxIndex !== null && files[lightboxIndex] && (
+        <MediaLightbox
+          items={files}
+          index={lightboxIndex}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </aside>
   );
 }
@@ -1458,9 +1474,11 @@ function SubtaskFileChip({
 
 function DeliverableFileThumb({
   file,
+  onOpen,
   onRemove,
 }: {
   file: TaskFileRow;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const { url, failed } = useSignedUrl(file.file_path);
@@ -1469,50 +1487,43 @@ function DeliverableFileThumb({
   return (
     <div className="group relative aspect-square overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
       {url ? (
-        isImg ? (
-          <a href={url} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+        <button
+          type="button"
+          onClick={onOpen}
+          title={file.file_name ?? "เปิดดู"}
+          className="block h-full w-full cursor-pointer"
+        >
+          {isImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}
               alt={file.file_name ?? "ไฟล์งาน"}
               className="h-full w-full object-cover"
             />
-          </a>
-        ) : isVid ? (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            title={file.file_name ?? "วิดีโอ"}
-            className="block h-full w-full"
-          >
-            <video
-              src={url}
-              className="h-full w-full object-cover"
-              muted
-              playsInline
-              preload="metadata"
-            />
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white">
-                ▶ วิดีโอ
+          ) : isVid ? (
+            <>
+              <video
+                src={url}
+                className="h-full w-full object-cover"
+                muted
+                playsInline
+                preload="metadata"
+              />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  ▶ วิดีโอ
+                </span>
+              </span>
+            </>
+          ) : (
+            <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-stone-500">
+              <Paperclip size={16} />
+              <span className="line-clamp-2 break-all">
+                {file.file_name ?? "ไฟล์"}
               </span>
             </span>
-          </a>
-        ) : (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            title={file.file_name ?? "ไฟล์"}
-            className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-stone-500"
-          >
-            <Paperclip size={16} />
-            <span className="line-clamp-2 break-all">
-              {file.file_name ?? "ไฟล์"}
-            </span>
-          </a>
-        )
+          )}
+        </button>
       ) : (
         <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-stone-300">
           {failed ? "เปิดไฟล์ไม่ได้" : "กำลังโหลด..."}

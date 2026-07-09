@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: "influ" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },
-  { href: "/workload", label: "ภาระงานทีม", icon: Users, perm: "team" },
+  { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
   { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
 ];

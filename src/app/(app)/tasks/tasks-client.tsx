@@ -25,6 +25,7 @@ import type {
 } from "@/lib/types";
 import { ApprovedList } from "./approved-list";
 import { KanbanBoard, type QuickAddPlacement } from "./board";
+import { ExcludeFilter } from "./exclude-filter";
 import { ReviewList } from "./review-list";
 import { AssigneeAvatar, isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
@@ -48,6 +49,17 @@ type ConfirmState = {
   title: string;
   message: string;
   onConfirm: () => void;
+};
+
+/** ค่าตัวกรองที่จำไว้ใน localStorage (ต่อผู้ใช้) — array อาจไม่มีในค่าที่บันทึกไว้เดิม */
+type SavedFilters = {
+  search?: string;
+  assignee?: string;
+  status?: string;
+  dueFrom?: string;
+  dueTo?: string;
+  excludeAssignees?: string[];
+  excludeStatuses?: string[];
 };
 
 export function TasksClient({
@@ -200,7 +212,7 @@ export function TasksClient({
     if (typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(filterStorageKey);
-      return raw ? (JSON.parse(raw) as Record<string, string>) : null;
+      return raw ? (JSON.parse(raw) as SavedFilters) : null;
     } catch {
       return null;
     }
@@ -218,6 +230,27 @@ export function TasksClient({
   );
   const [dueFrom, setDueFrom] = useState(savedFilters?.dueFrom ?? "");
   const [dueTo, setDueTo] = useState(savedFilters?.dueTo ?? "");
+  /** ยกเว้น (ซ่อน) งานของผู้รับผิดชอบที่เลือก — เก็บ profileId หรือ "none" (ไม่ระบุ) */
+  const [excludeAssignees, setExcludeAssignees] = useState<string[]>(
+    savedFilters?.excludeAssignees ?? []
+  );
+  /** ยกเว้น (ซ่อน) งานตามสถานะที่เลือก — working | pending | done */
+  const [excludeStatuses, setExcludeStatuses] = useState<string[]>(
+    savedFilters?.excludeStatuses ?? []
+  );
+
+  const toggleExcludeAssignee = (id: string) =>
+    setExcludeAssignees((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
+  const toggleExcludeStatus = (key: string) =>
+    setExcludeStatuses((cur) =>
+      cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key]
+    );
+  const clearExclude = () => {
+    setExcludeAssignees([]);
+    setExcludeStatuses([]);
+  };
 
   // จำค่าตัวกรองทุกครั้งที่เปลี่ยน
   useEffect(() => {
@@ -231,19 +264,32 @@ export function TasksClient({
           status: statusFilter,
           dueFrom,
           dueTo,
-        })
+          excludeAssignees,
+          excludeStatuses,
+        } satisfies SavedFilters)
       );
     } catch {
       // เพิกเฉย — localStorage เต็ม/ปิดอยู่ ไม่กระทบการใช้งาน
     }
-  }, [search, assigneeFilter, statusFilter, dueFrom, dueTo, filterStorageKey]);
+  }, [
+    search,
+    assigneeFilter,
+    statusFilter,
+    dueFrom,
+    dueTo,
+    excludeAssignees,
+    excludeStatuses,
+    filterStorageKey,
+  ]);
 
   const hasFilter =
     search.trim() !== "" ||
     assigneeFilter !== "all" ||
     statusFilter !== "all" ||
     dueFrom !== "" ||
-    dueTo !== "";
+    dueTo !== "" ||
+    excludeAssignees.length > 0 ||
+    excludeStatuses.length > 0;
 
   const clearFilters = () => {
     setSearch("");
@@ -251,11 +297,27 @@ export function TasksClient({
     setStatusFilter("all");
     setDueFrom("");
     setDueTo("");
+    clearExclude();
   };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((t) => {
+      // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
+      if (
+        excludeAssignees.length > 0 &&
+        excludeAssignees.includes(t.assignee_id ?? "none")
+      ) {
+        return false;
+      }
+      // ยกเว้น (ซ่อน) ตามสถานะที่เลือก — กติกาเดียวกับตัวกรองสถานะ
+      if (excludeStatuses.length > 0) {
+        if (excludeStatuses.includes("working") && t.review_status === "none")
+          return false;
+        if (excludeStatuses.includes("pending") && t.review_status === "pending")
+          return false;
+        if (excludeStatuses.includes("done") && t.completed) return false;
+      }
       if (statusFilter === "working" && t.review_status !== "none") return false;
       if (statusFilter === "pending" && t.review_status !== "pending")
         return false;
@@ -277,7 +339,17 @@ export function TasksClient({
         (t.description ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, assigneeFilter, statusFilter, dueFrom, dueTo, userId]);
+  }, [
+    items,
+    search,
+    assigneeFilter,
+    statusFilter,
+    dueFrom,
+    dueTo,
+    userId,
+    excludeAssignees,
+    excludeStatuses,
+  ]);
 
   /** งานที่ section หายไป (null/ไม่รู้จัก) ถูกพักไว้ที่คอลัมน์แรก — กติกาเดียวกับตอนลบ section */
   const bucketOf = (t: TaskWithAssignee): string | null => {
@@ -976,6 +1048,15 @@ export function TasksClient({
               <option value="done">เสร็จสมบูรณ์</option>
             </Select>
           </div>
+          <ExcludeFilter
+            profiles={profiles}
+            userId={userId}
+            excludeAssignees={excludeAssignees}
+            excludeStatuses={excludeStatuses}
+            onToggleAssignee={toggleExcludeAssignee}
+            onToggleStatus={toggleExcludeStatus}
+            onClear={clearExclude}
+          />
           <div className="flex items-center gap-1.5 text-xs text-stone-500">
             <span>กำหนดส่ง</span>
             <Input

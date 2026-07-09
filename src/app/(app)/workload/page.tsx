@@ -7,7 +7,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { WorkloadClient } from "./workload-client";
 
 export const metadata: Metadata = {
-  title: "ภาระงานทีม",
+  title: "Team Workload",
 };
 
 export default async function WorkloadPage() {
