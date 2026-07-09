@@ -17,12 +17,12 @@ export const PERMISSION_META: {
   {
     key: "team",
     label: "งานทีม",
-    detail: "เข้าหน้างาน ภาระงานทีม และคลังลิงก์ไฟล์",
+    detail: "เข้าหน้า Task, Team Workload, คลังลิงก์ไฟล์ และโปรไฟล์ Influencer",
   },
   {
     key: "influ",
-    label: "Influencer",
-    detail: "เข้า Influ Management และหน้าโปรไฟล์ Influencer",
+    label: "Influ Manager",
+    detail: "จัดการ Influencer — บอร์ด Influ Management (pipeline) และสัญญา",
   },
   {
     key: "pricing",

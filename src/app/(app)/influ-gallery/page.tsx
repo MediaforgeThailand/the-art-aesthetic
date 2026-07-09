@@ -17,7 +17,9 @@ const INFLU_LIST_COLUMNS =
 
 export default async function InfluGalleryPage() {
   const access = await getAccess();
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
+  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
+    return <AccessNotice />;
 
   const supabase = await createClient();
 

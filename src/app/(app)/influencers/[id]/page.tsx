@@ -25,7 +25,10 @@ export default async function InfluencerDetailPage({
   const { id } = await params;
 
   const access = await getAccess();
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและ influ manager
+  // (บอร์ด/สัญญาใน Influ Management ยังจำกัดเฉพาะ influ)
+  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
+    return <AccessNotice />;
 
   const supabase = await createClient();
 

@@ -19,12 +19,13 @@ import { LogoMark, LogoWordmark } from "@/components/logo";
 import type { AppPermission } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
 
-/** perm = สิทธิ์ที่ต้องมีถึงจะเห็นเมนู; null = เห็นได้ทุกคน; "admin" = เฉพาะ admin */
+/** perm = สิทธิ์ที่ต้องมีถึงจะเห็นเมนู (array = มีสิทธิ์ใดสิทธิ์หนึ่งก็เห็น);
+    null = เห็นได้ทุกคน; "admin" = เฉพาะ admin */
 type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
-  perm: AppPermission | "admin" | null;
+  perm: AppPermission | AppPermission[] | "admin" | null;
 };
 
 const navItems: NavItem[] = [
@@ -32,7 +33,8 @@ const navItems: NavItem[] = [
   { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
   { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: "influ" },
+  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },
   { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
@@ -79,6 +81,8 @@ export function Sidebar({
   const visibleNav = navItems.filter((item) => {
     if (item.perm === null) return true;
     if (item.perm === "admin") return isAdmin;
+    if (Array.isArray(item.perm))
+      return item.perm.some((p) => permissions.includes(p));
     return permissions.includes(item.perm);
   });
 

@@ -15,8 +15,10 @@ export type ProfileRow = {
   email: string | null;
   full_name: string | null;
   role: "admin" | "member";
-  /** สิทธิ์การมองเห็นรายคน (admin เปิดให้): 'data' = แดชบอร์ด+รายงาน, 'team' = งาน+ภาระทีม+ไฟล์
-      (admin role เห็นทุกอย่างอยู่แล้ว; pricing/influencer เปิดให้ทุกคน) */
+  /** สิทธิ์การมองเห็นรายคน แยกอิสระ (admin เปิดให้):
+      'data' = แดชบอร์ด+รายงาน, 'team' = Task/Team Workload/คลังไฟล์/โปรไฟล์ Influencer,
+      'influ' = Influ Manager (บอร์ด Influ Management pipeline + สัญญา), 'pricing' = จัดการราคา.
+      โปรไฟล์รายคน /influencers/[id] เปิดจากแกลเลอรีได้ → เห็นได้ทั้ง team และ influ */
   permissions: AppPermission[];
   /** ผู้ตรวจอัตโนมัติของฉัน — auto เลือกเป็นผู้ตรวจตอนสร้างงานใหม่ (null = ไม่ตั้ง) */
   default_reviewer_id: string | null;
