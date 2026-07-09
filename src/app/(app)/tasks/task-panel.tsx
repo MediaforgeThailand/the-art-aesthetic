@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowUpRight,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -71,7 +72,6 @@ type SubtaskWithFiles = TaskSubtaskRow & { files: TaskSubtaskFileRow[] };
 /* สไตล์ field แบบ "ไร้กล่อง" (Asana) — โผล่ขอบเฉพาะตอน hover/focus */
 const bareControl =
   "w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-stone-800 transition-colors hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
-const bareSelect = `${bareControl} cursor-pointer appearance-none`;
 
 /* เวอร์ชันกะทัดรัดสำหรับ "โซนตั้งค่า" (ผู้รับผิดชอบ/ผู้ตรวจ/influ/หมวดหมู่) — ไม่ใช่เนื้อหาหลัก
    จึงย่อให้เล็กลงเพื่อเหลือพื้นที่ให้รายละเอียด/ไฟล์/แชท */
@@ -113,6 +113,9 @@ export function TaskPanel({
   reviewerProfiles,
   influencers,
   categories,
+  briefSource,
+  linkedCreatives,
+  onNavigateToTask,
   onAddCategory,
   userId,
   suspendEsc = false,
@@ -138,6 +141,12 @@ export function TaskPanel({
   influencers: InfluencerLite[];
   /** หมวดหมู่งานที่เลือกได้ (เพิ่มได้) */
   categories: string[];
+  /** การ์ด brief ต้นทาง (เมื่องานนี้เป็น creative ที่มาจาก brief) — ใช้ทำปุ่มลิงก์ไป brief */
+  briefSource: TaskWithAssignee | null;
+  /** การ์ด creative ที่ถูกสร้างจาก brief นี้ (เมื่องานนี้เป็นการ์ด brief) — ปุ่มลิงก์ไปงานที่สร้าง */
+  linkedCreatives: TaskWithAssignee[];
+  /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น */
+  onNavigateToTask: (taskId: string) => void;
   onAddCategory: (name: string) => void;
   userId: string | null;
   /** true เมื่อมี dialog อื่นเปิดอยู่ — ให้ Esc เป็นของ dialog นั้น */
@@ -171,6 +180,10 @@ export function TaskPanel({
   const isAccepted = task.brief_accepted_at !== null;
   // การ์ด creative ที่ถูกสร้างจาก brief — โชว์ข้อมูล brief ในแผง
   const isFromBrief = task.brief_source_id !== null;
+  // ชื่อผู้สร้าง brief = ผู้สร้างการ์ด brief ต้นทาง (ตกไปที่ผู้ตรวจของงานนี้ถ้าหาการ์ด brief ไม่เจอ)
+  const briefCreator = briefSource
+    ? (profiles.find((p) => p.id === briefSource.created_by) ?? null)
+    : (task.reviewer ?? null);
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptions =
@@ -683,7 +696,7 @@ export function TaskPanel({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
               >
                 <CheckCircle2 size={15} />
-                อนุมัติ
+                {isFromBrief ? "ผ่านการยืนยัน brief แล้ว" : "อนุมัติ"}
               </button>
               <button
                 type="button"
@@ -779,16 +792,51 @@ export function TaskPanel({
           }`}
         />
 
-        {/* งาน creative ที่มาจาก Brief — โชว์ข้อมูล brief */}
+        {/* งาน creative ที่มาจาก Brief — โชว์ผู้สั่ง brief + ปุ่มลิงก์ไปการ์ด Brief ต้นทาง */}
         {isFromBrief && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
-            <span className="font-semibold">📋 งานจาก Brief</span>
+            <span className="font-semibold">
+              📋 Brief จาก : {profileName(briefCreator)}
+            </span>
             {briefContentTypeLabel(task.brief_content_type) && (
               <span className="rounded-full bg-white px-2 py-0.5 font-medium text-sky-700">
                 {briefContentTypeLabel(task.brief_content_type)}
               </span>
             )}
-            <span className="text-sky-600">· ผู้สั่งงานเป็นผู้ตรวจงานนี้</span>
+            {briefSource && (
+              <button
+                type="button"
+                onClick={() => onNavigateToTask(briefSource.id)}
+                title="ไปที่การ์ด Brief ต้นทาง (เปิดแผง + เลื่อนไปที่การ์ด)"
+                className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md border border-sky-300 bg-white px-2 py-0.5 font-medium text-sky-700 transition-colors hover:bg-sky-100 active:scale-[0.97]"
+              >
+                <ArrowUpRight size={13} />
+                ไปที่ Brief
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* การ์ด Brief ที่รับงานแล้ว — ปุ่มลิงก์ไปงาน Creative ที่ถูกสร้าง */}
+        {isBrief && linkedCreatives.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-800">
+            <span className="font-semibold">
+              ✅ สร้างงาน Creative แล้ว
+            </span>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {linkedCreatives.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onNavigateToTask(c.id)}
+                  title={`ไปที่งาน "${c.title}" (เปิดแผง + เลื่อนไปที่การ์ด)`}
+                  className="inline-flex max-w-52 cursor-pointer items-center gap-1 rounded-md border border-emerald-300 bg-white px-2 py-0.5 font-medium text-emerald-700 transition-colors hover:bg-emerald-100 active:scale-[0.97]"
+                >
+                  <ArrowUpRight size={13} className="shrink-0" />
+                  <span className="min-w-0 truncate">ไปที่งาน: {c.title}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

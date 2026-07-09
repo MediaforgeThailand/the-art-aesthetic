@@ -479,6 +479,43 @@ export function TasksClient({
   const today = todayISO();
   const selectedTask = selectedId ? (taskById.get(selectedId) ?? null) : null;
 
+  /* ---------- ลิงก์ Brief ↔ Creative (การ์ดที่เชื่อมกัน) ---------- */
+
+  // การ์ด brief ต้นทางของงาน creative ที่เปิดอยู่ (ถ้ามาจาก brief)
+  const briefSource =
+    selectedTask?.brief_source_id
+      ? (taskById.get(selectedTask.brief_source_id) ?? null)
+      : null;
+  // การ์ด creative ที่ถูกสร้างจาก brief ที่เปิดอยู่ (ถ้าเป็นการ์ด brief)
+  const linkedCreatives = useMemo(
+    () =>
+      selectedTask
+        ? items.filter((t) => t.brief_source_id === selectedTask.id)
+        : [],
+    [items, selectedTask]
+  );
+
+  /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น (ล้างตัวกรองให้การ์ดโผล่แน่นอน) */
+  const navigateToTask = (taskId: string) => {
+    clearFilters();
+    setTab("work");
+    setSelectedId(taskId);
+    // รอบอร์ด re-render (สลับแท็บ/ล้างตัวกรอง/masonry) แล้วค่อยหา element เพื่อเลื่อน
+    const scroll = (attempts = 0) => {
+      const el = document.querySelector(`[data-task-id="${taskId}"]`);
+      if (el) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "center",
+        });
+        return;
+      }
+      if (attempts < 12) window.setTimeout(() => scroll(attempts + 1), 50);
+    };
+    window.setTimeout(() => scroll(), 60);
+  };
+
   /* ---------- task mutations (optimistic ทั้งหมด) ---------- */
 
   const patchTask = (id: string, patch: TaskPatch) => {
@@ -1413,6 +1450,9 @@ export function TasksClient({
           reviewerProfiles={reviewerProfiles}
           influencers={influencers}
           categories={categories}
+          briefSource={briefSource}
+          linkedCreatives={linkedCreatives}
+          onNavigateToTask={navigateToTask}
           onAddCategory={addCategory}
           userId={userId}
           suspendEsc={

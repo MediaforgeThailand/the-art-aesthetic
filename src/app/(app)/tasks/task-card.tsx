@@ -637,6 +637,7 @@ export function TaskCard({
         }
       }}
       aria-label={`งาน ${task.title}`}
+      data-task-id={task.id}
       className={`touch-manipulation rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
         temp ? "pointer-events-none opacity-60" : "cursor-pointer"
       } ${isDragging ? "opacity-40" : ""}`}
