@@ -316,69 +316,44 @@ function useCachedSignedUrl(path: string): {
   return { url, failed };
 }
 
-function CardMediaThumb({
-  file,
-  variant,
-}: {
-  file: TaskFileRow;
-  /** natural = ไฟล์เดี่ยวเต็มความกว้าง สูงยืดตามสัดส่วนจริงของรูป (รูปแนวตั้งไม่ถูก crop),
-      tile = ช่องใน grid หลายไฟล์ สูงคงที่ crop กลาง */
-  variant: "natural" | "tile";
-}) {
+function CardMediaThumb({ file }: { file: TaskFileRow }) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
-  const height = variant === "natural" ? "h-28" : "h-16";
   if (failed || broken) {
     // ไฟล์เปิดไม่ได้ (ถูกลบจาก storage/ไฟล์เสีย) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
     return (
       <div
         title={file.file_name ?? undefined}
-        className={`flex ${height} w-full items-center justify-center rounded-md bg-stone-100 text-stone-300`}
+        className="flex h-28 w-full items-center justify-center rounded-md bg-stone-100 text-stone-300"
       >
         <ImageIcon size={16} />
       </div>
     );
   }
   if (!url) {
-    return (
-      <div className={`${height} w-full animate-pulse rounded-md bg-stone-100`} />
-    );
+    return <div className="h-28 w-full animate-pulse rounded-md bg-stone-100" />;
   }
   if (isVideoPath(file.file_path)) {
     return (
       <div
-        className={`relative ${height} w-full overflow-hidden rounded-md bg-stone-100`}
+        className="relative w-full overflow-hidden rounded-md bg-stone-100"
         title={file.file_name ?? "วิดีโอ"}
       >
+        {/* กว้างเต็มการ์ด สูงตามสัดส่วนจริง — วิดีโอแสดงเต็มเฟรม ไม่ถูก crop */}
         <video
           src={url}
-          className="h-full w-full object-cover"
+          className="h-auto w-full"
           muted
           playsInline
           preload="metadata"
           onError={() => setBroken(true)}
         />
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white shadow-sm">
-            <Play size={13} className="ml-0.5 fill-white" />
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white shadow-sm">
+            <Play size={14} className="ml-0.5 fill-white" />
           </span>
         </span>
       </div>
-    );
-  }
-  if (variant === "natural") {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={file.file_name ?? "ไฟล์งาน"}
-        title={file.file_name ?? undefined}
-        loading="lazy"
-        onError={() => setBroken(true)}
-        // กว้างเต็มการ์ดคงที่ สูงตามสัดส่วนจริง — รูปแนวตั้งยังดูเป็นแนวตั้ง แต่ไม่สูงจนการ์ดเต็มจอ
-        // เพดาน 256px: รูปที่ยาวกว่านี้ถูก crop กลางด้วย object-cover (การ์ดกะทัดรัด เลื่อนดูง่าย)
-        className="h-auto max-h-64 w-full rounded-md object-cover"
-      />
     );
   }
   return (
@@ -389,37 +364,22 @@ function CardMediaThumb({
       title={file.file_name ?? undefined}
       loading="lazy"
       onError={() => setBroken(true)}
-      className={`${height} w-full rounded-md object-cover`}
+      // ความกว้าง fix เต็มการ์ด สูง auto ตามสัดส่วนจริง — รูปแสดงเต็ม ไม่ถูกครอบตัด
+      className="h-auto w-full rounded-md"
     />
   );
 }
 
-/** แถบ preview บนการ์ด — 1 ไฟล์แสดงเต็มความกว้างสูงตามสัดส่วนจริง, หลายไฟล์เรียง grid 2 คอลัมน์ (สูงสุด 4 + ป้ายจำนวนที่เหลือ) */
+/** แถบ preview บนการ์ด — ทุกไฟล์กว้างเต็มการ์ด สูงตามสัดส่วนจริง (ไม่ครอบตัด) เรียงลงมา */
 export function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
   const media = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
   );
   if (media.length === 0) return null;
-  if (media.length === 1) {
-    return (
-      <div className="mt-2">
-        <CardMediaThumb file={media[0]} variant="natural" />
-      </div>
-    );
-  }
-  const shown = media.slice(0, 4);
-  const extra = media.length - shown.length;
   return (
-    <div className="mt-2 grid grid-cols-2 gap-1">
-      {shown.map((f, i) => (
-        <div key={f.id} className="relative">
-          <CardMediaThumb file={f} variant="tile" />
-          {extra > 0 && i === shown.length - 1 && (
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-black/45 text-sm font-bold text-white">
-              +{extra}
-            </span>
-          )}
-        </div>
+    <div className="mt-2 space-y-1.5">
+      {media.map((f) => (
+        <CardMediaThumb key={f.id} file={f} />
       ))}
     </div>
   );
