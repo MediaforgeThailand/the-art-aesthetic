@@ -371,17 +371,20 @@ function CardMediaThumb({ file }: { file: TaskFileRow }) {
   );
 }
 
-/** แถบ preview บนการ์ด — ทุกไฟล์กว้างเต็มการ์ด สูงตามสัดส่วนจริง (ไม่ครอบตัด) เรียงลงมา */
+/** แถบ preview บนการ์ด — แสดงเฉพาะไฟล์แรกที่อัพ (เรียงตามเวลาอัพ) กว้างเต็มการ์ด สูงตามสัดส่วนจริง */
 export function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
   const media = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
   );
   if (media.length === 0) return null;
+  // ไฟล์แรกที่กดอัพ = created_at น้อยสุด (ผูก id กันกรณีอัพพร้อมกันให้เลือกคงที่)
+  const first = [...media].sort((a, b) => {
+    const t = a.created_at.localeCompare(b.created_at);
+    return t !== 0 ? t : a.id.localeCompare(b.id);
+  })[0];
   return (
-    <div className="mt-2 space-y-1.5">
-      {media.map((f) => (
-        <CardMediaThumb key={f.id} file={f} />
-      ))}
+    <div className="mt-2">
+      <CardMediaThumb file={first} />
     </div>
   );
 }
