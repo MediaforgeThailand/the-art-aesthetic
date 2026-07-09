@@ -507,8 +507,20 @@ export function TasksClient({
     patchTask(task.id, { db: { review_status: "none", completed: false } });
   };
 
-  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "ตรวจแล้ว") */
+  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "งานเสร็จ") */
   const approveTask = (task: TaskWithAssignee) => {
+    patchTask(task.id, {
+      db: {
+        review_status: "approved",
+        completed: true,
+        approved_at: new Date().toISOString(),
+      },
+    });
+  };
+
+  /** "เสร็จแล้ว" สำหรับงานที่ไม่มีผู้ตรวจ — เสร็จสิ้นแบบไม่ผ่านการตรวจ
+      (ถือเป็น approved/เสร็จสมบูรณ์เหมือนกัน แต่ไม่มีผู้ตรวจ → รวมในแท็บ "งานเสร็จ") */
+  const completeTask = (task: TaskWithAssignee) => {
     patchTask(task.id, {
       db: {
         review_status: "approved",
@@ -968,7 +980,7 @@ export function TasksClient({
             }`}
           >
             <BadgeCheck size={16} />
-            ตรวจแล้ว
+            งานเสร็จ
             {approvedAll.length > 0 && (
               <span
                 className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
@@ -1215,6 +1227,7 @@ export function TasksClient({
             tasks={approvedFiltered}
             totalApproved={approvedAll.length}
             sections={sections}
+            today={today}
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
           />
@@ -1240,6 +1253,7 @@ export function TasksClient({
           onSubmitReview={submitForReview}
           onCancelReview={cancelReview}
           onApprove={approveTask}
+          onComplete={completeTask}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
           onSetInfluencer={setInfluencer}

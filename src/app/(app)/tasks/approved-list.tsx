@@ -1,37 +1,127 @@
 "use client";
 
-import {
-  BadgeCheck,
-  CheckCircle2,
-  Image as ImageIcon,
-  Link2,
-} from "lucide-react";
-import { Badge } from "@/components/ui";
-import { TASK_PRIORITY } from "@/lib/constants";
+import { BadgeCheck, CheckCircle2, Link2, Paperclip } from "lucide-react";
+import { useMemo } from "react";
 import { formatDateBangkok } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
-import { AssigneeAvatar, profileName } from "./task-card";
+import { AssigneeAvatar, CardMediaPreview, profileName } from "./task-card";
+
+/** วันตามเวลาไทยของ timestamp (YYYY-MM-DD) — จัดกลุ่มงานเป็นสัปดาห์ตามวันไทย */
+const BKK_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
+function bkkDay(iso: string): string {
+  return BKK_DAY.format(new Date(iso));
+}
+
+/** วันจันทร์ (ต้นสัปดาห์) ของวันที่ "YYYY-MM-DD" — คำนวณด้วย UTC ให้ไม่ขึ้นกับ tz เครื่อง */
+function weekStartOfDateStr(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const diff = (dt.getUTCDay() + 6) % 7; // 0=จันทร์ ... 6=อาทิตย์
+  dt.setUTCDate(dt.getUTCDate() - diff);
+  return dt.toISOString().slice(0, 10);
+}
+
+function addDaysStr(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** เวลาที่ถือว่างานเสร็จ — ตรวจผ่านเมื่อ (approved_at) ถ้าไม่มีใช้ updated_at */
+function doneAt(t: TaskWithAssignee): string {
+  return t.approved_at ?? t.updated_at;
+}
+
+type PersonGroup = {
+  key: string;
+  assignee: TaskWithAssignee["assignee"];
+  name: string;
+  tasks: TaskWithAssignee[];
+};
+type WeekGroup = {
+  start: string;
+  label: string;
+  range: string;
+  count: number;
+  persons: PersonGroup[];
+};
 
 /**
- * แท็บ "ตรวจแล้ว" — งานที่ผ่านการตรวจ (review_status = approved) ทั้งทีม
- * เรียงจากที่ตรวจผ่านล่าสุด · กรองได้จากแถวตัวกรองใน tasks-client
+ * แท็บ "งานเสร็จ" — งานที่เสร็จสมบูรณ์ทั้งทีม (ผ่านการตรวจ + เสร็จแบบไม่ตรวจ)
+ * จัดกลุ่มเป็นสัปดาห์ (ล่าสุดบนสุด) แล้วในแต่ละสัปดาห์แยก section ต่อคน พร้อม preview รูป
+ * · กรองได้จากแถวตัวกรองใน tasks-client
  */
 export function ApprovedList({
   tasks,
   totalApproved,
   sections,
+  today,
   selectedId,
   onRowClick,
 }: {
   tasks: TaskWithAssignee[];
-  /** จำนวนงานตรวจแล้วทั้งหมด (ก่อนกรอง) — ใช้แยกข้อความ empty state */
+  /** จำนวนงานเสร็จทั้งหมด (ก่อนกรอง) — ใช้แยกข้อความ empty state */
   totalApproved: number;
   sections: TaskSectionRow[];
+  /** วันนี้ (YYYY-MM-DD เวลาไทย) — ใช้ป้าย "สัปดาห์นี้/สัปดาห์ที่แล้ว" */
+  today: string;
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
 }) {
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? null;
+
+  const weeks = useMemo<WeekGroup[]>(() => {
+    const todayWeek = weekStartOfDateStr(today);
+    const prevWeek = addDaysStr(todayWeek, -7);
+
+    // จัดเป็นสัปดาห์
+    const byWeek = new Map<string, TaskWithAssignee[]>();
+    for (const t of tasks) {
+      const wk = weekStartOfDateStr(bkkDay(doneAt(t)));
+      const list = byWeek.get(wk);
+      if (list) list.push(t);
+      else byWeek.set(wk, [t]);
+    }
+
+    return [...byWeek.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0])) // สัปดาห์ล่าสุดก่อน
+      .map(([start, wkTasks]) => {
+        // แยกต่อคนในสัปดาห์นั้น
+        const byPerson = new Map<string, TaskWithAssignee[]>();
+        for (const t of wkTasks) {
+          const key = t.assignee_id ?? "none";
+          const list = byPerson.get(key);
+          if (list) list.push(t);
+          else byPerson.set(key, [t]);
+        }
+        const persons: PersonGroup[] = [...byPerson.entries()]
+          .map(([key, ts]) => {
+            const sorted = [...ts].sort((a, b) =>
+              doneAt(b).localeCompare(doneAt(a))
+            );
+            const assignee = sorted.find((t) => t.assignee)?.assignee ?? null;
+            return {
+              key,
+              assignee,
+              name: key === "none" ? "ไม่ระบุผู้ทำ" : profileName(assignee),
+              tasks: sorted,
+            };
+          })
+          // คนที่มีงานเสร็จล่าสุดอยู่บนก่อน
+          .sort((a, b) => doneAt(b.tasks[0]).localeCompare(doneAt(a.tasks[0])));
+
+        const range = `${formatDateBangkok(`${start}T00:00:00+07:00`)} – ${formatDateBangkok(`${addDaysStr(start, 6)}T00:00:00+07:00`)}`;
+        const label =
+          start === todayWeek
+            ? "สัปดาห์นี้"
+            : start === prevWeek
+              ? "สัปดาห์ที่แล้ว"
+              : range;
+        return { start, label, range, count: wkTasks.length, persons };
+      });
+  }, [tasks, today]);
 
   if (tasks.length === 0) {
     return (
@@ -39,12 +129,12 @@ export function ApprovedList({
         <BadgeCheck size={40} strokeWidth={1.5} className="text-emerald-200" />
         <p className="text-sm font-medium text-stone-600">
           {totalApproved === 0
-            ? "ยังไม่มีงานที่ตรวจแล้ว"
+            ? "ยังไม่มีงานที่เสร็จ"
             : "ไม่พบงานที่ตรงกับตัวกรอง"}
         </p>
         <p className="max-w-sm text-sm text-stone-400">
           {totalApproved === 0
-            ? "งานที่ผู้ตรวจกดอนุมัติผ่านการตรวจแล้วจะมาแสดงรวมกันที่นี่"
+            ? "งานที่ผู้ตรวจอนุมัติ หรือกด “เสร็จแล้ว” จะมาแสดงรวมกันที่นี่"
             : "ลองเปลี่ยนคำค้นหา ผู้รับผิดชอบ ผู้ตรวจ หรือช่วงวันที่"}
         </p>
       </div>
@@ -52,83 +142,127 @@ export function ApprovedList({
   }
 
   return (
-    <div className="space-y-2.5 px-4 pb-6 sm:px-6">
+    <div className="space-y-7 px-4 pb-6 sm:px-6">
       <p className="rounded-lg bg-emerald-50/80 px-3 py-2 text-xs text-emerald-700">
-        งานที่ผ่านการตรวจแล้ว {tasks.length} รายการ —
-        คลิกเพื่อดูรายละเอียด ไฟล์งาน และความคิดเห็น
+        งานเสร็จ {tasks.length} รายการ — จัดกลุ่มตามสัปดาห์และผู้รับผิดชอบ
+        คลิกการ์ดเพื่อดูรายละเอียด ไฟล์งาน และความคิดเห็น
       </p>
 
-      {tasks.map((task) => {
-        const sec = sectionName(task.section_id);
-        const approvedOn = task.approved_at ?? task.updated_at;
-        return (
-          <div
-            key={task.id}
-            role="button"
-            tabIndex={0}
-            aria-label={`งานตรวจแล้ว ${task.title}`}
-            onClick={() => onRowClick(task)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onRowClick(task);
-            }}
-            className={`flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-white px-4 py-3 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
-              selectedId === task.id
-                ? "border-brand-400 ring-1 ring-brand-300"
-                : "border-stone-200/90 hover:border-brand-300 hover:bg-brand-50/40"
-            }`}
-          >
-            <div className="min-w-0 flex-1 basis-64">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  <CheckCircle2 size={11} />
-                  เสร็จสมบูรณ์
-                </span>
-                {/* ตรึงวันไทยให้ตรงกับตัวกรองช่วงวันที่ (bangkokDay) เสมอ */}
-                <span className="text-xs text-stone-400">
-                  ตรวจผ่านเมื่อ {formatDateBangkok(approvedOn)}
-                </span>
-                {sec && <span className="text-xs text-stone-400">· {sec}</span>}
-              </div>
-              <p className="mt-1 truncate text-sm font-medium text-stone-800">
-                {task.title}
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <AssigneeAvatar assignee={task.assignee} size={6} />
-                  {task.assignee ? profileName(task.assignee) : "ไม่ระบุผู้ทำ"}
-                </span>
-                {task.reviewer && (
-                  <span className="inline-flex items-center gap-1 text-emerald-700">
-                    <BadgeCheck size={12} />
-                    ตรวจโดย {profileName(task.reviewer)}
-                  </span>
-                )}
-                <Badge className={TASK_PRIORITY[task.priority].badge}>
-                  {TASK_PRIORITY[task.priority].label}
-                </Badge>
-                {task.deliverable_url && (
-                  <a
-                    href={task.deliverable_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 text-sky-600 hover:underline"
-                  >
-                    <Link2 size={12} />
-                    ลิงก์งาน
-                  </a>
-                )}
-                {(task.files?.length ?? 0) > 0 && (
-                  <span className="inline-flex items-center gap-1 text-brand-600">
-                    <ImageIcon size={12} />
-                    มีไฟล์แนบ {task.files!.length} ไฟล์
-                  </span>
-                )}
-              </div>
-            </div>
+      {weeks.map((week) => (
+        <section key={week.start}>
+          {/* หัวสัปดาห์ */}
+          <div className="mb-3 flex items-center gap-2 border-b border-stone-200/70 pb-2">
+            <h3 className="text-sm font-bold text-stone-900">{week.label}</h3>
+            {week.label !== week.range && (
+              <span className="text-xs text-stone-400">{week.range}</span>
+            )}
+            <span className="ml-auto text-xs text-stone-400">
+              {week.count} งาน
+            </span>
           </div>
-        );
-      })}
+
+          {/* section ต่อคน */}
+          <div className="space-y-5">
+            {week.persons.map((person) => (
+              <div key={person.key}>
+                <div className="mb-2 flex items-center gap-2">
+                  <AssigneeAvatar assignee={person.assignee} size={7} />
+                  <span className="text-sm font-semibold text-stone-800">
+                    {person.name}
+                  </span>
+                  <span className="text-xs text-stone-400">
+                    {person.tasks.length} งาน
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {person.tasks.map((task) => (
+                    <ApprovedCard
+                      key={task.id}
+                      task={task}
+                      section={sectionName(task.section_id)}
+                      selected={selectedId === task.id}
+                      onClick={() => onRowClick(task)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- การ์ดงานเสร็จหนึ่งใบ — preview รูปเหมือนบอร์ด + วันเสร็จ/ผู้ตรวจ ---------- */
+
+function ApprovedCard({
+  task,
+  section,
+  selected,
+  onClick,
+}: {
+  task: TaskWithAssignee;
+  section: string | null;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const files = task.files ?? [];
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`งานเสร็จ ${task.title}`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onClick();
+      }}
+      className={`cursor-pointer rounded-lg border bg-white/85 p-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
+        selected
+          ? "border-brand-400 ring-1 ring-brand-300"
+          : "border-white/80 hover:border-brand-300"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <CheckCircle2
+          size={16}
+          className="mt-0.5 shrink-0 text-emerald-500"
+        />
+        <p className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-stone-800">
+          {task.title}
+        </p>
+      </div>
+
+      <CardMediaPreview files={files} />
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-stone-500">
+        <span className="text-stone-400">{formatDateBangkok(doneAt(task))}</span>
+        {section && <span className="text-stone-400">· {section}</span>}
+        {task.reviewer && (
+          <span className="inline-flex items-center gap-1 text-emerald-700">
+            <BadgeCheck size={12} />
+            {profileName(task.reviewer)}
+          </span>
+        )}
+        {task.deliverable_url && (
+          <a
+            href={task.deliverable_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-sky-600 hover:underline"
+          >
+            <Link2 size={12} />
+            ลิงก์งาน
+          </a>
+        )}
+        {files.length > 0 && (
+          <span className="inline-flex items-center gap-0.5 text-brand-600">
+            <Paperclip size={11} />
+            {files.length}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

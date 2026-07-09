@@ -395,7 +395,7 @@ function CardMediaThumb({
 }
 
 /** แถบ preview บนการ์ด — 1 ไฟล์แสดงเต็มความกว้างสูงตามสัดส่วนจริง, หลายไฟล์เรียง grid 2 คอลัมน์ (สูงสุด 4 + ป้ายจำนวนที่เหลือ) */
-function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
+export function CardMediaPreview({ files }: { files: TaskFileRow[] }) {
   const media = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
   );
