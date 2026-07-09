@@ -114,7 +114,6 @@ export function TaskPanel({
   onSubmitReview,
   onCancelReview,
   onApprove,
-  onComplete,
   onReopen,
   onSetReviewer,
   onSetInfluencer,
@@ -140,8 +139,6 @@ export function TaskPanel({
   onSubmitReview: (task: TaskWithAssignee) => void;
   onCancelReview: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
-  /** "เสร็จแล้ว" — งานไม่มีผู้ตรวจ เสร็จสิ้นแบบไม่ผ่านการตรวจ */
-  onComplete: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
   onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
   onSetInfluencer: (
@@ -706,34 +703,21 @@ export function TaskPanel({
             </span>
           )
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => onSubmitReview(task)}
-              disabled={!task.reviewer_id}
-              title={
-                task.reviewer_id
-                  ? undefined
-                  : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
-              }
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
-            >
-              <SendHorizontal size={15} />
-              ส่งตรวจงาน
-            </button>
-            {/* ไม่มีผู้ตรวจ → กด "เสร็จแล้ว" เพื่อปิดงานเลยโดยไม่ต้องส่งตรวจ */}
-            {!task.reviewer_id && (
-              <button
-                type="button"
-                onClick={() => onComplete(task)}
-                title="งานนี้ไม่มีผู้ตรวจ — กดเพื่อทำเครื่องหมายว่าเสร็จสิ้น"
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
-              >
-                <CheckCircle2 size={15} />
-                เสร็จแล้ว
-              </button>
-            )}
-          </>
+          // งานปกติต้องส่งตรวจก่อนเท่านั้น (ไม่มีทางลัด "เสร็จแล้ว")
+          <button
+            type="button"
+            onClick={() => onSubmitReview(task)}
+            disabled={!task.reviewer_id}
+            title={
+              task.reviewer_id
+                ? undefined
+                : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
+            }
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
+          >
+            <SendHorizontal size={15} />
+            ส่งตรวจงาน
+          </button>
         )}
 
         {/* ยกเลิกส่งตรวจ (ผู้ส่ง) / เปิดงานใหม่ (หลังอนุมัติ) */}

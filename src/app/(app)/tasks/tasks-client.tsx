@@ -522,18 +522,6 @@ export function TasksClient({
     });
   };
 
-  /** "เสร็จแล้ว" สำหรับงานที่ไม่มีผู้ตรวจ — เสร็จสิ้นแบบไม่ผ่านการตรวจ
-      (ถือเป็น approved/เสร็จสมบูรณ์เหมือนกัน แต่ไม่มีผู้ตรวจ → รวมในแท็บ "งานเสร็จ") */
-  const completeTask = (task: TaskWithAssignee) => {
-    patchTask(task.id, {
-      db: {
-        review_status: "approved",
-        completed: true,
-        approved_at: new Date().toISOString(),
-      },
-    });
-  };
-
   /** เปิดงานที่เสร็จแล้วกลับมาแก้ */
   const reopenTask = (task: TaskWithAssignee) => {
     patchTask(task.id, {
@@ -1368,7 +1356,6 @@ export function TasksClient({
           onSubmitReview={submitForReview}
           onCancelReview={cancelReview}
           onApprove={approveTask}
-          onComplete={completeTask}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
           onSetInfluencer={setInfluencer}
