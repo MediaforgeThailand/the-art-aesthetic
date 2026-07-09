@@ -30,6 +30,19 @@ export const TASK_CATEGORIES = [
 /** หมวดหมู่ default ของงานใหม่ — ต้องตรงกับ DB default ของ tasks.category */
 export const DEFAULT_TASK_CATEGORY = TASK_CATEGORIES[0];
 
+/** ชนิดงานของ Brief (เลือกเป็นปุ่ม) — สำเนาไปการ์ด creative ตอนกด "รับงาน" */
+export const BRIEF_CONTENT_TYPES = [
+  { key: "graphic", label: "Graphic" },
+  { key: "video", label: "Video" },
+] as const;
+
+export type BriefContentType = (typeof BRIEF_CONTENT_TYPES)[number]["key"];
+
+/** label ของชนิดงาน Brief จาก key (null ถ้าไม่ระบุ/ไม่รู้จัก) */
+export function briefContentTypeLabel(key: string | null): string | null {
+  return BRIEF_CONTENT_TYPES.find((t) => t.key === key)?.label ?? null;
+}
+
 const TASK_CATEGORY_CHIPS = [
   "bg-stone-100 text-stone-600",
   "bg-brand-100 text-brand-800",

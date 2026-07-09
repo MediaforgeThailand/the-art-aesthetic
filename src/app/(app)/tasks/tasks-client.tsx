@@ -45,6 +45,10 @@ function bangkokDay(iso: string): string {
   return BANGKOK_DAY_FORMAT.format(new Date(iso));
 }
 
+/** select ของ task พร้อม join (assignee/reviewer/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
+const TASK_SELECT =
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+
 type ConfirmState = {
   title: string;
   message: string;
@@ -573,6 +577,8 @@ export function TasksClient({
     placement: QuickAddPlacement
   ) => {
     if (isTempId(sectionId)) return;
+    const section = sections.find((s) => s.id === sectionId);
+    const isBrief = section?.type === "brief";
     // ใช้กติกาเดียวกับที่บอร์ดแสดงผล (งานไร้ section ถูกพักไว้คอลัมน์แรก)
     const inSection = items.filter((t) => bucketOf(t) === sectionId);
     const position =
@@ -582,16 +588,20 @@ export function TasksClient({
           ? Math.min(...inSection.map((t) => t.position)) - 1
           : Math.max(...inSection.map((t) => t.position)) + 1;
 
-    // ผู้ตรวจเริ่มต้นของทีม — auto เลือกให้ตอนสร้างงาน (ต้องยังอยู่ใน roster)
-    const autoReviewerId =
-      globalReviewerId !== null && reviewerSet.has(globalReviewerId)
+    // เซคชัน brief: ผู้ตรวจ = ผู้สร้าง (auto) และยังไม่ระบุผู้รับ (รอกำหนด "ส่งมอบให้")
+    // เซคชัน work: ผู้รับผิดชอบ = ตัวเอง, ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (ถ้ายังอยู่ใน roster)
+    const reviewerId = isBrief
+      ? userId
+      : globalReviewerId !== null && reviewerSet.has(globalReviewerId)
         ? globalReviewerId
         : null;
-    const autoReviewer = autoReviewerId
-      ? (profiles.find((p) => p.id === autoReviewerId) ?? null)
+    const reviewerPerson = reviewerId
+      ? (profiles.find((p) => p.id === reviewerId) ?? null)
       : null;
-    // ผู้รับผิดชอบเริ่มต้น = ตัวเอง
-    const selfAssignee = profiles.find((p) => p.id === userId) ?? null;
+    const assigneeId = isBrief ? null : userId;
+    const assigneePerson = assigneeId
+      ? (profiles.find((p) => p.id === assigneeId) ?? null)
+      : null;
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
@@ -602,21 +612,24 @@ export function TasksClient({
       priority: "medium",
       category: DEFAULT_TASK_CATEGORY,
       due_date: null,
-      assignee_id: userId,
+      assignee_id: assigneeId,
       section_id: sectionId,
       completed: false,
       position,
       deliverable_url: null,
       deliverable_file_path: null,
-      reviewer_id: autoReviewerId,
+      reviewer_id: reviewerId,
       review_status: "none",
       influencer_id: null,
       approved_at: null,
+      brief_content_type: null,
+      brief_accepted_at: null,
+      brief_source_id: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      assignee: selfAssignee,
-      reviewer: autoReviewer,
+      assignee: assigneePerson,
+      reviewer: reviewerPerson,
       influencer: null,
       files: [],
     };
@@ -628,13 +641,11 @@ export function TasksClient({
         title,
         section_id: sectionId,
         position,
-        assignee_id: userId,
-        reviewer_id: autoReviewerId,
+        assignee_id: assigneeId,
+        reviewer_id: reviewerId,
         created_by: userId,
       })
-      .select(
-        "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
-      )
+      .select(TASK_SELECT)
       .single();
 
     if (e || !data) {
@@ -645,6 +656,103 @@ export function TasksClient({
     const real = data as unknown as TaskWithAssignee;
     setItems((cur) => cur.map((t) => (t.id === tempId ? real : t)));
     setSelectedId((sel) => (sel === tempId ? real.id : sel));
+  };
+
+  /* ---------- Brief workflow ---------- */
+
+  // เซคชันปลายทางของ "รับงาน" = เซคชันชนิด work อันแรก (ปกติคือ Creatives)
+  const creativesSectionId = useMemo(() => {
+    const work = sections
+      .filter((s) => s.type === "work")
+      .sort((a, b) => a.position - b.position);
+    return work[0]?.id ?? sections[0]?.id ?? null;
+  }, [sections]);
+
+  /** เลือกชนิดงานของ brief (graphic/video) */
+  const setBriefContentType = (task: TaskWithAssignee, type: string) => {
+    if (task.brief_content_type === type) return;
+    patchTask(task.id, { db: { brief_content_type: type } });
+  };
+
+  /** ผู้รับกด "รับงาน" — ปิด brief (รับแล้ว) + สร้างการ์ด creative ในเซคชัน Creatives ทันที */
+  const acceptBrief = async (task: TaskWithAssignee) => {
+    if (isTempId(task.id) || task.brief_accepted_at) return;
+    if (!creativesSectionId) {
+      showError("ยังไม่มีเซคชันชิ้นงาน (Creatives) สำหรับวางงานที่รับ");
+      return;
+    }
+    // 1) ทำเครื่องหมายว่ารับแล้ว
+    patchTask(task.id, {
+      db: { brief_accepted_at: new Date().toISOString(), completed: true },
+    });
+
+    // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้ตรวจ = ผู้สั่งงาน/ผู้สร้าง brief)
+    const inSection = items.filter((t) => bucketOf(t) === creativesSectionId);
+    const position =
+      inSection.length === 0
+        ? 1024
+        : Math.min(...inSection.map((t) => t.position)) - 1;
+    const reviewerPerson = task.created_by
+      ? (profiles.find((p) => p.id === task.created_by) ?? null)
+      : null;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic: TaskWithAssignee = {
+      id: tempId,
+      title: task.title,
+      description: task.description,
+      status: "todo",
+      priority: "medium",
+      category: task.category,
+      due_date: null,
+      assignee_id: task.assignee_id,
+      section_id: creativesSectionId,
+      completed: false,
+      position,
+      deliverable_url: null,
+      deliverable_file_path: null,
+      reviewer_id: task.created_by,
+      review_status: "none",
+      influencer_id: task.influencer_id,
+      approved_at: null,
+      brief_content_type: task.brief_content_type,
+      brief_accepted_at: null,
+      brief_source_id: task.id,
+      created_by: userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      assignee: task.assignee ?? null,
+      reviewer: reviewerPerson,
+      influencer: task.influencer ?? null,
+      files: [],
+    };
+    setItems((cur) => [...cur, optimistic]);
+
+    const { data, error: e } = await supabase
+      .from("tasks")
+      .insert({
+        title: task.title,
+        description: task.description,
+        section_id: creativesSectionId,
+        position,
+        assignee_id: task.assignee_id,
+        reviewer_id: task.created_by,
+        influencer_id: task.influencer_id,
+        category: task.category,
+        brief_content_type: task.brief_content_type,
+        brief_source_id: task.id,
+        created_by: userId,
+      })
+      .select(TASK_SELECT)
+      .single();
+
+    if (e || !data) {
+      setItems((cur) => cur.filter((t) => t.id !== tempId));
+      showError(`สร้างการ์ดชิ้นงานไม่สำเร็จ: ${e?.message ?? "ไม่ทราบสาเหตุ"}`);
+      return;
+    }
+    setItems((cur) =>
+      cur.map((t) => (t.id === tempId ? (data as unknown as TaskWithAssignee) : t))
+    );
   };
 
   const requestDeleteTask = (task: TaskWithAssignee) => {
@@ -799,6 +907,31 @@ export function TasksClient({
             cur.map((s) => (s.id === sectionId ? { ...s, name: prevName } : s))
           );
           showError(`เปลี่ยนชื่อไม่สำเร็จ: ${e.message}`);
+        }
+      });
+  };
+
+  /** สลับชนิดเซคชัน work ↔ brief */
+  const toggleSectionType = (sectionId: string) => {
+    if (isTempId(sectionId)) return;
+    const section = sections.find((s) => s.id === sectionId);
+    if (!section) return;
+    const next: "work" | "brief" = section.type === "brief" ? "work" : "brief";
+    setSections((cur) =>
+      cur.map((s) => (s.id === sectionId ? { ...s, type: next } : s))
+    );
+    void supabase
+      .from("task_sections")
+      .update({ type: next })
+      .eq("id", sectionId)
+      .then(({ error: e }) => {
+        if (e) {
+          setSections((cur) =>
+            cur.map((s) =>
+              s.id === sectionId ? { ...s, type: section.type } : s
+            )
+          );
+          showError(`เปลี่ยนชนิดเซคชันไม่สำเร็จ: ${e.message}`);
         }
       });
   };
@@ -1187,6 +1320,7 @@ export function TasksClient({
               void quickAdd(sectionId, title, placement)
             }
             onRenameSection={renameSection}
+            onToggleSectionType={toggleSectionType}
             onDeleteSection={requestDeleteSection}
           />
         ) : tab === "review" ? (
@@ -1216,6 +1350,11 @@ export function TasksClient({
         <TaskPanel
           key={selectedTask.id}
           task={selectedTask}
+          section={
+            selectedTask.section_id
+              ? (sections.find((s) => s.id === selectedTask.section_id) ?? null)
+              : null
+          }
           profiles={profiles}
           reviewerProfiles={reviewerProfiles}
           influencers={influencers}
@@ -1233,6 +1372,8 @@ export function TasksClient({
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
           onSetInfluencer={setInfluencer}
+          onAcceptBrief={acceptBrief}
+          onSetBriefContentType={setBriefContentType}
         />
       )}
 

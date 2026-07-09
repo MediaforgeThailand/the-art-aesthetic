@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui";
 import {
+  briefContentTypeLabel,
   DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
   taskCategoryChipClass,
@@ -391,6 +392,7 @@ export function TaskCardContent({
   today,
   overlay = false,
   selected = false,
+  sectionType = "work",
   profiles,
   onAssign,
 }: {
@@ -398,6 +400,8 @@ export function TaskCardContent({
   today: string;
   overlay?: boolean;
   selected?: boolean;
+  /** ชนิดเซคชันของการ์ด — 'brief' แสดงสถานะ รอรับงาน/รับแล้ว แทนสถานะตรวจ */
+  sectionType?: "work" | "brief";
   /** ส่งมาเมื่อต้องการให้วงกลมผู้รับผิดชอบกดเลือกคนได้ (ไม่ส่ง = แสดงเฉยๆ เช่นใน DragOverlay) */
   profiles?: ProfileOption[];
   onAssign?: (profileId: string | null) => void;
@@ -406,6 +410,9 @@ export function TaskCardContent({
     task.due_date !== null &&
     !task.completed &&
     task.due_date.slice(0, 10) < today;
+  const isBrief = sectionType === "brief";
+  const isAccepted = task.brief_accepted_at !== null;
+  const contentTypeLabel = briefContentTypeLabel(task.brief_content_type);
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
   const files = task.files ?? [];
   const mediaCount = files.filter(
@@ -432,7 +439,16 @@ export function TaskCardContent({
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5">
-          <ReviewStatusDot status={task.review_status} size={18} />
+          <ReviewStatusDot
+            status={
+              isBrief
+                ? isAccepted
+                  ? "approved"
+                  : "none"
+                : task.review_status
+            }
+            size={18}
+          />
         </div>
         <p
           className={`line-clamp-3 min-w-0 flex-1 text-sm font-medium leading-snug ${
@@ -458,14 +474,33 @@ export function TaskCardContent({
         ) : (
           <AssigneeAvatar assignee={task.assignee} />
         )}
-        {task.review_status === "pending" && (
-          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-            รอตรวจ
+        {isBrief ? (
+          <Badge
+            className={
+              isAccepted
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border border-amber-200 bg-amber-50 text-amber-700"
+            }
+          >
+            {isAccepted ? "รับแล้ว" : "รอรับงาน"}
           </Badge>
+        ) : (
+          <>
+            {task.review_status === "pending" && (
+              <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                รอตรวจ
+              </Badge>
+            )}
+            {task.review_status === "approved" && (
+              <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                เสร็จ
+              </Badge>
+            )}
+          </>
         )}
-        {task.review_status === "approved" && (
-          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-            เสร็จ
+        {contentTypeLabel && (
+          <Badge className="border border-sky-200 bg-sky-50 text-sky-700">
+            {contentTypeLabel}
           </Badge>
         )}
         {task.due_date && (
@@ -506,6 +541,7 @@ export function TaskCardContent({
 export function TaskCard({
   task,
   sectionId,
+  sectionType,
   today,
   selected,
   onClick,
@@ -514,6 +550,7 @@ export function TaskCard({
 }: {
   task: TaskWithAssignee;
   sectionId: string;
+  sectionType: "work" | "brief";
   today: string;
   selected: boolean;
   onClick: () => void;
@@ -554,6 +591,7 @@ export function TaskCard({
         task={task}
         today={today}
         selected={selected}
+        sectionType={sectionType}
         profiles={temp ? undefined : profiles}
         onAssign={temp ? undefined : onAssign}
       />

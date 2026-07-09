@@ -57,8 +57,14 @@ export type TaskRow = {
   review_status: "none" | "pending" | "approved";
   /** ผูกกับ influencer ที่ใช้ทำคอนเทนต์ (เลือกได้ ไม่บังคับ) */
   influencer_id: string | null;
-  /** เวลาที่ผ่านการตรวจ (review_status เปลี่ยนเป็น approved) — ใช้เรียง/กรองแท็บ "ตรวจแล้ว" */
+  /** เวลาที่ผ่านการตรวจ (review_status เปลี่ยนเป็น approved) — ใช้เรียง/กรองแท็บ "งานเสร็จ" */
   approved_at: string | null;
+  /** Brief workflow — ชนิดงานที่สั่ง (graphic|video); ตั้งบนการ์ด brief และสำเนาไปการ์ด creative */
+  brief_content_type: string | null;
+  /** เวลาที่ผู้รับกด "รับงาน" บนการ์ด brief (null = ยังไม่รับ) */
+  brief_accepted_at: string | null;
+  /** บนการ์ด creative — ชี้กลับไปการ์ด brief ต้นทางที่สร้างมัน */
+  brief_source_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -77,6 +83,8 @@ export type TaskSectionRow = {
   id: string;
   name: string;
   position: number;
+  /** ชนิดเซคชัน: work = ชิ้นงานปกติ, brief = สั่งงาน (การ์ดมีปุ่มรับงาน) */
+  type: "work" | "brief";
   created_at: string;
 };
 

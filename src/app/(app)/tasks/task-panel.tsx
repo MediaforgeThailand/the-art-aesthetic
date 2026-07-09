@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  Inbox,
   Link2,
   Paperclip,
   Plus,
@@ -19,6 +20,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BRIEF_CONTENT_TYPES,
+  briefContentTypeLabel,
   DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
@@ -29,6 +32,7 @@ import type {
   TaskCommentWithAuthor,
   TaskFileRow,
   TaskRow,
+  TaskSectionRow,
   TaskSubtaskFileRow,
   TaskSubtaskRow,
   TaskWithAssignee,
@@ -96,6 +100,7 @@ function FieldRow({
  */
 export function TaskPanel({
   task,
+  section,
   profiles,
   reviewerProfiles,
   influencers,
@@ -113,8 +118,12 @@ export function TaskPanel({
   onReopen,
   onSetReviewer,
   onSetInfluencer,
+  onAcceptBrief,
+  onSetBriefContentType,
 }: {
   task: TaskWithAssignee;
+  /** เซคชันของงานนี้ — ใช้รู้ว่าเป็นเซคชัน brief (สั่งงาน) หรือไม่ */
+  section: TaskSectionRow | null;
   profiles: ProfileOption[];
   /** roster ผู้ตรวจ — ตัวเลือกในช่อง "ผู้ตรวจงาน" จำกัดเฉพาะรายชื่อนี้ */
   reviewerProfiles: ProfileOption[];
@@ -139,12 +148,21 @@ export function TaskPanel({
     task: TaskWithAssignee,
     influencerId: string | null
   ) => void;
+  /** เซคชัน brief: ผู้รับกด "รับงาน" → สร้างการ์ด creative */
+  onAcceptBrief: (task: TaskWithAssignee) => void;
+  /** เซคชัน brief: เลือกชนิดงาน (graphic/video) */
+  onSetBriefContentType: (task: TaskWithAssignee, type: string) => void;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
   const isReviewer = task.reviewer_id !== null && task.reviewer_id === userId;
+  // เซคชัน brief (สั่งงาน): การ์ดมีปุ่มรับงาน + ช่อง "ส่งมอบให้" + เลือกชนิดงาน
+  const isBrief = section?.type === "brief";
+  const isAccepted = task.brief_accepted_at !== null;
+  // การ์ด creative ที่ถูกสร้างจาก brief — โชว์ข้อมูล brief ในแผง
+  const isFromBrief = task.brief_source_id !== null;
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptions =
@@ -651,9 +669,31 @@ export function TaskPanel({
       aria-label="รายละเอียดงาน"
       className="flex h-full w-[26rem] shrink-0 flex-col border-l border-white/60 bg-white/80 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right"
     >
-      {/* header — ปุ่มตาม workflow: ส่งตรวจ → รอตรวจ → อนุมัติ */}
+      {/* header — เซคชัน brief: ปุ่ม "รับงาน" / งานปกติ: ส่งตรวจ → รอตรวจ → อนุมัติ */}
       <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-3">
-        {task.review_status === "approved" ? (
+        {isBrief ? (
+          isAccepted ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">
+              <CheckCircle2 size={15} />
+              รับแล้ว
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onAcceptBrief(task)}
+              disabled={!task.assignee_id}
+              title={
+                task.assignee_id
+                  ? undefined
+                  : "เลือกผู้รับงาน (ส่งมอบให้) ก่อนจึงจะรับงานได้"
+              }
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
+            >
+              <Inbox size={15} />
+              รับงาน
+            </button>
+          )
+        ) : task.review_status === "approved" ? (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">
             <CheckCircle2 size={15} />
             เสร็จสิ้นสมบูรณ์
@@ -765,9 +805,25 @@ export function TaskPanel({
           }`}
         />
 
+        {/* งาน creative ที่มาจาก Brief — โชว์ข้อมูล brief */}
+        {isFromBrief && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
+            <span className="font-semibold">📋 งานจาก Brief</span>
+            {briefContentTypeLabel(task.brief_content_type) && (
+              <span className="rounded-full bg-white px-2 py-0.5 font-medium text-sky-700">
+                {briefContentTypeLabel(task.brief_content_type)}
+              </span>
+            )}
+            <span className="text-sky-600">· ผู้สั่งงานเป็นผู้ตรวจงานนี้</span>
+          </div>
+        )}
+
         {/* fields — ไร้กล่องแบบ Asana (กะทัดรัด ~30% ให้เนื้อหาเหลือพื้นที่มากสุด) */}
         <div className="space-y-0.5 border-b border-stone-100 pb-2">
-          <FieldRow label="ผู้รับผิดชอบ" htmlFor="task-assignee">
+          <FieldRow
+            label={isBrief ? "ส่งมอบให้" : "ผู้รับผิดชอบ"}
+            htmlFor="task-assignee"
+          >
             <div className="flex items-center gap-2 px-2">
               <AssigneeAvatar assignee={task.assignee} />
               <select
@@ -793,6 +849,30 @@ export function TaskPanel({
             </div>
           </FieldRow>
 
+          {/* เซคชัน brief: เลือกชนิดงานเป็นปุ่ม (graphic/video) ไม่ใช่ dropdown */}
+          {isBrief && (
+            <FieldRow label="ชนิดงาน">
+              <div className="flex flex-wrap gap-1.5 px-2">
+                {BRIEF_CONTENT_TYPES.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => onSetBriefContentType(task, t.key)}
+                    className={`cursor-pointer rounded-lg border px-3 py-1 text-sm transition-colors active:scale-[0.97] ${
+                      task.brief_content_type === t.key
+                        ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
+                        : "border-stone-200 text-stone-500 hover:border-brand-300 hover:text-brand-700"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </FieldRow>
+          )}
+
+          {/* ผู้ตรวจงาน — ซ่อนในเซคชัน brief (ผู้ตรวจ = ผู้สั่งงาน อัตโนมัติ ไม่ต้องเลือก) */}
+          {!isBrief && (
           <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
             <div className="px-2">
               <div className="flex items-center gap-2">
@@ -823,6 +903,7 @@ export function TaskPanel({
               )}
             </div>
           </FieldRow>
+          )}
 
           {/* influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ ค้นหาได้ ไม่บังคับ */}
           <FieldRow label="Influencer">

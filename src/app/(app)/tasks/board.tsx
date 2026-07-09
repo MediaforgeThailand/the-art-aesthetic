@@ -109,6 +109,7 @@ function SectionHeader({
   onRename,
   onDelete,
   onQuickAddTop,
+  onToggleType,
 }: {
   section: TaskSectionRow;
   count: number;
@@ -117,6 +118,7 @@ function SectionHeader({
   onRename: (name: string) => void;
   onDelete: () => void;
   onQuickAddTop: () => void;
+  onToggleType: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(section.name);
@@ -178,6 +180,21 @@ function SectionHeader({
       <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-stone-500 shadow-sm">
         {count}
       </span>
+      {/* ชนิดเซคชัน — คลิกสลับ ชิ้นงาน ↔ Brief */}
+      <button
+        type="button"
+        onClick={onToggleType}
+        onKeyDown={(e) => e.stopPropagation()}
+        disabled={disabled}
+        title="สลับชนิดเซคชัน (ชิ้นงาน / Brief สั่งงาน)"
+        className={`cursor-pointer rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+          section.type === "brief"
+            ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+            : "border-stone-300 bg-white text-stone-500 hover:bg-stone-50"
+        }`}
+      >
+        {section.type === "brief" ? "Brief" : "ชิ้นงาน"}
+      </button>
       {!disabled && (
         <div
           onKeyDown={(e) => e.stopPropagation()}
@@ -230,6 +247,7 @@ function BoardColumn({
   onQuickAdd,
   onRename,
   onDelete,
+  onToggleType,
 }: {
   section: TaskSectionRow;
   tasks: TaskWithAssignee[];
@@ -242,6 +260,7 @@ function BoardColumn({
   onQuickAdd: (title: string, placement: QuickAddPlacement) => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onToggleType: () => void;
 }) {
   const temp = isTempId(section.id);
   const [composer, setComposer] = useState<QuickAddPlacement | null>(null);
@@ -293,6 +312,7 @@ function BoardColumn({
         onRename={onRename}
         onDelete={onDelete}
         onQuickAddTop={() => setComposer("top")}
+        onToggleType={onToggleType}
       />
 
       {/* ปุ่มเพิ่มงานอยู่บนสุดของคอลัมน์ — งานใหม่โผล่ด้านบน */}
@@ -347,6 +367,7 @@ function BoardColumn({
                 key={task.id}
                 task={task}
                 sectionId={section.id}
+                sectionType={section.type}
                 today={today}
                 selected={selectedId === task.id}
                 onClick={() => onCardClick(task)}
@@ -376,6 +397,7 @@ export function KanbanBoard({
   onCardClick,
   onQuickAdd,
   onRenameSection,
+  onToggleSectionType,
   onDeleteSection,
 }: {
   sections: TaskSectionRow[];
@@ -399,6 +421,7 @@ export function KanbanBoard({
     placement: QuickAddPlacement
   ) => void;
   onRenameSection: (sectionId: string, name: string) => void;
+  onToggleSectionType: (sectionId: string) => void;
   onDeleteSection: (sectionId: string) => void;
 }) {
   const [activeTask, setActiveTask] = useState<TaskWithAssignee | null>(null);
@@ -618,6 +641,7 @@ export function KanbanBoard({
                 }
                 onRename={(name) => onRenameSection(section.id, name)}
                 onDelete={() => onDeleteSection(section.id)}
+                onToggleType={() => onToggleSectionType(section.id)}
               />
             );
           })}
