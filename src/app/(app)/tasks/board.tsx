@@ -265,6 +265,10 @@ function BoardColumn({
   const temp = isTempId(section.id);
   const [composer, setComposer] = useState<QuickAddPlacement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // เปิดโหมด masonry หลัง mount เท่านั้น — SSR/เฟรมแรก render เป็น grid ปกติ (กันการ์ดซ้อนกัน
+  // ก่อน JS วัดความสูง) แล้วค่อยสลับเป็น masonry ที่ปิดช่องว่างระหว่างแถว
+  const [masonry, setMasonry] = useState(false);
+  useEffect(() => setMasonry(true), []);
 
   const {
     attributes,
@@ -349,10 +353,18 @@ function BoardColumn({
           items={tasks.map((t) => t.id)}
           strategy={rectSortingStrategy}
         >
-          {/* การ์ดเรียง 2 คอลัมน์ต่อเซคชัน (row ไม่จำกัด) */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* การ์ดเรียง 2 คอลัมน์ต่อเซคชัน — masonry: การ์ดกินแถวตามสูงจริง (ปิดช่องว่าง
+              ใต้การ์ดเตี้ยที่อยู่คู่การ์ดสูง) โดยยังเป็น grid จริงที่ dnd-kit เรียงได้ปกติ */}
+          <div
+            className={
+              masonry
+                ? "grid grid-cols-2 items-start gap-x-2 [grid-auto-rows:4px]"
+                : "grid grid-cols-2 gap-2"
+            }
+          >
             {tasks.length === 0 && composer === null && (
               <div
+                style={masonry ? { gridRowEnd: "span 16" } : undefined}
                 className={`col-span-2 flex items-center justify-center rounded-lg border-2 border-dashed py-6 text-xs transition-colors duration-200 ${
                   highlight
                     ? "border-brand-300 text-brand-500"
@@ -373,6 +385,7 @@ function BoardColumn({
                 onClick={() => onCardClick(task)}
                 profiles={profiles}
                 onAssign={(profileId) => onAssign(task, profileId)}
+                masonry={masonry}
               />
             ))}
           </div>

@@ -11,7 +11,17 @@ import {
   Play,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+
+/** useLayoutEffect ฝั่ง client, useEffect ฝั่ง server — กัน warning ตอน SSR */
+const useIsoLayoutEffect =
+  typeof document !== "undefined" ? useLayoutEffect : useEffect;
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui";
 import {
@@ -53,9 +63,16 @@ export function AssigneeAvatar({
   size = 6,
 }: {
   assignee: { full_name: string | null; email: string | null } | null;
-  size?: 6 | 7 | 8;
+  size?: 5 | 6 | 7 | 8;
 }) {
-  const dim = size === 8 ? "h-8 w-8" : size === 7 ? "h-7 w-7" : "h-6 w-6";
+  const dim =
+    size === 8
+      ? "h-8 w-8"
+      : size === 7
+        ? "h-7 w-7"
+        : size === 5
+          ? "h-5 w-5"
+          : "h-6 w-6";
   if (!assignee) {
     return (
       <span
@@ -550,6 +567,7 @@ export function TaskCard({
   onClick,
   profiles,
   onAssign,
+  masonry = false,
 }: {
   task: TaskWithAssignee;
   sectionId: string;
@@ -559,6 +577,8 @@ export function TaskCard({
   onClick: () => void;
   profiles: ProfileOption[];
   onAssign: (profileId: string | null) => void;
+  /** true = คอลัมน์อยู่โหมด masonry — การ์ดวัดความสูงเองแล้วกำหนดจำนวนแถวที่กิน (ปิดช่องว่างระหว่างแถว) */
+  masonry?: boolean;
 }) {
   const temp = isTempId(task.id);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -568,10 +588,41 @@ export function TaskCard({
       disabled: temp,
     });
 
+  // masonry: วัดความสูงจริงของการ์ด แล้วกำหนด grid-row span ให้พอดี → การ์ดแต่ละใบ
+  // กินเนื้อที่ตามสูงจริง ไม่ต้องเท่าใบที่สูงสุดในแถว (ต้องคู่กับ grid-auto-rows:4px + items-start)
+  const cardElRef = useRef<HTMLDivElement | null>(null);
+  const [rowSpan, setRowSpan] = useState<number>();
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      setNodeRef(el);
+      cardElRef.current = el;
+    },
+    [setNodeRef]
+  );
+  useIsoLayoutEffect(() => {
+    if (!masonry) return;
+    const el = cardElRef.current;
+    if (!el) return;
+    const ROW = 4; // = grid-auto-rows (px)
+    const GAP = 8; // ช่องว่างแนวตั้งระหว่างการ์ด (px)
+    const measure = () =>
+      setRowSpan(
+        Math.max(1, Math.ceil((el.getBoundingClientRect().height + GAP) / ROW))
+      );
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [masonry]);
+
   return (
     <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      ref={setRefs}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        gridRowEnd: masonry && rowSpan ? `span ${rowSpan}` : undefined,
+      }}
       {...attributes}
       {...listeners}
       onClick={temp ? undefined : onClick}

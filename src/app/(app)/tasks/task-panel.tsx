@@ -14,6 +14,7 @@ import {
   SendHorizontal,
   Sparkles,
   Trash2,
+  Undo2,
   Upload,
   X,
 } from "lucide-react";
@@ -72,6 +73,13 @@ const bareControl =
   "w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-stone-800 transition-colors hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
 const bareSelect = `${bareControl} cursor-pointer appearance-none`;
 
+/* เวอร์ชันกะทัดรัดสำหรับ "โซนตั้งค่า" (ผู้รับผิดชอบ/ผู้ตรวจ/influ/หมวดหมู่) — ไม่ใช่เนื้อหาหลัก
+   จึงย่อให้เล็กลงเพื่อเหลือพื้นที่ให้รายละเอียด/ไฟล์/แชท */
+const bareControlSm =
+  "w-full rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-stone-800 transition-colors hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
+const bareSelectSm = `${bareControlSm} cursor-pointer appearance-none`;
+
+/* แถว field ในโซนตั้งค่า — label แคบ/เล็ก, กระชับแนวตั้ง */
 function FieldRow({
   label,
   htmlFor,
@@ -85,7 +93,7 @@ function FieldRow({
     <div className="flex items-center gap-2">
       <label
         htmlFor={htmlFor}
-        className="w-28 shrink-0 text-sm text-stone-500"
+        className="w-20 shrink-0 text-xs text-stone-500"
       >
         {label}
       </label>
@@ -114,6 +122,7 @@ export function TaskPanel({
   onSubmitReview,
   onCancelReview,
   onApprove,
+  onReject,
   onReopen,
   onSetReviewer,
   onSetInfluencer,
@@ -139,6 +148,8 @@ export function TaskPanel({
   onSubmitReview: (task: TaskWithAssignee) => void;
   onCancelReview: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
+  /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล + นับเป็นการแก้ไข 1 ครั้งของผู้รับผิดชอบ */
+  onReject: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
   onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
   onSetInfluencer: (
@@ -530,21 +541,15 @@ export function TaskPanel({
 
   const [commentDraft, setCommentDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [revisionChecked, setRevisionChecked] = useState(false);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [linkDraft, setLinkDraft] = useState("");
   const [showLinkInput, setShowLinkInput] = useState(false);
   const commentFileRef = useRef<HTMLInputElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
-  /** เลขแก้ไขครั้งถัดไปของ task นี้ (ประมาณจาก state ฝั่งจอ — ตอนส่งจะเช็คกับ DB อีกชั้น) */
-  const nextRevisionNumber =
-    Math.max(0, ...(comments ?? []).map((c) => c.revision_number ?? 0)) + 1;
-
   const sendComment = async () => {
     const body = commentDraft.trim();
     const link = linkDraft.trim();
-    const isRev = revisionChecked;
     const file = attachFile;
     if ((body === "" && !file && link === "") || sending) return;
     if (link !== "" && !/^https?:\/\//i.test(link)) {
@@ -568,28 +573,15 @@ export function TaskPanel({
       filePath = p;
     }
 
-    // เลขแก้ไข: เช็คเลขสูงสุดจริงจาก DB ก่อน insert — state ฝั่งจออาจยังโหลดไม่ครบ
-    let revisionNumber: number | null = null;
-    if (isRev) {
-      const { data: maxRow } = await supabase
-        .from("task_comments")
-        .select("revision_number")
-        .eq("task_id", task.id)
-        .eq("is_revision", true)
-        .order("revision_number", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-      revisionNumber =
-        Math.max(maxRow?.revision_number ?? 0, nextRevisionNumber - 1) + 1;
-    }
     const tempId = `temp-${Date.now()}`;
     const optimistic: TaskCommentWithAuthor = {
       id: tempId,
       task_id: task.id,
       author_id: userId,
       body,
-      is_revision: isRev,
-      revision_number: revisionNumber,
+      // การแก้ไขนับจาก "การตีกลับ" ของผู้ตรวจเท่านั้น — คอมเมนต์ทั่วไปไม่ใช่ revision
+      is_revision: false,
+      revision_number: null,
       file_path: filePath,
       link_url: link === "" ? null : link,
       created_at: new Date().toISOString(),
@@ -599,7 +591,6 @@ export function TaskPanel({
     setCommentDraft("");
     setLinkDraft("");
     setShowLinkInput(false);
-    setRevisionChecked(false);
     setAttachFile(null);
     window.setTimeout(
       () => commentsEndRef.current?.scrollIntoView({ block: "nearest" }),
@@ -612,8 +603,6 @@ export function TaskPanel({
         task_id: task.id,
         author_id: userId,
         body,
-        is_revision: isRev,
-        revision_number: revisionNumber,
         file_path: filePath,
         link_url: link === "" ? null : link,
       })
@@ -624,7 +613,6 @@ export function TaskPanel({
       setComments((cur) => (cur ?? []).filter((c) => c.id !== tempId));
       setCommentDraft(body);
       setLinkDraft(link);
-      setRevisionChecked(isRev);
       setAttachFile(file); // คืนไฟล์แนบให้กดส่งใหม่ได้
       // เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort) — คอมเมนต์ไม่ถูกบันทึกจึงไม่มีแถวอ้างถึง
       if (filePath) {
@@ -688,14 +676,25 @@ export function TaskPanel({
           </span>
         ) : task.review_status === "pending" ? (
           isReviewer ? (
-            <button
-              type="button"
-              onClick={() => onApprove(task)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
-            >
-              <CheckCircle2 size={15} />
-              อนุมัติผ่านการตรวจ
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onApprove(task)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
+              >
+                <CheckCircle2 size={15} />
+                อนุมัติ
+              </button>
+              <button
+                type="button"
+                onClick={() => onReject(task)}
+                title="ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-600 transition-all duration-200 hover:bg-rose-50 active:scale-[0.97]"
+              >
+                <Undo2 size={15} />
+                ตีกลับให้แก้ไข
+              </button>
+            </>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
@@ -764,7 +763,7 @@ export function TaskPanel({
         </div>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
         {/* title — บรรทัดเดียวกะทัดรัด */}
         <input
           value={title}
@@ -793,14 +792,14 @@ export function TaskPanel({
           </div>
         )}
 
-        {/* fields — ไร้กล่องแบบ Asana (กะทัดรัด ~30% ให้เนื้อหาเหลือพื้นที่มากสุด) */}
-        <div className="space-y-0.5 pb-1">
+        {/* โซนตั้งค่า — ไร้กล่องแบบ Asana + ย่อเล็ก (ไม่ใช่เนื้อหาหลัก) ให้เหลือพื้นที่ให้รายละเอียด/ไฟล์/แชท */}
+        <div className="space-y-px pb-0.5">
           <FieldRow
             label={isBrief ? "ส่งมอบให้" : "ผู้รับผิดชอบ"}
             htmlFor="task-assignee"
           >
-            <div className="flex items-center gap-2 px-2">
-              <AssigneeAvatar assignee={task.assignee} />
+            <div className="flex items-center gap-1.5 px-1.5">
+              <AssigneeAvatar assignee={task.assignee} size={5} />
               <select
                 id="task-assignee"
                 value={task.assignee_id ?? ""}
@@ -812,7 +811,7 @@ export function TaskPanel({
                     local: { assignee: person },
                   });
                 }}
-                className={`${bareSelect} px-1.5`}
+                className={bareSelectSm}
               >
                 <option value="">ไม่ระบุ</option>
                 {profiles.map((p) => (
@@ -827,13 +826,13 @@ export function TaskPanel({
           {/* เซคชัน brief: เลือกชนิดงานเป็นปุ่ม (graphic/video) ไม่ใช่ dropdown */}
           {isBrief && (
             <FieldRow label="ชนิดงาน">
-              <div className="flex flex-wrap gap-1.5 px-2">
+              <div className="flex flex-wrap gap-1.5 px-1.5">
                 {BRIEF_CONTENT_TYPES.map((t) => (
                   <button
                     key={t.key}
                     type="button"
                     onClick={() => onSetBriefContentType(task, t.key)}
-                    className={`cursor-pointer rounded-lg border px-3 py-1 text-sm transition-colors active:scale-[0.97] ${
+                    className={`cursor-pointer rounded-md border px-2.5 py-0.5 text-xs transition-colors active:scale-[0.97] ${
                       task.brief_content_type === t.key
                         ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
                         : "border-stone-200 text-stone-500 hover:border-brand-300 hover:text-brand-700"
@@ -849,9 +848,9 @@ export function TaskPanel({
           {/* ผู้ตรวจงาน — ซ่อนในเซคชัน brief (ผู้ตรวจ = ผู้สั่งงาน อัตโนมัติ ไม่ต้องเลือก) */}
           {!isBrief && (
           <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
-            <div className="px-2">
-              <div className="flex items-center gap-2">
-                <AssigneeAvatar assignee={task.reviewer ?? null} />
+            <div className="px-1.5">
+              <div className="flex items-center gap-1.5">
+                <AssigneeAvatar assignee={task.reviewer ?? null} size={5} />
                 <select
                   id="task-reviewer"
                   value={task.reviewer_id ?? ""}
@@ -860,7 +859,7 @@ export function TaskPanel({
                     const id = e.target.value === "" ? null : e.target.value;
                     onSetReviewer(task, id);
                   }}
-                  className={`${bareSelect} px-1.5 disabled:cursor-not-allowed disabled:opacity-70`}
+                  className={`${bareSelectSm} disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <option value="">เลือกผู้ตรวจ</option>
                   {reviewerOptions.map((p) => (
@@ -882,16 +881,16 @@ export function TaskPanel({
 
           {/* influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ ค้นหาได้ ไม่บังคับ */}
           <FieldRow label="Influencer">
-            <div ref={influRef} className="relative px-2">
+            <div ref={influRef} className="relative px-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setInfluOpen((v) => !v);
                   setInfluQuery("");
                 }}
-                className={`${bareControl} flex items-center gap-2 text-left`}
+                className={`${bareControlSm} flex items-center gap-1.5 text-left`}
               >
-                <Sparkles size={14} className="shrink-0 text-brand-400" />
+                <Sparkles size={13} className="shrink-0 text-brand-400" />
                 <span
                   className={`min-w-0 flex-1 truncate ${task.influencer ? "text-stone-800" : "text-stone-400"}`}
                 >
@@ -973,7 +972,7 @@ export function TaskPanel({
                 }
                 onPatch(task.id, { db: { category: e.target.value } });
               }}
-              className={bareSelect}
+              className={bareSelectSm}
             >
               <option value={DEFAULT_TASK_CATEGORY}>ไม่ระบุ</option>
               {categories.map((c) => (
@@ -1239,28 +1238,6 @@ export function TaskPanel({
           </button>
         </div>
         <div className="mt-1.5 flex items-center gap-3 pl-9">
-          <label
-            title={
-              comments === null
-                ? "รอโหลดความคิดเห็นก่อน จึงจะระบุเลขครั้งแก้ไขได้"
-                : undefined
-            }
-            className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-stone-500"
-          >
-            <input
-              type="checkbox"
-              checked={revisionChecked}
-              disabled={comments === null}
-              onChange={(e) => setRevisionChecked(e.target.checked)}
-              className="h-3.5 w-3.5 accent-amber-600 disabled:cursor-not-allowed"
-            />
-            เป็นการส่งงานแก้ไข
-            {revisionChecked && (
-              <span className="font-semibold text-amber-700">
-                (ครั้งที่ {nextRevisionNumber})
-              </span>
-            )}
-          </label>
           <button
             type="button"
             onClick={() => commentFileRef.current?.click()}
@@ -1346,7 +1323,7 @@ function CommentItem({
                 mine ? "bg-white/25 text-cream" : "bg-amber-100 text-amber-700"
               }`}
             >
-              ส่งงานแก้ไข ครั้งที่ {c.revision_number ?? "-"}
+              ตีกลับให้แก้ไข ครั้งที่ {c.revision_number ?? "-"}
             </span>
           )}
           {c.body !== "" && (

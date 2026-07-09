@@ -10,7 +10,15 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
-import { ConfirmDialog, Input, Modal, Select } from "@/components/ui";
+import {
+  Button,
+  ConfirmDialog,
+  Input,
+  Label,
+  Modal,
+  Select,
+  Textarea,
+} from "@/components/ui";
 import {
   DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
@@ -127,6 +135,13 @@ export function TasksClient({
   );
   useEffect(() => setReviewerSet(new Set(reviewerIds)), [reviewerIds]);
   const [reviewerModalOpen, setReviewerModalOpen] = useState(false);
+
+  /* ---------- ตีกลับงาน (reject) — เปิดกล่องระบุเหตุผลก่อนยืนยัน ---------- */
+  const [rejectTarget, setRejectTarget] = useState<TaskWithAssignee | null>(
+    null
+  );
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
 
   /** คนที่เลือกเป็นผู้ตรวจงานได้ (ตามลำดับชื่อจาก profiles) */
   const reviewerProfiles = useMemo(
@@ -520,6 +535,56 @@ export function TasksClient({
         approved_at: new Date().toISOString(),
       },
     });
+  };
+
+  /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล */
+  const requestReject = (task: TaskWithAssignee) => {
+    if (isTempId(task.id)) return;
+    setRejectReason("");
+    setRejectTarget(task);
+  };
+
+  /** ยืนยันตีกลับ — บันทึกคอมเมนต์ revision (นับเป็นการแก้ไข 1 ครั้งของผู้รับผิดชอบ)
+      แล้วดึงงานกลับสถานะ "กำลังทำ" ให้ผู้รับผิดชอบแก้แล้วส่งตรวจใหม่ */
+  const confirmReject = async () => {
+    const task = rejectTarget;
+    if (!task || rejecting) return;
+    setRejecting(true);
+
+    // เลขรอบแก้ไขถัดไป — อ่านเลขสูงสุดจริงจาก DB ก่อน (state ฝั่งจอไม่ได้โหลดคอมเมนต์ทุกงาน)
+    const { data: maxRow, error: maxErr } = await supabase
+      .from("task_comments")
+      .select("revision_number")
+      .eq("task_id", task.id)
+      .eq("is_revision", true)
+      .order("revision_number", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    if (maxErr) {
+      setRejecting(false);
+      showError(`ตีกลับไม่สำเร็จ: ${maxErr.message}`);
+      return;
+    }
+    const revisionNumber = (maxRow?.revision_number ?? 0) + 1;
+
+    const { error: cErr } = await supabase.from("task_comments").insert({
+      task_id: task.id,
+      author_id: userId,
+      body: rejectReason.trim(),
+      is_revision: true,
+      revision_number: revisionNumber,
+    });
+    setRejecting(false);
+    if (cErr) {
+      showError(`บันทึกการตีกลับไม่สำเร็จ: ${cErr.message}`);
+      return;
+    }
+    // ดึงกลับเป็น "กำลังทำ" — ล้างสถานะ approve ถ้ามี
+    patchTask(task.id, {
+      db: { review_status: "none", completed: false, approved_at: null },
+    });
+    setRejectTarget(null);
+    setRejectReason("");
   };
 
   /** เปิดงานที่เสร็จแล้วกลับมาแก้ */
@@ -1319,6 +1384,7 @@ export function TasksClient({
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onApprove={approveTask}
+            onReject={requestReject}
           />
         ) : (
           <ApprovedList
@@ -1349,13 +1415,16 @@ export function TasksClient({
           categories={categories}
           onAddCategory={addCategory}
           userId={userId}
-          suspendEsc={confirm !== null || reviewerModalOpen}
+          suspendEsc={
+            confirm !== null || reviewerModalOpen || rejectTarget !== null
+          }
           onPatch={patchTask}
           onDelete={requestDeleteTask}
           onClose={() => setSelectedId(null)}
           onSubmitReview={submitForReview}
           onCancelReview={cancelReview}
           onApprove={approveTask}
+          onReject={requestReject}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
           onSetInfluencer={setInfluencer}
@@ -1458,6 +1527,50 @@ export function TasksClient({
                 </p>
               )}
           </div>
+        </div>
+      </Modal>
+
+      {/* ตีกลับงาน: ระบุสิ่งที่ต้องแก้ (ไม่บังคับ) แล้วยืนยัน → นับเป็นการแก้ไข 1 ครั้ง */}
+      <Modal
+        open={rejectTarget !== null}
+        onClose={() => setRejectTarget(null)}
+        title="ตีกลับงานให้แก้ไข"
+      >
+        <p className="text-sm leading-6 text-stone-600">
+          งาน &quot;
+          <span className="font-medium text-stone-800">
+            {rejectTarget?.title}
+          </span>
+          &quot; จะถูกส่งกลับให้{" "}
+          <span className="font-medium text-stone-800">
+            {rejectTarget?.assignee
+              ? profileName(rejectTarget.assignee)
+              : "ผู้รับผิดชอบ"}
+          </span>{" "}
+          แก้ไข และนับเป็นการแก้ไข 1 ครั้ง (เก็บเป็นสถิติรายคนในหน้า Team
+          Workload)
+        </p>
+        <div className="mt-3">
+          <Label htmlFor="reject-reason">สิ่งที่ต้องแก้ไข / เหตุผล (ไม่บังคับ)</Label>
+          <Textarea
+            id="reject-reason"
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="ระบุสิ่งที่ต้องแก้ไข เพื่อให้ผู้รับผิดชอบเห็นในความคิดเห็น..."
+          />
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setRejectTarget(null)}>
+            ยกเลิก
+          </Button>
+          <Button
+            variant="danger"
+            loading={rejecting}
+            onClick={() => void confirmReject()}
+          >
+            ตีกลับให้แก้ไข
+          </Button>
         </div>
       </Modal>
 

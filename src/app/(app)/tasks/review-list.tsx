@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Image as ImageIcon,
   Link2,
+  Undo2,
 } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { TASK_PRIORITY } from "@/lib/constants";
@@ -24,6 +25,7 @@ export function ReviewList({
   selectedId,
   onRowClick,
   onApprove,
+  onReject,
 }: {
   queue: TaskWithAssignee[];
   sections: TaskSectionRow[];
@@ -31,6 +33,8 @@ export function ReviewList({
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
+  /** ตีกลับให้แก้ไข — บันทึกจำนวนรอบแก้ไขไว้เป็นสถิติของผู้รับผิดชอบ */
+  onReject: (task: TaskWithAssignee) => void;
 }) {
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? null;
@@ -54,8 +58,8 @@ export function ReviewList({
     <div className="space-y-2.5 px-4 pb-6 sm:px-6">
       <p className="rounded-lg bg-amber-50/80 px-3 py-2 text-xs text-amber-700">
         งานที่รอคุณตรวจ {queue.length} รายการ — คลิกเพื่อดูรายละเอียด ไฟล์งาน
-        และความคิดเห็น · กด &quot;อนุมัติ&quot; เมื่อผ่าน หรือเปิดงานแล้วคอมเมนต์
-        หากต้องแก้
+        และความคิดเห็น · กด &quot;อนุมัติ&quot; เมื่อผ่าน หรือ &quot;ตีกลับ&quot;
+        เพื่อส่งคืนให้แก้ไข (นับเป็นสถิติการแก้ไขของผู้รับผิดชอบ)
       </p>
 
       {queue.map((task) => {
@@ -130,17 +134,31 @@ export function ReviewList({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onApprove(task);
-              }}
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
-            >
-              <CheckCircle2 size={15} />
-              อนุมัติ
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReject(task);
+                }}
+                title="ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95"
+              >
+                <Undo2 size={15} />
+                ตีกลับ
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApprove(task);
+                }}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
+              >
+                <CheckCircle2 size={15} />
+                อนุมัติ
+              </button>
+            </div>
           </div>
         );
       })}
