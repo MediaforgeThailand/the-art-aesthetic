@@ -22,6 +22,8 @@ export type ProfileRow = {
   permissions: AppPermission[];
   /** ผู้ตรวจอัตโนมัติของฉัน — auto เลือกเป็นผู้ตรวจตอนสร้างงานใหม่ (null = ไม่ตั้ง) */
   default_reviewer_id: string | null;
+  /** รูปโปรไฟล์ — path ใน storage bucket documents (avatars/{uid}/...) แสดงแทนตัวอักษรใน avatar */
+  avatar_path: string | null;
   created_at: string;
 };
 
@@ -572,8 +574,8 @@ export type InfluencerLite = Pick<
 >;
 
 export type TaskWithAssignee = TaskRow & {
-  assignee: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
-  reviewer?: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
+  assignee: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  reviewer?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   influencer?: InfluencerLite | null;
   files?: TaskFileRow[];
 };
@@ -585,5 +587,5 @@ export type FileLinkWithCreator = FileLinkRow & {
 
 /** ความคิดเห็นพร้อมชื่อผู้เขียน (join จาก profiles) */
 export type TaskCommentWithAuthor = TaskCommentRow & {
-  author: Pick<ProfileRow, "full_name" | "email"> | null;
+  author: Pick<ProfileRow, "full_name" | "email" | "avatar_path"> | null;
 };

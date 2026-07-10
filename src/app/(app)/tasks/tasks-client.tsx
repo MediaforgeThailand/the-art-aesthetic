@@ -38,7 +38,7 @@ import { ReviewList } from "./review-list";
 import { AssigneeAvatar, isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 
-type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
+type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path">;
 /** โปรไฟล์พร้อมค่าผู้ตรวจอัตโนมัติ (ใช้เฉพาะในหน้านี้) */
 type ProfileWithDefault = ProfileOption & {
   default_reviewer_id: string | null;
@@ -55,7 +55,7 @@ function bangkokDay(iso: string): string {
 
 /** select ของ task พร้อม join (assignee/reviewer/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;

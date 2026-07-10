@@ -33,8 +33,12 @@ import {
 import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
+import { useSignedUrl } from "../influencers/use-signed-url";
 
-export type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
+export type ProfileOption = Pick<
+  ProfileRow,
+  "id" | "full_name" | "email" | "avatar_path"
+>;
 
 /* เฉพาะฟอร์แมตที่ Chrome/Edge เปิดได้จริง — .heic/.avi ไม่รองรับ ให้ตกไปเป็นไฟล์แนบธรรมดา */
 export function isImagePath(path: string): boolean {
@@ -62,9 +66,16 @@ export function AssigneeAvatar({
   assignee,
   size = 6,
 }: {
-  assignee: { full_name: string | null; email: string | null } | null;
+  assignee: {
+    full_name: string | null;
+    email: string | null;
+    /** path รูปโปรไฟล์ใน storage — มีแล้วแสดงรูปจริงแทนตัวอักษร */
+    avatar_path?: string | null;
+  } | null;
   size?: 5 | 6 | 7 | 8;
 }) {
+  // hook ต้องถูกเรียกทุก render — ส่ง null เมื่อไม่มีรูป (useSignedUrl รองรับ)
+  const { url } = useSignedUrl(assignee?.avatar_path ?? null);
   const dim =
     size === 8
       ? "h-8 w-8"
@@ -82,6 +93,17 @@ export function AssigneeAvatar({
     );
   }
   const name = profileName(assignee);
+  if (assignee.avatar_path && url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={name}
+        title={name}
+        className={`${dim} shrink-0 rounded-full object-cover shadow-sm`}
+      />
+    );
+  }
   return (
     <span
       title={name}

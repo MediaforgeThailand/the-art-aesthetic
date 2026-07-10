@@ -222,7 +222,7 @@ export function TaskPanel({
         .order("created_at", { ascending: true }),
       supabase
         .from("task_comments")
-        .select("*, author:profiles!task_comments_author_id_fkey(full_name, email)")
+        .select("*, author:profiles!task_comments_author_id_fkey(full_name, email, avatar_path)")
         .eq("task_id", task.id)
         .order("created_at", { ascending: true }),
     ]).then(([s, c]) => {
@@ -619,7 +619,7 @@ export function TaskPanel({
         file_path: filePath,
         link_url: link === "" ? null : link,
       })
-      .select("*, author:profiles!task_comments_author_id_fkey(full_name, email)")
+      .select("*, author:profiles!task_comments_author_id_fkey(full_name, email, avatar_path)")
       .single();
     setSending(false);
     if (error || !data) {

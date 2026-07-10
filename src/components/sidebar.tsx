@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Link2,
   LogOut,
+  Settings,
   Sparkles,
   Tags,
   UserCog,
@@ -15,7 +16,9 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
 import { LogoMark, LogoWordmark } from "@/components/logo";
+import { ProfileSettingsModal } from "@/components/profile-settings";
 import type { AppPermission } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -52,23 +55,33 @@ export function Sidebar({
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
   const [permissions, setPermissions] = useState<AppPermission[]>([]);
+  // โปรไฟล์ของฉัน — ชื่อ/รูปที่แก้ได้จาก modal ตั้งค่าโปรไฟล์ (ค่าเริ่มจาก props/DB)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState(userName);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const { url: avatarUrl } = useSignedUrl(avatarPath);
 
   useEffect(() => {
-    // อ่าน role + permissions ครั้งเดียวตอน mount (sidebar อยู่ยาวข้ามการนำทางฝั่ง client)
+    // อ่าน role + permissions + โปรไฟล์ ครั้งเดียวตอน mount (sidebar อยู่ยาวข้ามการนำทางฝั่ง client)
     let alive = true;
     const supabase = createClient();
     void supabase.auth.getClaims().then(({ data }) => {
       const uid = data?.claims?.sub;
       if (!uid || typeof uid !== "string") return;
+      if (alive) setUserId(uid);
       void supabase
         .from("profiles")
-        .select("role, permissions")
+        .select("role, permissions, full_name, avatar_path")
         .eq("id", uid)
         .single()
         .then(({ data: profile }) => {
           if (!alive || !profile) return;
           if (profile.role === "admin") setIsAdmin(true);
           setPermissions((profile.permissions ?? []) as AppPermission[]);
+          // ชื่อใน profiles คือค่าจริงล่าสุด (JWT claims อาจยังเป็นชื่อเก่า)
+          if (profile.full_name) setDisplayName(profile.full_name);
+          setAvatarPath(profile.avatar_path ?? null);
         });
     });
     return () => {
@@ -140,16 +153,39 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-white/60 px-3 py-3">
-        <div className="flex items-center gap-3 rounded-lg px-3 py-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-xs font-semibold text-brand-800">
-            {(userName || userEmail || "?").charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-stone-800">
-              {userName || "ผู้ใช้งาน"}
-            </p>
-            <p className="truncate text-xs text-stone-400">{userEmail}</p>
-          </div>
+        <div className="flex items-center gap-1 rounded-lg px-1 py-2">
+          {/* กดที่ชื่อ/รูป = เปิดตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ + รูป) */}
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            title="ตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ/รูป)"
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors duration-200 hover:bg-white/60 active:scale-[0.98]"
+          >
+            {avatarPath && avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarUrl}
+                alt={displayName || "รูปโปรไฟล์"}
+                className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
+              />
+            ) : (
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-xs font-semibold text-brand-800">
+                {(displayName || userEmail || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-stone-800">
+                {displayName || "ผู้ใช้งาน"}
+              </span>
+              <span className="block truncate text-xs text-stone-400">
+                {userEmail}
+              </span>
+            </span>
+            <Settings
+              size={14}
+              className="shrink-0 text-stone-300 transition-colors group-hover:text-brand-500"
+            />
+          </button>
           <button
             onClick={handleLogout}
             title="ออกจากระบบ"
@@ -159,6 +195,21 @@ export function Sidebar({
           </button>
         </div>
       </div>
+
+      {userId && (
+        <ProfileSettingsModal
+          open={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          userId={userId}
+          email={userEmail}
+          initialName={displayName}
+          initialAvatarPath={avatarPath}
+          onSaved={(name, path) => {
+            setDisplayName(name);
+            setAvatarPath(path);
+          }}
+        />
+      )}
     </aside>
   );
 }

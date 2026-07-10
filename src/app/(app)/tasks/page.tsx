@@ -29,7 +29,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })
@@ -57,7 +57,7 @@ export default async function TasksPage() {
     fetchTasks(),
     supabase
       .from("profiles")
-      .select("id, full_name, email, default_reviewer_id")
+      .select("id, full_name, email, avatar_path, default_reviewer_id")
       .order("full_name", { ascending: true }),
     supabase
       .from("influencers")
