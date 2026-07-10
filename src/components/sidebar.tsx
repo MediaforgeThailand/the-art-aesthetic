@@ -31,46 +31,17 @@ type NavItem = {
   perm: AppPermission | AppPermission[] | "admin" | null;
 };
 
-/** เมนูจัดเป็นหมวด — หัวข้อหมวด + เส้นแบ่ง ให้เห็นการแบ่งส่วนชัด
-    หมวดที่ผู้ใช้ไม่มีสิทธิ์เห็นสักเมนูจะถูกซ่อนทั้งหมวด */
-type NavGroup = { label: string; items: NavItem[] };
-
-const navGroups: NavGroup[] = [
-  {
-    label: "ข้อมูล & รายงาน",
-    items: [
-      { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data" },
-      { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
-    ],
-  },
-  {
-    label: "งานทีม",
-    items: [
-      { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },
-      { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
-      { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
-    ],
-  },
-  {
-    label: "Influencer",
-    items: [
-      { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
-      // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
-      { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
-    ],
-  },
-  {
-    label: "ราคา",
-    items: [
-      { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
-    ],
-  },
-  {
-    label: "ผู้ดูแลระบบ",
-    items: [
-      { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
-    ],
-  },
+const navItems: NavItem[] = [
+  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data" },
+  { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
+  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
+  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
+  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
+  { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },
+  { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
+  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
+  { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
 ];
 
 export function Sidebar({
@@ -120,17 +91,13 @@ export function Sidebar({
 
   // แต่ละเมนูขึ้นกับสิทธิ์ของเมนูนั้นแยกอิสระ (แบบ Discord)
   // เมนู "จัดการบัญชี" (perm 'admin') = เฉพาะ role admin; ที่เหลือดูจาก permissions รายคน
-  const canSee = (item: NavItem) => {
+  const visibleNav = navItems.filter((item) => {
     if (item.perm === null) return true;
     if (item.perm === "admin") return isAdmin;
     if (Array.isArray(item.perm))
       return item.perm.some((p) => permissions.includes(p));
     return permissions.includes(item.perm);
-  };
-  // หมวดที่ไม่เหลือเมนูให้เห็นเลย ซ่อนทั้งหมวด (หัวข้อ+เส้นแบ่งไม่โผล่)
-  const visibleGroups = navGroups
-    .map((g) => ({ ...g, items: g.items.filter(canSee) }))
-    .filter((g) => g.items.length > 0);
+  });
 
   async function handleLogout() {
     const supabase = createClient();
@@ -155,49 +122,34 @@ export function Sidebar({
         <LogoWordmark />
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {visibleGroups.map((group, gi) => (
-          <div
-            key={group.label}
-            className={
-              gi > 0 ? "mt-3 border-t border-stone-200/70 pt-3" : undefined
-            }
-          >
-            {/* หัวข้อหมวด */}
-            <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400/90">
-              {group.label}
-            </p>
-            <div className="space-y-0.5">
-              {group.items.map(({ href, label, icon: Icon }) => {
-                const active = pathname.startsWith(href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 active:scale-[0.98] ${
-                      active
-                        ? "bg-white/75 text-brand-800 shadow-sm"
-                        : "text-stone-600 hover:bg-white/55 hover:text-brand-800 hover:translate-x-0.5"
-                    }`}
-                  >
-                    <span
-                      className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-brand-600 transition-all duration-300 ${
-                        active ? "opacity-100 scale-y-100" : "opacity-0 scale-y-50"
-                      }`}
-                    />
-                    <Icon
-                      size={18}
-                      className={`transition-colors duration-200 ${
-                        active ? "text-brand-600" : "group-hover:text-brand-500"
-                      }`}
-                    />
-                    {label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        {visibleNav.map(({ href, label, icon: Icon }) => {
+          const active = pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 active:scale-[0.98] ${
+                active
+                  ? "bg-white/75 text-brand-800 shadow-sm"
+                  : "text-stone-600 hover:bg-white/55 hover:text-brand-800 hover:translate-x-0.5"
+              }`}
+            >
+              <span
+                className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-brand-600 transition-all duration-300 ${
+                  active ? "opacity-100 scale-y-100" : "opacity-0 scale-y-50"
+                }`}
+              />
+              <Icon
+                size={18}
+                className={`transition-colors duration-200 ${
+                  active ? "text-brand-600" : "group-hover:text-brand-500"
+                }`}
+              />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="border-t border-white/60 px-3 py-3">

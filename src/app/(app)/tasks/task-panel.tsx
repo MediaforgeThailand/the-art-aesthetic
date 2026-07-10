@@ -1039,8 +1039,10 @@ export function TaskPanel({
         </div>
 
         {/* description */}
-        <div>
-          <p className="mb-1 px-2 text-sm text-stone-500">รายละเอียด</p>
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <p className="mb-1 px-2 text-sm font-medium text-stone-500">
+            รายละเอียด
+          </p>
           <textarea
             value={description}
             rows={3}
@@ -1053,8 +1055,8 @@ export function TaskPanel({
         </div>
 
         {/* ไฟล์/ลิงก์งานที่ได้รับอนุมัติ — ลิงก์ Drive 1 อัน + ไฟล์รูป/วิดีโอได้หลายไฟล์ */}
-        <div>
-          <p className="mb-1 flex items-center gap-2 px-2 text-sm text-stone-500">
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <p className="mb-1 flex items-center gap-2 px-2 text-sm font-medium text-stone-500">
             ไฟล์งานที่ Approve แล้ว
             {files.length > 0 && (
               <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
@@ -1127,8 +1129,8 @@ export function TaskPanel({
         </div>
 
         {/* subtasks */}
-        <div>
-          <p className="mb-1 flex items-center gap-2 px-2 text-sm text-stone-500">
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <p className="mb-1 flex items-center gap-2 px-2 text-sm font-medium text-stone-500">
             งานย่อย
             {subtasks !== null && subtasks.length > 0 && (
               <span className="text-xs text-stone-400">
@@ -1191,9 +1193,9 @@ export function TaskPanel({
           </div>
         </div>
 
-        {/* แชทงานนี้ — ฟองแชท ไม่มีเส้นแบ่ง */}
-        <div className="pt-1">
-          <p className="mb-2.5 px-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+        {/* แชทงานนี้ — ฟองแชท */}
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <p className="mb-2.5 px-2 text-sm font-medium text-stone-500">
             พูดคุย
           </p>
           <div className="space-y-2.5">
