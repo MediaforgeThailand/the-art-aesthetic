@@ -55,13 +55,7 @@ export function ReviewList({
   }
 
   return (
-    <div className="space-y-2.5 px-4 pb-6 sm:px-6">
-      <p className="rounded-lg bg-amber-50/80 px-3 py-2 text-xs text-amber-700">
-        งานที่รอคุณตรวจ {queue.length} รายการ — คลิกเพื่อดูรายละเอียด ไฟล์งาน
-        และความคิดเห็น · กด &quot;อนุมัติ&quot; เมื่อผ่าน หรือ &quot;ตีกลับ&quot;
-        เพื่อส่งคืนให้แก้ไข (นับเป็นสถิติการแก้ไขของผู้รับผิดชอบ)
-      </p>
-
+    <div className="space-y-2.5 px-4 pb-6 pt-1 sm:px-6">
       {queue.map((task) => {
         const overdue =
           task.due_date !== null &&

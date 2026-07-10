@@ -152,12 +152,7 @@ export function ApprovedList({
   }
 
   return (
-    <div className="space-y-7 px-4 pb-6 sm:px-6">
-      <p className="rounded-lg bg-emerald-50/80 px-3 py-2 text-xs text-emerald-700">
-        งานเสร็จ {tasks.length} รายการ — จัดกลุ่มตามสัปดาห์และผู้รับผิดชอบ
-        คลิกการ์ดเพื่อดูรายละเอียด ไฟล์งาน และความคิดเห็น
-      </p>
-
+    <div className="space-y-7 px-4 pb-6 pt-1 sm:px-6">
       {weeks.map((week) => (
         <section key={week.start}>
           {/* หัวสัปดาห์ */}

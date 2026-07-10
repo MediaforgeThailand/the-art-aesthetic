@@ -24,6 +24,8 @@ export type ProfileRow = {
   default_reviewer_id: string | null;
   /** รูปโปรไฟล์ — path ใน storage bucket documents (avatars/{uid}/...) แสดงแทนตัวอักษรใน avatar */
   avatar_path: string | null;
+  /** ตำแหน่งงาน (เลือกได้) — Graphic/Editor | Content | Marketer | null */
+  job_title: string | null;
   created_at: string;
 };
 

@@ -4,9 +4,12 @@ import { Camera, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
-import { Button, Input, Label, Modal } from "@/components/ui";
+import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
+
+/** ตำแหน่งงานที่เลือกได้ในโปรไฟล์ */
+export const JOB_TITLES = ["Graphic/Editor", "Content", "Marketer"] as const;
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -25,6 +28,7 @@ export function ProfileSettingsModal({
   email,
   initialName,
   initialAvatarPath,
+  initialJobTitle,
   onSaved,
 }: {
   open: boolean;
@@ -33,13 +37,19 @@ export function ProfileSettingsModal({
   email: string;
   initialName: string;
   initialAvatarPath: string | null;
+  initialJobTitle: string | null;
   /** แจ้งค่าที่บันทึกแล้วกลับให้ผู้เรียก (อัพเดต state ฝั่ง sidebar ทันที) */
-  onSaved: (name: string, avatarPath: string | null) => void;
+  onSaved: (
+    name: string,
+    avatarPath: string | null,
+    jobTitle: string | null
+  ) => void;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const [name, setName] = useState(initialName);
+  const [jobTitle, setJobTitle] = useState(initialJobTitle ?? "");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,10 +60,11 @@ export function ProfileSettingsModal({
   useEffect(() => {
     if (!open) return;
     setName(initialName);
+    setJobTitle(initialJobTitle ?? "");
     setAvatarFile(null);
     setRemoveAvatar(false);
     setError(null);
-  }, [open, initialName]);
+  }, [open, initialName, initialJobTitle]);
 
   // preview: ไฟล์ที่เพิ่งเลือก (object URL) > รูปเดิมใน storage (signed URL)
   const localPreview = useMemo(
@@ -110,9 +121,14 @@ export function ProfileSettingsModal({
     }
 
     // 2) บันทึกลง profiles (RLS: แก้แถวตัวเองได้)
+    const nextJobTitle = jobTitle.trim() === "" ? null : jobTitle.trim();
     const { error: dbErr } = await supabase
       .from("profiles")
-      .update({ full_name: trimmed, avatar_path: nextAvatarPath })
+      .update({
+        full_name: trimmed,
+        avatar_path: nextAvatarPath,
+        job_title: nextJobTitle,
+      })
       .eq("id", userId);
     if (dbErr) {
       // เก็บกวาดรูปที่เพิ่งอัพ (best effort) — แถว DB ยังชี้รูปเดิม
@@ -151,7 +167,7 @@ export function ProfileSettingsModal({
     }
 
     setSaving(false);
-    onSaved(trimmed, nextAvatarPath);
+    onSaved(trimmed, nextAvatarPath, nextJobTitle);
     onClose();
     router.refresh(); // ให้หน้า server (เช่น /tasks) ส่ง avatar ใหม่ลงมา
   };
@@ -210,9 +226,7 @@ export function ProfileSettingsModal({
                 </Button>
               )}
             </div>
-            <p className="text-xs text-stone-400">
-              รูปภาพไม่เกิน 5MB — แสดงในวงกลมผู้รับผิดชอบ/ผู้ตรวจ/แชททุกจุด
-            </p>
+            <p className="text-xs text-stone-400">รูปไม่เกิน 5MB</p>
           </div>
           <input
             ref={fileInputRef}
@@ -239,6 +253,22 @@ export function ProfileSettingsModal({
             }}
           />
           <p className="mt-1 text-xs text-stone-400">{email}</p>
+        </div>
+
+        <div>
+          <Label htmlFor="profile-job">ตำแหน่ง</Label>
+          <Select
+            id="profile-job"
+            value={jobTitle}
+            onChange={(e) => setJobTitle(e.target.value)}
+          >
+            <option value="">ไม่ระบุ</option>
+            {JOB_TITLES.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </Select>
         </div>
 
         {error && (

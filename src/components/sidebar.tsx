@@ -59,6 +59,7 @@ export function Sidebar({
   const [userId, setUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(userName);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [jobTitle, setJobTitle] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const { url: avatarUrl } = useSignedUrl(avatarPath);
 
@@ -72,7 +73,7 @@ export function Sidebar({
       if (alive) setUserId(uid);
       void supabase
         .from("profiles")
-        .select("role, permissions, full_name, avatar_path")
+        .select("role, permissions, full_name, avatar_path, job_title")
         .eq("id", uid)
         .single()
         .then(({ data: profile }) => {
@@ -82,6 +83,7 @@ export function Sidebar({
           // ชื่อใน profiles คือค่าจริงล่าสุด (JWT claims อาจยังเป็นชื่อเก่า)
           if (profile.full_name) setDisplayName(profile.full_name);
           setAvatarPath(profile.avatar_path ?? null);
+          setJobTitle(profile.job_title ?? null);
         });
     });
     return () => {
@@ -178,7 +180,7 @@ export function Sidebar({
                 {displayName || "ผู้ใช้งาน"}
               </span>
               <span className="block truncate text-xs text-stone-400">
-                {userEmail}
+                {jobTitle || userEmail}
               </span>
             </span>
             <Settings
@@ -204,9 +206,11 @@ export function Sidebar({
           email={userEmail}
           initialName={displayName}
           initialAvatarPath={avatarPath}
-          onSaved={(name, path) => {
+          initialJobTitle={jobTitle}
+          onSaved={(name, path, job) => {
             setDisplayName(name);
             setAvatarPath(path);
+            setJobTitle(job);
           }}
         />
       )}

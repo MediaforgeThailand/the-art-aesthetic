@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /* ---------- Button ---------- */
 
@@ -161,6 +162,11 @@ export function Modal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // portal ออกไป body — กัน parent ที่มี backdrop-filter/transform (เช่น sidebar)
+  // ทำให้ position:fixed ยึดกับกล่องนั้นแทนทั้งจอ (modal เลยดูแคบติดมุม)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -179,9 +185,9 @@ export function Modal({
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-900/30 p-4 pt-16 backdrop-blur-sm animate-fade-in"
       onMouseDown={(e) => {
@@ -213,7 +219,8 @@ export function Modal({
         </div>
         <div className="px-5 py-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

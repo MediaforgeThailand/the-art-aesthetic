@@ -1143,10 +1143,6 @@ export function TasksClient({
       <div className="shrink-0 px-4 pt-5 sm:px-6">
         <div className="mb-3 animate-fade-in-up">
           <h1 className="text-xl font-semibold text-stone-900">Task</h1>
-          <p className="mt-0.5 text-sm text-stone-500">
-            สร้างงานที่ทำ · แนบไฟล์/ลิงก์งาน · กด &quot;ส่งตรวจงาน&quot; แล้ว
-            ผู้ตรวจงานที่ระบุจะอนุมัติในแท็บ &quot;รอฉันตรวจ&quot;
-          </p>
         </div>
 
         {/* แท็บ: บันทึกงาน / รอฉันตรวจ */}
