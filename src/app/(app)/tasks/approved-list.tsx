@@ -1,6 +1,13 @@
 "use client";
 
-import { BadgeCheck, CheckCircle2, Link2, Paperclip } from "lucide-react";
+import {
+  BadgeCheck,
+  Check,
+  CheckCircle2,
+  Link2,
+  Paperclip,
+  Send,
+} from "lucide-react";
 import { useMemo } from "react";
 import { formatDateBangkok } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
@@ -59,6 +66,7 @@ export function ApprovedList({
   today,
   selectedId,
   onRowClick,
+  onTogglePosted,
 }: {
   tasks: TaskWithAssignee[];
   /** จำนวนงานเสร็จทั้งหมด (ก่อนกรอง) — ใช้แยกข้อความ empty state */
@@ -68,6 +76,8 @@ export function ApprovedList({
   today: string;
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
+  /** สลับสถานะ "โพส/ใช้งานแล้ว" ของงาน */
+  onTogglePosted: (task: TaskWithAssignee) => void;
 }) {
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? null;
@@ -182,6 +192,7 @@ export function ApprovedList({
                       section={sectionName(task.section_id)}
                       selected={selectedId === task.id}
                       onClick={() => onRowClick(task)}
+                      onTogglePosted={() => onTogglePosted(task)}
                     />
                   ))}
                 </div>
@@ -201,13 +212,20 @@ function ApprovedCard({
   section,
   selected,
   onClick,
+  onTogglePosted,
 }: {
   task: TaskWithAssignee;
   section: string | null;
   selected: boolean;
   onClick: () => void;
+  onTogglePosted: () => void;
 }) {
   const files = task.files ?? [];
+  const posted = task.posted_at !== null;
+  const togglePosted = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    onTogglePosted();
+  };
   return (
     <div
       role="button"
@@ -217,17 +235,43 @@ function ApprovedCard({
       onKeyDown={(e) => {
         if (e.key === "Enter") onClick();
       }}
-      className={`cursor-pointer rounded-lg border bg-white/85 p-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
-        selected
-          ? "border-brand-400 ring-1 ring-brand-300"
-          : "border-white/80 hover:border-brand-300"
+      className={`relative cursor-pointer rounded-lg border p-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
+        posted
+          ? "border-emerald-300 bg-emerald-50/60 ring-1 ring-emerald-200"
+          : selected
+            ? "border-brand-400 bg-white/85 ring-1 ring-brand-300"
+            : "border-white/80 bg-white/85 hover:border-brand-300"
       }`}
     >
-      <div className="flex items-start gap-2">
-        <CheckCircle2
-          size={16}
-          className="mt-0.5 shrink-0 text-emerald-500"
-        />
+      {/* Badge สถานะโพส ขวาบน — กดสลับได้ (โพสแล้ว = ติ๊กเขียวเด่น) */}
+      <button
+        type="button"
+        onClick={togglePosted}
+        onKeyDown={(e) => e.stopPropagation()}
+        title={posted ? "โพสแล้ว — คลิกเพื่อยกเลิก" : "ทำเครื่องหมายว่าโพสแล้ว"}
+        aria-label={posted ? "ยกเลิกโพสแล้ว" : "ทำเครื่องหมายว่าโพสแล้ว"}
+        aria-pressed={posted}
+        className={`absolute right-2 top-2 z-10 inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm transition-all active:scale-90 ${
+          posted
+            ? "bg-emerald-500 text-white hover:bg-emerald-600"
+            : "border border-stone-300 bg-white/90 text-stone-400 opacity-70 hover:border-emerald-400 hover:text-emerald-600 hover:opacity-100"
+        }`}
+      >
+        {posted ? (
+          <>
+            <Check size={12} strokeWidth={3.5} />
+            ใช้แล้ว
+          </>
+        ) : (
+          <>
+            <Send size={11} />
+            โพส?
+          </>
+        )}
+      </button>
+
+      <div className="flex items-start gap-2 pr-16">
+        <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
         <p className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-stone-800">
           {task.title}
         </p>
@@ -263,6 +307,31 @@ function ApprovedCard({
           </span>
         )}
       </div>
+
+      {/* ปุ่มกด "โพสแล้ว / ใช้งานแล้ว" ในการ์ด */}
+      <button
+        type="button"
+        onClick={togglePosted}
+        onKeyDown={(e) => e.stopPropagation()}
+        aria-pressed={posted}
+        className={`mt-2.5 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all active:scale-[0.98] ${
+          posted
+            ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
+            : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+        }`}
+      >
+        {posted ? (
+          <>
+            <Check size={14} strokeWidth={3} />
+            โพสแล้ว (ใช้งานแล้ว)
+          </>
+        ) : (
+          <>
+            <Send size={13} />
+            ทำเครื่องหมายว่าโพสแล้ว
+          </>
+        )}
+      </button>
     </div>
   );
 }

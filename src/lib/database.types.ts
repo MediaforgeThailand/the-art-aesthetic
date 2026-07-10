@@ -61,6 +61,8 @@ export type TaskRow = {
   influencer_id: string | null;
   /** เวลาที่ผ่านการตรวจ (review_status เปลี่ยนเป็น approved) — ใช้เรียง/กรองแท็บ "งานเสร็จ" */
   approved_at: string | null;
+  /** เวลาที่ทำเครื่องหมายว่า "โพส/ใช้งานแล้ว" (null = ยังไม่โพส) — ใช้ในแท็บ "งานเสร็จ" */
+  posted_at: string | null;
   /** Brief workflow — ชนิดงานที่สั่ง (graphic|video); ตั้งบนการ์ด brief และสำเนาไปการ์ด creative */
   brief_content_type: string | null;
   /** เวลาที่ผู้รับกด "รับงาน" บนการ์ด brief (null = ยังไม่รับ) */

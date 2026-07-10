@@ -400,10 +400,12 @@ export function TasksClient({
   /* ---------- แท็บ "ตรวจแล้ว" + ตัวกรองของแท็บ ---------- */
 
   const [apSearch, setApSearch] = useState("");
-  /** all | me | none | <profileId> */
-  const [apAssignee, setApAssignee] = useState<string>("all");
+  /** all | me | none | <profileId> — เริ่มต้น = งานของฉัน */
+  const [apAssignee, setApAssignee] = useState<string>(userId ? "me" : "all");
   /** all | me | <profileId> */
   const [apReviewer, setApReviewer] = useState<string>("all");
+  /** all | posted (โพสแล้ว) | unposted (ยังไม่ได้โพส) — เริ่มต้น = ยังไม่ได้โพส */
+  const [apPosted, setApPosted] = useState<string>("unposted");
   const [apFrom, setApFrom] = useState("");
   const [apTo, setApTo] = useState("");
 
@@ -411,6 +413,7 @@ export function TasksClient({
     apSearch.trim() !== "" ||
     apAssignee !== "all" ||
     apReviewer !== "all" ||
+    apPosted !== "all" ||
     apFrom !== "" ||
     apTo !== "";
 
@@ -418,6 +421,7 @@ export function TasksClient({
     setApSearch("");
     setApAssignee("all");
     setApReviewer("all");
+    setApPosted("all");
     setApFrom("");
     setApTo("");
   };
@@ -443,6 +447,9 @@ export function TasksClient({
         } else if (apReviewer !== "all" && t.reviewer_id !== apReviewer) {
           return false;
         }
+        // กรองสถานะโพส/ใช้งาน
+        if (apPosted === "posted" && t.posted_at === null) return false;
+        if (apPosted === "unposted" && t.posted_at !== null) return false;
         // กรองช่วงวันที่ตรวจผ่าน — เทียบเป็นวันตามเวลาไทย (คิดเฉพาะเมื่อตั้งช่วงไว้)
         if (apFrom !== "" || apTo !== "") {
           const day = bangkokDay(t.approved_at ?? t.updated_at);
@@ -460,7 +467,7 @@ export function TasksClient({
           a.approved_at ?? a.updated_at
         )
       );
-  }, [approvedAll, apSearch, apAssignee, apReviewer, apFrom, apTo, userId]);
+  }, [approvedAll, apSearch, apAssignee, apReviewer, apPosted, apFrom, apTo, userId]);
 
   /** ตัวเลือกกรองผู้ตรวจ = roster ปัจจุบัน + คนที่เคยตรวจงานใน "ตรวจแล้ว" แม้ถูกถอดจาก roster ไปแล้ว */
   const apReviewerOptions = useMemo(() => {
@@ -631,6 +638,13 @@ export function TasksClient({
     });
   };
 
+  /** สลับสถานะ "โพส/ใช้งานแล้ว" ของงานเสร็จ (การ์ดในแท็บงานเสร็จ) */
+  const togglePosted = (task: TaskWithAssignee) => {
+    patchTask(task.id, {
+      db: { posted_at: task.posted_at ? null : new Date().toISOString() },
+    });
+  };
+
   /** เปลี่ยนผู้ตรวจงาน */
   const setReviewer = (task: TaskWithAssignee, profileId: string | null) => {
     if (task.reviewer_id === profileId) return;
@@ -712,6 +726,7 @@ export function TasksClient({
       review_status: "none",
       influencer_id: null,
       approved_at: null,
+      posted_at: null,
       brief_content_type: null,
       brief_accepted_at: null,
       brief_source_id: null,
@@ -804,6 +819,7 @@ export function TasksClient({
       review_status: "none",
       influencer_id: task.influencer_id,
       approved_at: null,
+      posted_at: null,
       brief_content_type: task.brief_content_type,
       brief_accepted_at: null,
       brief_source_id: task.id,
@@ -1350,6 +1366,17 @@ export function TasksClient({
                   ))}
               </Select>
             </div>
+            <div className="w-40">
+              <Select
+                aria-label="กรองตามสถานะการโพส"
+                value={apPosted}
+                onChange={(e) => setApPosted(e.target.value)}
+              >
+                <option value="all">การใช้งาน: ทั้งหมด</option>
+                <option value="unposted">ยังไม่ได้โพส</option>
+                <option value="posted">โพส/ใช้แล้ว</option>
+              </Select>
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-stone-500">
               <span>ตรวจผ่านตั้งแต่</span>
               <Input
@@ -1431,6 +1458,7 @@ export function TasksClient({
             today={today}
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
+            onTogglePosted={togglePosted}
           />
         )}
       </div>
