@@ -31,11 +31,12 @@ export default async function InfluGalleryPage() {
         .order("created_at", { ascending: false }),
       // follow-up checklist ที่ยังไม่ทำ (stage 6)
       supabase.from("influ_tasks").select("influencer_id, done"),
-      // งานคอนเทนต์ที่ผูกกับ influencer
+      // งานคอนเทนต์ที่ผูกกับ influencer (ไม่นับงานในถังขยะ)
       supabase
         .from("tasks")
         .select("influencer_id")
-        .not("influencer_id", "is", null),
+        .not("influencer_id", "is", null)
+        .is("deleted_at", null),
     ]);
 
   // นับ follow-up ที่เหลือ + จำนวนงานคอนเทนต์ ต่อ influencer

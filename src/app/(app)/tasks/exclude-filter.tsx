@@ -2,6 +2,7 @@
 
 import { EyeOff, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ProfileRow } from "@/lib/types";
 import { AssigneeAvatar, profileName } from "./task-card";
 
@@ -20,6 +21,8 @@ const STATUS_OPTIONS: { key: string; label: string }[] = [
 /**
  * ตัวกรองแบบ "ยกเว้น" (ซ่อน) — ปุ่มเดียวในแถวตัวกรอง เปิด popover
  * ให้ยกเว้นได้ทั้งผู้รับผิดชอบและสถานะพร้อมกัน งานที่ตรงกับที่เลือกจะถูกซ่อน
+ * popover render ผ่าน portal + fixed — แถบตัวกรองมี transform (animate-fade-in-up)
+ * ถ้าเป็น absolute ธรรมดาจะโดนบอร์ด (วาดทีหลัง) ทับ
  */
 export function ExcludeFilter({
   profiles,
@@ -39,35 +42,59 @@ export function ExcludeFilter({
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  // ปิด popover เมื่อคลิกนอกกล่อง หรือกด Esc
+  // ปิด popover เมื่อคลิกนอกกล่อง / กด Esc / เลื่อนจอ (ตำแหน่ง fixed จะค้างผิดที่)
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onDown);
+    const close = (e: Event) => {
+      // เลื่อนภายใน popover เอง (รายชื่อยาว) ไม่นับ
+      if (e.target instanceof Node && panelRef.current?.contains(e.target))
+        return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
   }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({
+        x: Math.min(r.left, window.innerWidth - 272),
+        y: r.bottom + 6,
+      });
+    }
+    setOpen((o) => !o);
+  };
 
   const count = excludeAssignees.length + excludeStatuses.length;
   const active = count > 0;
 
   return (
-    <div ref={rootRef} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-label="ยกเว้น (ซ่อน) งานตามผู้รับผิดชอบหรือสถานะ"
         aria-expanded={open}
         className={`inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors ${
@@ -85,8 +112,14 @@ export function ExcludeFilter({
         )}
       </button>
 
-      {open && (
-        <div className="glass absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl p-3 shadow-xl animate-scale-in">
+      {open &&
+        pos &&
+        createPortal(
+        <div
+          ref={panelRef}
+          style={{ left: pos.x, top: pos.y }}
+          className="glass fixed z-[60] max-h-[70vh] w-64 overflow-y-auto rounded-xl p-3 shadow-xl animate-scale-in"
+        >
           <div className="mb-1 flex items-center justify-between">
             <p className="text-xs font-semibold text-stone-700">
               ยกเว้น (ซ่อน) งานที่…
@@ -139,9 +172,10 @@ export function ExcludeFilter({
               />
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   ListTodo,
   Search,
+  Trash2,
   UserCog,
   X,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import { PersonSelect } from "./person-select";
 import { ReviewList } from "./review-list";
 import { AssigneeAvatar, isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
+import { TRASH_KEEP_DAYS, TrashList } from "./trash-list";
 
 type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path">;
 /** โปรไฟล์พร้อมค่าผู้ตรวจอัตโนมัติ (ใช้เฉพาะในหน้านี้) */
@@ -127,9 +129,25 @@ export function TasksClient({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"work" | "review" | "approved">("work");
+  const [tab, setTab] = useState<"work" | "review" | "approved" | "trash">(
+    "work"
+  );
   useEffect(() => setItems(tasks), [tasks]);
   useEffect(() => setSections(initialSections), [initialSections]);
+
+  /** งานที่ยังอยู่ (ไม่อยู่ในถังขยะ) — บอร์ด/แท็บหลักใช้ตัวนี้ทั้งหมด */
+  const activeItems = useMemo(
+    () => items.filter((t) => !t.deleted_at),
+    [items]
+  );
+  /** งานในถังขยะ — ล่าสุดก่อน (เก็บ 14 วันแล้วถูกลบถาวรตอนเปิดหน้า) */
+  const trashedItems = useMemo(
+    () =>
+      items
+        .filter((t) => t.deleted_at != null)
+        .sort((a, b) => (b.deleted_at ?? "").localeCompare(a.deleted_at ?? "")),
+    [items]
+  );
 
   /* ---------- roster ผู้ตรวจ + ผู้ตรวจอัตโนมัติของฉัน ---------- */
 
@@ -169,10 +187,10 @@ export function TasksClient({
     () =>
       userId === null
         ? []
-        : items.filter(
+        : activeItems.filter(
             (t) => t.reviewer_id === userId && t.review_status === "pending"
           ),
-    [items, userId]
+    [activeItems, userId]
   );
 
   const showError = (msg: string) => {
@@ -234,8 +252,9 @@ export function TasksClient({
 
   /* ---------- filters (จำค่าไว้ใน localStorage, เริ่มต้น = งานของฉัน) ---------- */
 
-  // อ่านค่าตัวกรองที่เคยตั้งไว้ (ต่อผู้ใช้) — ครั้งแรกที่ไม่มีค่า ตั้ง assignee เป็น "me"
-  const filterStorageKey = `tasks-filters:${userId ?? "anon"}`;
+  // อ่านค่าตัวกรองที่เคยตั้งไว้ (ต่อผู้ใช้) — ครั้งแรกที่ไม่มีค่าใช้ default ใหม่
+  // (key เวอร์ชัน 2: บังคับทุกคนเริ่มด้วย "เกี่ยวข้องกับฉัน" + ยกเว้นงานเสร็จสมบูรณ์)
+  const filterStorageKey = `tasks-filters-v2:${userId ?? "anon"}`;
   const savedFilters = useMemo(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -248,9 +267,9 @@ export function TasksClient({
   }, []);
 
   const [search, setSearch] = useState(savedFilters?.search ?? "");
-  /** all | me | none | <profileId> */
+  /** all | involved (เกี่ยวข้องกับฉัน — default) | me | none | <profileId> */
   const [assigneeFilter, setAssigneeFilter] = useState<string>(
-    savedFilters?.assignee ?? (userId ? "me" : "all")
+    savedFilters?.assignee ?? (userId ? "involved" : "all")
   );
   /** all | pending | done */
   const [statusFilter, setStatusFilter] = useState<string>(
@@ -262,9 +281,10 @@ export function TasksClient({
   const [excludeAssignees, setExcludeAssignees] = useState<string[]>(
     savedFilters?.excludeAssignees ?? []
   );
-  /** ยกเว้น (ซ่อน) งานตามสถานะที่เลือก — working | pending | done */
+  /** ยกเว้น (ซ่อน) งานตามสถานะที่เลือก — working | pending | done
+      (default = ซ่อนงานเสร็จสมบูรณ์ ให้บอร์ดโชว์เฉพาะงานที่ยังเดินอยู่) */
   const [excludeStatuses, setExcludeStatuses] = useState<string[]>(
-    savedFilters?.excludeStatuses ?? []
+    savedFilters?.excludeStatuses ?? ["done"]
   );
 
   const toggleExcludeAssignee = (id: string) =>
@@ -330,7 +350,7 @@ export function TasksClient({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return items.filter((t) => {
+    return activeItems.filter((t) => {
       // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
       if (
         excludeAssignees.length > 0 &&
@@ -350,7 +370,12 @@ export function TasksClient({
       if (statusFilter === "pending" && t.review_status !== "pending")
         return false;
       if (statusFilter === "done" && !t.completed) return false;
-      if (assigneeFilter === "me") {
+      if (assigneeFilter === "involved") {
+        // "เกี่ยวข้องกับฉัน" = ฉันเป็นผู้รับผิดชอบ/ถูกมอบหมาย หรือฉันเป็นผู้สร้าง/สั่งงาน
+        // (ครอบคลุม brief ที่ฉันสั่ง แม้มอบหมายให้คนอื่นไปแล้ว)
+        const related = t.assignee_id === userId || t.created_by === userId;
+        if (userId === null || !related) return false;
+      } else if (assigneeFilter === "me") {
         // "งานของฉัน" = งานที่ฉันรับผิดชอบ + brief ที่ฉันสั่งเอง (ยังไม่ได้ส่งมอบให้ใคร assignee=null)
         // — ไม่งั้น brief ที่เพิ่งสร้างจะถูกซ่อนทันที (assignee_id=null) ดูเหมือนสร้างไม่สำเร็จ
         const mine =
@@ -373,7 +398,7 @@ export function TasksClient({
       );
     });
   }, [
-    items,
+    activeItems,
     search,
     assigneeFilter,
     statusFilter,
@@ -546,8 +571,8 @@ export function TasksClient({
   };
 
   const approvedAll = useMemo(
-    () => items.filter((t) => t.review_status === "approved"),
-    [items]
+    () => activeItems.filter((t) => t.review_status === "approved"),
+    [activeItems]
   );
 
   const approvedFiltered = useMemo(() => {
@@ -601,9 +626,12 @@ export function TasksClient({
     return [...seen.values()];
   }, [reviewerProfiles, approvedAll]);
 
-  const hasDemo = items.some((t) => t.description === "demo");
+  const hasDemo = activeItems.some((t) => t.description === "demo");
   const today = todayISO();
-  const selectedTask = selectedId ? (taskById.get(selectedId) ?? null) : null;
+  // งานที่เลือกถูกย้ายไปถังขยะ (เช่นโดนคนอื่นลบผ่าน realtime) — ปิดแผงให้เอง
+  const selectedRaw = selectedId ? (taskById.get(selectedId) ?? null) : null;
+  const selectedTask =
+    selectedRaw !== null && !selectedRaw.deleted_at ? selectedRaw : null;
 
   /* ---------- ลิงก์ Brief ↔ Creative (การ์ดที่เชื่อมกัน) ---------- */
 
@@ -616,9 +644,9 @@ export function TasksClient({
   const linkedCreatives = useMemo(
     () =>
       selectedTask
-        ? items.filter((t) => t.brief_source_id === selectedTask.id)
+        ? activeItems.filter((t) => t.brief_source_id === selectedTask.id)
         : [],
-    [items, selectedTask]
+    [activeItems, selectedTask]
   );
 
   /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น (ล้างตัวกรองให้การ์ดโผล่แน่นอน) */
@@ -666,7 +694,14 @@ export function TasksClient({
     window.history.replaceState(null, "", "/tasks");
     // เปิดแผงถัดจาก render รอบนี้ (ไม่ setState กลาง effect) — จงใจไม่ clear ตอน cleanup:
     // effect นี้ re-run ได้ทุกครั้งที่ items เปลี่ยน (realtime) ถ้า clear จะกินคำสั่งเปิดแผงทิ้ง
-    window.setTimeout(() => navigateToTask(taskParam), 0);
+    const target = taskById.get(taskParam);
+    window.setTimeout(() => {
+      if (target?.deleted_at) {
+        setTab("trash"); // งานอยู่ในถังขยะ — การ์ดไม่อยู่บนบอร์ด เปิดแท็บถังขยะแทน
+      } else {
+        navigateToTask(taskParam);
+      }
+    }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskParam, taskById]);
 
@@ -845,7 +880,7 @@ export function TasksClient({
     const section = sections.find((s) => s.id === sectionId);
     const isBrief = section?.type === "brief";
     // ใช้กติกาเดียวกับที่บอร์ดแสดงผล (งานไร้ section ถูกพักไว้คอลัมน์แรก)
-    const inSection = items.filter((t) => bucketOf(t) === sectionId);
+    const inSection = activeItems.filter((t) => bucketOf(t) === sectionId);
     const position =
       inSection.length === 0
         ? 1024
@@ -894,6 +929,7 @@ export function TasksClient({
       brief_content_type: null,
       brief_accepted_at: null,
       brief_source_id: null,
+      deleted_at: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -963,7 +999,9 @@ export function TasksClient({
 
     // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้ตรวจ = ผู้สั่งงาน/ผู้สร้าง brief,
     //    ผู้สร้างการ์ด = ผู้สั่ง brief — การ์ดจึงบอกได้ว่าใครเป็นคนสั่งแม้คนทำเป็นอีกคน)
-    const inSection = items.filter((t) => bucketOf(t) === creativesSectionId);
+    const inSection = activeItems.filter(
+      (t) => bucketOf(t) === creativesSectionId
+    );
     const position =
       inSection.length === 0
         ? 1024
@@ -996,6 +1034,7 @@ export function TasksClient({
       brief_content_type: task.brief_content_type,
       brief_accepted_at: null,
       brief_source_id: task.id,
+      deleted_at: null,
       created_by: task.created_by ?? userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -1041,14 +1080,59 @@ export function TasksClient({
     notify(task, [{ recipient: task.created_by, type: "brief_accepted" }]);
   };
 
+  /** ลบงาน = ย้ายไปถังขยะ (soft delete) — เก็บ 14 วัน กู้คืนได้จากแท็บ "ถังขยะ" */
   const requestDeleteTask = (task: TaskWithAssignee) => {
     if (isTempId(task.id)) return;
     setConfirm({
-      title: "ลบงาน",
-      message: `ลบงาน "${task.title}" ใช่หรือไม่? การลบย้อนกลับไม่ได้`,
+      title: "ย้ายไปถังขยะ",
+      message: `ย้ายงาน "${task.title}" ไปถังขยะใช่หรือไม่? งานจะถูกเก็บไว้ ${TRASH_KEEP_DAYS} วัน กู้คืนได้จากแท็บ "ถังขยะ"`,
+      onConfirm: () => {
+        setSelectedId((sel) => (sel === task.id ? null : sel));
+        patchTask(task.id, { db: { deleted_at: new Date().toISOString() } });
+      },
+    });
+  };
+
+  /** กู้งานคืนจากถังขยะ — กลับไปเซคชัน/สถานะเดิมทุกอย่าง */
+  const restoreTask = (task: TaskWithAssignee) => {
+    patchTask(task.id, { db: { deleted_at: null } });
+  };
+
+  /** เก็บกวาดไฟล์ของงานใน storage (best effort) — ไฟล์งาน tasks/{id}/,
+      ไฟล์แนบคอมเมนต์ tasks/{id}/comments/ และไฟล์แนบงานย่อย tasks/{id}/subtasks/{subId}/ */
+  const cleanupTaskStorage = async (taskId: string) => {
+    const storage = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
+    try {
+      const prefixes = [`tasks/${taskId}`, `tasks/${taskId}/comments`];
+      // โฟลเดอร์งานย่อยซ้อนอีกชั้น — list หาโฟลเดอร์ subId ก่อน
+      const { data: subDirs } = await storage.list(`tasks/${taskId}/subtasks`, {
+        limit: 1000,
+      });
+      for (const dir of subDirs ?? []) {
+        prefixes.push(`tasks/${taskId}/subtasks/${dir.name}`);
+      }
+      const paths: string[] = [];
+      for (const prefix of prefixes) {
+        const { data } = await storage.list(prefix, { limit: 1000 });
+        for (const obj of data ?? []) {
+          // list คืนทั้งไฟล์และโฟลเดอร์ — โฟลเดอร์ไม่มี id, remove ใช้ได้กับไฟล์เท่านั้น
+          if (obj.id) paths.push(`${prefix}/${obj.name}`);
+        }
+      }
+      if (paths.length > 0) await storage.remove(paths);
+    } catch {
+      // เพิกเฉย — แถว DB เป็นหลัก ไฟล์ตกค้างไม่กระทบการใช้งาน
+    }
+  };
+
+  /** ลบถาวรจากถังขยะ (ย้อนกลับไม่ได้) — ลบแถว DB (cascade ตารางลูก) แล้วเก็บกวาดไฟล์ */
+  const requestHardDeleteTask = (task: TaskWithAssignee) => {
+    if (isTempId(task.id)) return;
+    setConfirm({
+      title: "ลบถาวร",
+      message: `ลบงาน "${task.title}" ถาวรใช่หรือไม่? ไฟล์และความคิดเห็นทั้งหมดจะหายไป ย้อนกลับไม่ได้`,
       onConfirm: () => {
         setItems((cur) => cur.filter((t) => t.id !== task.id));
-        setSelectedId((sel) => (sel === task.id ? null : sel));
         void supabase
           .from("tasks")
           .delete()
@@ -1062,28 +1146,37 @@ export function TasksClient({
               showError(`ลบงานไม่สำเร็จ: ${e.message}`);
               return;
             }
-            // เก็บกวาดไฟล์ของงานใน storage (best effort) — cascade ลบให้เฉพาะแถวใน DB
-            // โครง path มี 2 ระดับ: ไฟล์งาน tasks/{id}/ และไฟล์แนบคอมเมนต์ tasks/{id}/comments/
-            const storage = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
-            void (async () => {
-              const paths: string[] = [];
-              for (const prefix of [
-                `tasks/${task.id}`,
-                `tasks/${task.id}/comments`,
-              ]) {
-                const { data } = await storage.list(prefix, { limit: 1000 });
-                for (const obj of data ?? []) {
-                  paths.push(`${prefix}/${obj.name}`);
-                }
-              }
-              if (paths.length > 0) await storage.remove(paths);
-            })().catch(() => {
-              // เพิกเฉย — แถวใน DB ถูกลบไปแล้ว
-            });
+            void cleanupTaskStorage(task.id);
           });
       },
     });
   };
+
+  /* ---------- ถังขยะ: เก็บกวาดงานที่ค้างเกินกำหนด (ลบถาวรเงียบๆ ตอนเปิดหน้า) ---------- */
+
+  useEffect(() => {
+    const cutoff = new Date(
+      Date.now() - TRASH_KEEP_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+    void supabase
+      .from("tasks")
+      .select("id")
+      .lt("deleted_at", cutoff)
+      .then(async ({ data }) => {
+        for (const row of data ?? []) {
+          const { error: e } = await supabase
+            .from("tasks")
+            .delete()
+            .eq("id", row.id);
+          if (!e) {
+            await cleanupTaskStorage(row.id);
+            setItems((cur) => cur.filter((t) => t.id !== row.id));
+          }
+        }
+      });
+    // ทำครั้งเดียวตอนเปิดหน้า — cleanupTaskStorage เสถียรพอ ไม่ต้องเป็น dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   /* ---------- ลากการ์ด/เรียงเซคชันบนบอร์ด ---------- */
 
@@ -1099,7 +1192,7 @@ export function TasksClient({
     if (isTempId(sectionId)) return;
     const prev = prevId ? taskById.get(prevId) : null;
     const next = nextId ? taskById.get(nextId) : null;
-    const full = items
+    const full = activeItems
       .filter((t) => t.id !== taskId && bucketOf(t) === sectionId)
       .sort((a, b) => a.position - b.position);
     let position: number;
@@ -1232,7 +1325,7 @@ export function TasksClient({
       return;
     }
     // นับตามที่ตาเห็นจริง — รวมงานไร้ section ที่ถูกพักไว้คอลัมน์แรกด้วย
-    const affected = items.filter((t) => bucketOf(t) === sectionId);
+    const affected = activeItems.filter((t) => bucketOf(t) === sectionId);
     const target = remaining[0];
 
     const run = () => void doDeleteSection(section, target, affected);
@@ -1385,6 +1478,29 @@ export function TasksClient({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("trash")}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "trash"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <Trash2 size={16} />
+            ถังขยะ
+            {trashedItems.length > 0 && (
+              <span
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                  tab === "trash"
+                    ? "bg-white/25 text-cream"
+                    : "bg-stone-200 text-stone-600"
+                }`}
+              >
+                {trashedItems.length}
+              </span>
+            )}
+          </button>
           {/* จัดการผู้ตรวจ = สิทธิ์ admin เท่านั้น */}
           {isAdmin && (
             <button
@@ -1430,7 +1546,15 @@ export function TasksClient({
               options={[
                 { value: "all", label: "ผู้รับผิดชอบ: ทั้งหมด" },
                 ...(userId !== null
-                  ? [{ value: "me", label: "งานของฉัน", profile: meProfile }]
+                  ? [
+                      // เกี่ยวข้องกับฉัน = ฉันรับผิดชอบ/ถูกมอบหมาย หรือฉันสั่งงาน (default)
+                      {
+                        value: "involved",
+                        label: "เกี่ยวข้องกับฉัน",
+                        profile: meProfile,
+                      },
+                      { value: "me", label: "งานของฉัน", profile: meProfile },
+                    ]
                   : []),
                 { value: "none", label: "ไม่ระบุ", profile: null },
                 ...profiles
@@ -1629,7 +1753,7 @@ export function TasksClient({
             onApprove={approveTask}
             onReject={requestReject}
           />
-        ) : (
+        ) : tab === "approved" ? (
           <ApprovedList
             tasks={approvedFiltered}
             totalApproved={approvedAll.length}
@@ -1638,6 +1762,13 @@ export function TasksClient({
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onTogglePosted={togglePosted}
+          />
+        ) : (
+          <TrashList
+            tasks={trashedItems}
+            sections={sections}
+            onRestore={restoreTask}
+            onHardDelete={requestHardDeleteTask}
           />
         )}
       </div>

@@ -88,7 +88,8 @@ export default async function DashboardPage() {
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
-      .eq("completed", false),
+      .eq("completed", false)
+      .is("deleted_at", null), // ไม่นับงานในถังขยะ
     supabase.from("tasks").select("id").eq("description", "demo").limit(1),
   ]);
 

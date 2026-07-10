@@ -26,6 +26,7 @@ export default async function WorkloadPage() {
         .select(
           "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)"
         )
+        .is("deleted_at", null) // ไม่นับงานในถังขยะ
         .order("created_at", { ascending: false })
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);

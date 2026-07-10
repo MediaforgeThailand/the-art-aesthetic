@@ -55,13 +55,14 @@ export default async function InfluencerDetailPage({
       .select("*")
       .eq("influencer_id", id)
       .order("step", { ascending: true }),
-    // งานคอนเทนต์ (จากหน้า "งาน") ที่ผูกกับ influencer คนนี้
+    // งานคอนเทนต์ (จากหน้า "งาน") ที่ผูกกับ influencer คนนี้ (ไม่นับงานในถังขยะ)
     supabase
       .from("tasks")
       .select(
         "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email), files:task_files(id, task_id, file_path, file_name, created_at)"
       )
       .eq("influencer_id", id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     userId
       ? supabase
