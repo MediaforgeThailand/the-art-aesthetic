@@ -750,8 +750,23 @@ export function TaskPanel({
 
     // แจ้งเตือน (กระดิ่ง): คนถูก @แท็ก + ผู้เกี่ยวข้องของงาน (ผู้รับผิดชอบ/ผู้สร้าง/ผู้ตรวจ)
     // — fire-and-forget: คอมเมนต์บันทึกแล้ว แจ้งเตือนพลาดไม่ต้องเด้ง error
+    // จับ @ชื่อ ด้วย regex ชื่อยาวก่อน (กติกาเดียวกับ highlight) — includes เฉยๆ จะจับผิดคน
+    // เมื่อชื่อหนึ่งเป็น prefix ของอีกชื่อ (เช่น "กาย" กับ "กายกร")
+    const mentionedNames =
+      mentionNames.length === 0
+        ? new Set<string>()
+        : new Set(
+            [
+              ...body.matchAll(
+                new RegExp(
+                  `@(?:${mentionNames.map(escapeRegExp).join("|")})`,
+                  "g"
+                )
+              ),
+            ].map((m) => m[0].slice(1))
+          );
     const mentioned = profiles.filter(
-      (p) => p.id !== userId && body.includes(`@${profileName(p)}`)
+      (p) => p.id !== userId && mentionedNames.has(profileName(p))
     );
     const preview =
       body !== "" ? body.slice(0, 140) : file ? `📎 ${file.name}` : link;
@@ -1018,12 +1033,13 @@ export function TaskPanel({
                 <div className="px-1.5">{assigneeSelect}</div>
               </FieldRow>
             </>
-          ) : isFromBrief ? (
+          ) : isFromBrief && task.assignee ? (
+            // ล็อกเฉพาะเมื่อมีผู้รับอยู่จริง — ถ้าผู้รับหาย (โปรไฟล์ถูกลบ) ตกไปช่องเลือกปกติเพื่อกู้งาน
             <FieldRow label="ผู้รับผิดชอบ">
               <div className="flex items-center gap-1.5 px-1.5 py-0.5">
                 <AssigneeAvatar assignee={task.assignee} size={5} />
                 <span className="min-w-0 truncate text-xs text-stone-800">
-                  {task.assignee ? profileName(task.assignee) : "ไม่ระบุ"}
+                  {profileName(task.assignee)}
                 </span>
                 <span className="shrink-0 text-[11px] text-stone-400">
                   (ผู้กดรับงานจาก Brief)

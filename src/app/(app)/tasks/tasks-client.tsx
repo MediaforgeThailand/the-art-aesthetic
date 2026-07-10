@@ -653,13 +653,20 @@ export function TasksClient({
       return;
     }
     if (handledTaskParam.current === taskParam) return;
-    if (!taskById.has(taskParam)) return; // ยังไม่อยู่ใน state (โหลดไม่เสร็จ/ถูกลบ) — ลองใหม่เมื่อ items เปลี่ยน
+    if (!taskById.has(taskParam)) {
+      // งานที่ชี้ถึงถูกลบไปแล้ว (บอร์ดโหลดครบแต่หาไม่เจอ) — ล้าง param ทิ้ง ไม่ให้ effect วนเช็คค้าง
+      if (items.length > 0) {
+        handledTaskParam.current = taskParam;
+        window.history.replaceState(null, "", "/tasks");
+      }
+      return;
+    }
     handledTaskParam.current = taskParam;
     // ล้าง param ออกจาก URL (ไม่ trigger navigation) — คลิกแจ้งเตือนเดิมซ้ำแล้วเปิดได้อีก
     window.history.replaceState(null, "", "/tasks");
-    // เปิดแผงถัดจาก render รอบนี้ (ไม่ setState กลาง effect)
-    const t = window.setTimeout(() => navigateToTask(taskParam), 0);
-    return () => window.clearTimeout(t);
+    // เปิดแผงถัดจาก render รอบนี้ (ไม่ setState กลาง effect) — จงใจไม่ clear ตอน cleanup:
+    // effect นี้ re-run ได้ทุกครั้งที่ items เปลี่ยน (realtime) ถ้า clear จะกินคำสั่งเปิดแผงทิ้ง
+    window.setTimeout(() => navigateToTask(taskParam), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskParam, taskById]);
 

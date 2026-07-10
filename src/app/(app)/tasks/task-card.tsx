@@ -473,7 +473,9 @@ export function TaskCardContent({
   const isBrief = sectionType === "brief";
   const isAccepted = task.brief_accepted_at !== null;
   // การ์ด creative ที่ถูกสร้างจากการรับ brief — ผู้รับผิดชอบล็อกเป็นผู้กดรับงาน (ไม่มีให้เลือกมอบหมาย)
+  // ยกเว้นผู้รับหายไป (โปรไฟล์ถูกลบ → FK SET NULL) ให้เลือกใหม่ได้ ไม่งั้นงานติดล็อกถาวร
   const isFromBrief = task.brief_source_id !== null;
+  const assigneeLocked = isFromBrief && task.assignee_id !== null;
   const contentTypeLabel = briefContentTypeLabel(task.brief_content_type);
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
   const files = task.files ?? [];
@@ -537,7 +539,7 @@ export function TaskCardContent({
             <ArrowRight size={12} className="-mx-1 shrink-0 text-stone-300" />
           </>
         )}
-        {profiles && onAssign && !isFromBrief ? (
+        {profiles && onAssign && !assigneeLocked ? (
           <AssigneePicker
             assignee={task.assignee}
             profiles={profiles}
