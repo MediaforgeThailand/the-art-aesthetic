@@ -31,6 +31,8 @@ import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluencerLite,
+  NotificationType,
+  TaskCommentRow,
   TaskCommentWithAuthor,
   TaskFileRow,
   TaskRow,
@@ -69,6 +71,13 @@ export type TaskPatch = {
 
 /** งานย่อยพร้อมไฟล์แนบ */
 type SubtaskWithFiles = TaskSubtaskRow & { files: TaskSubtaskFileRow[] };
+
+/** ข้อความก่อน caret ที่ลงท้ายด้วย "@คำค้น" — ใช้เปิดเมนูแท็กคนในช่องแชท */
+const MENTION_TAIL = /(^|\s)@([^\s@]*)$/;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /* สไตล์ field แบบ "ไร้กล่อง" (Asana) — โผล่ขอบเฉพาะตอน hover/focus */
 const bareControl =
@@ -121,6 +130,7 @@ export function TaskPanel({
   userId,
   suspendEsc = false,
   onPatch,
+  onAssign,
   onDelete,
   onClose,
   onSubmitReview,
@@ -153,6 +163,8 @@ export function TaskPanel({
   /** true เมื่อมี dialog อื่นเปิดอยู่ — ให้ Esc เป็นของ dialog นั้น */
   suspendEsc?: boolean;
   onPatch: (id: string, patch: TaskPatch) => void;
+  /** เปลี่ยนผู้รับผิดชอบ/มอบหมายให้ — ใช้ตัวเดียวกับบอร์ด (แจ้งเตือนคนถูกมอบหมายให้ด้วย) */
+  onAssign: (task: TaskWithAssignee, profileId: string | null) => void;
   onDelete: (task: TaskWithAssignee) => void;
   onClose: () => void;
   onSubmitReview: (task: TaskWithAssignee) => void;
@@ -256,6 +268,39 @@ export function TaskPanel({
       alive = false;
     };
   }, [supabase, task.id, showError]);
+
+  /* ---------- realtime: คอมเมนต์ใหม่ของงานนี้เด้งสด (จากคนอื่น/แท็บอื่น) ---------- */
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`task-comments-${task.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "task_comments",
+          filter: `task_id=eq.${task.id}`,
+        },
+        (payload) => {
+          const row = payload.new as TaskCommentRow;
+          // แถวจาก realtime ไม่มี join — เติม author จากรายชื่อ profiles ที่มีอยู่แล้ว
+          const author = row.author_id
+            ? (profiles.find((p) => p.id === row.author_id) ?? null)
+            : null;
+          setComments((cur) => {
+            // ยังโหลดรอบแรกไม่เสร็จ — ปล่อยให้ fetch หลักเก็บแถวนี้เอง
+            if (cur === null) return cur;
+            if (cur.some((c) => c.id === row.id)) return cur;
+            return [...cur, { ...row, author }];
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, task.id, profiles]);
 
   /* ---------- Esc: blur ช่องที่พิมพ์อยู่ก่อน (บันทึก) — กดซ้ำจึงปิดแผง ---------- */
 
@@ -560,6 +605,59 @@ export function TaskPanel({
   const [showLinkInput, setShowLinkInput] = useState(false);
   const commentFileRef = useRef<HTMLInputElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+
+  /* ---------- @mention — พิมพ์ @ ในช่องแชทเพื่อแท็กคน (แจ้งเตือนคนนั้น) ---------- */
+
+  /** คำค้นหลัง @ ที่ caret — null = เมนูปิด */
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  const updateMentionQuery = (el: HTMLTextAreaElement) => {
+    const before = el.value.slice(0, el.selectionStart ?? el.value.length);
+    const m = MENTION_TAIL.exec(before);
+    setMentionQuery(m ? m[2] : null);
+    setMentionIndex(0);
+  };
+
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return profiles
+      .filter((p) => p.id !== userId)
+      .filter((p) => profileName(p).toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [mentionQuery, profiles, userId]);
+
+  /** แทน "@คำค้น" หน้า caret ด้วย "@ชื่อเต็ม " แล้วคืน focus ให้ช่องพิมพ์ */
+  const insertMention = (p: ProfileOption) => {
+    const el = commentInputRef.current;
+    const name = profileName(p);
+    setCommentDraft((cur) => {
+      const caret = el?.selectionStart ?? cur.length;
+      const before = cur.slice(0, caret);
+      const after = cur.slice(caret);
+      if (!MENTION_TAIL.test(before)) return cur;
+      const replaced = before.replace(MENTION_TAIL, `$1@${name} `);
+      const newCaret = replaced.length;
+      window.setTimeout(() => {
+        el?.focus();
+        el?.setSelectionRange(newCaret, newCaret);
+      }, 0);
+      return replaced + after;
+    });
+    setMentionQuery(null);
+  };
+
+  /** ชื่อสมาชิกทุกคน (ยาวก่อน — กันชื่อที่เป็น prefix ของกันและกัน) ใช้เน้น @ชื่อ ในฟองแชท */
+  const mentionNames = useMemo(
+    () =>
+      profiles
+        .map((p) => profileName(p))
+        .filter((n) => n !== "-")
+        .sort((a, b) => b.length - a.length),
+    [profiles]
+  );
 
   const sendComment = async () => {
     const body = commentDraft.trim();
@@ -603,6 +701,7 @@ export function TaskPanel({
     };
     setComments((cur) => [...(cur ?? []), optimistic]);
     setCommentDraft("");
+    setMentionQuery(null);
     setLinkDraft("");
     setShowLinkInput(false);
     setAttachFile(null);
@@ -641,11 +740,53 @@ export function TaskPanel({
       showError(`ส่งความคิดเห็นไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
       return;
     }
+    const saved = data as unknown as TaskCommentWithAuthor;
     setComments((cur) =>
-      (cur ?? []).map((c) =>
-        c.id === tempId ? (data as unknown as TaskCommentWithAuthor) : c
-      )
+      // realtime อาจเพิ่มแถวจริงมาก่อนคำตอบ insert ถึง — ตัด temp ทิ้งแทนการแทนที่ (กันข้อความซ้ำ)
+      (cur ?? []).some((c) => c.id === saved.id)
+        ? (cur ?? []).filter((c) => c.id !== tempId)
+        : (cur ?? []).map((c) => (c.id === tempId ? saved : c))
     );
+
+    // แจ้งเตือน (กระดิ่ง): คนถูก @แท็ก + ผู้เกี่ยวข้องของงาน (ผู้รับผิดชอบ/ผู้สร้าง/ผู้ตรวจ)
+    // — fire-and-forget: คอมเมนต์บันทึกแล้ว แจ้งเตือนพลาดไม่ต้องเด้ง error
+    const mentioned = profiles.filter(
+      (p) => p.id !== userId && body.includes(`@${profileName(p)}`)
+    );
+    const preview =
+      body !== "" ? body.slice(0, 140) : file ? `📎 ${file.name}` : link;
+    const seen = new Set<string>();
+    const notiRows: {
+      recipient_id: string;
+      actor_id: string | null;
+      task_id: string;
+      type: NotificationType;
+      preview: string;
+    }[] = [];
+    for (const p of mentioned) {
+      seen.add(p.id);
+      notiRows.push({
+        recipient_id: p.id,
+        actor_id: userId,
+        task_id: task.id,
+        type: "mention",
+        preview,
+      });
+    }
+    for (const rid of [task.assignee_id, task.created_by, task.reviewer_id]) {
+      if (!rid || rid === userId || seen.has(rid)) continue;
+      seen.add(rid);
+      notiRows.push({
+        recipient_id: rid,
+        actor_id: userId,
+        task_id: task.id,
+        type: "comment",
+        preview,
+      });
+    }
+    if (notiRows.length > 0) {
+      void supabase.from("notifications").insert(notiRows);
+    }
   };
 
   const subDone = (subtasks ?? []).filter((s) => s.completed).length;
@@ -657,14 +798,7 @@ export function TaskPanel({
       size="sm"
       ariaLabel="เลือกผู้รับผิดชอบ"
       value={task.assignee_id ?? ""}
-      onChange={(v) => {
-        const id = v === "" ? null : v;
-        const person = profiles.find((p) => p.id === id) ?? null;
-        onPatch(task.id, {
-          db: { assignee_id: id },
-          local: { assignee: person },
-        });
-      }}
+      onChange={(v) => onAssign(task, v === "" ? null : v)}
       options={[
         { value: "", label: "ไม่ระบุ", profile: null },
         ...profiles.map((p) => ({ value: p.id, profile: p })),
@@ -1227,6 +1361,7 @@ export function TaskPanel({
                 key={c.id}
                 comment={c}
                 mine={c.author_id !== null && c.author_id === userId}
+                mentionNames={mentionNames}
               />
             ))}
             {comments !== null && comments.length === 0 && (
@@ -1251,7 +1386,32 @@ export function TaskPanel({
       )}
 
       {/* ช่องพิมพ์แชท — ติดล่างเสมอ */}
-      <div className="border-t border-stone-100 bg-white/70 px-4 py-3">
+      <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3">
+        {/* เมนูแท็กคน — โผล่เหนือช่องพิมพ์เมื่อพิมพ์ @ */}
+        {mentionQuery !== null && mentionMatches.length > 0 && (
+          <div className="absolute bottom-full left-4 right-4 z-30 mb-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl animate-scale-in">
+            <p className="border-b border-stone-100 px-3 py-1.5 text-[11px] text-stone-400">
+              แท็กเพื่อส่งแจ้งเตือนถึงคนนั้น (↑↓ เลือก, Enter ยืนยัน)
+            </p>
+            {mentionMatches.map((p, i) => (
+              <button
+                key={p.id}
+                type="button"
+                // กัน textarea เสีย focus ก่อนคลิกถึง (mousedown มาก่อน click)
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertMention(p)}
+                className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
+                  i === mentionIndex
+                    ? "bg-brand-50 text-brand-800"
+                    : "text-stone-700 hover:bg-brand-50/60"
+                }`}
+              >
+                <AssigneeAvatar assignee={p} size={5} />
+                <span className="min-w-0 truncate">{profileName(p)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {showLinkInput && (
           <div className="mb-2 flex items-center gap-1.5 pl-9">
             <Link2 size={14} className="shrink-0 text-stone-400" />
@@ -1282,12 +1442,42 @@ export function TaskPanel({
         <div className="flex items-start gap-2.5">
           <AssigneeAvatar assignee={me} size={7} />
           <textarea
+            ref={commentInputRef}
             value={commentDraft}
             rows={commentDraft.includes("\n") ? 3 : 1}
-            placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง)"
+            placeholder="พิมพ์ข้อความ... (@ แท็กคน, Enter ส่ง)"
             aria-label="พิมพ์ข้อความ"
-            onChange={(e) => setCommentDraft(e.target.value)}
+            onChange={(e) => {
+              setCommentDraft(e.target.value);
+              updateMentionQuery(e.target);
+            }}
             onKeyDown={(e) => {
+              // เมนูแท็กคนเปิดอยู่ — ลูกศร/Enter/Tab เป็นของเมนูก่อน
+              if (mentionQuery !== null && mentionMatches.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionIndex((i) => (i + 1) % mentionMatches.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionIndex(
+                    (i) =>
+                      (i - 1 + mentionMatches.length) % mentionMatches.length
+                  );
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  insertMention(mentionMatches[mentionIndex]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setMentionQuery(null);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void sendComment();
@@ -1363,12 +1553,53 @@ export function TaskPanel({
 
 /* ---------- ข้อความแชทหนึ่งฟอง — ของฉันชิดขวา (โทน brand), ของคนอื่นชิดซ้าย (เทา) ---------- */
 
+/** เนื้อความพร้อมเน้น @ชื่อ — เทียบกับชื่อสมาชิกทุกคน (ลิสต์ต้องเรียงชื่อยาวก่อน) */
+function BodyWithMentions({
+  body,
+  names,
+  mine,
+}: {
+  body: string;
+  names: string[];
+  mine: boolean;
+}) {
+  const nodes = useMemo(() => {
+    if (names.length === 0) return [body];
+    const re = new RegExp(`@(?:${names.map(escapeRegExp).join("|")})`, "g");
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    for (const m of body.matchAll(re)) {
+      const at = m.index ?? 0;
+      if (at > last) out.push(body.slice(last, at));
+      out.push(
+        <span
+          key={`${at}-${m[0]}`}
+          className={
+            mine
+              ? "font-semibold underline decoration-cream/70"
+              : "font-semibold text-brand-700"
+          }
+        >
+          {m[0]}
+        </span>
+      );
+      last = at + m[0].length;
+    }
+    if (last < body.length) out.push(body.slice(last));
+    return out;
+  }, [body, names, mine]);
+  return <p className="whitespace-pre-wrap break-words">{nodes}</p>;
+}
+
 function CommentItem({
   comment: c,
   mine,
+  mentionNames,
 }: {
   comment: TaskCommentWithAuthor;
   mine: boolean;
+  /** ชื่อสมาชิกทุกคน (เรียงยาว→สั้น) สำหรับเน้น @ชื่อ */
+  mentionNames: string[];
 }) {
   const { url: fileUrl, failed: fileFailed } = useSignedUrl(c.file_path);
   return (
@@ -1401,7 +1632,7 @@ function CommentItem({
             </span>
           )}
           {c.body !== "" && (
-            <p className="whitespace-pre-wrap break-words">{c.body}</p>
+            <BodyWithMentions body={c.body} names={mentionNames} mine={mine} />
           )}
           {c.link_url && (
             <a

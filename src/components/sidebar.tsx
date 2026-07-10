@@ -18,6 +18,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
 import { LogoMark, LogoWordmark } from "@/components/logo";
+import { NotificationBell } from "@/components/notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
 import type { AppPermission } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
@@ -122,6 +123,11 @@ export function Sidebar({
       <div className="flex items-center gap-3 border-b border-white/60 px-5 py-5">
         <LogoMark className="h-14 w-14" />
         <LogoWordmark />
+        {userId && (
+          <span className="ml-auto">
+            <NotificationBell userId={userId} />
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">

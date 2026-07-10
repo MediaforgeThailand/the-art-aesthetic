@@ -8,7 +8,8 @@ import {
   UserCog,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import {
   Button,
@@ -27,6 +28,7 @@ import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluencerLite,
+  NotificationType,
   ProfileRow,
   TaskSectionRow,
   TaskWithAssignee,
@@ -409,6 +411,111 @@ export function TasksClient({
     [items]
   );
 
+  /* ---------- realtime: บอร์ดอัพเดทสดเมื่อมีใครสร้าง/แก้/ลบงานหรือเซคชัน (ไม่ต้อง refresh) ---------- */
+
+  useEffect(() => {
+    /** ดึงแถวเต็มพร้อม join แล้ว upsert เข้า state — event ของตัวเองก็ idempotent (id ซ้ำ = แทนที่) */
+    const upsertTaskFromDb = (id: string) => {
+      void supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("id", id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data) return; // แถวถูกลบไปแล้วระหว่างรอ — เดี๋ยว event DELETE จัดการเอง
+          const row = data as unknown as TaskWithAssignee;
+          setItems((cur) =>
+            cur.some((t) => t.id === row.id)
+              ? cur.map((t) => (t.id === row.id ? row : t))
+              : [...cur, row]
+          );
+        });
+    };
+    const channel = supabase
+      .channel("tasks-board")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "tasks" },
+        (p) => upsertTaskFromDb((p.new as { id: string }).id)
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "tasks" },
+        (p) => upsertTaskFromDb((p.new as { id: string }).id)
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "tasks" },
+        (p) => {
+          const id = (p.old as { id?: string }).id;
+          if (!id) return;
+          setItems((cur) => cur.filter((t) => t.id !== id));
+          setSelectedId((sel) => (sel === id ? null : sel));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "task_sections" },
+        (p) => {
+          if (p.eventType === "DELETE") {
+            const id = (p.old as { id?: string }).id;
+            if (id) setSections((cur) => cur.filter((s) => s.id !== id));
+            return;
+          }
+          const row = p.new as TaskSectionRow;
+          setSections((cur) => {
+            const next = cur.some((s) => s.id === row.id)
+              ? cur.map((s) => (s.id === row.id ? row : s))
+              : [...cur, row];
+            return [...next].sort((a, b) => a.position - b.position);
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  /* ---------- การแจ้งเตือน (กระดิ่ง) — แถวถูก insert ให้ผู้เกี่ยวข้องแบบ fire-and-forget ---------- */
+
+  const notify = (
+    task: TaskWithAssignee,
+    rows: {
+      recipient: string | null | undefined;
+      type: NotificationType;
+      preview?: string | null;
+    }[]
+  ) => {
+    if (isTempId(task.id)) return;
+    const seen = new Set<string>();
+    const inserts: {
+      recipient_id: string;
+      actor_id: string | null;
+      task_id: string;
+      type: NotificationType;
+      preview: string | null;
+    }[] = [];
+    for (const r of rows) {
+      // ไม่แจ้งเตือนตัวเอง + กันแถวซ้ำ (คนเดียวกัน+ชนิดเดียวกัน)
+      if (!r.recipient || r.recipient === userId) continue;
+      const key = `${r.recipient}:${r.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      inserts.push({
+        recipient_id: r.recipient,
+        actor_id: userId,
+        task_id: task.id,
+        type: r.type,
+        preview: r.preview ?? null,
+      });
+    }
+    if (inserts.length > 0) {
+      // แจ้งเตือนพลาดไม่ต้องเด้ง error — งานหลัก (บันทึก/คอมเมนต์) สำเร็จไปแล้ว
+      void supabase.from("notifications").insert(inserts);
+    }
+  };
+
   /* ---------- แท็บ "ตรวจแล้ว" + ตัวกรองของแท็บ ---------- */
 
   const [apSearch, setApSearch] = useState("");
@@ -535,6 +642,27 @@ export function TasksClient({
     window.setTimeout(() => scroll(), 60);
   };
 
+  /* ---------- deep link จากกระดิ่งแจ้งเตือน: /tasks?task=<id> → เปิดแผง + เลื่อนไปที่การ์ด ---------- */
+
+  const searchParams = useSearchParams();
+  const taskParam = searchParams.get("task");
+  const handledTaskParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (!taskParam) {
+      handledTaskParam.current = null;
+      return;
+    }
+    if (handledTaskParam.current === taskParam) return;
+    if (!taskById.has(taskParam)) return; // ยังไม่อยู่ใน state (โหลดไม่เสร็จ/ถูกลบ) — ลองใหม่เมื่อ items เปลี่ยน
+    handledTaskParam.current = taskParam;
+    // ล้าง param ออกจาก URL (ไม่ trigger navigation) — คลิกแจ้งเตือนเดิมซ้ำแล้วเปิดได้อีก
+    window.history.replaceState(null, "", "/tasks");
+    // เปิดแผงถัดจาก render รอบนี้ (ไม่ setState กลาง effect)
+    const t = window.setTimeout(() => navigateToTask(taskParam), 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskParam, taskById]);
+
   /* ---------- task mutations (optimistic ทั้งหมด) ---------- */
 
   const patchTask = (id: string, patch: TaskPatch) => {
@@ -575,6 +703,7 @@ export function TasksClient({
       return;
     }
     patchTask(task.id, { db: { review_status: "pending", completed: false } });
+    notify(task, [{ recipient: task.reviewer_id, type: "review_request" }]);
   };
 
   /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) */
@@ -591,6 +720,11 @@ export function TasksClient({
         approved_at: new Date().toISOString(),
       },
     });
+    // บอกทั้งผู้รับผิดชอบและผู้สร้างการ์ด (เช่น content ที่สั่ง brief) ว่างานผ่านแล้ว
+    notify(task, [
+      { recipient: task.assignee_id, type: "approved" },
+      { recipient: task.created_by, type: "approved" },
+    ]);
   };
 
   /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล */
@@ -639,6 +773,13 @@ export function TasksClient({
     patchTask(task.id, {
       db: { review_status: "none", completed: false, approved_at: null },
     });
+    notify(task, [
+      {
+        recipient: task.assignee_id,
+        type: "rejected",
+        preview: rejectReason.trim() || null,
+      },
+    ]);
     setRejectTarget(null);
     setRejectReason("");
   };
@@ -677,7 +818,7 @@ export function TasksClient({
     });
   };
 
-  /** เปลี่ยนผู้รับผิดชอบจากวงกลมบนการ์ดโดยตรง */
+  /** เปลี่ยนผู้รับผิดชอบ (วงกลมบนการ์ด + ช่องในแผงรายละเอียด) — แจ้งเตือนคนที่ถูกมอบหมาย */
   const assignTask = (task: TaskWithAssignee, profileId: string | null) => {
     if (task.assignee_id === profileId) return;
     const person = profiles.find((p) => p.id === profileId) ?? null;
@@ -685,6 +826,7 @@ export function TasksClient({
       db: { assignee_id: profileId },
       local: { assignee: person },
     });
+    notify(task, [{ recipient: profileId, type: "assign" }]);
   };
 
   const quickAdd = async (
@@ -775,7 +917,12 @@ export function TasksClient({
       return;
     }
     const real = data as unknown as TaskWithAssignee;
-    setItems((cur) => cur.map((t) => (t.id === tempId ? real : t)));
+    setItems((cur) =>
+      // realtime อาจเพิ่มแถวจริงเข้ามาก่อนคำตอบ insert ถึง — ตัด temp ทิ้งแทนการแทนที่ (กันการ์ดซ้ำ)
+      cur.some((t) => t.id === real.id)
+        ? cur.filter((t) => t.id !== tempId)
+        : cur.map((t) => (t.id === tempId ? real : t))
+    );
     setSelectedId((sel) => (sel === tempId ? real.id : sel));
   };
 
@@ -876,9 +1023,15 @@ export function TasksClient({
       showError(`สร้างการ์ดชิ้นงานไม่สำเร็จ: ${e?.message ?? "ไม่ทราบสาเหตุ"}`);
       return;
     }
+    const created = data as unknown as TaskWithAssignee;
     setItems((cur) =>
-      cur.map((t) => (t.id === tempId ? (data as unknown as TaskWithAssignee) : t))
+      // realtime อาจเพิ่มแถวจริงเข้ามาก่อนคำตอบ insert ถึง — ตัด temp ทิ้งแทนการแทนที่ (กันการ์ดซ้ำ)
+      cur.some((t) => t.id === created.id)
+        ? cur.filter((t) => t.id !== tempId)
+        : cur.map((t) => (t.id === tempId ? created : t))
     );
+    // บอกผู้สั่ง brief ว่ามีคนรับงานแล้ว
+    notify(task, [{ recipient: task.created_by, type: "brief_accepted" }]);
   };
 
   const requestDeleteTask = (task: TaskWithAssignee) => {
@@ -1506,6 +1659,7 @@ export function TasksClient({
             confirm !== null || reviewerModalOpen || rejectTarget !== null
           }
           onPatch={patchTask}
+          onAssign={assignTask}
           onDelete={requestDeleteTask}
           onClose={() => setSelectedId(null)}
           onSubmitReview={submitForReview}

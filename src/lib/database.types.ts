@@ -142,6 +142,31 @@ export type TaskCommentRow = {
   created_at: string;
 };
 
+/** ชนิดการแจ้งเตือน (กระดิ่ง) — สร้างจาก client ตอนเกิดเหตุการณ์ */
+export type NotificationType =
+  | "mention"
+  | "comment"
+  | "assign"
+  | "review_request"
+  | "approved"
+  | "rejected"
+  | "brief_accepted";
+
+export type NotificationRow = {
+  id: string;
+  /** ผู้รับการแจ้งเตือน */
+  recipient_id: string;
+  /** คนที่ทำให้เกิดเหตุการณ์ (คนแท็ก/คนมอบหมาย/...) */
+  actor_id: string | null;
+  task_id: string | null;
+  type: NotificationType;
+  /** ข้อความย่อ (เช่นเนื้อคอมเมนต์/เหตุผลตีกลับ) */
+  preview: string | null;
+  /** เวลาอ่าน — null = ยังไม่อ่าน */
+  read_at: string | null;
+  created_at: string;
+};
+
 export type DocumentRow = {
   id: string;
   name: string;
@@ -468,6 +493,15 @@ export interface Database {
         Update: Partial<TaskCommentRow>;
         Relationships: [];
       };
+      notifications: {
+        Row: NotificationRow;
+        Insert: Partial<NotificationRow> & {
+          recipient_id: string;
+          type: NotificationType;
+        };
+        Update: Partial<NotificationRow>;
+        Relationships: [];
+      };
       task_files: {
         Row: TaskFileRow;
         Insert: Partial<TaskFileRow> & { task_id: string; file_path: string };
@@ -594,4 +628,10 @@ export type FileLinkWithCreator = FileLinkRow & {
 /** ความคิดเห็นพร้อมชื่อผู้เขียน (join จาก profiles) */
 export type TaskCommentWithAuthor = TaskCommentRow & {
   author: Pick<ProfileRow, "full_name" | "email" | "avatar_path"> | null;
+};
+
+/** การแจ้งเตือนพร้อมข้อมูลคนทำ + ชื่องาน (join สำหรับแสดงในกระดิ่ง) */
+export type NotificationWithJoins = NotificationRow & {
+  actor: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  task: Pick<TaskRow, "id" | "title"> | null;
 };
