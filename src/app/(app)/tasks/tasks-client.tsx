@@ -342,7 +342,12 @@ export function TasksClient({
         return false;
       if (statusFilter === "done" && !t.completed) return false;
       if (assigneeFilter === "me") {
-        if (userId === null || t.assignee_id !== userId) return false;
+        // "งานของฉัน" = งานที่ฉันรับผิดชอบ + brief ที่ฉันสั่งเอง (ยังไม่ได้ส่งมอบให้ใคร assignee=null)
+        // — ไม่งั้น brief ที่เพิ่งสร้างจะถูกซ่อนทันที (assignee_id=null) ดูเหมือนสร้างไม่สำเร็จ
+        const mine =
+          t.assignee_id === userId ||
+          (t.assignee_id === null && t.created_by === userId);
+        if (userId === null || !mine) return false;
       } else if (assigneeFilter === "none") {
         if (t.assignee_id !== null) return false;
       } else if (assigneeFilter !== "all" && t.assignee_id !== assigneeFilter) {
