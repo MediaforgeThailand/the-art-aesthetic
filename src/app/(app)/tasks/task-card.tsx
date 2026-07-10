@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
+  ArrowRight,
   Check,
   Clock3,
   Image as ImageIcon,
@@ -65,6 +66,7 @@ export function profileName(
 export function AssigneeAvatar({
   assignee,
   size = 6,
+  title,
 }: {
   assignee: {
     full_name: string | null;
@@ -73,6 +75,8 @@ export function AssigneeAvatar({
     avatar_path?: string | null;
   } | null;
   size?: 5 | 6 | 7 | 8;
+  /** ข้อความ tooltip แทนค่าปกติ (ชื่อคน / "ยังไม่ระบุผู้รับผิดชอบ") */
+  title?: string;
 }) {
   // hook ต้องถูกเรียกทุก render — ส่ง null เมื่อไม่มีรูป (useSignedUrl รองรับ)
   const { url } = useSignedUrl(assignee?.avatar_path ?? null);
@@ -87,7 +91,7 @@ export function AssigneeAvatar({
   if (!assignee) {
     return (
       <span
-        title="ยังไม่ระบุผู้รับผิดชอบ"
+        title={title ?? "ยังไม่ระบุผู้รับผิดชอบ"}
         className={`flex ${dim} shrink-0 items-center justify-center rounded-full border-2 border-dashed border-stone-300`}
       />
     );
@@ -99,14 +103,14 @@ export function AssigneeAvatar({
       <img
         src={url}
         alt={name}
-        title={name}
+        title={title ?? name}
         className={`${dim} shrink-0 rounded-full object-cover shadow-sm`}
       />
     );
   }
   return (
     <span
-      title={name}
+      title={title ?? name}
       className={`flex ${dim} shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream shadow-sm`}
     >
       {name.charAt(0).toUpperCase()}
@@ -122,10 +126,13 @@ export function AssigneePicker({
   assignee,
   profiles,
   onAssign,
+  label = "ผู้รับผิดชอบ",
 }: {
   assignee: TaskWithAssignee["assignee"];
   profiles: ProfileOption[];
   onAssign: (profileId: string | null) => void;
+  /** ชื่อบทบาทที่กำลังเลือก — การ์ด brief ใช้ "มอบหมายให้" */
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -180,14 +187,25 @@ export function AssigneePicker({
       <button
         ref={btnRef}
         type="button"
-        title={assignee ? `ผู้รับผิดชอบ: ${profileName(assignee)} — คลิกเพื่อเปลี่ยน` : "กำหนดผู้รับผิดชอบ"}
-        aria-label="เลือกผู้รับผิดชอบ"
+        title={
+          assignee
+            ? `${label}: ${profileName(assignee)} — คลิกเพื่อเปลี่ยน`
+            : `${label} — คลิกเพื่อเลือก`
+        }
+        aria-label={`เลือก${label}`}
         onClick={toggle}
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         className="cursor-pointer rounded-full transition-transform duration-150 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
-        <AssigneeAvatar assignee={assignee} />
+        <AssigneeAvatar
+          assignee={assignee}
+          title={
+            assignee
+              ? `${label}: ${profileName(assignee)} — คลิกเพื่อเปลี่ยน`
+              : `${label} — คลิกเพื่อเลือก`
+          }
+        />
       </button>
       {open &&
         pos &&
@@ -454,6 +472,8 @@ export function TaskCardContent({
     task.due_date.slice(0, 10) < today;
   const isBrief = sectionType === "brief";
   const isAccepted = task.brief_accepted_at !== null;
+  // การ์ด creative ที่ถูกสร้างจากการรับ brief — ผู้รับผิดชอบล็อกเป็นผู้กดรับงาน (ไม่มีให้เลือกมอบหมาย)
+  const isFromBrief = task.brief_source_id !== null;
   const contentTypeLabel = briefContentTypeLabel(task.brief_content_type);
   const showCategory = task.category && task.category !== DEFAULT_TASK_CATEGORY;
   const files = task.files ?? [];
@@ -505,16 +525,34 @@ export function TaskCardContent({
           ไม่งั้น dnd-kit วัดความสูงจากการ์ดจริงแล้วการ์ดที่ลากลอยหลุดจากเมาส์ */}
       <CardMediaPreview files={files} />
 
-      {/* แถวเดียว ชิดซ้ายสุด: ผู้รับผิดชอบ · สถานะ · วันที่ · หมวดหมู่ · influ (ไฟล์แนบดันขวา) */}
+      {/* แถวเดียว ชิดซ้ายสุด: ผู้รับผิดชอบ · สถานะ · วันที่ · หมวดหมู่ · influ (ไฟล์แนบดันขวา)
+          การ์ด brief: [ผู้สร้าง (ผู้รับผิดชอบ)] → [มอบหมายให้] — ลูกศรบอกทิศทางการส่งงาน */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-        {profiles && onAssign ? (
+        {isBrief && task.creator && (
+          <>
+            <AssigneeAvatar
+              assignee={task.creator}
+              title={`ผู้รับผิดชอบ: ${profileName(task.creator)} (ผู้สร้าง Brief)`}
+            />
+            <ArrowRight size={12} className="-mx-1 shrink-0 text-stone-300" />
+          </>
+        )}
+        {profiles && onAssign && !isFromBrief ? (
           <AssigneePicker
             assignee={task.assignee}
             profiles={profiles}
             onAssign={onAssign}
+            label={isBrief ? "มอบหมายให้" : "ผู้รับผิดชอบ"}
           />
         ) : (
-          <AssigneeAvatar assignee={task.assignee} />
+          <AssigneeAvatar
+            assignee={task.assignee}
+            title={
+              isFromBrief && task.assignee
+                ? `ผู้รับผิดชอบ: ${profileName(task.assignee)} (ผู้กดรับงานจาก Brief — เปลี่ยนไม่ได้)`
+                : undefined
+            }
+          />
         )}
         {isBrief ? (
           <Badge
@@ -575,6 +613,20 @@ export function TaskCardContent({
           </span>
         )}
       </div>
+
+      {/* ผู้สร้างการ์ด — ผู้สร้างกับผู้ทำงานอาจคนละคน (การ์ดจาก brief = ผู้สั่ง brief) */}
+      {task.creator && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <AssigneeAvatar
+            assignee={task.creator}
+            size={5}
+            title={`ผู้สร้างการ์ด: ${profileName(task.creator)}`}
+          />
+          <span className="min-w-0 truncate text-[11px] text-stone-400">
+            สร้างโดย {profileName(task.creator)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

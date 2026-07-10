@@ -580,6 +580,8 @@ export type InfluencerLite = Pick<
 export type TaskWithAssignee = TaskRow & {
   assignee: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   reviewer?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  /** ผู้สร้างการ์ด (join จาก created_by) — การ์ด creative ที่มาจาก brief = ผู้สั่ง brief */
+  creator?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   influencer?: InfluencerLite | null;
   files?: TaskFileRow[];
 };

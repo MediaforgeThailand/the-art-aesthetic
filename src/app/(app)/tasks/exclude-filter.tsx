@@ -3,9 +3,12 @@
 import { EyeOff, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ProfileRow } from "@/lib/types";
-import { profileName } from "./task-card";
+import { AssigneeAvatar, profileName } from "./task-card";
 
-type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
+type ProfileOption = Pick<
+  ProfileRow,
+  "id" | "full_name" | "email" | "avatar_path"
+>;
 
 /** ตัวเลือกสถานะที่ยกเว้นได้ — key ตรงกับตัวกรองสถานะของบอร์ด */
 const STATUS_OPTIONS: { key: string; label: string }[] = [
@@ -123,6 +126,7 @@ export function ExcludeFilter({
             <CheckRow
               checked={excludeAssignees.includes("none")}
               label="ไม่ระบุผู้รับผิดชอบ"
+              avatar={<AssigneeAvatar assignee={null} size={5} />}
               onToggle={() => onToggleAssignee("none")}
             />
             {profiles.map((p) => (
@@ -130,6 +134,7 @@ export function ExcludeFilter({
                 key={p.id}
                 checked={excludeAssignees.includes(p.id)}
                 label={`${profileName(p)}${p.id === userId ? " (ฉัน)" : ""}`}
+                avatar={<AssigneeAvatar assignee={p} size={5} />}
                 onToggle={() => onToggleAssignee(p.id)}
               />
             ))}
@@ -143,10 +148,13 @@ export function ExcludeFilter({
 function CheckRow({
   checked,
   label,
+  avatar,
   onToggle,
 }: {
   checked: boolean;
   label: string;
+  /** รูปโปรไฟล์หน้าชื่อ (แถวที่เป็นคน) */
+  avatar?: React.ReactNode;
   onToggle: () => void;
 }) {
   return (
@@ -157,6 +165,7 @@ function CheckRow({
         onChange={onToggle}
         className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-brand-600"
       />
+      {avatar}
       <span className="min-w-0 flex-1 truncate">{label}</span>
     </label>
   );

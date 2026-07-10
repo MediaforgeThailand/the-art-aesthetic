@@ -41,6 +41,7 @@ import type {
 } from "@/lib/types";
 import { useSignedUrl } from "../influencers/use-signed-url";
 import { MediaLightbox } from "./media-lightbox";
+import { PersonSelect } from "./person-select";
 import {
   AssigneeAvatar,
   CompleteToggle,
@@ -649,6 +650,28 @@ export function TaskPanel({
 
   const subDone = (subtasks ?? []).filter((s) => s.completed).length;
 
+  /** ตัวเลือกผู้รับผิดชอบ/มอบหมายให้ (dropdown พร้อมรูปโปรไฟล์) — ใช้ทั้งงานปกติและแถว "มอบหมายให้" ของ brief */
+  const assigneeSelect = (
+    <PersonSelect
+      id="task-assignee"
+      size="sm"
+      ariaLabel="เลือกผู้รับผิดชอบ"
+      value={task.assignee_id ?? ""}
+      onChange={(v) => {
+        const id = v === "" ? null : v;
+        const person = profiles.find((p) => p.id === id) ?? null;
+        onPatch(task.id, {
+          db: { assignee_id: id },
+          local: { assignee: person },
+        });
+      }}
+      options={[
+        { value: "", label: "ไม่ระบุ", profile: null },
+        ...profiles.map((p) => ({ value: p.id, profile: p })),
+      ]}
+    />
+  );
+
   /* ---------- render ---------- */
 
   return (
@@ -842,34 +865,42 @@ export function TaskPanel({
 
         {/* โซนตั้งค่า — ไร้กล่องแบบ Asana + ย่อเล็ก (ไม่ใช่เนื้อหาหลัก) ให้เหลือพื้นที่ให้รายละเอียด/ไฟล์/แชท */}
         <div className="space-y-px pb-0.5">
-          <FieldRow
-            label={isBrief ? "ส่งมอบให้" : "ผู้รับผิดชอบ"}
-            htmlFor="task-assignee"
-          >
-            <div className="flex items-center gap-1.5 px-1.5">
-              <AssigneeAvatar assignee={task.assignee} size={5} />
-              <select
-                id="task-assignee"
-                value={task.assignee_id ?? ""}
-                onChange={(e) => {
-                  const id = e.target.value === "" ? null : e.target.value;
-                  const person = profiles.find((p) => p.id === id) ?? null;
-                  onPatch(task.id, {
-                    db: { assignee_id: id },
-                    local: { assignee: person },
-                  });
-                }}
-                className={bareSelectSm}
-              >
-                <option value="">ไม่ระบุ</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {profileName(p)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </FieldRow>
+          {/* ผู้รับผิดชอบ — brief: ผู้สร้าง brief (อ่านอย่างเดียว) + แถว "มอบหมายให้" แยก,
+              การ์ดจาก brief: ล็อกเป็นผู้กดรับงาน (ไม่มีให้เลือกมอบหมายต่อ), งานปกติ: เลือกได้ */}
+          {isBrief ? (
+            <>
+              <FieldRow label="ผู้รับผิดชอบ">
+                <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                  <AssigneeAvatar assignee={task.creator ?? null} size={5} />
+                  <span className="min-w-0 truncate text-xs text-stone-800">
+                    {task.creator ? profileName(task.creator) : "-"}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-stone-400">
+                    (ผู้สร้าง Brief)
+                  </span>
+                </div>
+              </FieldRow>
+              <FieldRow label="มอบหมายให้" htmlFor="task-assignee">
+                <div className="px-1.5">{assigneeSelect}</div>
+              </FieldRow>
+            </>
+          ) : isFromBrief ? (
+            <FieldRow label="ผู้รับผิดชอบ">
+              <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                <AssigneeAvatar assignee={task.assignee} size={5} />
+                <span className="min-w-0 truncate text-xs text-stone-800">
+                  {task.assignee ? profileName(task.assignee) : "ไม่ระบุ"}
+                </span>
+                <span className="shrink-0 text-[11px] text-stone-400">
+                  (ผู้กดรับงานจาก Brief)
+                </span>
+              </div>
+            </FieldRow>
+          ) : (
+            <FieldRow label="ผู้รับผิดชอบ" htmlFor="task-assignee">
+              <div className="px-1.5">{assigneeSelect}</div>
+            </FieldRow>
+          )}
 
           {/* เซคชัน brief: เลือกชนิดงานเป็นปุ่ม (graphic/video) ไม่ใช่ dropdown */}
           {isBrief && (
@@ -897,26 +928,18 @@ export function TaskPanel({
           {!isBrief && (
           <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
             <div className="px-1.5">
-              <div className="flex items-center gap-1.5">
-                <AssigneeAvatar assignee={task.reviewer ?? null} size={5} />
-                <select
-                  id="task-reviewer"
-                  value={task.reviewer_id ?? ""}
-                  disabled={task.review_status !== "none"}
-                  onChange={(e) => {
-                    const id = e.target.value === "" ? null : e.target.value;
-                    onSetReviewer(task, id);
-                  }}
-                  className={`${bareSelectSm} disabled:cursor-not-allowed disabled:opacity-70`}
-                >
-                  <option value="">เลือกผู้ตรวจ</option>
-                  {reviewerOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {profileName(p)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <PersonSelect
+                id="task-reviewer"
+                size="sm"
+                ariaLabel="เลือกผู้ตรวจงาน"
+                value={task.reviewer_id ?? ""}
+                disabled={task.review_status !== "none"}
+                onChange={(v) => onSetReviewer(task, v === "" ? null : v)}
+                options={[
+                  { value: "", label: "เลือกผู้ตรวจ", profile: null },
+                  ...reviewerOptions.map((p) => ({ value: p.id, profile: p })),
+                ]}
+              />
               {reviewerOptions.length === 0 && (
                 <p className="mt-0.5 text-xs text-amber-600">
                   ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
@@ -1216,7 +1239,8 @@ export function TaskPanel({
         </div>
 
         <p className="px-2 text-[11px] text-stone-300">
-          สร้างเมื่อ {formatDateTime(task.created_at)}
+          สร้างโดย {task.creator ? profileName(task.creator) : "-"} ·{" "}
+          {formatDateTime(task.created_at)}
         </p>
       </div>
 

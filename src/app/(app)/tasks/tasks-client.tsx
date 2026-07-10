@@ -34,6 +34,7 @@ import type {
 import { ApprovedList } from "./approved-list";
 import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ExcludeFilter } from "./exclude-filter";
+import { PersonSelect } from "./person-select";
 import { ReviewList } from "./review-list";
 import { AssigneeAvatar, isTempId, profileName } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
@@ -53,9 +54,9 @@ function bangkokDay(iso: string): string {
   return BANGKOK_DAY_FORMAT.format(new Date(iso));
 }
 
-/** select ของ task พร้อม join (assignee/reviewer/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
+/** select ของ task พร้อม join (assignee/reviewer/creator/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;
@@ -147,6 +148,12 @@ export function TasksClient({
   const reviewerProfiles = useMemo(
     () => profiles.filter((p) => reviewerSet.has(p.id)),
     [profiles, reviewerSet]
+  );
+
+  /** โปรไฟล์ของฉัน — ใช้แสดงรูปในตัวเลือก "งานของฉัน"/"ฉันเป็นผู้ตรวจ" */
+  const meProfile = useMemo(
+    () => (userId ? (profiles.find((p) => p.id === userId) ?? null) : null),
+    [profiles, userId]
   );
 
   // ผู้ตรวจเริ่มต้นของทั้งทีม (คนเดียวกันทุกคน) — ตั้งค่าโดย admin, เก็บใน app_settings
@@ -711,6 +718,9 @@ export function TasksClient({
     const assigneePerson = assigneeId
       ? (profiles.find((p) => p.id === assigneeId) ?? null)
       : null;
+    const creatorPerson = userId
+      ? (profiles.find((p) => p.id === userId) ?? null)
+      : null;
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
@@ -740,6 +750,7 @@ export function TasksClient({
       updated_at: new Date().toISOString(),
       assignee: assigneePerson,
       reviewer: reviewerPerson,
+      creator: creatorPerson,
       influencer: null,
       files: [],
     };
@@ -796,15 +807,18 @@ export function TasksClient({
       db: { brief_accepted_at: new Date().toISOString(), completed: true },
     });
 
-    // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้ตรวจ = ผู้สั่งงาน/ผู้สร้าง brief)
+    // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้ตรวจ = ผู้สั่งงาน/ผู้สร้าง brief,
+    //    ผู้สร้างการ์ด = ผู้สั่ง brief — การ์ดจึงบอกได้ว่าใครเป็นคนสั่งแม้คนทำเป็นอีกคน)
     const inSection = items.filter((t) => bucketOf(t) === creativesSectionId);
     const position =
       inSection.length === 0
         ? 1024
         : Math.min(...inSection.map((t) => t.position)) - 1;
-    const reviewerPerson = task.created_by
-      ? (profiles.find((p) => p.id === task.created_by) ?? null)
-      : null;
+    const briefCreatorPerson =
+      task.creator ??
+      (task.created_by
+        ? (profiles.find((p) => p.id === task.created_by) ?? null)
+        : null);
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
       id: tempId,
@@ -828,11 +842,12 @@ export function TasksClient({
       brief_content_type: task.brief_content_type,
       brief_accepted_at: null,
       brief_source_id: task.id,
-      created_by: userId,
+      created_by: task.created_by ?? userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: task.assignee ?? null,
-      reviewer: reviewerPerson,
+      reviewer: briefCreatorPerson,
+      creator: briefCreatorPerson,
       influencer: task.influencer ?? null,
       files: [],
     };
@@ -851,7 +866,7 @@ export function TasksClient({
         category: task.category,
         brief_content_type: task.brief_content_type,
         brief_source_id: task.id,
-        created_by: userId,
+        created_by: task.created_by ?? userId,
       })
       .select(TASK_SELECT)
       .single();
@@ -1247,23 +1262,22 @@ export function TasksClient({
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="w-44">
-            <Select
-              aria-label="กรองตามผู้รับผิดชอบ"
+          <div className="w-48">
+            <PersonSelect
+              ariaLabel="กรองตามผู้รับผิดชอบ"
               value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-            >
-              <option value="all">ผู้รับผิดชอบ: ทั้งหมด</option>
-              {userId !== null && <option value="me">งานของฉัน</option>}
-              <option value="none">ไม่ระบุ</option>
-              {profiles
-                .filter((p) => p.id !== userId)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {profileName(p)}
-                  </option>
-                ))}
-            </Select>
+              onChange={setAssigneeFilter}
+              options={[
+                { value: "all", label: "ผู้รับผิดชอบ: ทั้งหมด" },
+                ...(userId !== null
+                  ? [{ value: "me", label: "งานของฉัน", profile: meProfile }]
+                  : []),
+                { value: "none", label: "ไม่ระบุ", profile: null },
+                ...profiles
+                  .filter((p) => p.id !== userId)
+                  .map((p) => ({ value: p.id, profile: p })),
+              ]}
+            />
           </div>
           <div className="w-40">
             <Select
@@ -1332,40 +1346,44 @@ export function TasksClient({
                 onChange={(e) => setApSearch(e.target.value)}
               />
             </div>
-            <div className="w-44">
-              <Select
-                aria-label="กรองตามผู้รับผิดชอบ"
+            <div className="w-48">
+              <PersonSelect
+                ariaLabel="กรองตามผู้รับผิดชอบ"
                 value={apAssignee}
-                onChange={(e) => setApAssignee(e.target.value)}
-              >
-                <option value="all">ผู้รับผิดชอบ: ทั้งหมด</option>
-                {userId !== null && <option value="me">งานของฉัน</option>}
-                <option value="none">ไม่ระบุ</option>
-                {profiles
-                  .filter((p) => p.id !== userId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {profileName(p)}
-                    </option>
-                  ))}
-              </Select>
+                onChange={setApAssignee}
+                options={[
+                  { value: "all", label: "ผู้รับผิดชอบ: ทั้งหมด" },
+                  ...(userId !== null
+                    ? [{ value: "me", label: "งานของฉัน", profile: meProfile }]
+                    : []),
+                  { value: "none", label: "ไม่ระบุ", profile: null },
+                  ...profiles
+                    .filter((p) => p.id !== userId)
+                    .map((p) => ({ value: p.id, profile: p })),
+                ]}
+              />
             </div>
-            <div className="w-44">
-              <Select
-                aria-label="กรองตามผู้ตรวจ"
+            <div className="w-48">
+              <PersonSelect
+                ariaLabel="กรองตามผู้ตรวจ"
                 value={apReviewer}
-                onChange={(e) => setApReviewer(e.target.value)}
-              >
-                <option value="all">ผู้ตรวจ: ทั้งหมด</option>
-                {userId !== null && <option value="me">ฉันเป็นผู้ตรวจ</option>}
-                {apReviewerOptions
-                  .filter((p) => p.id !== userId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {profileName(p)}
-                    </option>
-                  ))}
-              </Select>
+                onChange={setApReviewer}
+                options={[
+                  { value: "all", label: "ผู้ตรวจ: ทั้งหมด" },
+                  ...(userId !== null
+                    ? [
+                        {
+                          value: "me",
+                          label: "ฉันเป็นผู้ตรวจ",
+                          profile: meProfile,
+                        },
+                      ]
+                    : []),
+                  ...apReviewerOptions
+                    .filter((p) => p.id !== userId)
+                    .map((p) => ({ value: p.id, profile: p })),
+                ]}
+              />
             </div>
             <div className="w-40">
               <Select
@@ -1572,22 +1590,15 @@ export function TasksClient({
               เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
               (ตั้งได้เฉพาะ admin — เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
             </p>
-            <Select
+            <PersonSelect
               id="default-reviewer"
               value={globalReviewerId ?? ""}
-              onChange={(e) =>
-                void saveDefaultReviewer(
-                  e.target.value === "" ? null : e.target.value
-                )
-              }
-            >
-              <option value="">ไม่ตั้งอัตโนมัติ (เลือกเองทุกครั้ง)</option>
-              {reviewerProfiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {profileName(p)}
-                </option>
-              ))}
-            </Select>
+              onChange={(v) => void saveDefaultReviewer(v === "" ? null : v)}
+              options={[
+                { value: "", label: "ไม่ตั้งอัตโนมัติ (เลือกเองทุกครั้ง)" },
+                ...reviewerProfiles.map((p) => ({ value: p.id, profile: p })),
+              ]}
+            />
             {globalReviewerId !== null &&
               !reviewerSet.has(globalReviewerId) && (
                 <p className="mt-1.5 text-xs text-amber-600">
