@@ -29,7 +29,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })
@@ -70,9 +70,8 @@ export default async function TasksPage() {
       .order("created_at", { ascending: true }),
     supabase
       .from("app_settings")
-      .select("value")
-      .eq("key", "default_reviewer_id")
-      .maybeSingle(),
+      .select("key, value")
+      .in("key", ["default_reviewer_id", "default_reviewer2_id"]),
   ]);
 
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
@@ -81,7 +80,11 @@ export default async function TasksPage() {
   const influencers = (influencersResult.data ?? []) as InfluencerLite[];
   const reviewerIds = (reviewersResult.data ?? []).map((r) => r.profile_id);
   const categories = (categoriesResult.data ?? []).map((c) => c.name);
-  const defaultReviewerId = settingsResult.data?.value ?? null;
+  const settingRows = settingsResult.data ?? [];
+  const defaultReviewerId =
+    settingRows.find((r) => r.key === "default_reviewer_id")?.value ?? null;
+  const defaultReviewer2Id =
+    settingRows.find((r) => r.key === "default_reviewer2_id")?.value ?? null;
   const loadError =
     sectionsResult.error?.message ??
     tasksResult.error ??
@@ -99,6 +102,7 @@ export default async function TasksPage() {
       influencers={influencers}
       reviewerIds={reviewerIds}
       defaultReviewerId={defaultReviewerId}
+      defaultReviewer2Id={defaultReviewer2Id}
       categories={categories}
       userId={userId}
       isAdmin={access.isAdmin}

@@ -253,19 +253,36 @@ export function AssigneePicker({
   );
 }
 
-/** วงกลมบอกสถานะการตรวจงาน (read-only) — none = ว่าง, รอตรวจ = นาฬิกาเหลือง, ผ่าน = ติ๊กเขียว */
+/** ผู้ตรวจของทอดปัจจุบัน — ทอด 2 ใช้ผู้ตรวจลำดับ 2 (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้) */
+export function currentReviewerId(task: TaskWithAssignee): string | null {
+  if ((task.review_step ?? 1) >= 2) {
+    return task.reviewer2_id ?? task.reviewer_id;
+  }
+  return task.reviewer_id;
+}
+
+/** วงกลมบอกสถานะการตรวจงาน (read-only) — none = ว่าง, รอตรวจ = นาฬิกาเหลือง, ผ่าน = ติ๊กเขียว
+    งานที่ตรวจ 2 ทอด (มีผู้ตรวจลำดับ 2) บอกทอดใน tooltip */
 export function ReviewStatusDot({
   status,
   size = 18,
+  reviewStep,
+  hasChain = false,
 }: {
   status: "none" | "pending" | "approved";
   size?: number;
+  /** ทอดที่กำลังรอตรวจ (1|2) — ใช้คู่กับ hasChain */
+  reviewStep?: number;
+  /** งานนี้มีผู้ตรวจลำดับ 2 (ตรวจเป็นทอด) */
+  hasChain?: boolean;
 }) {
   const label =
     status === "approved"
       ? "เสร็จสมบูรณ์ (ผ่านการตรวจ)"
       : status === "pending"
-        ? "รอตรวจ"
+        ? hasChain
+          ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep ?? 1}/2`
+          : "รอตรวจ"
         : "ยังไม่ส่งตรวจ";
   return (
     <span
@@ -512,6 +529,8 @@ export function TaskCardContent({
                 : task.review_status
             }
             size={18}
+            reviewStep={task.review_step ?? 1}
+            hasChain={!isBrief && task.reviewer2_id !== null}
           />
         </div>
         <p
@@ -570,7 +589,9 @@ export function TaskCardContent({
           <>
             {task.review_status === "pending" && (
               <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-                รอตรวจ
+                {task.reviewer2_id
+                  ? `รอตรวจ ${task.review_step ?? 1}/2`
+                  : "รอตรวจ"}
               </Badge>
             )}
             {task.review_status === "approved" && (

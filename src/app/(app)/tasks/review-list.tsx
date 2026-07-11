@@ -61,6 +61,10 @@ export function ReviewList({
           task.due_date !== null &&
           task.due_date.slice(0, 10) < today;
         const sec = sectionName(task.section_id);
+        // งานตรวจ 2 ทอด — บอกว่าใบนี้อยู่ทอดไหน และอนุมัติแล้วจะเกิดอะไรต่อ
+        const hasChain = task.reviewer2_id !== null;
+        const step = task.review_step ?? 1;
+        const isFinalStep = !hasChain || step >= 2;
         return (
           <div
             key={task.id}
@@ -80,8 +84,13 @@ export function ReviewList({
             <div className="min-w-0 flex-1 basis-64">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                  รอตรวจ
+                  {hasChain ? `รอตรวจ · ลำดับ ${step}/2` : "รอตรวจ"}
                 </span>
+                {hasChain && step >= 2 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ลำดับ 1 อนุมัติแล้ว
+                  </span>
+                )}
                 {sec && (
                   <span className="text-xs text-stone-400">{sec}</span>
                 )}
@@ -147,10 +156,15 @@ export function ReviewList({
                   e.stopPropagation();
                   onApprove(task);
                 }}
+                title={
+                  isFinalStep
+                    ? undefined
+                    : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
+                }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
               >
                 <CheckCircle2 size={15} />
-                อนุมัติ
+                {isFinalStep ? "อนุมัติ" : "อนุมัติ → ส่งต่อลำดับ 2"}
               </button>
             </div>
           </div>

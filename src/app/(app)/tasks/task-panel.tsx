@@ -47,6 +47,7 @@ import { PersonSelect } from "./person-select";
 import {
   AssigneeAvatar,
   CompleteToggle,
+  currentReviewerId,
   isImagePath,
   isVideoPath,
   type ProfileOption,
@@ -121,6 +122,7 @@ export function TaskPanel({
   section,
   profiles,
   reviewerProfiles,
+  teamReviewer2,
   influencers,
   categories,
   briefSource,
@@ -149,6 +151,8 @@ export function TaskPanel({
   profiles: ProfileOption[];
   /** roster ผู้ตรวจ — ตัวเลือกในช่อง "ผู้ตรวจงาน" จำกัดเฉพาะรายชื่อนี้ */
   reviewerProfiles: ProfileOption[];
+  /** ผู้ตรวจลำดับ 2 ของทีม (ตั้งใน "จัดการผู้ตรวจ") — โชว์ preview ก่อนส่งตรวจ; null = ตรวจชั้นเดียว */
+  teamReviewer2: ProfileOption | null;
   influencers: InfluencerLite[];
   /** หมวดหมู่งานที่เลือกได้ (เพิ่มได้) */
   categories: string[];
@@ -187,7 +191,18 @@ export function TaskPanel({
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
-  const isReviewer = task.reviewer_id !== null && task.reviewer_id === userId;
+  // ผู้ตรวจของทอดปัจจุบัน — งานตรวจ 2 ทอด: ทอด 1 = reviewer_id, ทอด 2 = reviewer2_id
+  const stepReviewerId = currentReviewerId(task);
+  const isReviewer = stepReviewerId !== null && stepReviewerId === userId;
+  // งานนี้ตรวจเป็นทอด (มีผู้ตรวจลำดับ 2 ติดอยู่กับงาน)
+  const hasChain = task.reviewer2_id !== null;
+  const reviewStep = task.review_step ?? 1;
+  // โชว์แถว "ผู้ตรวจลำดับ 2" — งานที่ติดทอดแล้ว หรือ preview ก่อนส่งตรวจตามการตั้งค่าทีม
+  const chainVisible =
+    hasChain ||
+    (task.review_status === "none" &&
+      teamReviewer2 !== null &&
+      teamReviewer2.id !== task.reviewer_id);
   // เซคชัน brief (สั่งงาน): การ์ดมีปุ่มรับงาน + ช่อง "ส่งมอบให้" + เลือกชนิดงาน
   const isBrief = section?.type === "brief";
   const isAccepted = task.brief_accepted_at !== null;
@@ -219,6 +234,11 @@ export function TaskPanel({
 
   // ไฟล์ที่กำลังเปิดดูใน lightbox (index ใน task.files) — null = ปิด
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // lightbox แยกของ "ไฟล์จาก Brief" (การ์ด creative ดูไฟล์ source ของ brief ได้อย่างเดียว)
+  const [briefLightboxIndex, setBriefLightboxIndex] = useState<number | null>(
+    null
+  );
+  const briefFiles = briefSource?.files ?? [];
 
   /* ---------- งานย่อย + ความคิดเห็น (โหลดเมื่อเปิดงาน) ---------- */
 
@@ -312,7 +332,13 @@ export function TaskPanel({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // lightbox เปิดอยู่ → ปล่อยให้ lightbox จัดการ Esc เอง ไม่ปิดแผง
-      if (e.key !== "Escape" || suspendEsc || lightboxIndex !== null) return;
+      if (
+        e.key !== "Escape" ||
+        suspendEsc ||
+        lightboxIndex !== null ||
+        briefLightboxIndex !== null
+      )
+        return;
       const el = document.activeElement as HTMLElement | null;
       // กำลังพิมพ์อยู่ที่ไหนก็ตาม (รวมช่องค้นหานอกแผง) — Esc แค่ blur ไม่ปิดแผง
       if (el && ["TEXTAREA", "INPUT", "SELECT"].includes(el.tagName)) {
@@ -323,7 +349,7 @@ export function TaskPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, suspendEsc, lightboxIndex]);
+  }, [onClose, suspendEsc, lightboxIndex, briefLightboxIndex]);
 
   useEffect(() => {
     asideRef.current?.focus({ preventScroll: true });
@@ -531,7 +557,14 @@ export function TaskPanel({
           : s
       )
     );
-    void supabase.from("task_subtask_files").delete().eq("id", file.id);
+    // (ต้องมี .then เสมอ: builder ของ supabase-js เป็น lazy thenable — ไม่ then = ไม่ยิง request)
+    void supabase
+      .from("task_subtask_files")
+      .delete()
+      .eq("id", file.id)
+      .then(({ error }) => {
+        if (error) showError(`ลบไฟล์ไม่สำเร็จ: ${error.message}`);
+      });
     void supabase.storage
       .from(STORAGE_BUCKET_DOCUMENTS)
       .remove([file.file_path]);
@@ -805,7 +838,13 @@ export function TaskPanel({
       });
     }
     if (notiRows.length > 0) {
-      void supabase.from("notifications").insert(notiRows);
+      // (ต้องมี .then เสมอ: builder ของ supabase-js เป็น lazy thenable — ไม่ then = ไม่ยิง request)
+      void supabase
+        .from("notifications")
+        .insert(notiRows)
+        .then(({ error: e }) => {
+          if (e) console.warn("ส่งแจ้งเตือนไม่สำเร็จ:", e.message);
+        });
     }
   };
 
@@ -871,10 +910,21 @@ export function TaskPanel({
               <button
                 type="button"
                 onClick={() => onApprove(task)}
+                title={
+                  hasChain && reviewStep < 2
+                    ? `อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 (${
+                        task.reviewer2 ? profileName(task.reviewer2) : "-"
+                      }) ตรวจขั้นสุดท้าย`
+                    : undefined
+                }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
               >
                 <CheckCircle2 size={15} />
-                อนุมัติ
+                {hasChain
+                  ? reviewStep < 2
+                    ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
+                    : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
+                  : "อนุมัติ"}
               </button>
               <button
                 type="button"
@@ -889,7 +939,7 @@ export function TaskPanel({
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
-              รอตรวจ
+              {hasChain ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2` : "รอตรวจ"}
             </span>
           )
         ) : (
@@ -1083,30 +1133,80 @@ export function TaskPanel({
             </FieldRow>
           )}
 
-          {/* ผู้ตรวจงาน — ซ่อนในเซคชัน brief (ผู้ตรวจ = ผู้สั่งงาน อัตโนมัติ ไม่ต้องเลือก) */}
+          {/* ผู้ตรวจงาน — ซ่อนในเซคชัน brief (ผู้ตรวจ = ผู้สั่งงาน อัตโนมัติ ไม่ต้องเลือก)
+              เมื่อทีมตั้งผู้ตรวจลำดับ 2 ไว้ การตรวจเป็นทอด: แสดง 2 แถว (ลำดับ 1 เลือกได้, ลำดับ 2 ตามทีม) */}
           {!isBrief && (
-          <FieldRow label="ผู้ตรวจงาน" htmlFor="task-reviewer">
-            <div className="px-1.5">
-              <PersonSelect
-                id="task-reviewer"
-                size="sm"
-                ariaLabel="เลือกผู้ตรวจงาน"
-                value={task.reviewer_id ?? ""}
-                disabled={task.review_status !== "none"}
-                onChange={(v) => onSetReviewer(task, v === "" ? null : v)}
-                options={[
-                  { value: "", label: "เลือกผู้ตรวจ", profile: null },
-                  ...reviewerOptions.map((p) => ({ value: p.id, profile: p })),
-                ]}
-              />
-              {reviewerOptions.length === 0 && (
-                <p className="mt-0.5 text-xs text-amber-600">
-                  ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
-                  &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
-                </p>
-              )}
+          <FieldRow
+            label={chainVisible ? "ผู้ตรวจลำดับ 1" : "ผู้ตรวจงาน"}
+            htmlFor="task-reviewer"
+          >
+            <div className="flex items-center gap-1.5 px-1.5">
+              <div className="min-w-0 flex-1">
+                <PersonSelect
+                  id="task-reviewer"
+                  size="sm"
+                  ariaLabel="เลือกผู้ตรวจงาน"
+                  value={task.reviewer_id ?? ""}
+                  disabled={task.review_status !== "none"}
+                  onChange={(v) => onSetReviewer(task, v === "" ? null : v)}
+                  options={[
+                    { value: "", label: "เลือกผู้ตรวจ", profile: null },
+                    ...reviewerOptions.map((p) => ({ value: p.id, profile: p })),
+                  ]}
+                />
+                {reviewerOptions.length === 0 && (
+                  <p className="mt-0.5 text-xs text-amber-600">
+                    ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
+                    &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
+                  </p>
+                )}
+              </div>
+              {hasChain &&
+                (reviewStep >= 2 || task.review_status === "approved") && (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ✓ อนุมัติแล้ว
+                  </span>
+                )}
             </div>
           </FieldRow>
+          )}
+
+          {/* ผู้ตรวจลำดับ 2 (อนุมัติขั้นสุดท้าย) — read-only ตามการตั้งค่าทีม ณ ตอนส่งตรวจ */}
+          {!isBrief && chainVisible && (
+            <FieldRow label="ผู้ตรวจลำดับ 2">
+              <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-0.5">
+                <AssigneeAvatar
+                  assignee={hasChain ? (task.reviewer2 ?? null) : teamReviewer2}
+                  size={5}
+                />
+                <span className="min-w-0 truncate text-xs text-stone-800">
+                  {hasChain
+                    ? task.reviewer2
+                      ? profileName(task.reviewer2)
+                      : "-"
+                    : teamReviewer2
+                      ? profileName(teamReviewer2)
+                      : "-"}
+                </span>
+                {task.review_status === "none" ? (
+                  <span className="shrink-0 text-[11px] text-stone-400">
+                    (อนุมัติขั้นสุดท้าย — ตามการตั้งค่าทีม)
+                  </span>
+                ) : task.review_status === "approved" ? (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ✓ อนุมัติแล้ว
+                  </span>
+                ) : reviewStep >= 2 ? (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                    กำลังตรวจ (ขั้นสุดท้าย)
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-stone-400">
+                    รอลำดับ 1 อนุมัติก่อน
+                  </span>
+                )}
+              </div>
+            </FieldRow>
           )}
 
           {/* influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ ค้นหาได้ ไม่บังคับ */}
@@ -1236,10 +1336,56 @@ export function TaskPanel({
           />
         </div>
 
-        {/* ไฟล์/ลิงก์งานที่ได้รับอนุมัติ — ลิงก์ Drive 1 อัน + ไฟล์รูป/วิดีโอได้หลายไฟล์ */}
+        {/* งาน creative ที่มาจาก brief — ไฟล์ source ที่ผู้สั่งแนบไว้บนการ์ด brief (ดูได้อย่างเดียว)
+            แยกจาก "ไฟล์งานที่ Approve แล้ว" ชัดเจน: ไฟล์ brief อยู่กับ brief ไม่ปนกับไฟล์ส่งงาน */}
+        {isFromBrief && (briefFiles.length > 0 || briefSource?.deliverable_url) && (
+          <div className="border-t border-stone-200/70 pt-2.5">
+            <p className="mb-1 flex items-center gap-2 px-2 text-sm font-medium text-stone-500">
+              ไฟล์จาก Brief
+              <span className="text-xs text-stone-400">
+                source จากผู้สั่ง — ดูได้อย่างเดียว
+              </span>
+            </p>
+            <div className="space-y-2 px-2">
+              {briefSource?.deliverable_url && (
+                <a
+                  href={briefSource.deliverable_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-full items-center gap-1.5 text-xs text-sky-600 hover:underline"
+                >
+                  <Link2 size={13} className="shrink-0" />
+                  <span className="min-w-0 truncate">
+                    ลิงก์อ้างอิงจาก Brief
+                  </span>
+                  <ExternalLink size={12} className="shrink-0" />
+                </a>
+              )}
+              {briefFiles.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {briefFiles.map((f, i) => (
+                    <DeliverableFileThumb
+                      key={f.id}
+                      file={f}
+                      onOpen={() => setBriefLightboxIndex(i)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* การ์ด brief: ช่องแนบไฟล์ = "ไฟล์ Brief" (source ให้ผู้รับงานใช้ ไม่ใช่ไฟล์งานเสร็จ)
+            งานปกติ: ไฟล์/ลิงก์งานที่ได้รับอนุมัติ — ลิงก์ Drive 1 อัน + ไฟล์รูป/วิดีโอได้หลายไฟล์ */}
         <div className="border-t border-stone-200/70 pt-2.5">
           <p className="mb-1 flex items-center gap-2 px-2 text-sm font-medium text-stone-500">
-            ไฟล์งานที่ Approve แล้ว
+            {isBrief ? "ไฟล์ Brief" : "ไฟล์งานที่ Approve แล้ว"}
+            {isBrief && (
+              <span className="text-xs text-stone-400">
+                source ให้ผู้รับงานใช้
+              </span>
+            )}
             {files.length > 0 && (
               <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
             )}
@@ -1249,8 +1395,14 @@ export function TaskPanel({
               <Link2 size={15} className="shrink-0 text-stone-400" />
               <input
                 value={deliverableDraft}
-                aria-label="ลิงก์งาน (Google Drive)"
-                placeholder="วางลิงก์ Google Drive ของงานที่ได้รับอนุมัติ..."
+                aria-label={
+                  isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
+                }
+                placeholder={
+                  isBrief
+                    ? "วางลิงก์อ้างอิงประกอบ Brief (ถ้ามี)..."
+                    : "วางลิงก์ Google Drive ของงานที่ได้รับอนุมัติ..."
+                }
                 onChange={(e) => setDeliverableDraft(e.target.value)}
                 onBlur={saveDeliverableUrl}
                 onKeyDown={(e) => {
@@ -1572,6 +1724,14 @@ export function TaskPanel({
           onClose={() => setLightboxIndex(null)}
         />
       )}
+      {briefLightboxIndex !== null && briefFiles[briefLightboxIndex] && (
+        <MediaLightbox
+          items={briefFiles}
+          index={briefLightboxIndex}
+          onIndexChange={setBriefLightboxIndex}
+          onClose={() => setBriefLightboxIndex(null)}
+        />
+      )}
     </aside>
   );
 }
@@ -1885,7 +2045,8 @@ function DeliverableFileThumb({
 }: {
   file: TaskFileRow;
   onOpen: () => void;
-  onRemove: () => void;
+  /** ไม่ส่ง = read-only (เช่นไฟล์จาก Brief ที่ดูได้อย่างเดียว ลบไม่ได้จากการ์ดนี้) */
+  onRemove?: () => void;
 }) {
   const { url, failed } = useSignedUrl(file.file_path);
   const isImg = isImagePath(file.file_path);
@@ -1935,15 +2096,17 @@ function DeliverableFileThumb({
           {failed ? "เปิดไฟล์ไม่ได้" : "กำลังโหลด..."}
         </div>
       )}
-      <button
-        type="button"
-        onClick={onRemove}
-        title="ลบไฟล์"
-        aria-label="ลบไฟล์"
-        className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
-      >
-        <X size={12} />
-      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          title="ลบไฟล์"
+          aria-label="ลบไฟล์"
+          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
   );
 }

@@ -219,7 +219,14 @@ export function NotificationBell({ userId }: { userId: string }) {
       cur.map((x) => (x.id === n.id ? { ...x, read_at: at } : x))
     );
     setUnread((u) => Math.max(0, u - 1));
-    void supabase.from("notifications").update({ read_at: at }).eq("id", n.id);
+    // (ต้องมี .then เสมอ: builder ของ supabase-js เป็น lazy thenable — ไม่ then = ไม่ยิง request)
+    void supabase
+      .from("notifications")
+      .update({ read_at: at })
+      .eq("id", n.id)
+      .then(({ error }) => {
+        if (error) console.warn("บันทึกสถานะอ่านไม่สำเร็จ:", error.message);
+      });
   };
 
   const markAllRead = () => {
@@ -230,7 +237,10 @@ export function NotificationBell({ userId }: { userId: string }) {
       .from("notifications")
       .update({ read_at: at })
       .eq("recipient_id", userId)
-      .is("read_at", null);
+      .is("read_at", null)
+      .then(({ error }) => {
+        if (error) console.warn("บันทึกสถานะอ่านไม่สำเร็จ:", error.message);
+      });
   };
 
   const openTask = (n: NotificationWithJoins) => {

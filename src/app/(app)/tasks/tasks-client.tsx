@@ -39,7 +39,12 @@ import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ExcludeFilter } from "./exclude-filter";
 import { PersonSelect } from "./person-select";
 import { ReviewList } from "./review-list";
-import { AssigneeAvatar, isTempId, profileName } from "./task-card";
+import {
+  AssigneeAvatar,
+  currentReviewerId,
+  isTempId,
+  profileName,
+} from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 import { TRASH_KEEP_DAYS, TrashList } from "./trash-list";
 
@@ -60,7 +65,7 @@ function bangkokDay(iso: string): string {
 
 /** select ของ task พร้อม join (assignee/reviewer/creator/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;
@@ -86,6 +91,7 @@ export function TasksClient({
   influencers,
   reviewerIds,
   defaultReviewerId,
+  defaultReviewer2Id,
   categories: initialCategories,
   userId,
   isAdmin,
@@ -96,8 +102,10 @@ export function TasksClient({
   profiles: ProfileWithDefault[];
   influencers: InfluencerLite[];
   reviewerIds: string[];
-  /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน */
+  /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน (= ผู้ตรวจลำดับ 1) */
   defaultReviewerId: string | null;
+  /** ผู้ตรวจลำดับ 2 ของทีม (app_settings) — ถ้าตั้งไว้ งานที่ส่งตรวจจะไหลเป็นทอด 1 → 2 */
+  defaultReviewer2Id: string | null;
   /** หมวดหมู่งานที่จัดการได้ (task_categories) */
   categories: string[];
   userId: string | null;
@@ -182,13 +190,23 @@ export function TasksClient({
   );
   useEffect(() => setGlobalReviewerId(defaultReviewerId), [defaultReviewerId]);
 
-  // งานที่ฉันเป็นผู้ตรวจและกำลังรอตรวจ — โชว์เลขบนแท็บ
+  // ผู้ตรวจลำดับ 2 ของทีม — ถ้าตั้งไว้ การส่งตรวจจะเป็นทอด: ลำดับ 1 อนุมัติ → ลำดับ 2 อนุมัติ = เสร็จ
+  // (override เหนือค่า server เฉพาะหลังกดบันทึกในหน้านี้: undefined = ใช้ค่าจาก server)
+  const [reviewer2Override, setReviewer2Override] = useState<
+    string | null | undefined
+  >(undefined);
+  const globalReviewer2Id =
+    reviewer2Override === undefined ? defaultReviewer2Id : reviewer2Override;
+
+  // งานที่รอ "ฉัน" ตรวจในทอดปัจจุบัน — โชว์เลขบนแท็บ (ทอด 2 ที่ผู้ตรวจหาย ตกกลับให้ลำดับ 1 กดปิดงานได้)
   const reviewQueue = useMemo(
     () =>
       userId === null
         ? []
         : activeItems.filter(
-            (t) => t.reviewer_id === userId && t.review_status === "pending"
+            (t) =>
+              t.review_status === "pending" &&
+              currentReviewerId(t) === userId
           ),
     [activeItems, userId]
   );
@@ -247,6 +265,22 @@ export function TasksClient({
     if (e) {
       setGlobalReviewerId(prev);
       showError(`บันทึกผู้ตรวจเริ่มต้นไม่สำเร็จ: ${e.message}`);
+    }
+  };
+
+  /** ตั้งผู้ตรวจลำดับ 2 ของทีม (admin) — งานที่ส่งตรวจหลังจากนี้จะไหลเป็นทอด 1 → 2 */
+  const saveDefaultReviewer2 = async (id: string | null) => {
+    const prev = globalReviewer2Id;
+    setReviewer2Override(id);
+    const { error: e } = await supabase
+      .from("app_settings")
+      .upsert(
+        { key: "default_reviewer2_id", value: id, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    if (e) {
+      setReviewer2Override(prev);
+      showError(`บันทึกผู้ตรวจลำดับ 2 ไม่สำเร็จ: ${e.message}`);
     }
   };
 
@@ -537,7 +571,13 @@ export function TasksClient({
     }
     if (inserts.length > 0) {
       // แจ้งเตือนพลาดไม่ต้องเด้ง error — งานหลัก (บันทึก/คอมเมนต์) สำเร็จไปแล้ว
-      void supabase.from("notifications").insert(inserts);
+      // (ต้องมี .then เสมอ: builder ของ supabase-js เป็น lazy thenable — ไม่ then = ไม่ยิง request)
+      void supabase
+        .from("notifications")
+        .insert(inserts)
+        .then(({ error: e }) => {
+          if (e) console.warn("ส่งแจ้งเตือนไม่สำเร็จ:", e.message);
+        });
     }
   };
 
@@ -586,9 +626,18 @@ export function TasksClient({
         } else if (apAssignee !== "all" && t.assignee_id !== apAssignee) {
           return false;
         }
+        // ผู้ตรวจ = ลำดับ 1 หรือลำดับ 2 ก็นับว่าเกี่ยวข้องกับงานนั้น
         if (apReviewer === "me") {
-          if (userId === null || t.reviewer_id !== userId) return false;
-        } else if (apReviewer !== "all" && t.reviewer_id !== apReviewer) {
+          if (
+            userId === null ||
+            (t.reviewer_id !== userId && t.reviewer2_id !== userId)
+          )
+            return false;
+        } else if (
+          apReviewer !== "all" &&
+          t.reviewer_id !== apReviewer &&
+          t.reviewer2_id !== apReviewer
+        ) {
           return false;
         }
         // กรองสถานะโพส/ใช้งาน
@@ -621,6 +670,9 @@ export function TasksClient({
     for (const t of approvedAll) {
       if (t.reviewer && !seen.has(t.reviewer.id)) {
         seen.set(t.reviewer.id, t.reviewer);
+      }
+      if (t.reviewer2 && !seen.has(t.reviewer2.id)) {
+        seen.set(t.reviewer2.id, t.reviewer2);
       }
     }
     return [...seen.values()];
@@ -738,23 +790,60 @@ export function TasksClient({
 
   /* ---------- review workflow ---------- */
 
-  /** ส่งตรวจงาน → รอตรวจ (ต้องระบุผู้ตรวจก่อน) */
+  /** ส่งตรวจงาน → รอตรวจ (ต้องระบุผู้ตรวจก่อน)
+      ถ้าทีมตั้ง "ผู้ตรวจลำดับ 2" ไว้ → snapshot ใส่งาน แล้วการตรวจไหลเป็นทอด 1 → 2 */
   const submitForReview = (task: TaskWithAssignee) => {
     if (!task.reviewer_id) {
       showError("เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้");
       return;
     }
-    patchTask(task.id, { db: { review_status: "pending", completed: false } });
+    // ลำดับ 2 ต้องยังอยู่ใน roster และไม่ใช่คนเดียวกับลำดับ 1 (ไม่งั้นตรวจชั้นเดียว)
+    const reviewer2Id =
+      globalReviewer2Id !== null &&
+      reviewerSet.has(globalReviewer2Id) &&
+      globalReviewer2Id !== task.reviewer_id
+        ? globalReviewer2Id
+        : null;
+    const reviewer2Person = reviewer2Id
+      ? (profiles.find((p) => p.id === reviewer2Id) ?? null)
+      : null;
+    patchTask(task.id, {
+      db: {
+        review_status: "pending",
+        completed: false,
+        review_step: 1,
+        reviewer2_id: reviewer2Id,
+        review1_approved_at: null,
+      },
+      local: { reviewer2: reviewer2Person },
+    });
     notify(task, [{ recipient: task.reviewer_id, type: "review_request" }]);
   };
 
-  /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) */
+  /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) — ล้างทอดการตรวจ ให้ส่งใหม่เริ่มทอด 1 เสมอ */
   const cancelReview = (task: TaskWithAssignee) => {
-    patchTask(task.id, { db: { review_status: "none", completed: false } });
+    patchTask(task.id, {
+      db: {
+        review_status: "none",
+        completed: false,
+        review_step: 1,
+        review1_approved_at: null,
+      },
+    });
   };
 
-  /** ผู้ตรวจกด approve → เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "งานเสร็จ") */
+  /** ผู้ตรวจกด approve — งานตรวจ 2 ทอด: ลำดับ 1 อนุมัติ = ส่งต่อให้ลำดับ 2,
+      ลำดับ 2 (หรืองานตรวจชั้นเดียว) อนุมัติ = เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "งานเสร็จ") */
   const approveTask = (task: TaskWithAssignee) => {
+    const step = task.review_step ?? 1;
+    if (step < 2 && task.reviewer2_id !== null) {
+      patchTask(task.id, {
+        db: { review_step: 2, review1_approved_at: new Date().toISOString() },
+      });
+      // ส่งไม้ต่อให้ผู้ตรวจลำดับ 2 มาตรวจขั้นสุดท้าย
+      notify(task, [{ recipient: task.reviewer2_id, type: "review_request" }]);
+      return;
+    }
     patchTask(task.id, {
       db: {
         review_status: "approved",
@@ -811,9 +900,15 @@ export function TasksClient({
       showError(`บันทึกการตีกลับไม่สำเร็จ: ${cErr.message}`);
       return;
     }
-    // ดึงกลับเป็น "กำลังทำ" — ล้างสถานะ approve ถ้ามี
+    // ดึงกลับเป็น "กำลังทำ" — ล้างสถานะ approve + ทอดการตรวจ (ส่งใหม่เริ่มทอด 1 ใหม่ทั้งสาย)
     patchTask(task.id, {
-      db: { review_status: "none", completed: false, approved_at: null },
+      db: {
+        review_status: "none",
+        completed: false,
+        approved_at: null,
+        review_step: 1,
+        review1_approved_at: null,
+      },
     });
     notify(task, [
       {
@@ -826,10 +921,16 @@ export function TasksClient({
     setRejectReason("");
   };
 
-  /** เปิดงานที่เสร็จแล้วกลับมาแก้ */
+  /** เปิดงานที่เสร็จแล้วกลับมาแก้ — ล้างทอดการตรวจด้วย ให้ส่งตรวจใหม่เริ่มจากลำดับ 1 */
   const reopenTask = (task: TaskWithAssignee) => {
     patchTask(task.id, {
-      db: { review_status: "none", completed: false, approved_at: null },
+      db: {
+        review_status: "none",
+        completed: false,
+        approved_at: null,
+        review_step: 1,
+        review1_approved_at: null,
+      },
     });
   };
 
@@ -923,6 +1024,9 @@ export function TasksClient({
       deliverable_file_path: null,
       reviewer_id: reviewerId,
       review_status: "none",
+      reviewer2_id: null,
+      review_step: 1,
+      review1_approved_at: null,
       influencer_id: null,
       approved_at: null,
       posted_at: null,
@@ -935,6 +1039,7 @@ export function TasksClient({
       updated_at: new Date().toISOString(),
       assignee: assigneePerson,
       reviewer: reviewerPerson,
+      reviewer2: null,
       creator: creatorPerson,
       influencer: null,
       files: [],
@@ -1036,6 +1141,9 @@ export function TasksClient({
       deliverable_file_path: null,
       reviewer_id: reviewerId,
       review_status: "none",
+      reviewer2_id: null,
+      review_step: 1,
+      review1_approved_at: null,
       influencer_id: task.influencer_id,
       approved_at: null,
       posted_at: null,
@@ -1048,6 +1156,7 @@ export function TasksClient({
       updated_at: new Date().toISOString(),
       assignee: task.assignee ?? null,
       reviewer: reviewerPerson,
+      reviewer2: null,
       creator: briefCreatorPerson,
       influencer: task.influencer ?? null,
       files: [],
@@ -1794,6 +1903,11 @@ export function TasksClient({
           }
           profiles={profiles}
           reviewerProfiles={reviewerProfiles}
+          teamReviewer2={
+            globalReviewer2Id !== null && reviewerSet.has(globalReviewer2Id)
+              ? (profiles.find((p) => p.id === globalReviewer2Id) ?? null)
+              : null
+          }
           influencers={influencers}
           categories={categories}
           briefSource={briefSource}
@@ -1884,7 +1998,7 @@ export function TasksClient({
               htmlFor="default-reviewer"
               className="text-sm font-medium text-stone-700"
             >
-              ผู้ตรวจเริ่มต้น (ใช้กับทุกคน)
+              ผู้ตรวจลำดับ 1 — ผู้ตรวจเริ่มต้น (ใช้กับทุกคน)
             </label>
             <p className="mb-2 mt-0.5 text-xs text-stone-400">
               เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
@@ -1904,6 +2018,43 @@ export function TasksClient({
                 <p className="mt-1.5 text-xs text-amber-600">
                   ผู้ตรวจเริ่มต้นที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
                   ระบบจะไม่เลือกให้จนกว่าจะตั้งใหม่
+                </p>
+              )}
+          </div>
+
+          <div className="border-t border-stone-100 pt-4">
+            <label
+              htmlFor="default-reviewer2"
+              className="text-sm font-medium text-stone-700"
+            >
+              ผู้ตรวจลำดับ 2 — อนุมัติขั้นสุดท้าย (ไม่บังคับ)
+            </label>
+            <p className="mb-2 mt-0.5 text-xs text-stone-400">
+              ถ้าตั้งไว้ การตรวจจะเป็นทอด: ผู้ตรวจลำดับ 1 อนุมัติแล้ว
+              งานจะถูกส่งต่อให้คนนี้ตรวจอีกชั้น — อนุมัติครบ 2 คน
+              งานจึงเสร็จสมบูรณ์ (เว้นว่าง = ตรวจชั้นเดียวแบบเดิม)
+            </p>
+            <PersonSelect
+              id="default-reviewer2"
+              value={globalReviewer2Id ?? ""}
+              onChange={(v) => void saveDefaultReviewer2(v === "" ? null : v)}
+              options={[
+                { value: "", label: "ไม่ใช้ (ตรวจชั้นเดียว)" },
+                ...reviewerProfiles.map((p) => ({ value: p.id, profile: p })),
+              ]}
+            />
+            {globalReviewer2Id !== null &&
+              !reviewerSet.has(globalReviewer2Id) && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  ผู้ตรวจลำดับ 2 ที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
+                  งานที่ส่งตรวจหลังจากนี้จะตรวจชั้นเดียวจนกว่าจะตั้งใหม่
+                </p>
+              )}
+            {globalReviewer2Id !== null &&
+              globalReviewer2Id === globalReviewerId && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  ลำดับ 2 เป็นคนเดียวกับลำดับ 1 —
+                  ระบบจะตรวจชั้นเดียว (ไม่ส่งซ้ำให้คนเดิม)
                 </p>
               )}
           </div>

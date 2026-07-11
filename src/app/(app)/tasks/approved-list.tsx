@@ -278,9 +278,22 @@ function ApprovedCard({
         <span className="text-stone-400">{formatDateBangkok(doneAt(task))}</span>
         {section && <span className="text-stone-400">· {section}</span>}
         {task.reviewer && (
-          <span className="inline-flex items-center gap-1 text-emerald-700">
+          <span
+            className="inline-flex items-center gap-1 text-emerald-700"
+            title={task.reviewer2 ? "ผู้ตรวจลำดับ 1" : "ผู้ตรวจ"}
+          >
             <BadgeCheck size={12} />
             {profileName(task.reviewer)}
+          </span>
+        )}
+        {/* งานที่ผ่านการตรวจ 2 ทอด — โชว์ผู้อนุมัติขั้นสุดท้ายต่อท้าย */}
+        {task.reviewer2 && (
+          <span
+            className="inline-flex items-center gap-1 text-emerald-700"
+            title="ผู้ตรวจลำดับ 2 (อนุมัติขั้นสุดท้าย)"
+          >
+            <BadgeCheck size={12} />
+            {profileName(task.reviewer2)}
           </span>
         )}
         {task.deliverable_url && (
