@@ -23,6 +23,7 @@ export type {
   DocumentRow,
   DataImportRow,
   SalesRecordRow,
+  SheetSyncRunRow,
   AdminRecordRow,
   SalesTargetRow,
   StaffKpiRow,

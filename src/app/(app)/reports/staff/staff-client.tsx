@@ -1,7 +1,16 @@
 "use client";
 
-import { Banknote, Goal, Receipt, ShoppingBag, UserRound, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  Banknote,
+  Goal,
+  Loader2,
+  Receipt,
+  ShoppingBag,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { DemoBadge, DemoBanner } from "@/components/demo-badge";
 import {
   bahtWithBills,
@@ -14,16 +23,18 @@ import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatCurrency, formatNumber, todayISO } from "@/lib/format";
 import {
   achievementTone,
-  cutoffFor,
   PERIOD_BUTTON_ACTIVE,
   PERIOD_BUTTON_IDLE,
   PERIOD_LABEL,
   PERIOD_OPTIONS,
   type PeriodKey,
+  type SalesDashSummary,
+  type StaffDetail,
   sumTargetsForPeriod,
   TEAM_COLORS,
 } from "@/lib/report-utils";
-import type { SalesRecordRow, StaffKpiRow } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import type { StaffKpiRow } from "@/lib/types";
 
 interface StaffStat {
   name: string;
@@ -35,88 +46,89 @@ interface StaffStat {
 }
 
 export function StaffClient({
-  sales,
+  period,
+  cutoff,
+  summary,
   kpis,
   salesDemo,
 }: {
-  sales: SalesRecordRow[];
+  period: PeriodKey;
+  cutoff: string;
+  summary: SalesDashSummary;
   kpis: StaffKpiRow[];
   salesDemo: boolean;
 }) {
-  const [period, setPeriod] = useState<PeriodKey>("6m");
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<StaffDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const today = todayISO();
 
-  const cutoff = useMemo(() => cutoffFor(period), [period]);
-  const filtered = useMemo(
-    () => sales.filter((r) => r.record_date >= cutoff),
-    [sales, cutoff]
-  );
+  // เปลี่ยนช่วงเวลา = ให้ server aggregate ใหม่ (ไม่โหลดรายบรรทัดมา filter ฝั่งนี้)
+  const setPeriod = (key: PeriodKey) => {
+    setSelected(null);
+    setDetail(null);
+    startTransition(() => {
+      router.replace(`/reports/staff?period=${key}`, { scroll: false });
+    });
+  };
 
-  const totalAmount = useMemo(
-    () => filtered.reduce((sum, r) => sum + r.amount, 0),
-    [filtered]
-  );
+  const totalAmount = summary.total;
+  const totalBills = summary.bills;
 
   const staffStats = useMemo<StaffStat[]>(() => {
-    const map = new Map<string, { count: number; total: number }>();
-    for (const r of filtered) {
-      const name = r.staff_name?.trim() || "ไม่ระบุ";
-      const cur = map.get(name) ?? { count: 0, total: 0 };
-      cur.count += 1;
-      cur.total += r.amount;
-      map.set(name, cur);
-    }
-    return [...map.entries()]
-      .map(([name, v]) => ({
-        name,
-        count: v.count,
-        total: v.total,
-        avg: v.count > 0 ? v.total / v.count : 0,
-        share: totalAmount > 0 ? (v.total / totalAmount) * 100 : 0,
+    return summary.by_person
+      .map((p) => ({
+        name: p.name,
+        count: p.bills,
+        total: p.total,
+        avg: p.bills > 0 ? p.total / p.bills : 0,
+        share: totalAmount > 0 ? (p.total / totalAmount) * 100 : 0,
         target: sumTargetsForPeriod(
-          kpis.filter((k) => k.person_name === name),
+          kpis.filter((k) => k.person_name === p.name),
           cutoff,
           today
         ),
       }))
       .sort((a, b) => b.total - a.total);
-  }, [filtered, totalAmount, kpis, cutoff, today]);
+  }, [summary.by_person, totalAmount, kpis, cutoff, today]);
 
-  const bucketSize = filtered.length > 0 ? totalAmount / filtered.length : 0;
+  const bucketSize = totalBills > 0 ? totalAmount / totalBills : 0;
   const teamTarget = staffStats.reduce((s, x) => s + x.target, 0);
   const kpiMax = Math.max(
     1,
     ...staffStats.map((s) => Math.max(s.total, s.target))
   );
 
-  /* งานของคนที่เลือก: แยกตามหมวด + top บริการ */
-  const selectedDetail = useMemo(() => {
-    if (!selected) return null;
-    const rows = filtered.filter(
-      (r) => (r.staff_name?.trim() || "ไม่ระบุ") === selected
-    );
-    const byCategory = new Map<string, number>();
-    const byItem = new Map<string, { count: number; total: number }>();
-    for (const r of rows) {
-      const cat = r.category?.trim() || "ไม่ระบุ";
-      byCategory.set(cat, (byCategory.get(cat) ?? 0) + r.amount);
-      const item = r.item_name?.trim() || "ไม่ระบุ";
-      const cur = byItem.get(item) ?? { count: 0, total: 0 };
-      cur.count += 1;
-      cur.total += r.amount;
-      byItem.set(item, cur);
+  /* งานของคนที่เลือก: แยกตามหมวด + top บริการ — ดึงจาก RPC ตอนคลิก */
+  useEffect(() => {
+    if (!selected) {
+      setDetail(null);
+      return;
     }
-    return {
-      categories: [...byCategory.entries()]
-        .map(([name, total]) => ({ name, total }))
-        .sort((a, b) => b.total - a.total),
-      topItems: [...byItem.entries()]
-        .map(([name, v]) => ({ name, ...v }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5),
+    let cancelled = false;
+    setDetailLoading(true);
+    const supabase = createClient();
+    supabase
+      .rpc("sales_staff_detail", {
+        p_name: selected,
+        p_from: cutoff,
+        p_to: today,
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setDetailLoading(false);
+        if (error) {
+          setDetail(null);
+          return;
+        }
+        setDetail((data as unknown as StaffDetail | null) ?? null);
+      });
+    return () => {
+      cancelled = true;
     };
-  }, [filtered, selected]);
+  }, [selected, cutoff, today]);
 
   return (
     <>
@@ -145,7 +157,7 @@ export function StaffClient({
 
       {salesDemo && <DemoBanner onWhat="ข้อมูลยอดขาย" />}
 
-      {filtered.length === 0 ? (
+      {summary.lines === 0 ? (
         <Card>
           <EmptyState
             icon={<Users size={40} strokeWidth={1.5} />}
@@ -154,7 +166,11 @@ export function StaffClient({
           />
         </Card>
       ) : (
-        <div className="space-y-6">
+        <div
+          className={`space-y-6 transition-opacity duration-200 ${
+            isPending ? "opacity-60" : ""
+          }`}
+        >
           {/* HERO */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <HeroCard
@@ -167,7 +183,7 @@ export function StaffClient({
             <HeroCard
               icon={Receipt}
               label="ยอดบิลรวม"
-              value={`${formatNumber(filtered.length)} บิล`}
+              value={`${formatNumber(totalBills)} บิล`}
               sub={PERIOD_LABEL[period]}
               demo={salesDemo}
               delay={60}
@@ -206,7 +222,7 @@ export function StaffClient({
               demo={salesDemo}
               right={
                 <span className="text-xs tabular-nums text-stone-400">
-                  รวม {bahtWithBills(totalAmount, filtered.length)}
+                  รวม {bahtWithBills(totalAmount, totalBills)}
                 </span>
               }
             />
@@ -308,7 +324,7 @@ export function StaffClient({
           </Card>
 
           {/* รายละเอียดคนที่เลือก */}
-          {selected && selectedDetail && (
+          {selected && (
             <Card className="p-5 animate-fade-in">
               <div className="mb-4 flex items-center gap-2">
                 <UserRound size={16} className="text-brand-600" />
@@ -316,49 +332,54 @@ export function StaffClient({
                   รายละเอียดของ {selected} ({PERIOD_LABEL[period]})
                 </h2>
                 {salesDemo && <DemoBadge />}
+                {detailLoading && (
+                  <Loader2 size={14} className="animate-spin text-brand-500" />
+                )}
               </div>
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div>
-                  <p className="mb-2 text-xs font-medium text-stone-500">
-                    ยอดตามหมวดหมู่
-                  </p>
-                  <ul className="space-y-2">
-                    {selectedDetail.categories.map((c) => (
-                      <li key={c.name} className="flex items-center gap-2">
-                        <Badge className="bg-brand-50 text-brand-700">
-                          {c.name}
-                        </Badge>
-                        <span className="ml-auto text-sm font-medium tabular-nums text-stone-800">
-                          {formatCurrency(c.total)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+              {detail && (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-stone-500">
+                      ยอดตามหมวดหมู่
+                    </p>
+                    <ul className="space-y-2">
+                      {detail.categories.map((c) => (
+                        <li key={c.name} className="flex items-center gap-2">
+                          <Badge className="bg-brand-50 text-brand-700">
+                            {c.name}
+                          </Badge>
+                          <span className="ml-auto text-sm font-medium tabular-nums text-stone-800">
+                            {formatCurrency(c.total)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-stone-500">
+                      Top 5 บริการที่ทำ
+                    </p>
+                    <ul className="space-y-2">
+                      {detail.top_items.map((item) => (
+                        <li
+                          key={item.name}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-stone-700">
+                            {item.name}
+                          </span>
+                          <span className="text-xs text-stone-400">
+                            {formatNumber(item.lines)} ครั้ง
+                          </span>
+                          <span className="w-24 text-right font-medium tabular-nums text-stone-800">
+                            {formatCurrency(item.total)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium text-stone-500">
-                    Top 5 บริการที่ทำ
-                  </p>
-                  <ul className="space-y-2">
-                    {selectedDetail.topItems.map((item) => (
-                      <li
-                        key={item.name}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-stone-700">
-                          {item.name}
-                        </span>
-                        <span className="text-xs text-stone-400">
-                          {formatNumber(item.count)} ครั้ง
-                        </span>
-                        <span className="w-24 text-right font-medium tabular-nums text-stone-800">
-                          {formatCurrency(item.total)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              )}
             </Card>
           )}
         </div>

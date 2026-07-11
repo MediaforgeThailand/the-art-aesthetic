@@ -8,7 +8,7 @@ export type Json =
 
 export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
-export type SalesSource = "manual" | "import";
+export type SalesSource = "manual" | "import" | "sheet";
 
 export type ProfileRow = {
   id: string;
@@ -217,6 +217,27 @@ export type SalesRecordRow = {
   import_id: string | null;
   created_by: string | null;
   created_at: string;
+  /* ฟิลด์จากชีท DA (source='sheet' — migration 0038); แถว manual เก่าเป็น null */
+  receipt_no: string | null;
+  receipt_total: number | null;
+  product: string | null;
+  doctor_name: string | null;
+  hn: string | null;
+  lead_source: string | null;
+  nationality: string | null;
+  customer_type: string | null;
+  sales_team: string | null;
+  staff_name2: string | null;
+};
+
+/** log การ sync ข้อมูลจากชีท (migration 0038) */
+export type SheetSyncRunRow = {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "success" | "error";
+  detail: string | null;
+  rows_synced: number | null;
 };
 
 export type AdminRecordRow = {
@@ -467,6 +488,12 @@ export interface Database {
         Update: Partial<SalesRecordRow>;
         Relationships: [];
       };
+      sheet_sync_runs: {
+        Row: SheetSyncRunRow;
+        Insert: Partial<SheetSyncRunRow>;
+        Update: Partial<SheetSyncRunRow>;
+        Relationships: [];
+      };
       file_links: {
         Row: FileLinkRow;
         Insert: Partial<FileLinkRow> & { title: string; url: string };
@@ -617,7 +644,25 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    /* RPC aggregate ยอดขาย (migration 0038) — คืน jsonb ให้ cast เป็น type ใน report-utils */
+    Functions: {
+      sales_dash_summary: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      sales_totals: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      sales_monthly_series: {
+        Args: { p_from: string };
+        Returns: Json;
+      };
+      sales_staff_detail: {
+        Args: { p_name: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

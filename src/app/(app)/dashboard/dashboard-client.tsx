@@ -7,6 +7,7 @@ import {
   Goal,
   MessageCircle,
   PieChart,
+  RefreshCw,
   ShoppingBag,
   SlidersHorizontal,
   Store,
@@ -16,7 +17,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useTransition } from "react";
 import {
   Area,
   AreaChart,
@@ -50,44 +52,24 @@ import {
 import {
   AXIS_TICK,
   compactBaht,
-  cutoffFor,
+  type MonthlySalesPoint,
   PERIOD_BUTTON_ACTIVE,
   PERIOD_BUTTON_IDLE,
   PERIOD_LABEL,
   PERIOD_OPTIONS,
   type PeriodKey,
+  type SalesDashSummary,
+  type SalesTotals,
   sumTargetsForPeriod,
   TEAM_COLORS,
   TOOLTIP_STYLE,
 } from "@/lib/report-utils";
 import type {
   AdminRecordRow,
-  SalesRecordRow,
   SalesTargetRow,
   StaffKpiRow,
 } from "@/lib/types";
 import { CategoryDonutChart } from "./charts";
-
-function isoLocal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-/** ช่วงก่อนหน้าที่ยาวเท่ากัน สำหรับชิปเปรียบเทียบ */
-function previousWindow(
-  cutoffISO: string,
-  todayStr: string
-): { from: string; to: string } {
-  const cutoff = new Date(cutoffISO);
-  const today = new Date(todayStr);
-  const days = Math.round((today.getTime() - cutoff.getTime()) / 86400000) + 1;
-  const from = new Date(cutoff);
-  from.setDate(from.getDate() - days);
-  const to = new Date(cutoff);
-  to.setDate(to.getDate() - 1);
-  return { from: isoLocal(from), to: isoLocal(to) };
-}
 
 /* ---------- section แบ่งรายงาน — คนละโทนสีให้เห็นชัดว่าเปลี่ยนเรื่อง ---------- */
 
@@ -155,7 +137,11 @@ function Section({
 }
 
 export function DashboardClient({
-  sales,
+  period,
+  cutoff,
+  summary,
+  prevTotals,
+  monthly,
   adminRecords,
   targets,
   kpis,
@@ -163,8 +149,13 @@ export function DashboardClient({
   salesDemo,
   adminDemo,
   tasksDemo,
+  lastSyncAt,
 }: {
-  sales: SalesRecordRow[];
+  period: PeriodKey;
+  cutoff: string;
+  summary: SalesDashSummary;
+  prevTotals: SalesTotals;
+  monthly: MonthlySalesPoint[];
   adminRecords: AdminRecordRow[];
   targets: SalesTargetRow[];
   kpis: StaffKpiRow[];
@@ -172,45 +163,30 @@ export function DashboardClient({
   salesDemo: boolean;
   adminDemo: boolean;
   tasksDemo: boolean;
+  lastSyncAt: string | null;
 }) {
-  // default = วันที่ 1 ของเดือนนี้ถึงวันนี้ (เวลาไทย)
-  const [period, setPeriod] = useState<PeriodKey>("mtd");
+  // เปลี่ยนช่วงเวลา = ให้ server คำนวณ aggregate ใหม่ (ข้อมูลจริงหลายหมื่นแถว ไม่โหลดมา filter ฝั่งนี้)
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const setPeriod = (key: PeriodKey) => {
+    startTransition(() => {
+      router.replace(`/dashboard?period=${key}`, { scroll: false });
+    });
+  };
+
   const today = todayISO();
-  const cutoff = useMemo(() => cutoffFor(period), [period]);
 
-  /* ---------- ตัวเลขหลักช่วงที่เลือก ---------- */
+  /* ---------- ตัวเลขหลักช่วงที่เลือก (จาก SQL aggregate) ---------- */
 
-  const inPeriod = useMemo(
-    () => sales.filter((r) => r.record_date >= cutoff),
-    [sales, cutoff]
-  );
+  const periodTotal = summary.total;
+  const periodBills = summary.bills;
+  const bucketSize = periodBills > 0 ? periodTotal / periodBills : 0;
+  const prevBucket = prevTotals.bills > 0 ? prevTotals.total / prevTotals.bills : 0;
+
   const adminInPeriod = useMemo(
     () => adminRecords.filter((r) => r.record_date >= cutoff),
     [adminRecords, cutoff]
   );
-
-  const prevWin = useMemo(() => previousWindow(cutoff, today), [cutoff, today]);
-  // ข้อมูลโหลดย้อนหลัง 12 เดือน — ช่วงเทียบที่เลยไปก่อนหน้านั้นให้ซ่อนชิปแทนการเทียบข้อมูลที่ถูกตัด
-  const prevCovered = useMemo(() => {
-    const n = new Date(today);
-    const loadStart = isoLocal(new Date(n.getFullYear(), n.getMonth() - 11, 1));
-    return prevWin.from >= loadStart;
-  }, [prevWin, today]);
-
-  const prevRows = useMemo(
-    () =>
-      sales.filter(
-        (r) => r.record_date >= prevWin.from && r.record_date <= prevWin.to
-      ),
-    [sales, prevWin]
-  );
-  const prevSalesTotal = prevRows.reduce((s, r) => s + r.amount, 0);
-  const prevBills = prevRows.length;
-
-  const periodTotal = inPeriod.reduce((s, r) => s + r.amount, 0);
-  const periodBills = inPeriod.length;
-  const bucketSize = periodBills > 0 ? periodTotal / periodBills : 0;
-  const prevBucket = prevBills > 0 ? prevSalesTotal / prevBills : 0;
 
   /* ---------- เป้าการขายช่วงที่เลือก (prorate เดือนที่ยังไม่จบ) ---------- */
 
@@ -232,12 +208,11 @@ export function DashboardClient({
         if (!map.has(k.person_name)) map.set(k.person_name, { total: 0, count: 0 });
       }
     }
-    for (const r of inPeriod) {
-      const name = r.staff_name?.trim() || "ไม่ระบุ";
-      const cur = map.get(name) ?? { total: 0, count: 0 };
-      cur.total += r.amount;
-      cur.count += 1;
-      map.set(name, cur);
+    for (const p of summary.by_person) {
+      const cur = map.get(p.name) ?? { total: 0, count: 0 };
+      cur.total += p.total;
+      cur.count += p.bills;
+      map.set(p.name, cur);
     }
     return [...map.entries()]
       .map(([name, v]) => ({
@@ -252,7 +227,7 @@ export function DashboardClient({
         ),
       }))
       .sort((a, b) => b.total - a.total);
-  }, [inPeriod, kpis, cutoff, today]);
+  }, [summary.by_person, kpis, cutoff, today]);
 
   /* ---------- ผลงานรายคน: ทีมแอดมิน ---------- */
 
@@ -319,7 +294,8 @@ export function DashboardClient({
 
   const trendData = useMemo(() => {
     const monthsBack = period === "12m" ? 12 : 6;
-    const now = new Date(today);
+    const now = new Date(`${today}T00:00:00`);
+    const incomeByMonth = new Map(monthly.map((m) => [m.month, m.total]));
     const rows: {
       month: string;
       income: number;
@@ -331,9 +307,7 @@ export function DashboardClient({
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       rows.push({
         month: key,
-        income: sales
-          .filter((r) => r.record_date.slice(0, 7) === key)
-          .reduce((s, r) => s + r.amount, 0),
+        income: incomeByMonth.get(key) ?? 0,
         closed: adminRecords
           .filter((r) => r.record_date.slice(0, 7) === key)
           .reduce((s, r) => s + r.closed_amount, 0),
@@ -343,7 +317,7 @@ export function DashboardClient({
       });
     }
     return rows;
-  }, [sales, adminRecords, targets, period, today]);
+  }, [monthly, adminRecords, targets, period, today]);
 
   /* ---------- แอดมินรายวัน: ทักใหม่ vs จองนัด ---------- */
 
@@ -373,48 +347,24 @@ export function DashboardClient({
     return { hit, finished };
   }, [trendData, today]);
 
-  /* ---------- สัดส่วนหมวดหมู่ + สาขา + Top 5 ---------- */
+  /* ---------- สัดส่วนหมวดหมู่ + สาขา + Top 5 (จาก SQL aggregate) ---------- */
 
-  const byCategory = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of inPeriod) {
-      const c = r.category?.trim() || "ไม่ระบุ";
-      map.set(c, (map.get(c) ?? 0) + r.amount);
-    }
-    return [...map.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [inPeriod]);
-
-  const byBranch = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of inPeriod) {
-      const b = r.branch?.trim() || "ไม่ระบุ";
-      map.set(b, (map.get(b) ?? 0) + r.amount);
-    }
-    return [...map.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [inPeriod]);
-
-  const topItems = useMemo(() => {
-    const map = new Map<string, { count: number; total: number }>();
-    for (const r of inPeriod) {
-      const item = r.item_name?.trim() || "ไม่ระบุ";
-      const cur = map.get(item) ?? { count: 0, total: 0 };
-      cur.count += 1;
-      cur.total += r.amount;
-      map.set(item, cur);
-    }
-    return [...map.entries()]
-      .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [inPeriod]);
+  const byCategory = useMemo(
+    () => summary.by_category.map((c) => ({ name: c.name, value: c.total })),
+    [summary.by_category]
+  );
+  const byBranch = summary.by_branch;
+  const topItems = useMemo(
+    () =>
+      summary.top_items
+        .slice(0, 5)
+        .map((i) => ({ name: i.name, total: i.total, count: i.lines })),
+    [summary.top_items]
+  );
 
   /* ---------- render ---------- */
 
-  if (sales.length === 0) {
+  if (summary.lines === 0 && monthly.length === 0) {
     return (
       <div>
         <PageHeader
@@ -464,13 +414,26 @@ export function DashboardClient({
               </button>
             ))}
           </div>
-          <span className="ml-auto text-xs tabular-nums text-stone-400">
+          <span className="ml-auto inline-flex items-center gap-2 text-xs tabular-nums text-stone-400">
+            {isPending && (
+              <RefreshCw size={12} className="animate-spin text-brand-500" />
+            )}
+            {lastSyncAt && (
+              <span title="เวลาที่ซิงก์ข้อมูลจากไฟล์ทีม DA ล่าสุด">
+                ซิงก์ล่าสุด {formatDate(lastSyncAt.slice(0, 10))}
+                {" · "}
+              </span>
+            )}
             {PERIOD_LABEL[period]} · {formatDate(cutoff)} – {formatDate(today)}
           </span>
         </div>
       </div>
 
-      <div className="space-y-8">
+      <div
+        className={`space-y-8 transition-opacity duration-200 ${
+          isPending ? "opacity-60" : ""
+        }`}
+      >
         {/* ================= 1) ภาพรวมยอดขาย ================= */}
         <Section
           icon={Banknote}
@@ -488,10 +451,7 @@ export function DashboardClient({
                   <span className="text-sm font-medium tabular-nums text-stone-500">
                     ({formatNumber(periodBills)} บิล)
                   </span>
-                  <DeltaChip
-                    current={periodTotal}
-                    previous={prevCovered ? prevSalesTotal : 0}
-                  />
+                  <DeltaChip current={periodTotal} previous={prevTotals.total} />
                 </span>
               }
               sub={PERIOD_LABEL[period]}
@@ -501,12 +461,7 @@ export function DashboardClient({
               icon={ShoppingBag}
               label="Bucket size เฉลี่ย"
               value={formatCurrency(bucketSize)}
-              delta={
-                <DeltaChip
-                  current={bucketSize}
-                  previous={prevCovered ? prevBucket : 0}
-                />
-              }
+              delta={<DeltaChip current={bucketSize} previous={prevBucket} />}
               sub={`ต่อบิล · ${PERIOD_LABEL[period]}`}
               demo={salesDemo}
               delay={60}
@@ -612,14 +567,14 @@ export function DashboardClient({
               <SectionTitle icon={Store} title="ยอดขายรายสาขา" demo={salesDemo} />
               <div className="space-y-3 pt-1">
                 {byBranch.map((b) => {
-                  const maxBranch = byBranch[0]?.value ?? 1;
-                  const share = periodTotal > 0 ? (b.value / periodTotal) * 100 : 0;
+                  const maxBranch = byBranch[0]?.total ?? 1;
+                  const share = periodTotal > 0 ? (b.total / periodTotal) * 100 : 0;
                   return (
                     <div key={b.name}>
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium text-stone-700">{b.name}</span>
                         <span className="tabular-nums text-stone-800">
-                          {formatCurrency(b.value)}
+                          {formatCurrency(b.total)}
                           <span className="ml-1.5 text-xs text-stone-400">
                             {share.toFixed(1)}%
                           </span>
@@ -628,7 +583,7 @@ export function DashboardClient({
                       <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-stone-200/60">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-700"
-                          style={{ width: `${(b.value / maxBranch) * 100}%` }}
+                          style={{ width: `${(b.total / maxBranch) * 100}%` }}
                         />
                       </div>
                     </div>

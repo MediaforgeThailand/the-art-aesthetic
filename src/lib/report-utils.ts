@@ -51,6 +51,77 @@ function toISODate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/* ---------- ผลลัพธ์ RPC aggregate ยอดขาย (migration 0032) ----------
+   ยอดขายจริงเป็นรายบรรทัดใบเสร็จหลายหมื่นแถว — หน้ารายงาน aggregate ใน SQL
+   แล้วส่งเฉพาะผลสรุปมา ("บิล" = จำนวนใบเสร็จ distinct ไม่ใช่จำนวนบรรทัด) */
+
+export interface NamedTotal {
+  name: string;
+  total: number;
+}
+
+export interface ItemTotal extends NamedTotal {
+  lines: number;
+}
+
+export interface PersonTotal extends NamedTotal {
+  bills: number;
+  lines: number;
+}
+
+export interface SalesTotals {
+  total: number;
+  lines: number;
+  bills: number;
+}
+
+export interface SalesDashSummary extends SalesTotals {
+  by_category: NamedTotal[];
+  by_branch: NamedTotal[];
+  top_items: ItemTotal[];
+  by_person: PersonTotal[];
+}
+
+export interface MonthlySalesPoint {
+  month: string; // YYYY-MM
+  total: number;
+  bills: number;
+}
+
+export interface StaffDetail {
+  categories: NamedTotal[];
+  top_items: ItemTotal[];
+}
+
+export const EMPTY_SALES_SUMMARY: SalesDashSummary = {
+  total: 0,
+  lines: 0,
+  bills: 0,
+  by_category: [],
+  by_branch: [],
+  top_items: [],
+  by_person: [],
+};
+
+/** ช่วงก่อนหน้าที่ยาวเท่ากัน สำหรับชิปเปรียบเทียบ */
+export function previousWindow(
+  cutoffISO: string,
+  todayStr: string
+): { from: string; to: string } {
+  const cutoff = new Date(`${cutoffISO}T00:00:00`);
+  const today = new Date(`${todayStr}T00:00:00`);
+  const days = Math.round((today.getTime() - cutoff.getTime()) / 86400000) + 1;
+  const from = new Date(cutoff);
+  from.setDate(from.getDate() - days);
+  const to = new Date(cutoff);
+  to.setDate(to.getDate() - 1);
+  return { from: toISODate(from), to: toISODate(to) };
+}
+
+export function isPeriodKey(v: string | undefined): v is PeriodKey {
+  return PERIOD_OPTIONS.some((o) => o.key === v);
+}
+
 /** วันเริ่มต้นของช่วงเวลา (YYYY-MM-DD) — อิง "วันนี้" ตามเวลาไทยเสมอ (todayISO) */
 export function cutoffFor(period: PeriodKey): string {
   const t = todayISO(); // Asia/Bangkok

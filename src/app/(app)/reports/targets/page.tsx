@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
+import type { MonthlySalesPoint } from "@/lib/report-utils";
 import { createClient } from "@/lib/supabase/server";
 import type { SalesTargetRow } from "@/lib/types";
 import { TargetsClient } from "./targets-client";
@@ -23,58 +24,38 @@ export default async function TargetsReportPage() {
     start.getDate()
   )}`;
 
-  // เป้ารวมทั้งแผนก (branch = null) ยิงขนานกับลูปยอดขาย
-  const targetsPromise = supabase
-    .from("sales_targets")
-    .select("*")
-    .is("branch", null)
-    .gte("month", startISO)
-    .order("month", { ascending: true });
+  const [monthlyResult, targetsResult, { data: demoSales }] =
+    await Promise.all([
+      // ยอดจริงรายเดือน aggregate ใน SQL — ไม่โหลดรายบรรทัด (ข้อมูลจริงหลายหมื่นแถว)
+      supabase.rpc("sales_monthly_series", { p_from: startISO }),
+      // เป้ารวมทั้งแผนก (branch = null)
+      supabase
+        .from("sales_targets")
+        .select("*")
+        .is("branch", null)
+        .gte("month", startISO)
+        .order("month", { ascending: true }),
+      supabase.from("sales_records").select("id").eq("note", "demo").limit(1),
+    ]);
 
-  const pageSize = 1000;
-  const sales: { record_date: string; amount: number; note: string | null }[] =
-    [];
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("sales_records")
-      .select("record_date, amount, note")
-      .gte("record_date", startISO)
-      .order("record_date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
-
-    if (error) {
-      throw new Error(`โหลดข้อมูลยอดขายไม่สำเร็จ: ${error.message}`);
-    }
-    sales.push(...(data ?? []));
-    if (!data || data.length < pageSize) break;
+  if (monthlyResult.error) {
+    throw new Error(`โหลดข้อมูลยอดขายไม่สำเร็จ: ${monthlyResult.error.message}`);
+  }
+  if (targetsResult.error) {
+    throw new Error(`โหลดข้อมูลเป้าไม่สำเร็จ: ${targetsResult.error.message}`);
   }
 
-  const { data: targetData, error: targetsError } = await targetsPromise;
-  if (targetsError) {
-    throw new Error(`โหลดข้อมูลเป้าไม่สำเร็จ: ${targetsError.message}`);
-  }
-
-  const targets = (targetData ?? []) as SalesTargetRow[];
-
-  // รวมยอดจริงเป็นรายเดือน
-  const actualByMonth = new Map<string, number>();
-  for (const r of sales) {
-    const key = r.record_date.slice(0, 7);
-    actualByMonth.set(key, (actualByMonth.get(key) ?? 0) + r.amount);
-  }
+  const monthly =
+    (monthlyResult.data as unknown as MonthlySalesPoint[] | null) ?? [];
+  const targets = (targetsResult.data ?? []) as SalesTargetRow[];
 
   const demo =
-    targets.some((t) => t.note === "demo") ||
-    sales.some((r) => r.note === "demo");
+    targets.some((t) => t.note === "demo") || (demoSales ?? []).length > 0;
 
   return (
     <PageContainer>
       <TargetsClient
-        actuals={[...actualByMonth.entries()].map(([month, amount]) => ({
-          month,
-          amount,
-        }))}
+        actuals={monthly.map((m) => ({ month: m.month, amount: m.total }))}
         targets={targets.map((t) => ({
           month: t.month.slice(0, 7),
           amount: t.target_amount,
