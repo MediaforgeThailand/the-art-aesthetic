@@ -240,6 +240,9 @@ export type SalesTargetRow = {
 
 export type InfluTier = "nano" | "micro" | "mid" | "macro" | "celebrity";
 
+/** กลุ่มขนาดบนบอร์ด Influ Management — s เล็ก (<100K) / m กลาง (100K–1M) / l ใหญ่ (1M+) */
+export type InfluSizeGroup = "s" | "m" | "l";
+
 /** รายการแก้ไขหัตถการหน้างาน (stage 5) — เก็บใน influencers.procedure_history */
 export type ProcedureChange = {
   old: string;
@@ -280,6 +283,10 @@ export type InfluencerRow = {
   contract_start: string | null;
   contract_months: number;
   note: string | null;
+  /** กลุ่มขนาดบนบอร์ด (ลากการ์ดย้ายเอง) — null = จัดอัตโนมัติจาก followers */
+  size_group: InfluSizeGroup | null;
+  /** ลำดับการ์ดในคอลัมน์บอร์ด — null = fallback จาก created_at ฝั่ง client */
+  board_position: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

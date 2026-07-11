@@ -1,4 +1,4 @@
-import type { InfluTier } from "./types";
+import type { InfluSizeGroup, InfluTier } from "./types";
 
 /* ---------- Tier ตามยอดผู้ติดตาม (ตามแบบฟอร์มขออนุมัติเคส) ---------- */
 
@@ -48,6 +48,43 @@ export function tierFromFollowers(followers: number): InfluTier {
   if (followers >= 100_000) return "mid";
   if (followers >= 50_000) return "micro";
   return "nano";
+}
+
+/* ---------- กลุ่มขนาดบนบอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
+
+export const INFLU_SIZE_GROUPS: Record<
+  InfluSizeGroup,
+  { label: string; range: string; dot: string; headerText: string }
+> = {
+  s: {
+    label: "เล็ก",
+    range: "ต่ำกว่า 100K",
+    dot: "bg-sky-400",
+    headerText: "text-sky-700",
+  },
+  m: {
+    label: "กลาง",
+    range: "100K – 1M",
+    dot: "bg-violet-400",
+    headerText: "text-violet-700",
+  },
+  l: {
+    label: "ใหญ่",
+    range: "1M ขึ้นไป",
+    dot: "bg-pink-400",
+    headerText: "text-pink-700",
+  },
+};
+
+export const INFLU_SIZE_GROUP_ORDER: InfluSizeGroup[] = ["s", "m", "l"];
+
+/** จัดกลุ่มขนาดอัตโนมัติจากยอดผู้ติดตาม (ยังไม่กรอก = เล็ก) */
+export function sizeGroupFromFollowers(
+  followers: number | null
+): InfluSizeGroup {
+  if (followers !== null && followers >= 1_000_000) return "l";
+  if (followers !== null && followers >= 100_000) return "m";
+  return "s";
 }
 
 /* ---------- Stage ของ pipeline ---------- */

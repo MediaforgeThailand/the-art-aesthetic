@@ -2,14 +2,10 @@
 
 import {
   BellRing,
-  CheckCircle2,
   FileSignature,
-  Phone,
   Plus,
   Search,
   Sparkles,
-  Timer,
-  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
@@ -17,7 +13,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Badge,
   Button,
   Card,
   ConfirmDialog,
@@ -28,126 +23,22 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { formatDate, formatNumber, todayISO } from "@/lib/format";
-import {
-  contractEndDate,
-  INFLU_STAGES,
-  INFLU_TIERS,
-} from "@/lib/influ-constants";
+import { formatNumber, todayISO } from "@/lib/format";
+import { INFLU_STAGES, sizeGroupFromFollowers } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluencerRow, InfluTaskRow } from "@/lib/types";
+import type { InfluSizeGroup } from "@/lib/types";
+import {
+  boardPos,
+  InfluBoard,
+  influName,
+  type InfluencerListRow,
+  type InfluStats,
+  type InfluTaskLite,
+} from "./influ-board";
 
-/** แถว influencer สำหรับหน้า list — ตัด procedure_history ออก
-    (jsonb เก็บลายเซน base64 ก้อนใหญ่ ~10-30KB/รายการ หน้า list ไม่ได้ใช้ เลยไม่ต้อง fetch) */
-export type InfluencerListRow = Omit<InfluencerRow, "procedure_history">;
-
-export function influName(i: InfluencerListRow): string {
-  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
-  return i.nickname ? `${full} (${i.nickname})` : full;
-}
-
-type TaskLite = Pick<
-  InfluTaskRow,
-  "influencer_id" | "due_date" | "done" | "done_at"
->;
-
-/** วันที่ตามปฏิทินไทยของ timestamptz (YYYY-MM-DD) —
-    กัน done_at ช่วง 00:00-07:00 น. ที่ .slice(0,10) แบบ UTC จะเพี้ยนไปเป็นวันก่อนหน้า */
-const thaiDateISO = (timestamp: string): string =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(
-    new Date(timestamp)
-  );
-
-/** สถิติ follow up ต่อ influ: งานเกินกำหนด, กำหนดถัดไป, follow ล่าสุด */
-type InfluStats = {
-  overdue: number;
-  nextDue: string | null;
-  lastDone: string | null;
-  pending: number;
-};
-
-/** ชิป countdown แจ้งเตือน follow up — 2 สัปดาห์ / 1 สัปดาห์ / 3,2,1 วัน / เกินกำหนด */
-function FollowupCountdownChip({
-  daysUntil,
-  overdueCount,
-}: {
-  daysUntil: number;
-  overdueCount: number;
-}) {
-  if (daysUntil < 0) {
-    return (
-      <Badge className="border border-rose-300 bg-rose-100 font-semibold text-rose-700 animate-fade-in">
-        <BellRing size={11} /> เกินกำหนด {Math.abs(daysUntil)} วัน
-        {overdueCount > 1 && ` (${overdueCount} งาน)`}
-      </Badge>
-    );
-  }
-  if (daysUntil === 0) {
-    return (
-      <Badge className="border border-rose-300 bg-rose-50 font-semibold text-rose-600">
-        <BellRing size={11} /> Follow up วันนี้
-      </Badge>
-    );
-  }
-  if (daysUntil <= 3) {
-    return (
-      <Badge className="border border-amber-300 bg-amber-100 font-semibold text-amber-800">
-        <BellRing size={11} /> Follow up อีก {daysUntil} วัน
-      </Badge>
-    );
-  }
-  if (daysUntil <= 7) {
-    return (
-      <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-        <Timer size={11} /> อีก {daysUntil} วัน
-      </Badge>
-    );
-  }
-  if (daysUntil <= 14) {
-    return (
-      <Badge className="border border-sky-200 bg-sky-50 text-sky-700">
-        <Timer size={11} /> อีก {daysUntil} วัน
-      </Badge>
-    );
-  }
-  return null;
-}
-
-/** ชิปอายุสัญญาบนแถว — เขียวปกติ / เหลือง ≤30 วัน / แดงหมดแล้ว */
-function ContractChip({
-  contractStart,
-  months,
-  today,
-}: {
-  contractStart: string;
-  months: number;
-  today: string;
-}) {
-  const end = contractEndDate(contractStart, months);
-  const daysLeft = Math.round(
-    (new Date(end).getTime() - new Date(today).getTime()) / 86400000
-  );
-  if (daysLeft < 0) {
-    return (
-      <Badge className="border border-rose-200 bg-rose-50 text-rose-600">
-        <FileSignature size={11} /> สัญญาหมดแล้ว
-      </Badge>
-    );
-  }
-  return (
-    <span title={`สัญญาถึง ${formatDate(end)}`}>
-      <Badge
-        className={
-          daysLeft <= 30
-            ? "border border-amber-200 bg-amber-50 text-amber-700"
-            : "border border-emerald-200 bg-emerald-50 text-emerald-700"
-        }
-      >
-        <FileSignature size={11} /> สัญญาเหลือ {formatNumber(daysLeft)} วัน
-      </Badge>
-    </span>
-  );
-}
+// ที่อยู่ใหม่ของ type/helper อยู่ใน influ-board.tsx — re-export ให้หน้าอื่น (influ-gallery) import ได้เหมือนเดิม
+export { influName } from "./influ-board";
+export type { InfluencerListRow } from "./influ-board";
 
 export function InfluencersClient({
   influencers,
@@ -155,14 +46,14 @@ export function InfluencersClient({
   loadError,
 }: {
   influencers: InfluencerListRow[];
-  tasks: TaskLite[];
+  tasks: InfluTaskLite[];
   loadError: string | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
 
-  // สำเนา state ฝั่งจอ — ลบแล้วหายจากลิสต์ทันที (optimistic) แล้วค่อย sync กับ server
+  // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
 
@@ -176,7 +67,7 @@ export function InfluencersClient({
     null
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   /** ลบไฟล์ใน storage ของ influencer (best-effort) — รูป/memo/สัญญา */
   const cleanupStorage = async (influId: string) => {
@@ -200,7 +91,7 @@ export function InfluencersClient({
 
   const handleDelete = async (target: InfluencerListRow) => {
     setDeletingId(target.id);
-    setDeleteError(null);
+    setActionError(null);
     const prev = items;
     setItems((cur) => cur.filter((i) => i.id !== target.id)); // optimistic
     const { error } = await supabase
@@ -209,7 +100,7 @@ export function InfluencersClient({
       .eq("id", target.id);
     if (error) {
       setItems(prev); // คืนค่าถ้าลบไม่สำเร็จ
-      setDeleteError(`ลบไม่สำเร็จ: ${error.message}`);
+      setActionError(`ลบไม่สำเร็จ: ${error.message}`);
       setDeletingId(null);
       return;
     }
@@ -218,10 +109,53 @@ export function InfluencersClient({
     router.refresh();
   };
 
-  const dayDiff = (dateISO: string) =>
-    Math.round(
-      (new Date(dateISO).getTime() - new Date(today).getTime()) / 86400000
+  /** ลากการ์ดวางเสร็จ — บันทึกกลุ่มขนาด (override เมื่อไม่ตรง auto) + ลำดับในคอลัมน์ */
+  const moveInflu = async (
+    id: string,
+    group: InfluSizeGroup,
+    prevId: string | null,
+    nextId: string | null
+  ) => {
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    const prevPos = prevId
+      ? (() => {
+          const p = items.find((i) => i.id === prevId);
+          return p ? boardPos(p) : null;
+        })()
+      : null;
+    const nextPos = nextId
+      ? (() => {
+          const n = items.find((i) => i.id === nextId);
+          return n ? boardPos(n) : null;
+        })()
+      : null;
+    let position: number;
+    if (prevPos !== null && nextPos !== null) position = (prevPos + nextPos) / 2;
+    else if (prevPos !== null) position = prevPos + 1;
+    else if (nextPos !== null) position = nextPos - 1;
+    else position = 0;
+    // วางในกลุ่มเดียวกับที่ followers จัดให้อยู่แล้ว = กลับเป็นอัตโนมัติ (ไม่เก็บ override)
+    const sizeGroup: InfluSizeGroup | null =
+      group === sizeGroupFromFollowers(target.followers) ? null : group;
+
+    const prevItems = items;
+    setItems((cur) =>
+      cur.map((i) =>
+        i.id === id
+          ? { ...i, size_group: sizeGroup, board_position: position }
+          : i
+      )
     );
+    const { error } = await supabase
+      .from("influencers")
+      .update({ size_group: sizeGroup, board_position: position })
+      .eq("id", id);
+    if (error) {
+      setItems(prevItems);
+      setActionError(`ย้ายการ์ดไม่สำเร็จ: ${error.message}`);
+    }
+  };
 
   /* สถิติ follow up ต่อคน: เกินกำหนดกี่งาน, งานถัดไปครบกำหนดเมื่อไหร่, follow ล่าสุดเมื่อไหร่ */
   const statsByInflu = useMemo(() => {
@@ -252,45 +186,22 @@ export function InfluencersClient({
     return n;
   }, [tasks, today]);
 
-  /* เรียงตามความเร่งด่วน:
-     1) เกินกำหนด/ครบวันนี้ (เกินมากสุดขึ้นก่อน)  2) ใกล้ครบกำหนด (≤14 วัน, ใกล้ก่อน)
-     3) กำลังดีล (stage 1-5, ใหม่ก่อน)            4) follow แล้ว/รอรอบถัดไป (follow ล่าสุดก่อน)
-     5) จบงานแล้ว */
-  const orderKey = (i: InfluencerListRow): [number, number] => {
-    if (i.completed) return [4, 0];
-    if (i.stage === 6) {
-      const s = statsByInflu.get(i.id);
-      const du = s?.nextDue ? dayDiff(s.nextDue) : null;
-      if (du !== null && du <= 0) return [0, du];
-      if (du !== null && du <= 14) return [1, du];
-      // เรียงตามวันปฏิทินไทยของ follow ล่าสุด — ให้ตรงกับป้าย "follow แล้ว · X วันก่อน"
-      return [3, s?.lastDone ? -Date.parse(thaiDateISO(s.lastDone)) : 0];
-    }
-    return [2, -Date.parse(i.created_at)];
-  };
-
+  /* กรองค้นหา + stage — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง) */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return items
-      .filter((i) => {
-        if (stageFilter === "done" && !i.completed) return false;
-        if (typeof stageFilter === "number") {
-          if (i.completed || i.stage !== stageFilter) return false;
-        }
-        if (q === "") return true;
-        return (
-          influName(i).toLowerCase().includes(q) ||
-          (i.phone ?? "").includes(q) ||
-          (i.procedure_text ?? "").toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
-        const [ga, va] = orderKey(a);
-        const [gb, vb] = orderKey(b);
-        return ga !== gb ? ga - gb : va - vb;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, search, stageFilter, statsByInflu, today]);
+    return items.filter((i) => {
+      if (stageFilter === "done" && !i.completed) return false;
+      if (typeof stageFilter === "number") {
+        if (i.completed || i.stage !== stageFilter) return false;
+      }
+      if (q === "") return true;
+      return (
+        influName(i).toLowerCase().includes(q) ||
+        (i.phone ?? "").includes(q) ||
+        (i.procedure_text ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [items, search, stageFilter]);
 
   /* ---- modal เพิ่ม influ (stage 1: ชื่อ นามสกุล เบอร์) ---- */
   const [addOpen, setAddOpen] = useState(false);
@@ -341,7 +252,7 @@ export function InfluencersClient({
     <>
       <PageHeader
         title="Influ Management"
-        description="จัดการ Influencer ตั้งแต่ติดต่อ → Memo อนุมัติ → เซนสัญญา → Follow up งาน"
+        description="บอร์ด Influencer แบ่งตามขนาดผู้ติดตาม — ลากการ์ดย้ายกลุ่ม/เรียงลำดับได้ คลิกการ์ดเพื่อเดินงานทีละ stage"
         action={
           <div className="flex gap-2">
             <Link
@@ -369,7 +280,7 @@ export function InfluencersClient({
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 animate-fade-in">
           <BellRing size={16} className="shrink-0" />
           มีงาน follow up ถึงกำหนดแล้ว {formatNumber(totalDue)} รายการ —
-          รายชื่อที่ต้องตามมีป้ายเตือนสีเหลืองด้านล่าง
+          การ์ดที่ต้องตามมีป้ายเตือนสีเหลือง/แดงบนบอร์ด
         </div>
       )}
 
@@ -427,9 +338,9 @@ export function InfluencersClient({
         )}
       </div>
 
-      {deleteError && (
+      {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
-          {deleteError}
+          {actionError}
         </div>
       )}
 
@@ -456,135 +367,20 @@ export function InfluencersClient({
           />
         </Card>
       ) : (
-        <div className="grid gap-3 animate-fade-in-up">
-          {filtered.map((i) => {
-            const stats = statsByInflu.get(i.id);
-            const nextDueDays =
-              i.stage === 6 && stats?.nextDue ? dayDiff(stats.nextDue) : null;
-            const daysSinceDone =
-              stats?.lastDone != null
-                ? Math.max(0, -dayDiff(thaiDateISO(stats.lastDone)))
-                : null;
-            const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
-            // ขอบสีแยกกลุ่ม: stage 6 (มาใช้บริการแล้ว) = ขอบ brand, จบงาน = ขอบเขียว, กำลังดีล = ปกติ
-            const borderClass = i.completed
-              ? "!border-emerald-300/70"
-              : i.stage === 6
-                ? "!border-brand-400/70"
-                : "";
-            return (
-              <Link key={i.id} href={`/influencers/${i.id}`}>
-                <Card
-                  className={`p-4 transition-transform hover:-translate-y-0.5 ${borderClass}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-sm font-semibold text-cream">
-                      {i.first_name.charAt(0)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-stone-900">
-                          {influName(i)}
-                        </p>
-                        {i.tier && (
-                          <Badge className={INFLU_TIERS[i.tier].badge}>
-                            {INFLU_TIERS[i.tier].label}
-                          </Badge>
-                        )}
-                        {/* countdown แจ้งเตือน follow up (เฉพาะ stage 6 ที่ยังไม่ปิดงาน) */}
-                        {!i.completed && nextDueDays !== null && (
-                          <FollowupCountdownChip
-                            daysUntil={nextDueDays}
-                            overdueCount={stats?.overdue ?? 0}
-                          />
-                        )}
-                        {/* follow แล้ว — โชว์เมื่อไม่มีงานจ่อ (เกิน 14 วัน หรือครบหมดแล้ว) */}
-                        {!i.completed &&
-                          i.stage === 6 &&
-                          (nextDueDays === null || nextDueDays > 14) &&
-                          daysSinceDone !== null && (
-                            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                              <CheckCircle2 size={11} /> follow แล้ว ·{" "}
-                              {daysSinceDone === 0
-                                ? "วันนี้"
-                                : `${daysSinceDone} วันก่อน`}
-                            </Badge>
-                          )}
-                        {/* อายุสัญญาโชว์บนแถวเลย */}
-                        {i.contract_start && (
-                          <ContractChip
-                            contractStart={i.contract_start}
-                            months={i.contract_months}
-                            today={today}
-                          />
-                        )}
-                      </div>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
-                        {i.phone && (
-                          <span className="inline-flex items-center gap-1">
-                            <Phone size={11} /> {i.phone}
-                          </span>
-                        )}
-                        {i.procedure_text && (
-                          <span className="max-w-72 truncate">
-                            {i.procedure_text}
-                          </span>
-                        )}
-                        {i.service_date && (
-                          <span>รับบริการ {formatDate(i.service_date)}</span>
-                        )}
-                      </p>
-                    </div>
-
-                    {/* mini stepper */}
-                    <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                      {INFLU_STAGES.map((s) => (
-                        <span
-                          key={s.step}
-                          title={s.title}
-                          className={`h-2 w-6 rounded-full ${
-                            i.completed || i.stage > s.step
-                              ? "bg-emerald-400"
-                              : i.stage === s.step
-                                ? "bg-gradient-to-r from-brand-400 to-brand-600"
-                                : "bg-stone-200"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <Badge
-                      className={
-                        i.completed
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-brand-50 text-brand-700"
-                      }
-                    >
-                      {i.completed
-                        ? "จบงานแล้ว"
-                        : `${i.stage}. ${stageInfo?.short ?? ""}`}
-                    </Badge>
-                    {/* ลบ influencer — กันไม่ให้ Link พาไปหน้า detail */}
-                    <button
-                      type="button"
-                      title="ลบ Influencer"
-                      aria-label={`ลบ ${influName(i)}`}
-                      disabled={deletingId === i.id}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDeleteError(null);
-                        setDeleteTarget(i);
-                      }}
-                      className="shrink-0 cursor-pointer rounded-lg p-2 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
+        <InfluBoard
+          items={filtered}
+          statsByInflu={statsByInflu}
+          today={today}
+          deletingId={deletingId}
+          onOpen={(i) => router.push(`/influencers/${i.id}`)}
+          onDelete={(i) => {
+            setActionError(null);
+            setDeleteTarget(i);
+          }}
+          onMove={(id, group, prevId, nextId) =>
+            void moveInflu(id, group, prevId, nextId)
+          }
+        />
       )}
 
       {/* modal เพิ่ม influ — stage 1 เก็บแค่ ชื่อ นามสกุล เบอร์ */}
