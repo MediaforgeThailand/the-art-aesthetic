@@ -90,16 +90,29 @@ export function PriceListClient({
     return max ? formatDateBangkok(max) : "-";
   }, [items]);
 
+  // รายการโปรล้วน (ไม่มีราคาปกติ) ที่โปร/คอร์สหมดเขตครบทุกอัน — ซ่อนทั้งแถว
+  // ไม่งั้นจะค้างเป็นราคา "-" บนหน้าสาธารณะหลังโปรจบ
+  const visible = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.price_normal != null ||
+          i.promos.some((o) => offerState(o, today) !== "expired") ||
+          i.courses.some((o) => offerState(o, today) !== "expired")
+      ),
+    [items, today]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (q === "") return items;
-    return items.filter(
+    if (q === "") return visible;
+    return visible.filter(
       (i) =>
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q) ||
         (i.benefits ?? "").toLowerCase().includes(q)
     );
-  }, [items, search]);
+  }, [visible, search]);
 
   const categories = useMemo(() => {
     const seen = new Map<string, PriceItemRow[]>();
