@@ -193,10 +193,15 @@ export function TaskPanel({
   const isAccepted = task.brief_accepted_at !== null;
   // การ์ด creative ที่ถูกสร้างจาก brief — โชว์ข้อมูล brief ในแผง
   const isFromBrief = task.brief_source_id !== null;
-  // ชื่อผู้สร้าง brief = ผู้สร้างการ์ด brief ต้นทาง (ตกไปที่ผู้ตรวจของงานนี้ถ้าหาการ์ด brief ไม่เจอ)
+  // ชื่อผู้สร้าง brief = ผู้สร้างการ์ด brief ต้นทาง (ตกไปที่ผู้สร้างงานนี้ถ้าหาการ์ด brief ไม่เจอ
+  // — การ์ด creative สืบ created_by มาจากผู้สั่ง brief อยู่แล้ว)
   const briefCreator = briefSource
     ? (profiles.find((p) => p.id === briefSource.created_by) ?? null)
-    : (task.reviewer ?? null);
+    : (task.creator ?? null);
+  // งานจาก brief: ผู้สั่ง brief ตรวจทาน/คุยในแชทก่อน แล้วเป็นคนกด "ส่งตรวจ" เอง
+  // (งานเก่าที่ไม่รู้ผู้สั่ง (created_by ว่าง) ไม่ล็อก — ให้ส่งได้ตามปกติ)
+  const canSubmitReview =
+    !isFromBrief || task.created_by === null || task.created_by === userId;
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptions =
@@ -868,7 +873,7 @@ export function TaskPanel({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
               >
                 <CheckCircle2 size={15} />
-                {isFromBrief ? "ผ่านการยืนยัน brief แล้ว" : "อนุมัติ"}
+                อนุมัติ
               </button>
               <button
                 type="button"
@@ -888,19 +893,22 @@ export function TaskPanel({
           )
         ) : (
           // งานปกติต้องส่งตรวจก่อนเท่านั้น (ไม่มีทางลัด "เสร็จแล้ว")
+          // งานจาก brief: เฉพาะผู้สั่ง brief กดส่งตรวจได้ (ตรวจทานกับทีมในแชทให้จบก่อน)
           <button
             type="button"
             onClick={() => onSubmitReview(task)}
-            disabled={!task.reviewer_id}
+            disabled={!task.reviewer_id || !canSubmitReview}
             title={
-              task.reviewer_id
-                ? undefined
-                : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
+              !canSubmitReview
+                ? `ผู้สั่ง brief (${briefCreator ? profileName(briefCreator) : "-"}) เป็นคนกดส่งตรวจ — คุยตรวจทานงานกันในแชทด้านล่างก่อน`
+                : task.reviewer_id
+                  ? undefined
+                  : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
             }
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
           >
             <SendHorizontal size={15} />
-            ส่งตรวจงาน
+            {canSubmitReview ? "ส่งตรวจงาน" : "รอผู้สั่ง brief ส่งตรวจ"}
           </button>
         )}
 

@@ -997,8 +997,9 @@ export function TasksClient({
       db: { brief_accepted_at: new Date().toISOString(), completed: true },
     });
 
-    // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้ตรวจ = ผู้สั่งงาน/ผู้สร้าง brief,
-    //    ผู้สร้างการ์ด = ผู้สั่ง brief — การ์ดจึงบอกได้ว่าใครเป็นคนสั่งแม้คนทำเป็นอีกคน)
+    // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้สร้างการ์ด = ผู้สั่ง brief)
+    //    ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (คนใน "จัดการผู้ตรวจ") — ไม่ใช่ผู้สั่ง brief:
+    //    ผู้สั่ง brief แค่ตรวจทาน/คุยในแชท แล้วเป็นคนกด "ส่งตรวจ" ให้ผู้ตรวจจริง
     const inSection = activeItems.filter(
       (t) => bucketOf(t) === creativesSectionId
     );
@@ -1011,6 +1012,13 @@ export function TasksClient({
       (task.created_by
         ? (profiles.find((p) => p.id === task.created_by) ?? null)
         : null);
+    const reviewerId =
+      globalReviewerId !== null && reviewerSet.has(globalReviewerId)
+        ? globalReviewerId
+        : null;
+    const reviewerPerson = reviewerId
+      ? (profiles.find((p) => p.id === reviewerId) ?? null)
+      : null;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
       id: tempId,
@@ -1026,7 +1034,7 @@ export function TasksClient({
       position,
       deliverable_url: null,
       deliverable_file_path: null,
-      reviewer_id: task.created_by,
+      reviewer_id: reviewerId,
       review_status: "none",
       influencer_id: task.influencer_id,
       approved_at: null,
@@ -1039,7 +1047,7 @@ export function TasksClient({
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: task.assignee ?? null,
-      reviewer: briefCreatorPerson,
+      reviewer: reviewerPerson,
       creator: briefCreatorPerson,
       influencer: task.influencer ?? null,
       files: [],
@@ -1054,7 +1062,7 @@ export function TasksClient({
         section_id: creativesSectionId,
         position,
         assignee_id: task.assignee_id,
-        reviewer_id: task.created_by,
+        reviewer_id: reviewerId,
         influencer_id: task.influencer_id,
         category: task.category,
         brief_content_type: task.brief_content_type,

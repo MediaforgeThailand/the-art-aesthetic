@@ -62,6 +62,40 @@ export function NotificationBell({ userId }: { userId: string }) {
       .then(({ count }) => setUnread(count ?? 0));
   }, [supabase, userId]);
 
+  /** เด้งแจ้งเตือนของเบราว์เซอร์ (เมื่อผู้ใช้ไม่ได้โฟกัสหน้าเว็บ) — คลิกแล้วพาไปเปิดงานนั้น */
+  const showBrowserNotification = useCallback(
+    (n: NotificationWithJoins) => {
+      if (typeof window === "undefined" || !("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      // กำลังใช้งานหน้าเว็บอยู่ — เห็นกระดิ่งในแอปอยู่แล้ว ไม่ต้องเด้งซ้ำ
+      if (document.hasFocus()) return;
+      try {
+        const noti = new Notification("The ART — Task", {
+          body: n.preview ? `${messageOf(n)}\n${n.preview}` : messageOf(n),
+          tag: n.id, // เปิดหลายแท็บ = แจ้งเตือนใบเดียวกันแทนที่กัน ไม่เด้งซ้ำ
+          icon: "/icon.svg",
+        });
+        noti.onclick = () => {
+          window.focus();
+          if (n.task_id) router.push(`/tasks?task=${n.task_id}`);
+          noti.close();
+        };
+      } catch {
+        // บางเบราว์เซอร์ไม่ให้สร้าง Notification ตรงๆ — ข้าม (กระดิ่งในแอปยังทำงานปกติ)
+      }
+    },
+    [router]
+  );
+
+  // ขอสิทธิ์แจ้งเตือนของเบราว์เซอร์ครั้งแรกที่เข้าแอป (ถ้ายังไม่เคยถาม) —
+  // อนุญาตแล้วจะเด้งเตือนแม้กำลังอยู่แท็บ/โปรแกรมอื่น
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void supabase
@@ -106,6 +140,7 @@ export function NotificationBell({ userId }: { userId: string }) {
                   : [row, ...cur].slice(0, NOTI_LIMIT)
               );
               refreshUnread();
+              showBrowserNotification(row);
             });
         }
       )
@@ -131,7 +166,7 @@ export function NotificationBell({ userId }: { userId: string }) {
       alive = false;
       void supabase.removeChannel(channel);
     };
-  }, [supabase, userId, refreshUnread]);
+  }, [supabase, userId, refreshUnread, showBrowserNotification]);
 
   /* ---------- เปิด/ปิดแผง ---------- */
 

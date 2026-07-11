@@ -150,7 +150,7 @@ export function ReviewList({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
               >
                 <CheckCircle2 size={15} />
-                {task.brief_source_id ? "ยืนยัน brief" : "อนุมัติ"}
+                อนุมัติ
               </button>
             </div>
           </div>
