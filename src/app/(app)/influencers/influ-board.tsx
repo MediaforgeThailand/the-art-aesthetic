@@ -25,11 +25,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Ban,
   BellRing,
   CheckCircle2,
   FileSignature,
   Phone,
   PhoneCall,
+  RotateCcw,
   Timer,
   Trash2,
   UsersRound,
@@ -84,6 +86,25 @@ const dayDiff = (dateISO: string, today: string) =>
 /** กลุ่มขนาดที่การ์ดอยู่จริง — override ที่ลากไว้ชนะ, ไม่มีก็จัดอัตโนมัติจาก followers */
 export const effectiveSizeGroup = (i: InfluencerListRow): InfluSizeGroup =>
   i.size_group ?? sizeGroupFromFollowers(i.followers);
+
+/** สถานะรวมของ influencer หนึ่งคน — ใช้กับตัวกรอง "ยกเว้น" และโทนการ์ด
+    (ปฏิเสธชนะทุกสถานะ · จบงาน · ตอบรับ (stage ≥2) · รอตอบรับ (stage 1)) */
+export type InfluStatusKey = "waiting" | "accepted" | "done" | "declined";
+export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
+  i.declined_at !== null
+    ? "declined"
+    : i.completed
+      ? "done"
+      : i.stage >= 2
+        ? "accepted"
+        : "waiting";
+
+export const INFLU_STATUS_META: Record<InfluStatusKey, { label: string }> = {
+  waiting: { label: "ติดต่ออยู่ · รอตอบรับ" },
+  accepted: { label: "ตอบรับแล้ว" },
+  done: { label: "จบงานแล้ว" },
+  declined: { label: "ปฏิเสธ" },
+};
 
 /** ลำดับการ์ดในคอลัมน์ — board_position ที่ลากไว้ชนะ; ยังไม่เคยลาก = ใหม่ก่อน
     (fallback ต้องเป็นสูตรเดียวกันทุกที่ เพื่อให้ midpoint ตอนลากคำนวณถูก) */
@@ -196,6 +217,7 @@ export function InfluCardContent({
   overlay = false,
   deleting = false,
   onDelete,
+  onToggleDeclined,
 }: {
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
@@ -204,7 +226,10 @@ export function InfluCardContent({
   overlay?: boolean;
   deleting?: boolean;
   onDelete?: (influ: InfluencerListRow) => void;
+  /** mark/ยกเลิก "ปฏิเสธ" — ไม่ส่ง = ไม่มีปุ่ม (เช่นการ์ดใน overlay) */
+  onToggleDeclined?: (influ: InfluencerListRow) => void;
 }) {
+  const declined = i.declined_at !== null;
   const accepted = i.completed || i.stage >= 2;
   const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
   const nextDueDays =
@@ -223,11 +248,13 @@ export function InfluCardContent({
   const movedManually =
     i.size_group !== null && i.size_group !== sizeGroupFromFollowers(i.followers);
 
-  const tone = i.completed
-    ? "border border-emerald-300/80 bg-emerald-50/80"
-    : accepted
-      ? "border border-emerald-300/70 border-l-4 border-l-emerald-400 bg-white"
-      : "border-2 border-dashed border-stone-300/90 bg-stone-100/70";
+  const tone = declined
+    ? "border border-dashed border-rose-200/90 bg-rose-50/40 opacity-80"
+    : i.completed
+      ? "border border-emerald-300/80 bg-emerald-50/80"
+      : accepted
+        ? "border border-emerald-300/70 border-l-4 border-l-emerald-400 bg-white"
+        : "border-2 border-dashed border-stone-300/90 bg-stone-100/70";
 
   return (
     <div
@@ -239,7 +266,7 @@ export function InfluCardContent({
       <div className="flex items-start gap-2.5">
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-sm font-semibold text-cream ${
-            accepted
+            accepted && !declined
               ? "from-brand-400 to-brand-600"
               : "from-stone-300 to-stone-400"
           }`}
@@ -267,28 +294,64 @@ export function InfluCardContent({
             )}
           </p>
         </div>
-        {onDelete && (
-          <button
-            type="button"
-            title="ลบ Influencer"
-            aria-label={`ลบ ${influName(i)}`}
-            disabled={deleting}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(i);
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="-mr-1.5 -mt-1.5 shrink-0 cursor-pointer rounded-lg p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40"
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
+        <div className="-mr-1.5 -mt-1.5 flex shrink-0 items-center">
+          {onToggleDeclined && (
+            <button
+              type="button"
+              title={
+                declined
+                  ? "ยกเลิกสถานะปฏิเสธ — เอากลับมาติดต่อใหม่"
+                  : "ทำเครื่องหมายว่าปฏิเสธ (ไม่ร่วมงาน)"
+              }
+              aria-label={
+                declined
+                  ? `ยกเลิกสถานะปฏิเสธของ ${influName(i)}`
+                  : `ทำเครื่องหมายว่า ${influName(i)} ปฏิเสธ`
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleDeclined(i);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              className={`shrink-0 cursor-pointer rounded-lg p-1.5 transition-colors active:scale-90 ${
+                declined
+                  ? "text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  : "text-stone-300 hover:bg-rose-50 hover:text-rose-500"
+              }`}
+            >
+              {declined ? <RotateCcw size={14} /> : <Ban size={14} />}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              title="ลบ Influencer"
+              aria-label={`ลบ ${influName(i)}`}
+              disabled={deleting}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(i);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="shrink-0 cursor-pointer rounded-lg p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* สถานะตอบรับ + tier */}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        {i.completed ? (
+        {declined ? (
+          <span title={`ปฏิเสธเมื่อ ${formatDate(thaiDateISO(i.declined_at!))}`}>
+            <Badge className="border border-rose-300 bg-rose-100 font-semibold text-rose-700">
+              <Ban size={11} /> ปฏิเสธแล้ว
+            </Badge>
+          </span>
+        ) : i.completed ? (
           <Badge className="border border-emerald-300 bg-emerald-100 font-semibold text-emerald-700">
             <CheckCircle2 size={11} /> จบงานแล้ว
           </Badge>
@@ -378,6 +441,7 @@ function SortableInfluCard({
   deleting,
   onClick,
   onDelete,
+  onToggleDeclined,
 }: {
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
@@ -385,6 +449,7 @@ function SortableInfluCard({
   deleting: boolean;
   onClick: () => void;
   onDelete: (influ: InfluencerListRow) => void;
+  onToggleDeclined: (influ: InfluencerListRow) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: influ.id, data: { type: "influ" } });
@@ -415,6 +480,7 @@ function SortableInfluCard({
         today={today}
         deleting={deleting}
         onDelete={onDelete}
+        onToggleDeclined={onToggleDeclined}
       />
     </div>
   );
@@ -431,6 +497,7 @@ function BoardColumn({
   deletingId,
   onCardClick,
   onDelete,
+  onToggleDeclined,
 }: {
   group: InfluSizeGroup;
   influs: InfluencerListRow[];
@@ -440,6 +507,7 @@ function BoardColumn({
   deletingId: string | null;
   onCardClick: (influ: InfluencerListRow) => void;
   onDelete: (influ: InfluencerListRow) => void;
+  onToggleDeclined: (influ: InfluencerListRow) => void;
 }) {
   const meta = INFLU_SIZE_GROUPS[group];
   const { setNodeRef } = useDroppable({
@@ -491,6 +559,7 @@ function BoardColumn({
               deleting={deletingId === i.id}
               onClick={() => onCardClick(i)}
               onDelete={onDelete}
+              onToggleDeclined={onToggleDeclined}
             />
           ))}
         </SortableContext>
@@ -508,15 +577,18 @@ export function InfluBoard({
   deletingId,
   onOpen,
   onDelete,
+  onToggleDeclined,
   onMove,
 }: {
-  /** รายชื่อหลังกรอง (ค้นหา/stage) แล้ว — บอร์ดจัดกลุ่ม+เรียงเอง */
+  /** รายชื่อหลังกรอง (ค้นหา/stage/ยกเว้น) แล้ว — บอร์ดจัดกลุ่ม+เรียงเอง */
   items: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
   today: string;
   deletingId: string | null;
   onOpen: (influ: InfluencerListRow) => void;
   onDelete: (influ: InfluencerListRow) => void;
+  /** mark/ยกเลิกสถานะ "ปฏิเสธ" จากปุ่มบนการ์ด */
+  onToggleDeclined: (influ: InfluencerListRow) => void;
   /** ลากวางเสร็จ — ย้ายกลุ่ม/เรียงลำดับ (prev/next = เพื่อนบ้านใหม่ในคอลัมน์ปลายทาง) */
   onMove: (
     id: string,
@@ -697,6 +769,7 @@ export function InfluBoard({
               deletingId={deletingId}
               onCardClick={handleCardClick}
               onDelete={onDelete}
+              onToggleDeclined={onToggleDeclined}
             />
           );
         })}

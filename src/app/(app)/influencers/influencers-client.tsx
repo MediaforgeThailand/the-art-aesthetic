@@ -2,6 +2,8 @@
 
 import {
   BellRing,
+  ChevronDown,
+  EyeOff,
   FileSignature,
   Plus,
   Search,
@@ -11,7 +13,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Button,
   Card,
@@ -29,16 +32,158 @@ import { createClient } from "@/lib/supabase/client";
 import type { InfluSizeGroup } from "@/lib/types";
 import {
   boardPos,
+  INFLU_STATUS_META,
   InfluBoard,
   influName,
   type InfluencerListRow,
   type InfluStats,
+  influStatusOf,
+  type InfluStatusKey,
   type InfluTaskLite,
 } from "./influ-board";
 
 // ที่อยู่ใหม่ของ type/helper อยู่ใน influ-board.tsx — re-export ให้หน้าอื่น (influ-gallery) import ได้เหมือนเดิม
 export { influName } from "./influ-board";
 export type { InfluencerListRow } from "./influ-board";
+
+/* ---------- ตัวกรอง "ยกเว้น" (จำค่าใน localStorage — ใช้ร่วมทุกเครื่องที่เปิดหน้านี้) ---------- */
+
+const FILTER_STORAGE_KEY = "influ-filters-v1";
+const INFLU_STATUS_ORDER: InfluStatusKey[] = [
+  "waiting",
+  "accepted",
+  "done",
+  "declined",
+];
+/** ค่าเริ่มต้น: ซ่อนคนที่ปฏิเสธออกจากบอร์ด (ดูได้จากชิป "ปฏิเสธ" หรือเอาติ๊กออก) */
+const DEFAULT_EXCLUDED: InfluStatusKey[] = ["declined"];
+
+function readSavedExcluded(): Set<InfluStatusKey> {
+  if (typeof window === "undefined") return new Set(DEFAULT_EXCLUDED);
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return new Set(DEFAULT_EXCLUDED);
+    const parsed = JSON.parse(raw) as { excluded?: unknown };
+    if (Array.isArray(parsed.excluded)) {
+      return new Set(
+        parsed.excluded.filter((s): s is InfluStatusKey =>
+          INFLU_STATUS_ORDER.includes(s as InfluStatusKey)
+        )
+      );
+    }
+  } catch {
+    // ค่าที่เก็บไว้พัง — ใช้ค่าเริ่มต้น
+  }
+  return new Set(DEFAULT_EXCLUDED);
+}
+
+/** ปุ่ม + เมนู "ยกเว้น" — ติ๊กสถานะที่ไม่อยากเห็นบนบอร์ด (render ผ่าน portal กันโดนบอร์ดทับ) */
+function InfluExcludeFilter({
+  excluded,
+  onChange,
+  countOf,
+}: {
+  excluded: Set<InfluStatusKey>;
+  onChange: (next: Set<InfluStatusKey>) => void;
+  countOf: (status: InfluStatusKey) => number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const panelW = 264;
+      // หนีบขอบจอ — จอแคบเมนูต้องไม่ล้นออกนอกจอ
+      setPos({
+        x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
+        y: r.bottom + 6,
+      });
+    }
+    setOpen((o) => !o);
+  };
+
+  const toggleStatus = (status: InfluStatusKey) => {
+    const next = new Set(excluded);
+    if (next.has(status)) next.delete(status);
+    else next.add(status);
+    onChange(next);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggleOpen}
+        aria-label="ยกเว้นสถานะจากบอร์ด"
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+          excluded.size > 0
+            ? "border-brand-300 bg-brand-50/80 text-brand-700"
+            : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
+        }`}
+      >
+        <EyeOff size={14} />
+        ยกเว้น
+        {excluded.size > 0 && (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700">
+            {excluded.size}
+          </span>
+        )}
+        <ChevronDown size={14} className="text-stone-400" />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={{ left: pos.x, top: pos.y }}
+            className="fixed z-[70] w-64 max-w-[calc(100vw-16px)] rounded-xl border border-stone-200 bg-white p-2 shadow-xl animate-scale-in"
+          >
+            <p className="px-2.5 pb-1.5 pt-1 text-xs font-medium text-stone-400">
+              ซ่อนสถานะเหล่านี้จากบอร์ด
+            </p>
+            {INFLU_STATUS_ORDER.map((s) => (
+              <label
+                key={s}
+                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-stone-700 transition-colors hover:bg-brand-50/60"
+              >
+                <input
+                  type="checkbox"
+                  checked={excluded.has(s)}
+                  onChange={() => toggleStatus(s)}
+                  className="h-4 w-4 cursor-pointer accent-[#a96a58]"
+                />
+                <span className="flex-1">{INFLU_STATUS_META[s].label}</span>
+                <span className="text-xs text-stone-400">{countOf(s)}</span>
+              </label>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
 
 export function InfluencersClient({
   influencers,
@@ -58,9 +203,27 @@ export function InfluencersClient({
   useEffect(() => setItems(influencers), [influencers]);
 
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState<number | "all" | "done">(
-    "all"
+  const [stageFilter, setStageFilter] = useState<
+    number | "all" | "done" | "declined"
+  >("all");
+
+  // สถานะที่ถูก "ยกเว้น" ออกจากบอร์ด — จำค่าไว้ใน localStorage (เริ่มต้นซ่อนคนปฏิเสธ)
+  const [excluded, setExcluded] = useState<Set<InfluStatusKey>>(
+    readSavedExcluded
   );
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({ excluded: [...excluded] })
+      );
+    } catch {
+      // เก็บค่าไม่ได้ (เช่น private mode) — ตัวกรองยังใช้ได้ แค่ไม่จำข้ามครั้ง
+    }
+  }, [excluded]);
+  const excludedIsDefault =
+    excluded.size === DEFAULT_EXCLUDED.length &&
+    DEFAULT_EXCLUDED.every((s) => excluded.has(s));
 
   // ลบ influencer
   const [deleteTarget, setDeleteTarget] = useState<InfluencerListRow | null>(
@@ -157,6 +320,25 @@ export function InfluencersClient({
     }
   };
 
+  /** mark/ยกเลิกสถานะ "ปฏิเสธ" — การ์ดจะหายจากบอร์ดถ้าตัวกรองยกเว้นปฏิเสธอยู่ (ค่าเริ่มต้น)
+      ดูรายชื่อที่ปฏิเสธได้จากชิป "ปฏิเสธ" และกดปุ่มเดิมซ้ำเพื่อเอากลับมาติดต่อใหม่ */
+  const toggleDeclined = async (target: InfluencerListRow) => {
+    const next = target.declined_at ? null : new Date().toISOString();
+    const prevItems = items;
+    setActionError(null);
+    setItems((cur) =>
+      cur.map((i) => (i.id === target.id ? { ...i, declined_at: next } : i))
+    );
+    const { error } = await supabase
+      .from("influencers")
+      .update({ declined_at: next })
+      .eq("id", target.id);
+    if (error) {
+      setItems(prevItems);
+      setActionError(`บันทึกสถานะปฏิเสธไม่สำเร็จ: ${error.message}`);
+    }
+  };
+
   /* สถิติ follow up ต่อคน: เกินกำหนดกี่งาน, งานถัดไปครบกำหนดเมื่อไหร่, follow ล่าสุดเมื่อไหร่ */
   const statsByInflu = useMemo(() => {
     const map = new Map<string, InfluStats>();
@@ -186,13 +368,21 @@ export function InfluencersClient({
     return n;
   }, [tasks, today]);
 
-  /* กรองค้นหา + stage — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง) */
+  /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
+     ชิป "ปฏิเสธ" = ดูเฉพาะคนที่ปฏิเสธ (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((i) => {
-      if (stageFilter === "done" && !i.completed) return false;
-      if (typeof stageFilter === "number") {
-        if (i.completed || i.stage !== stageFilter) return false;
+      const status = influStatusOf(i);
+      if (stageFilter === "declined") {
+        if (status !== "declined") return false;
+      } else {
+        if (excluded.has(status)) return false;
+        if (stageFilter === "done" && status !== "done") return false;
+        if (typeof stageFilter === "number") {
+          if (status === "declined" || i.completed || i.stage !== stageFilter)
+            return false;
+        }
       }
       if (q === "") return true;
       return (
@@ -201,7 +391,7 @@ export function InfluencersClient({
         (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, stageFilter]);
+  }, [items, search, stageFilter, excluded]);
 
   /* ---- modal เพิ่ม influ (stage 1: ชื่อ นามสกุล เบอร์) ---- */
   const [addOpen, setAddOpen] = useState(false);
@@ -235,18 +425,29 @@ export function InfluencersClient({
     router.refresh();
   };
 
-  const stageChips: { key: number | "all" | "done"; label: string }[] = [
+  const stageChips: {
+    key: number | "all" | "done" | "declined";
+    label: string;
+  }[] = [
     { key: "all", label: "ทั้งหมด" },
     ...INFLU_STAGES.map((s) => ({ key: s.step, label: `${s.step}. ${s.short}` })),
     { key: "done", label: "จบงานแล้ว" },
+    { key: "declined", label: "ปฏิเสธ" },
   ];
 
-  const countFor = (key: number | "all" | "done") =>
+  const countFor = (key: number | "all" | "done" | "declined") =>
     key === "all"
       ? items.length
-      : key === "done"
-        ? items.filter((i) => i.completed).length
-        : items.filter((i) => !i.completed && i.stage === key).length;
+      : key === "declined"
+        ? items.filter((i) => influStatusOf(i) === "declined").length
+        : key === "done"
+          ? items.filter((i) => influStatusOf(i) === "done").length
+          : items.filter(
+              (i) =>
+                influStatusOf(i) !== "declined" &&
+                !i.completed &&
+                i.stage === key
+            ).length;
 
   return (
     <>
@@ -323,12 +524,18 @@ export function InfluencersClient({
             );
           })}
         </div>
-        {(search !== "" || stageFilter !== "all") && (
+        <InfluExcludeFilter
+          excluded={excluded}
+          onChange={setExcluded}
+          countOf={(s) => items.filter((i) => influStatusOf(i) === s).length}
+        />
+        {(search !== "" || stageFilter !== "all" || !excludedIsDefault) && (
           <button
             type="button"
             onClick={() => {
               setSearch("");
               setStageFilter("all");
+              setExcluded(new Set(DEFAULT_EXCLUDED));
             }}
             className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
           >
@@ -363,7 +570,7 @@ export function InfluencersClient({
           <EmptyState
             icon={<Search size={40} strokeWidth={1.5} />}
             title="ไม่พบรายชื่อที่ตรงกับตัวกรอง"
-            description="ลองเปลี่ยนคำค้นหาหรือ stage"
+            description="ลองเปลี่ยนคำค้นหา, stage หรือเช็คตัวกรอง 'ยกเว้น' (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
           />
         </Card>
       ) : (
@@ -377,6 +584,7 @@ export function InfluencersClient({
             setActionError(null);
             setDeleteTarget(i);
           }}
+          onToggleDeclined={(i) => void toggleDeclined(i)}
           onMove={(id, group, prevId, nextId) =>
             void moveInflu(id, group, prevId, nextId)
           }
