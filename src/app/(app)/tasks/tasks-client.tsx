@@ -44,6 +44,7 @@ import {
   currentReviewerId,
   isTempId,
   profileName,
+  reviewWaitStart,
 } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 import { TRASH_KEEP_DAYS, TrashList } from "./trash-list";
@@ -208,6 +209,27 @@ export function TasksClient({
               t.review_status === "pending" &&
               currentReviewerId(t) === userId
           ),
+    [activeItems, userId]
+  );
+
+  // งานรอตรวจที่เหลือของทีม (ค้างอยู่ที่ผู้ตรวจคนอื่น) — ให้ทุกคนเห็นว่างานค้างที่ใคร
+  // เรียงงานที่รอนานสุดขึ้นก่อน (ไม่รู้เวลาส่งตรวจ = ท้ายลิสต์)
+  const teamPendingReview = useMemo(
+    () =>
+      activeItems
+        .filter(
+          (t) =>
+            t.review_status === "pending" &&
+            (userId === null || currentReviewerId(t) !== userId)
+        )
+        .sort((a, b) => {
+          const wa = reviewWaitStart(a);
+          const wb = reviewWaitStart(b);
+          if (wa === null && wb === null) return 0;
+          if (wa === null) return 1;
+          if (wb === null) return -1;
+          return wa.localeCompare(wb);
+        }),
     [activeItems, userId]
   );
 
@@ -814,6 +836,7 @@ export function TasksClient({
         review_step: 1,
         reviewer2_id: reviewer2Id,
         review1_approved_at: null,
+        review_submitted_at: new Date().toISOString(),
       },
       local: { reviewer2: reviewer2Person },
     });
@@ -828,6 +851,7 @@ export function TasksClient({
         completed: false,
         review_step: 1,
         review1_approved_at: null,
+        review_submitted_at: null,
       },
     });
   };
@@ -908,6 +932,7 @@ export function TasksClient({
         approved_at: null,
         review_step: 1,
         review1_approved_at: null,
+        review_submitted_at: null,
       },
     });
     notify(task, [
@@ -930,6 +955,7 @@ export function TasksClient({
         approved_at: null,
         review_step: 1,
         review1_approved_at: null,
+        review_submitted_at: null,
       },
     });
   };
@@ -1027,6 +1053,7 @@ export function TasksClient({
       reviewer2_id: null,
       review_step: 1,
       review1_approved_at: null,
+      review_submitted_at: null,
       influencer_id: null,
       approved_at: null,
       posted_at: null,
@@ -1144,6 +1171,7 @@ export function TasksClient({
       reviewer2_id: null,
       review_step: 1,
       review1_approved_at: null,
+      review_submitted_at: null,
       influencer_id: task.influencer_id,
       approved_at: null,
       posted_at: null,
@@ -1559,7 +1587,7 @@ export function TasksClient({
             }`}
           >
             <ClipboardCheck size={16} />
-            รอฉันตรวจ
+            รอตรวจ
             {reviewQueue.length > 0 && (
               <span
                 className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
@@ -1863,8 +1891,10 @@ export function TasksClient({
         ) : tab === "review" ? (
           <ReviewList
             queue={reviewQueue}
+            teamPending={teamPendingReview}
             sections={sections}
             today={today}
+            userId={userId}
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onApprove={approveTask}

@@ -52,6 +52,8 @@ import {
   isVideoPath,
   type ProfileOption,
   profileName,
+  reviewWaitStart,
+  waitDurationLabel,
 } from "./task-card";
 
 function sanitizeFileName(fileName: string): string {
@@ -940,6 +942,11 @@ export function TaskPanel({
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
               {hasChain ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2` : "รอตรวจ"}
+              {waitDurationLabel(reviewWaitStart(task)) && (
+                <span className="text-xs font-normal opacity-75">
+                  · {waitDurationLabel(reviewWaitStart(task))}
+                </span>
+              )}
             </span>
           )
         ) : (

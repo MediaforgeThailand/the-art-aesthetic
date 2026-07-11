@@ -174,7 +174,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     }
   }
 
-  for (const tab of ["รอฉันตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
+  for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
     await page.getByRole("button", { name: tab }).first().click();
     await settle(page, 700);
     await page.screenshot({

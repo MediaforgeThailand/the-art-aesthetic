@@ -261,6 +261,35 @@ export function currentReviewerId(task: TaskWithAssignee): string | null {
   return task.reviewer_id;
 }
 
+/** โปรไฟล์ของผู้ตรวจทอดปัจจุบัน (คนที่งาน "ค้างอยู่") — คู่กับ currentReviewerId */
+export function currentReviewerPerson(
+  task: TaskWithAssignee
+): NonNullable<TaskWithAssignee["reviewer"]> | null {
+  if ((task.review_step ?? 1) >= 2) {
+    return task.reviewer2 ?? task.reviewer ?? null;
+  }
+  return task.reviewer ?? null;
+}
+
+/** เวลาเริ่มรอของทอดปัจจุบัน — ทอด 2 นับจากตอนลำดับ 1 อนุมัติ, ทอด 1 นับจากตอนส่งตรวจ */
+export function reviewWaitStart(task: TaskWithAssignee): string | null {
+  if ((task.review_step ?? 1) >= 2) {
+    return task.review1_approved_at ?? task.review_submitted_at;
+  }
+  return task.review_submitted_at;
+}
+
+/** ระยะเวลารอแบบอ่านง่าย เช่น "รอมา 2 วัน" / "รอมา 3 ชม." (null = ไม่รู้จุดเริ่ม ไม่แสดง) */
+export function waitDurationLabel(sinceIso: string | null): string | null {
+  if (!sinceIso) return null;
+  const ms = Date.now() - Date.parse(sinceIso);
+  if (Number.isNaN(ms) || ms < 0) return null;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return "รอไม่ถึง 1 ชม.";
+  if (hours < 24) return `รอมา ${hours} ชม.`;
+  return `รอมา ${Math.floor(hours / 24)} วัน`;
+}
+
 /** วงกลมบอกสถานะการตรวจงาน (read-only) — none = ว่าง, รอตรวจ = นาฬิกาเหลือง, ผ่าน = ติ๊กเขียว
     งานที่ตรวจ 2 ทอด (มีผู้ตรวจลำดับ 2) บอกทอดใน tooltip */
 export function ReviewStatusDot({
@@ -505,6 +534,13 @@ export function TaskCardContent({
     ? (influ.nickname ??
       [influ.first_name, influ.last_name].filter(Boolean).join(" "))
     : null;
+  // งานรอตรวจ — บอกบนการ์ดเลยว่า "ค้างอยู่ที่ใคร" (ผู้ตรวจของทอดปัจจุบัน) + รอมานานเท่าไร
+  const pendingReviewer =
+    task.review_status === "pending" ? currentReviewerPerson(task) : null;
+  const pendingWaitLabel =
+    task.review_status === "pending"
+      ? waitDurationLabel(reviewWaitStart(task))
+      : null;
 
   return (
     <div
@@ -588,11 +624,25 @@ export function TaskCardContent({
         ) : (
           <>
             {task.review_status === "pending" && (
-              <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+              <span
+                title={`ค้างอยู่ที่ ${
+                  pendingReviewer ? profileName(pendingReviewer) : "ผู้ตรวจ"
+                }${pendingWaitLabel ? ` · ${pendingWaitLabel}` : ""}`}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
+              >
                 {task.reviewer2_id
                   ? `รอตรวจ ${task.review_step ?? 1}/2`
                   : "รอตรวจ"}
-              </Badge>
+                {pendingReviewer && (
+                  <span className="inline-flex max-w-24 items-center gap-1">
+                    <span className="opacity-60">·</span>
+                    <AssigneeAvatar assignee={pendingReviewer} size={5} />
+                    <span className="truncate">
+                      {profileName(pendingReviewer)}
+                    </span>
+                  </span>
+                )}
+              </span>
             )}
             {task.review_status === "approved" && (
               <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
