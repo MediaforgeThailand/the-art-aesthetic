@@ -1,3 +1,7 @@
+"use client";
+
+import { useId } from "react";
+
 /**
  * โลโก้ The ART — Plastic Surgery Hospital
  * สร้างเป็น typography ตาม artwork ต้นฉบับ: พื้นไล่เฉด rose gold,
@@ -6,6 +10,10 @@
 
 /** โลโก้สี่เหลี่ยมเล็ก (sidebar / avatar) — ย่อส่วนของ artwork เป็น SVG ให้คมทุกขนาด */
 export function LogoMark({ className = "h-10 w-10" }: { className?: string }) {
+  // gradient id ต้องไม่ซ้ำกันต่อ instance — มี LogoMark หลายตัวบนหน้าเดียว
+  // (sidebar จอใหญ่ + topbar + drawer มือถือ) ถ้า id ซ้ำ เบราว์เซอร์จะอ้างตัวแรก
+  // ซึ่งอยู่ใน subtree ที่ display:none → gradient ไม่ถูก render โลโก้กลายเป็นโปร่งใส
+  const gradId = `logo-mark-bg-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <svg
       viewBox="0 0 64 64"
@@ -13,13 +21,13 @@ export function LogoMark({ className = "h-10 w-10" }: { className?: string }) {
       className={`shrink-0 select-none ${className}`}
     >
       <defs>
-        <linearGradient id="logo-mark-bg" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#dcab9c" />
           <stop offset="0.55" stopColor="#c48b78" />
           <stop offset="1" stopColor="#a3634f" />
         </linearGradient>
       </defs>
-      <rect width="64" height="64" rx="14" fill="url(#logo-mark-bg)" />
+      <rect width="64" height="64" rx="14" fill={`url(#${gradId})`} />
       <text
         x="33"
         y="25"
