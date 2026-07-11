@@ -679,7 +679,8 @@ export function InfluBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="grid grid-cols-3 items-start gap-4 animate-fade-in-up">
+      {/* จอแคบ: คอลัมน์เรียงลงมา (ลากข้ามกลุ่มยังได้ด้วยการลากลง/ขึ้น) */}
+      <div className="grid grid-cols-1 items-start gap-4 animate-fade-in-up md:grid-cols-3">
         {INFLU_SIZE_GROUP_ORDER.map((g) => {
           const ids = currentOrder[g];
           const influs = ids

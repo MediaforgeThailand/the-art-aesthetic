@@ -335,8 +335,8 @@ export function PriceItemsAdmin({
         </p>
       )}
 
-      <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200/70">
-        <table className="w-full text-sm">
+      <div className="max-h-96 overflow-auto rounded-lg border border-stone-200/70">
+        <table className="w-full min-w-[560px] text-sm">
           <thead className="sticky top-0 bg-cream-soft/95 backdrop-blur">
             <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
               <th className="px-3 py-2 font-medium">หมวด</th>

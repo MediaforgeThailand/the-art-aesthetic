@@ -833,10 +833,11 @@ export function TaskPanel({
       ref={asideRef}
       tabIndex={-1}
       aria-label="รายละเอียดงาน"
-      className="flex h-full w-[26rem] shrink-0 flex-col border-l border-white/60 bg-white/80 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right"
+      // มือถือ: overlay เต็มจอทับบอร์ด / จอใหญ่ (≥lg): แผงข้างขวาแบบเดิม
+      className="fixed inset-0 z-50 flex w-full flex-col bg-white/95 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right lg:static lg:z-auto lg:h-full lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-white/60 lg:bg-white/80"
     >
       {/* header — เซคชัน brief: ปุ่ม "รับงาน" / งานปกติ: ส่งตรวจ → รอตรวจ → อนุมัติ */}
-      <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/60 px-4 py-3">
         {isBrief ? (
           isAccepted ? (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">

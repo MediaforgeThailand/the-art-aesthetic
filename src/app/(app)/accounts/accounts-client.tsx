@@ -345,7 +345,8 @@ export function AccountsClient({
         {profiles.length === 0 ? (
           <EmptyState icon={<Users size={40} />} title="ยังไม่มีบัญชีผู้ใช้" />
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-brand-100/70 text-left text-xs text-stone-500">
                 <th className="px-5 py-3 font-medium">ผู้ใช้</th>
@@ -432,6 +433,7 @@ export function AccountsClient({
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 

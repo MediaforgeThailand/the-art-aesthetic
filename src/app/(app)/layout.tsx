@@ -28,10 +28,12 @@ export default async function AppLayout({
   const email = typeof claims.email === "string" ? claims.email : "";
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    // มือถือ: topbar อยู่บน (Sidebar render เป็น topbar + drawer) / จอใหญ่: sidebar ซ้าย
+    // h-dvh กันแถบ address bar มือถือกินความสูง (100vh เพี้ยนบน iOS/Android)
+    <div className="flex h-dvh flex-col overflow-hidden lg:flex-row">
       <Sidebar userName={fullName} userEmail={email} />
       {/* แต่ละหน้าคุม scroll เอง — หน้าปกติครอบด้วย PageContainer, หน้าบอร์ด (/tasks) เป็น full-bleed */}
-      <main className="min-w-0 flex-1 overflow-hidden">{children}</main>
+      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
     </div>
   );
 }

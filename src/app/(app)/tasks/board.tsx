@@ -300,7 +300,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex min-w-[520px] flex-1 flex-col rounded-xl transition-colors duration-200 ${
+      className={`flex min-w-[86vw] flex-1 flex-col rounded-xl transition-colors duration-200 sm:min-w-[520px] ${
         highlight
           ? "border border-brand-300/60 bg-brand-100/50 ring-2 ring-brand-300 backdrop-blur-md"
           : "glass-soft"
@@ -358,14 +358,14 @@ function BoardColumn({
           <div
             className={
               masonry
-                ? "grid grid-cols-2 items-start gap-x-2 [grid-auto-rows:4px]"
-                : "grid grid-cols-2 gap-2"
+                ? "grid grid-cols-1 items-start gap-x-2 [grid-auto-rows:4px] sm:grid-cols-2"
+                : "grid grid-cols-1 gap-2 sm:grid-cols-2"
             }
           >
             {tasks.length === 0 && composer === null && (
               <div
                 style={masonry ? { gridRowEnd: "span 16" } : undefined}
-                className={`col-span-2 flex items-center justify-center rounded-lg border-2 border-dashed py-6 text-xs transition-colors duration-200 ${
+                className={`col-span-full flex items-center justify-center rounded-lg border-2 border-dashed py-6 text-xs transition-colors duration-200 ${
                   highlight
                     ? "border-brand-300 text-brand-500"
                     : "border-stone-200 text-stone-300"

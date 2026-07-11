@@ -671,9 +671,9 @@ export function MemoFormStage({
         )}
       </div>
 
-      {/* ตัวเอกสาร memo — กระดาษขาวสไตล์แบบฟอร์มจริง */}
-      <Card className="!bg-white/95 p-0">
-        <div className="mx-auto max-w-3xl px-8 py-8 text-[13px] leading-6 text-stone-800">
+      {/* ตัวเอกสาร memo — กระดาษขาวสไตล์แบบฟอร์มจริง (จอแคบเลื่อนแนวนอนดูทั้งฟอร์ม คงหน้าตาแบบพิมพ์) */}
+      <Card className="overflow-x-auto !bg-white/95 p-0">
+        <div className="mx-auto min-w-[640px] max-w-3xl px-8 py-8 text-[13px] leading-6 text-stone-800">
           {/* หัวบริษัท */}
           <div className="flex items-start gap-4 border-b-4 border-double border-amber-400/70 pb-4">
             <div className="font-display text-2xl font-bold leading-none text-brand-500">

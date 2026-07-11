@@ -1426,12 +1426,12 @@ export function TasksClient({
           <h1 className="text-xl font-semibold text-stone-900">Task</h1>
         </div>
 
-        {/* แท็บ: บันทึกงาน / รอฉันตรวจ */}
-        <div className="mb-3 flex gap-1">
+        {/* แท็บ: บันทึกงาน / รอฉันตรวจ — จอแคบเลื่อนแนวนอนได้ ไม่ดันตกบรรทัด */}
+        <div className="mb-3 flex gap-1 overflow-x-auto [scrollbar-width:none]">
           <button
             type="button"
             onClick={() => setTab("work")}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
               tab === "work"
                 ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                 : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
@@ -1443,7 +1443,7 @@ export function TasksClient({
           <button
             type="button"
             onClick={() => setTab("review")}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
               tab === "review"
                 ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                 : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
@@ -1466,7 +1466,7 @@ export function TasksClient({
           <button
             type="button"
             onClick={() => setTab("approved")}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
               tab === "approved"
                 ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                 : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
@@ -1489,7 +1489,7 @@ export function TasksClient({
           <button
             type="button"
             onClick={() => setTab("trash")}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
               tab === "trash"
                 ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                 : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
@@ -1515,7 +1515,7 @@ export function TasksClient({
               type="button"
               onClick={() => setReviewerModalOpen(true)}
               title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจเริ่มต้นของทีม"
-              className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
+              className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
             >
               <UserCog size={16} />
               จัดการผู้ตรวจ

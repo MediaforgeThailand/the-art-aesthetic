@@ -189,7 +189,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-900/30 p-4 pt-16 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-900/30 p-3 pt-8 backdrop-blur-sm animate-fade-in sm:p-4 sm:pt-16"
       onMouseDown={(e) => {
         // overlay เป็นทั้งพื้นที่ปิด modal และกล่อง scroll — คลิก/ลาก scrollbar แนวตั้ง
         // จะโดน e.target === overlay ด้วย ทำให้ modal ปิดและฟอร์มที่กรอกค้างหายหมด
@@ -294,7 +294,7 @@ export function EmptyState({
 }
 
 /* ---------- PageContainer — กรอบมาตรฐานของหน้าปกติ (คุม scroll แนวตั้งเอง)
-   full-width: แพลตฟอร์มนี้ใช้บนคอมเป็นหลัก ไม่บีบความกว้าง ไม่เผื่อมือถือ ---------- */
+   full-width ไม่บีบความกว้าง; จอแคบลด padding ให้เนื้อหาได้พื้นที่เต็ม ---------- */
 
 export function PageContainer({
   className = "",
@@ -305,7 +305,9 @@ export function PageContainer({
 }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className={`w-full px-6 py-6 ${className}`}>{children}</div>
+      <div className={`w-full px-3 py-4 sm:px-6 sm:py-6 ${className}`}>
+        {children}
+      </div>
     </div>
   );
 }

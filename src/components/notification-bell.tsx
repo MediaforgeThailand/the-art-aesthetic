@@ -191,11 +191,21 @@ export function NotificationBell({ userId }: { userId: string }) {
   const toggle = () => {
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      // แผงเปิดชิดขวาของ sidebar — กันทะลุขอบล่างจอ
-      setPos({
-        x: r.right + 10,
-        y: Math.min(r.top - 4, window.innerHeight - 520),
-      });
+      const panelW = Math.min(384, window.innerWidth - 16); // = w-96 หรือเต็มจอแคบ
+      const fitsRight = r.right + 10 + panelW <= window.innerWidth;
+      // จอใหญ่ (กระดิ่งใน sidebar): เปิดชิดขวาของ sidebar — กันทะลุขอบล่างจอ
+      // จอแคบ (กระดิ่งบน topbar): เปิดใต้ปุ่ม หนีบไม่ให้หลุดขอบจอ
+      setPos(
+        fitsRight
+          ? { x: r.right + 10, y: Math.min(r.top - 4, window.innerHeight - 520) }
+          : {
+              x: Math.max(
+                8,
+                Math.min(r.right - panelW, window.innerWidth - panelW - 8)
+              ),
+              y: r.bottom + 8,
+            }
+      );
     }
     setOpen((o) => !o);
   };
@@ -255,7 +265,7 @@ export function NotificationBell({ userId }: { userId: string }) {
           <div
             ref={panelRef}
             style={{ left: pos.x, top: Math.max(8, pos.y) }}
-            className="glass fixed z-[70] flex max-h-[75vh] w-96 flex-col rounded-xl shadow-2xl animate-scale-in"
+            className="glass fixed z-[70] flex max-h-[75vh] w-96 max-w-[calc(100vw-16px)] flex-col rounded-xl shadow-2xl animate-scale-in"
           >
             <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-2.5">
               <p className="text-sm font-semibold text-stone-800">การแจ้งเตือน</p>
