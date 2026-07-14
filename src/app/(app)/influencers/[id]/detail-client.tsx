@@ -17,6 +17,7 @@ import {
   PenLine,
   PhoneCall,
   Send,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1381,6 +1382,8 @@ function FollowupStage({
   const today = todayISO();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -1453,6 +1456,36 @@ function FollowupStage({
       setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
       return;
     }
+    router.refresh();
+  };
+
+  const startEditTitle = (t: InfluTaskRow) => {
+    if (readOnly) return;
+    setEditingTitleId(t.id);
+    setTitleDraft(t.title);
+  };
+
+  const saveTitle = async (t: InfluTaskRow) => {
+    if (readOnly) return;
+    const value = titleDraft.trim();
+    if (!value) {
+      setErr("ชื่อรายการห้ามเว้นว่าง");
+      return;
+    }
+    if (value === t.title) {
+      setEditingTitleId(null);
+      return;
+    }
+    setErr(null);
+    const { error } = await supabase
+      .from("influ_tasks")
+      .update({ title: value })
+      .eq("id", t.id);
+    if (error) {
+      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    setEditingTitleId(null);
     router.refresh();
   };
 
@@ -1594,15 +1627,65 @@ function FollowupStage({
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p
-                      className={`text-sm font-medium ${
-                        t.done
-                          ? "text-stone-400 line-through"
-                          : "text-stone-900"
-                      }`}
-                    >
-                      {idx + 1}. {t.title}
-                    </p>
+                    {editingTitleId === t.id ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-sm font-medium text-stone-400">
+                          {idx + 1}.
+                        </span>
+                        <input
+                          autoFocus
+                          value={titleDraft}
+                          onChange={(e) => setTitleDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void saveTitle(t);
+                            } else if (e.key === "Escape") {
+                              setEditingTitleId(null);
+                            }
+                          }}
+                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-sm font-medium text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void saveTitle(t)}
+                          title="บันทึกชื่อ"
+                          className="cursor-pointer rounded-md p-1 text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTitleId(null)}
+                          title="ยกเลิก"
+                          className="cursor-pointer rounded-md p-1 text-stone-400 transition-all hover:bg-stone-100 active:scale-90"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <p
+                          className={`text-sm font-medium ${
+                            t.done
+                              ? "text-stone-400 line-through"
+                              : "text-stone-900"
+                          }`}
+                        >
+                          {idx + 1}. {t.title}
+                        </p>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => startEditTitle(t)}
+                            title="แก้ไขชื่อรายการ"
+                            className="cursor-pointer rounded-md p-1 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                          >
+                            <PenLine size={13} />
+                          </button>
+                        )}
+                      </span>
+                    )}
                     {/* เคาน์ดาวน์เฉพาะข้อที่มีกำหนดเวลา — เตือนเมื่อเหลือ ≤ 7 วัน */}
                     {t.due_date && dl !== null && !t.done && (
                       dl < 0 ? (
