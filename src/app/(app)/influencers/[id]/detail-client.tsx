@@ -41,9 +41,12 @@ import {
   todayISO,
 } from "@/lib/format";
 import {
+  activeFollowupTasks,
   contractEndDate,
   INFLU_CHECKLIST,
   INFLU_CHECKLIST_SECTIONS,
+  INFLU_FOLLOWUP_MODE_ORDER,
+  INFLU_FOLLOWUP_MODES,
   INFLU_STAGES,
   INFLU_TIERS,
   tierFromFollowers,
@@ -51,6 +54,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluencerRow,
+  InfluFollowupMode,
   InfluFollowupRow,
   InfluSignatureRow,
   InfluTaskRow,
@@ -59,13 +63,16 @@ import type {
 } from "@/lib/types";
 import { useSignedUrl } from "../use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
+import { PackageStage } from "./package-stage";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
 /** สร้าง checklist ติดตามงานจากเอกสาร 5 หมวด (idempotent) — คืน error message ถ้าล้ม
-    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ stage 6" (วันนี้ ณ ตอน generate) */
+    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ stage 6" (วันนี้ ณ ตอน generate)
+    เช็คเฉพาะข้อของเทมเพลตมาตรฐาน (is_custom = false) — ข้อที่ทีมพิมพ์เองในโหมดแพ็คเกจเฉพาะ
+    ไม่ควรบล็อคการสร้างเทมเพลต ไม่งั้นเคสที่ generate ล้มแล้วไปกรอกเอง จะสร้างมาตรฐานกลับมาไม่ได้ */
 async function generateFollowupTasks(
   supabase: ReturnType<typeof createClient>,
   influencer: InfluencerRow
@@ -74,6 +81,7 @@ async function generateFollowupTasks(
     .from("influ_tasks")
     .select("id")
     .eq("influencer_id", influencer.id)
+    .eq("is_custom", false)
     .limit(1);
   if (exErr) return exErr.message;
   if (existing && existing.length > 0) return null;
@@ -145,6 +153,102 @@ function PhotoBox({
   );
 }
 
+/** แก้ชื่อ-นามสกุล-ชื่อเล่นของ influencer — เดิมกรอกได้ครั้งเดียวตอนสร้างการ์ด แก้ทีหลังไม่ได้
+    เปิดได้ทุก stage รวมถึงเคสที่ปิดงานแล้ว (เป็นข้อมูลตัวบุคคล ไม่ใช่สถานะงาน — พิมพ์ผิดต้องแก้ได้เสมอ)
+    คอมโพเนนต์แม่ mount ให้เฉพาะตอนเปิด — ค่าตั้งต้นจึงอ่านจาก props ใหม่ทุกครั้ง ไม่ต้อง sync ด้วย effect */
+function NameEditModal({
+  influencer,
+  onClose,
+}: {
+  influencer: InfluencerRow;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [firstName, setFirstName] = useState(influencer.first_name);
+  const [lastName, setLastName] = useState(influencer.last_name ?? "");
+  const [nickname, setNickname] = useState(influencer.nickname ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const first = firstName.trim();
+    if (!first) {
+      setErr("ชื่อห้ามเว้นว่าง");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const { error } = await supabase
+      .from("influencers")
+      .update({
+        first_name: first,
+        last_name: lastName.trim() || null,
+        nickname: nickname.trim() || null,
+      })
+      .eq("id", influencer.id);
+    setBusy(false);
+    if (error) {
+      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onClose();
+    router.refresh();
+  };
+
+  return (
+    <Modal open onClose={onClose} title="แก้ไขชื่อ Influencer">
+      <form onSubmit={save} className="space-y-3">
+        <div>
+          <Label htmlFor="influ-first">ชื่อ *</Label>
+          <Input
+            id="influ-first"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="influ-last">นามสกุล</Label>
+          <Input
+            id="influ-last"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="influ-nick">ชื่อเล่น</Label>
+          <Input
+            id="influ-nick"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
+          />
+        </div>
+        {err && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+            {err}
+          </p>
+        )}
+        <p className="text-xs text-stone-400">
+          ชื่อนี้ถูกใช้ในเอกสาร Memo และสัญญาที่สร้างจากระบบ —
+          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม
+        </p>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            ยกเลิก
+          </Button>
+          <Button type="submit" loading={busy}>
+            บันทึกชื่อ
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /* ================================================================== */
 
 export function InfluDetailClient({
@@ -180,10 +284,15 @@ export function InfluDetailClient({
   const maxStage = influencer.completed ? 6 : influencer.stage;
   const readOnly =
     influencer.completed || (typeof view === "number" && view < influencer.stage);
+  const [nameOpen, setNameOpen] = useState(false);
 
-  // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ)
-  const followupLeft = tasks.filter((t) => !t.done).length;
-  const followupTotal = tasks.length;
+  // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  const activeTasks = useMemo(
+    () => activeFollowupTasks(influencer.followup_mode, tasks),
+    [influencer.followup_mode, tasks]
+  );
+  const followupLeft = activeTasks.filter((t) => !t.done).length;
+  const followupTotal = activeTasks.length;
 
   return (
     <div>
@@ -196,11 +305,21 @@ export function InfluDetailClient({
           <ArrowLeft size={16} />
           รายชื่อ
         </Link>
-        <h1 className="text-xl font-semibold text-stone-900">
-          คุณ{fullName}
-          {influencer.nickname && (
-            <span className="text-stone-400"> ({influencer.nickname})</span>
-          )}
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-stone-900">
+          <span>
+            คุณ{fullName}
+            {influencer.nickname && (
+              <span className="text-stone-400"> ({influencer.nickname})</span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() => setNameOpen(true)}
+            title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
+            className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+          >
+            <PenLine size={15} />
+          </button>
         </h1>
         {influencer.tier && (
           <Badge className={INFLU_TIERS[influencer.tier].badge}>
@@ -291,7 +410,7 @@ export function InfluDetailClient({
         {view === "overview" && (
           <OverviewPanel
             influencer={influencer}
-            followupTasks={tasks}
+            followupTasks={activeTasks}
             contentTasks={contentTasks}
             onGoStage={(step) => setView(step)}
           />
@@ -335,6 +454,13 @@ export function InfluDetailClient({
 
       {/* งานคอนเทนต์ที่ผูกกับ Influencer คนนี้ (จากหน้า "งาน") */}
       <ContentTasksSection tasks={contentTasks} />
+
+      {nameOpen && (
+        <NameEditModal
+          influencer={influencer}
+          onClose={() => setNameOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1366,14 +1492,15 @@ function ServiceDayStage({
   );
 }
 
-/* ============ Stage 6: Follow up งาน (10 step ย่อย) ============ */
+/* ============ Stage 6: ติดตามงาน — 2 โหมด (มาตรฐาน / แพ็คเกจเฉพาะ) ============ */
 
 function FollowupStage({
   influencer,
-  tasks,
+  tasks: allTasks,
   readOnly,
 }: {
   influencer: InfluencerRow;
+  /** ข้อของทั้ง 2 โหมด — โหมดที่ไม่ได้ใช้ถูกซ่อน (ไม่ถูกลบ) */
   tasks: InfluTaskRow[];
   readOnly: boolean;
 }) {
@@ -1386,6 +1513,37 @@ function FollowupStage({
   const [titleDraft, setTitleDraft] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  const mode = influencer.followup_mode;
+  const tasks = useMemo(
+    () => activeFollowupTasks(mode, allTasks),
+    [mode, allTasks]
+  );
+  const hiddenCount = allTasks.length - tasks.length;
+
+  /** step ถัดไปของข้อที่พิมพ์เอง — กันเลข 1..23 ไว้ให้เทมเพลตมาตรฐานเสมอ
+      (unique influencer_id+step: ถ้าข้อ custom ไปกินเลข 1 เทมเพลตจะ insert ทับไม่ได้) */
+  const nextCustomStep = useMemo(
+    () => Math.max(INFLU_CHECKLIST.length, 0, ...allTasks.map((t) => t.step)) + 1,
+    [allTasks]
+  );
+
+  const switchMode = async (next: InfluFollowupMode) => {
+    if (readOnly || switching || next === mode) return;
+    setSwitching(true);
+    setErr(null);
+    const { error } = await supabase
+      .from("influencers")
+      .update({ followup_mode: next })
+      .eq("id", influencer.id);
+    setSwitching(false);
+    if (error) {
+      setErr(`เปลี่ยนโหมดไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    router.refresh();
+  };
 
   const doneCount = tasks.filter((t) => t.done).length;
   /** จำนวนวันจากวันนี้ถึงกำหนด — ติดลบ = เลยกำหนดแล้ว */
@@ -1405,7 +1563,12 @@ function FollowupStage({
       daysLeft(t.due_date) >= 0 &&
       daysLeft(t.due_date) <= 7
   ).length;
-  const allDone = tasks.length > 0 && doneCount === tasks.length;
+  // โหมดแพ็คเกจเฉพาะที่ยังไม่ได้เพิ่มข้อไหนเลย (เช่น ตกลงกันเป็น note ล้วน) ต้องปิดงานได้
+  // — ไม่งั้นเคสค้างที่ stage 6 ตลอดไป; โหมดมาตรฐานยังต้องมีข้อครบเหมือนเดิม
+  const allDone =
+    mode === "custom"
+      ? doneCount === tasks.length
+      : tasks.length > 0 && doneCount === tasks.length;
 
   // จัดกลุ่มตามหมวดของเอกสาร — งานจากเทมเพลตเดิม (ไม่มีหมวด) แสดงท้ายสุด
   const groups = useMemo(() => {
@@ -1532,6 +1695,45 @@ function FollowupStage({
 
   return (
     <div className="space-y-4">
+      {/* เลือกโหมด — เคสดารา/จ่ายค่าตัว เงื่อนไขไม่เหมือนเคสแลกหัตถการ */}
+      <Card className="p-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-xs font-medium text-stone-500">
+            โหมดติดตามงาน
+          </span>
+          <div className="flex gap-1 rounded-full bg-stone-100/80 p-1">
+            {INFLU_FOLLOWUP_MODE_ORDER.map((m) => (
+              <button
+                key={m}
+                type="button"
+                disabled={readOnly || switching}
+                onClick={() => void switchMode(m)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  readOnly || switching
+                    ? "cursor-default"
+                    : "cursor-pointer active:scale-[0.97]"
+                } ${
+                  mode === m
+                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                    : "text-stone-500 hover:bg-white/70 hover:text-stone-700"
+                }`}
+              >
+                {INFLU_FOLLOWUP_MODES[m].label}
+              </button>
+            ))}
+          </div>
+          <p className="min-w-0 flex-1 text-xs text-stone-400">
+            {INFLU_FOLLOWUP_MODES[mode].hint}
+          </p>
+        </div>
+        {hiddenCount > 0 && (
+          <p className="mt-2 text-[11px] text-stone-400">
+            อีกโหมดมี {hiddenCount} ข้อซ่อนอยู่ — ไม่ได้ถูกลบ
+            สลับกลับมาเมื่อไหร่ก็เห็นเหมือนเดิม
+          </p>
+        )}
+      </Card>
+
       <div className="flex flex-wrap items-center gap-3">
         <Badge className="bg-brand-50 text-brand-700">
           ทำแล้ว {doneCount}/{tasks.length} ข้อ
@@ -1581,6 +1783,89 @@ function FollowupStage({
         </p>
       )}
 
+      {mode === "custom" ? (
+        <PackageStage
+          influencer={influencer}
+          tasks={tasks}
+          nextStep={nextCustomStep}
+          readOnly={readOnly}
+        />
+      ) : (
+        <StandardChecklist
+          tasks={tasks}
+          groups={groups}
+          readOnly={readOnly}
+          generating={generating}
+          today={today}
+          copiedId={copiedId}
+          editingTitleId={editingTitleId}
+          titleDraft={titleDraft}
+          setTitleDraft={setTitleDraft}
+          onCancelEditTitle={() => setEditingTitleId(null)}
+          onStartEditTitle={startEditTitle}
+          onSaveTitle={saveTitle}
+          onToggleDone={toggleDone}
+          onCopyScript={copyScript}
+          onDraftChange={(id, value) =>
+            setDrafts((d) => ({ ...d, [id]: value }))
+          }
+          onSaveDescription={(t) =>
+            saveDescription(t, drafts[t.id] ?? t.description ?? "")
+          }
+          onRegenerate={regenerate}
+        />
+      )}
+    </div>
+  );
+}
+
+/** checklist 5 หมวดตามเอกสารแนบท้ายสัญญา (โหมดมาตรฐาน) — state/handler อยู่ที่ FollowupStage
+    เพราะโหมดสลับไปมาได้ ต้องนับ done/overdue รวมที่เดียว */
+function StandardChecklist({
+  tasks,
+  groups,
+  readOnly,
+  generating,
+  today,
+  copiedId,
+  editingTitleId,
+  titleDraft,
+  setTitleDraft,
+  onCancelEditTitle,
+  onStartEditTitle,
+  onSaveTitle,
+  onToggleDone,
+  onCopyScript,
+  onDraftChange,
+  onSaveDescription,
+  onRegenerate,
+}: {
+  tasks: InfluTaskRow[];
+  groups: { section: string; rows: InfluTaskRow[] }[];
+  readOnly: boolean;
+  generating: boolean;
+  today: string;
+  copiedId: string | null;
+  editingTitleId: string | null;
+  titleDraft: string;
+  setTitleDraft: (v: string) => void;
+  onCancelEditTitle: () => void;
+  onStartEditTitle: (t: InfluTaskRow) => void;
+  onSaveTitle: (t: InfluTaskRow) => void | Promise<void>;
+  onToggleDone: (t: InfluTaskRow) => void | Promise<void>;
+  onCopyScript: (t: InfluTaskRow) => void | Promise<void>;
+  onDraftChange: (id: string, value: string) => void;
+  onSaveDescription: (t: InfluTaskRow) => void | Promise<void>;
+  onRegenerate: () => void | Promise<void>;
+}) {
+  const daysLeft = (due: string) =>
+    Math.round(
+      (new Date(due.slice(0, 10)).getTime() - new Date(today).getTime()) /
+        86400000
+    );
+
+  return (
+    <>
       {tasks.length === 0 && !readOnly && (
         <Card className="p-6 text-center">
           <p className="text-sm text-stone-500">
@@ -1589,7 +1874,7 @@ function FollowupStage({
           <Button
             className="mt-3"
             loading={generating}
-            onClick={() => void regenerate()}
+            onClick={() => void onRegenerate()}
           >
             สร้าง checklist ติดตามงาน (5 หมวด)
           </Button>
@@ -1615,7 +1900,7 @@ function FollowupStage({
                 <button
                   type="button"
                   disabled={readOnly}
-                  onClick={() => void toggleDone(t)}
+                  onClick={() => void onToggleDone(t)}
                   title={t.done ? "ยกเลิกติ๊ก" : "ติ๊กว่า follow up แล้ว"}
                   className={`mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all active:scale-90 disabled:cursor-default ${
                     t.done
@@ -1639,16 +1924,16 @@ function FollowupStage({
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              void saveTitle(t);
+                              void onSaveTitle(t);
                             } else if (e.key === "Escape") {
-                              setEditingTitleId(null);
+                              onCancelEditTitle();
                             }
                           }}
                           className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-sm font-medium text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                         />
                         <button
                           type="button"
-                          onClick={() => void saveTitle(t)}
+                          onClick={() => void onSaveTitle(t)}
                           title="บันทึกชื่อ"
                           className="cursor-pointer rounded-md p-1 text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90"
                         >
@@ -1656,7 +1941,7 @@ function FollowupStage({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEditingTitleId(null)}
+                          onClick={onCancelEditTitle}
                           title="ยกเลิก"
                           className="cursor-pointer rounded-md p-1 text-stone-400 transition-all hover:bg-stone-100 active:scale-90"
                         >
@@ -1677,7 +1962,7 @@ function FollowupStage({
                         {!readOnly && (
                           <button
                             type="button"
-                            onClick={() => startEditTitle(t)}
+                            onClick={() => onStartEditTitle(t)}
                             title="แก้ไขชื่อรายการ"
                             className="cursor-pointer rounded-md p-1 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
                           >
@@ -1727,7 +2012,7 @@ function FollowupStage({
                       </p>
                       <button
                         type="button"
-                        onClick={() => void copyScript(t)}
+                        onClick={() => void onCopyScript(t)}
                         title="คัดลอก script"
                         className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-all active:scale-90 ${
                           copiedId === t.id
@@ -1748,12 +2033,8 @@ function FollowupStage({
                     defaultValue={t.description ?? ""}
                     disabled={readOnly}
                     placeholder="+ เพิ่มหมายเหตุ เช่น ส่งไฟล์แล้ว รอทีมตรวจ..."
-                    onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [t.id]: e.target.value }))
-                    }
-                    onBlur={() =>
-                      void saveDescription(t, drafts[t.id] ?? t.description ?? "")
-                    }
+                    onChange={(e) => onDraftChange(t.id, e.target.value)}
+                    onBlur={() => void onSaveDescription(t)}
                     className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   />
                   {t.done && t.done_at && (
@@ -1771,12 +2052,14 @@ function FollowupStage({
         ))}
       </div>
 
-      <p className="text-xs text-stone-400">
-        ทั้งหมด {formatNumber(tasks.length)} ข้อ —
-        ข้อที่มีกำหนดเวลาจะเริ่มนับจากวันที่เข้าสู่ stage นี้
-        และขึ้นป้ายเตือนเมื่อใกล้ถึงกำหนด (เหลือ ≤ 7 วัน) หรือเลยกำหนด
-        ส่วนข้อที่ไม่มีกำหนดเวลาไม่มีการแจ้งเตือน
-      </p>
-    </div>
+      {tasks.length > 0 && (
+        <p className="mt-4 text-xs text-stone-400">
+          ทั้งหมด {formatNumber(tasks.length)} ข้อ —
+          ข้อที่มีกำหนดเวลาจะเริ่มนับจากวันที่เข้าสู่ stage นี้
+          และขึ้นป้ายเตือนเมื่อใกล้ถึงกำหนด (เหลือ ≤ 7 วัน) หรือเลยกำหนด
+          ส่วนข้อที่ไม่มีกำหนดเวลาไม่มีการแจ้งเตือน
+        </p>
+      )}
+    </>
   );
 }

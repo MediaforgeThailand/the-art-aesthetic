@@ -339,10 +339,19 @@ export function InfluencersClient({
     }
   };
 
+  /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ
+     ไม่งั้นชิปเตือนบนการ์ดจะนับข้อของโหมดที่มองไม่เห็นด้วย */
+  const activeTasks = useMemo(() => {
+    const modeById = new Map(items.map((i) => [i.id, i.followup_mode]));
+    return tasks.filter(
+      (t) => t.is_custom === (modeById.get(t.influencer_id) === "custom")
+    );
+  }, [tasks, items]);
+
   /* สถิติ follow up ต่อคน: เกินกำหนดกี่งาน, งานถัดไปครบกำหนดเมื่อไหร่, follow ล่าสุดเมื่อไหร่ */
   const statsByInflu = useMemo(() => {
     const map = new Map<string, InfluStats>();
-    for (const t of tasks) {
+    for (const t of activeTasks) {
       const s =
         map.get(t.influencer_id) ??
         ({ overdue: 0, nextDue: null, lastDone: null, pending: 0 } as InfluStats);
@@ -358,15 +367,15 @@ export function InfluencersClient({
       map.set(t.influencer_id, s);
     }
     return map;
-  }, [tasks, today]);
+  }, [activeTasks, today]);
 
   const totalDue = useMemo(() => {
     let n = 0;
-    for (const t of tasks) {
+    for (const t of activeTasks) {
       if (!t.done && t.due_date && t.due_date <= today) n += 1;
     }
     return n;
-  }, [tasks, today]);
+  }, [activeTasks, today]);
 
   /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
      ชิป "ปฏิเสธ" = ดูเฉพาะคนที่ปฏิเสธ (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */

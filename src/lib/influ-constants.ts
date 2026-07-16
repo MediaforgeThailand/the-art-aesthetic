@@ -1,4 +1,4 @@
-import type { InfluSizeGroup, InfluTier } from "./types";
+import type { InfluFollowupMode, InfluSizeGroup, InfluTier } from "./types";
 
 /* ---------- Tier ตามยอดผู้ติดตาม (ตามแบบฟอร์มขออนุมัติเคส) ---------- */
 
@@ -383,6 +383,36 @@ export const INFLU_CHECKLIST: {
 export const INFLU_CHECKLIST_SECTIONS: string[] = [
   ...new Set(INFLU_CHECKLIST.map((c) => c.section)),
 ];
+
+/* ---------- Stage 6: โหมด checklist (มาตรฐาน / แพ็คเกจเฉพาะ) ---------- */
+
+export const INFLU_FOLLOWUP_MODES: Record<
+  InfluFollowupMode,
+  { label: string; hint: string }
+> = {
+  standard: {
+    label: "มาตรฐาน",
+    hint: "checklist 5 หมวดตามเอกสารแนบท้ายสัญญา — ใช้กับเคสแลกหัตถการทั่วไป",
+  },
+  custom: {
+    label: "แพ็คเกจเฉพาะ",
+    hint: "เคสดารา/จ่ายค่าตัว ที่เงื่อนไขไม่เหมือนเคสมาตรฐาน — เขียนขอบเขตงานเป็น note แล้วกรอก checklist เงื่อนไขเอง",
+  },
+};
+
+export const INFLU_FOLLOWUP_MODE_ORDER: InfluFollowupMode[] = [
+  "standard",
+  "custom",
+];
+
+/** ข้อ checklist ที่ "ใช้งานอยู่" ตามโหมดของเคส — ข้อของอีกโหมดถูกซ่อนไว้ (ไม่ถูกลบ สลับกลับมาเห็นได้)
+    ทุกที่ที่นับ follow-up ต้องกรองด้วยตัวนี้ ไม่งั้นเลขจะรวมข้อของโหมดที่ซ่อนอยู่ด้วย */
+export function activeFollowupTasks<T extends { is_custom: boolean }>(
+  mode: InfluFollowupMode,
+  tasks: T[]
+): T[] {
+  return tasks.filter((t) => t.is_custom === (mode === "custom"));
+}
 
 /* ---------- (เทมเพลตเดิม 10 step — เลิกใช้แล้ว เก็บไว้อ้างอิงข้อมูลเก่าใน DB) ----------
    งานที่ generate ด้วยเทมเพลตนี้ก่อน 2026-07-05 ยังแสดงผลได้ปกติ (section = null) */

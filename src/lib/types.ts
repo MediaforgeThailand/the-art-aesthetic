@@ -32,6 +32,7 @@ export type {
   PriceItemRow,
   InfluTier,
   InfluSizeGroup,
+  InfluFollowupMode,
   ProcedureChange,
   InfluencerRow,
   InfluFollowupRow,

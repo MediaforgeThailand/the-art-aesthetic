@@ -60,7 +60,7 @@ export function influName(i: InfluencerListRow): string {
 
 export type InfluTaskLite = Pick<
   InfluTaskRow,
-  "influencer_id" | "due_date" | "done" | "done_at"
+  "influencer_id" | "due_date" | "done" | "done_at" | "is_custom"
 >;
 
 /** สถิติ follow up ต่อ influ: งานเกินกำหนด, กำหนดถัดไป, follow ล่าสุด */
