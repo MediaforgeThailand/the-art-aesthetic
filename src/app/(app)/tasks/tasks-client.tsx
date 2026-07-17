@@ -3,6 +3,7 @@
 import {
   BadgeCheck,
   ClipboardCheck,
+  EyeOff,
   ListTodo,
   Search,
   Trash2,
@@ -406,6 +407,12 @@ export function TasksClient({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // ตัวกรองสถานะที่เลือกไว้ชนะ "ยกเว้น" เสมอ — ไม่งั้นเลือกสถานะที่ถูกยกเว้นอยู่
+    // (default ยกเว้น "done") จะกรองชนกันเองจนบอร์ดว่างทั้งที่มีงานสถานะนั้นอยู่จริง
+    const excludeSt =
+      statusFilter === "all"
+        ? excludeStatuses
+        : excludeStatuses.filter((s) => s !== statusFilter);
     return activeItems.filter((t) => {
       // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
       if (
@@ -415,12 +422,12 @@ export function TasksClient({
         return false;
       }
       // ยกเว้น (ซ่อน) ตามสถานะที่เลือก — กติกาเดียวกับตัวกรองสถานะ
-      if (excludeStatuses.length > 0) {
-        if (excludeStatuses.includes("working") && t.review_status === "none")
+      if (excludeSt.length > 0) {
+        if (excludeSt.includes("working") && t.review_status === "none")
           return false;
-        if (excludeStatuses.includes("pending") && t.review_status === "pending")
+        if (excludeSt.includes("pending") && t.review_status === "pending")
           return false;
-        if (excludeStatuses.includes("done") && t.completed) return false;
+        if (excludeSt.includes("done") && t.completed) return false;
       }
       if (statusFilter === "working" && t.review_status !== "none") return false;
       if (statusFilter === "pending" && t.review_status !== "pending")
@@ -464,6 +471,31 @@ export function TasksClient({
     excludeAssignees,
     excludeStatuses,
   ]);
+
+  /** จำนวนงานต่อสถานะของทั้งทีม (ไม่สนตัวกรองอื่น) — ใช้บอกว่าตัวกรองซ่อนงานไว้เท่าไร
+      เกณฑ์เดียวกับตัวกรองสถานะ: งานที่ติ๊กเสร็จเองโดยไม่ส่งตรวจถูกนับทั้ง "กำลังทำ" และ "เสร็จสมบูรณ์" */
+  const statusCounts = useMemo(() => {
+    let working = 0;
+    let pending = 0;
+    let done = 0;
+    for (const t of activeItems) {
+      if (t.review_status === "none") working++;
+      else if (t.review_status === "pending") pending++;
+      if (t.completed) done++;
+    }
+    return { all: activeItems.length, working, pending, done };
+  }, [activeItems]);
+
+  /** งานทั้งหมดของสถานะที่เลือก — เทียบกับที่เห็นจริงแล้วได้จำนวนที่ตัวกรองอื่นซ่อนไว้ */
+  const statusTotal =
+    statusFilter === "working"
+      ? statusCounts.working
+      : statusFilter === "pending"
+        ? statusCounts.pending
+        : statusFilter === "done"
+          ? statusCounts.done
+          : statusCounts.all;
+  const hiddenCount = Math.max(0, statusTotal - filtered.length);
 
   /** งานที่ section หายไป (null/ไม่รู้จัก) ถูกพักไว้ที่คอลัมน์แรก — กติกาเดียวกับตอนลบ section */
   const bucketOf = (t: TaskWithAssignee): string | null => {
@@ -1714,10 +1746,10 @@ export function TasksClient({
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">สถานะ: ทั้งหมด</option>
-              <option value="working">กำลังทำ</option>
-              <option value="pending">รอตรวจ</option>
-              <option value="done">เสร็จสมบูรณ์</option>
+              <option value="all">สถานะ: ทั้งหมด ({statusCounts.all})</option>
+              <option value="working">กำลังทำ ({statusCounts.working})</option>
+              <option value="pending">รอตรวจ ({statusCounts.pending})</option>
+              <option value="done">เสร็จสมบูรณ์ ({statusCounts.done})</option>
             </Select>
           </div>
           <ExcludeFilter
@@ -1747,6 +1779,17 @@ export function TasksClient({
               className="!w-36 !py-1.5 !text-xs"
             />
           </div>
+          {/* บอกตรงๆ ว่าตัวกรองซ่อนงานไว้กี่งาน — default ("เกี่ยวข้องกับฉัน" + ยกเว้นงานเสร็จ)
+              เคยทำให้เข้าใจผิดว่างานหายไปจากระบบ */}
+          {hiddenCount > 0 && (
+            <span
+              title="ตัวกรองที่ตั้งไว้ซ่อนงานบางส่วนอยู่ — กด 'ล้างตัวกรอง' เพื่อดูทั้งหมด"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700"
+            >
+              <EyeOff size={13} />
+              แสดง {filtered.length} จาก {statusTotal} · ซ่อนอยู่ {hiddenCount}
+            </span>
+          )}
           {hasFilter && (
             <button
               type="button"
