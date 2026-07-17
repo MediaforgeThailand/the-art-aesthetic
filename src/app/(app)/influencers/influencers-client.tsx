@@ -3,8 +3,12 @@
 import {
   BellRing,
   ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  Clock3,
   EyeOff,
   FileSignature,
+  LayoutGrid,
   Plus,
   Search,
   Sparkles,
@@ -27,7 +31,11 @@ import {
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatNumber, todayISO } from "@/lib/format";
-import { INFLU_STAGES, sizeGroupFromFollowers } from "@/lib/influ-constants";
+import {
+  INFLU_STAGES,
+  INFLU_TIERS,
+  sizeGroupFromFollowers,
+} from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluSizeGroup } from "@/lib/types";
 import {
@@ -57,6 +65,21 @@ const INFLU_STATUS_ORDER: InfluStatusKey[] = [
 ];
 /** ค่าเริ่มต้น: ซ่อนคนที่ปฏิเสธออกจากบอร์ด (ดูได้จากชิป "ปฏิเสธ" หรือเอาติ๊กออก) */
 const DEFAULT_EXCLUDED: InfluStatusKey[] = ["declined"];
+
+/** รอทำ Memo มานานแค่ไหน — Date.now() ต้องอยู่นอก component ไม่งั้นโดนกฎ react-hooks/purity */
+function memoWaitLabel(since: string): string {
+  const ms = Date.now() - new Date(since).getTime();
+  const days = Math.floor(ms / 86_400_000);
+  if (days >= 1) return `รอมา ${days} วัน`;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours >= 1) return `รอมา ${hours} ชม.`;
+  return "เพิ่งติ๊ก";
+}
+
+/** รอเกิน 2 วัน = เริ่มช้า ให้เด่นขึ้น (กติกาเดียวกับป้ายรอตรวจในหน้า Task) */
+function memoWaitIsLate(since: string): boolean {
+  return Date.now() - new Date(since).getTime() > 2 * 86_400_000;
+}
 
 function readSavedExcluded(): Set<InfluStatusKey> {
   if (typeof window === "undefined") return new Set(DEFAULT_EXCLUDED);
@@ -185,6 +208,78 @@ function InfluExcludeFilter({
   );
 }
 
+/* ---------- แท็บ "รอทำ Memo" — เคสที่ติ๊กว่าข้อมูลครบแล้ว รอ influ manager ลงมือทำ ---------- */
+
+function MemoWaitingList({
+  items,
+  onOpen,
+}: {
+  items: InfluencerListRow[];
+  onOpen: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <Card>
+        <EmptyState
+          icon={<ClipboardCheck size={40} strokeWidth={1.5} />}
+          title="ไม่มีเคสรอทำ Memo"
+          description="เมื่อทีมติ๊กว่า 'ข้อมูลพร้อมทำ Memo' ใน Stage 3 เคสนั้นจะมาแสดงที่นี่ — พออัพโหลดไฟล์ Memo แล้วจะหลุดจากคิวเอง"
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3 animate-fade-in-up">
+      <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
+        <ClipboardCheck size={14} className="mt-0.5 shrink-0" />
+        เคสที่ข้อมูลครบพร้อมทำ Memo แล้ว — กดเพื่อเปิด Stage 3
+        คัดลอกข้อความไปทำ Memo แล้วอัพโหลดไฟล์กลับเข้ามา (อัพโหลดแล้วหลุดจากคิวนี้เอง)
+      </p>
+      <Card className="divide-y divide-stone-100 !p-0">
+        {items.map((i) => {
+          const late = memoWaitIsLate(i.memo_ready_at!);
+          const meta = [
+            i.tier ? INFLU_TIERS[i.tier].label : null,
+            i.followers !== null ? `${formatNumber(i.followers)} followers` : null,
+            i.procedure_text,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <button
+              key={i.id}
+              type="button"
+              onClick={() => onOpen(i.id)}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-50/40 active:scale-[0.997]"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-stone-800">
+                  {influName(i)}
+                </p>
+                {meta !== "" && (
+                  <p className="truncate text-xs text-stone-500">{meta}</p>
+                )}
+              </div>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  late
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                <Clock3 size={11} />
+                {memoWaitLabel(i.memo_ready_at!)}
+              </span>
+              <ChevronRight size={16} className="shrink-0 text-stone-300" />
+            </button>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
 export function InfluencersClient({
   influencers,
   tasks,
@@ -201,6 +296,9 @@ export function InfluencersClient({
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
+
+  /** แท็บ: บอร์ดปกติ | คิวรอทำ Memo (stage 3 ที่ติ๊กว่าข้อมูลครบแล้ว) */
+  const [tab, setTab] = useState<"board" | "memo">("board");
 
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<
@@ -402,6 +500,24 @@ export function InfluencersClient({
     });
   }, [items, search, stageFilter, excluded]);
 
+  /** คิว "รอทำ Memo" — ติ๊กว่าข้อมูลครบแล้ว (Stage 3) แต่ยังไม่ได้อัพโหลดไฟล์ Memo
+      = ยังไม่มีใครลงมือทำ; อัพโหลดแล้วหลุดจากคิวเอง — เรียงคนที่รอนานสุดขึ้นก่อน
+      (ไม่สนตัวกรอง/ยกเว้นของบอร์ด — คิวนี้ต้องเห็นครบเสมอ) */
+  const memoWaiting = useMemo(
+    () =>
+      items
+        .filter(
+          (i) =>
+            i.memo_ready_at !== null &&
+            i.memo_file_path === null &&
+            i.stage === 3 &&
+            !i.completed &&
+            i.declined_at === null
+        )
+        .sort((a, b) => (a.memo_ready_at ?? "").localeCompare(b.memo_ready_at ?? "")),
+    [items]
+  );
+
   /* ---- modal เพิ่ม influ (stage 1: ชื่อ นามสกุล เบอร์) ---- */
   const [addOpen, setAddOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -480,13 +596,52 @@ export function InfluencersClient({
         }
       />
 
+      {/* แท็บ: บอร์ด | รอทำ Memo — แยกคิวให้ influ manager เห็นว่ามีเคสไหนข้อมูลครบรออยู่ */}
+      <div className="mb-4 flex gap-1 overflow-x-auto [scrollbar-width:none] animate-fade-in-up">
+        <button
+          type="button"
+          onClick={() => setTab("board")}
+          className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            tab === "board"
+              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+              : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+          }`}
+        >
+          <LayoutGrid size={16} />
+          บอร์ด
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("memo")}
+          className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+            tab === "memo"
+              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+              : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+          }`}
+        >
+          <ClipboardCheck size={16} />
+          รอทำ Memo
+          {memoWaiting.length > 0 && (
+            <span
+              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                tab === "memo"
+                  ? "bg-white/25 text-cream"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {memoWaiting.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {loadError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </div>
       )}
 
-      {totalDue > 0 && (
+      {tab === "board" && totalDue > 0 && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 animate-fade-in">
           <BellRing size={16} className="shrink-0" />
           มีงาน follow up ถึงกำหนดแล้ว {formatNumber(totalDue)} รายการ —
@@ -494,7 +649,8 @@ export function InfluencersClient({
         </div>
       )}
 
-      {/* ค้นหา + กรอง stage */}
+      {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง) */}
+      {tab === "board" && (
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
@@ -553,6 +709,7 @@ export function InfluencersClient({
           </button>
         )}
       </div>
+      )}
 
       {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
@@ -560,7 +717,12 @@ export function InfluencersClient({
         </div>
       )}
 
-      {items.length === 0 ? (
+      {tab === "memo" ? (
+        <MemoWaitingList
+          items={memoWaiting}
+          onOpen={(id) => router.push(`/influencers/${id}`)}
+        />
+      ) : items.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}

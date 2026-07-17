@@ -3,6 +3,7 @@
 import {
   Check,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Copy,
   Download,
@@ -10,6 +11,7 @@ import {
   FileText,
   Images,
   PenLine,
+  Undo2,
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -224,11 +226,30 @@ function MemoCopyStage({
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [markingReady, setMarkingReady] = useState(false);
   const memoInputRef = useRef<HTMLInputElement>(null);
   const photo = useSignedUrl(influencer.photo_path);
   const channel = useSignedUrl(influencer.channel_photo_path);
 
   const memoUploaded = !!influencer.memo_file_path;
+  const memoReady = !!influencer.memo_ready_at;
+
+  /** ติ๊ก/ยกเลิก "ข้อมูลพร้อมทำ Memo" — ติ๊กแล้วรายนี้ไปโผล่ในแท็บ "รอทำ Memo" ของหน้าบอร์ด
+      (หลุดจากแท็บเองเมื่ออัพโหลดไฟล์ Memo แล้ว — ไม่ต้องมายกเลิกติ๊กเอง) */
+  const toggleMemoReady = async () => {
+    setError(null);
+    setMarkingReady(true);
+    const { error: e } = await supabase
+      .from("influencers")
+      .update({ memo_ready_at: memoReady ? null : new Date().toISOString() })
+      .eq("id", influencer.id);
+    setMarkingReady(false);
+    if (e) {
+      setError(`บันทึกสถานะไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    router.refresh();
+  };
 
   const fullName = [influencer.first_name, influencer.last_name]
     .filter(Boolean)
@@ -374,6 +395,60 @@ function MemoCopyStage({
         เมื่อ Memo ได้รับอนุมัติแล้ว ให้อัพโหลดไฟล์กลับเข้ามาเก็บไว้ที่นี่
         จึงจะไป Stage ถัดไปได้
       </p>
+
+      {/* ติ๊กว่าข้อมูลครบ พร้อมให้ influ manager ลงมือทำ Memo — รายที่ติ๊กจะไปรวมกันใน
+          แท็บ "รอทำ Memo" หน้าบอร์ด; ซ่อนการ์ดเมื่ออัพโหลด Memo แล้ว (คิวจบไปเองแล้ว) */}
+      {!memoUploaded && (
+        <Card className="p-5">
+          <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+            <ClipboardCheck size={14} />
+            สถานะข้อมูลสำหรับทำ Memo
+          </p>
+          {memoReady ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+              <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-stone-800">
+                  ข้อมูลพร้อมทำ Memo แล้ว
+                </p>
+                <p className="text-xs text-stone-500">
+                  ติ๊กเมื่อ {formatDateTime(influencer.memo_ready_at!)} ·
+                  รายนี้อยู่ในแท็บ “รอทำ Memo” บนหน้าบอร์ดแล้ว
+                </p>
+              </div>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  onClick={() => void toggleMemoReady()}
+                  loading={markingReady}
+                  className="!px-2.5 !py-1 !text-xs"
+                >
+                  <Undo2 size={13} />
+                  ยกเลิกติ๊ก
+                </Button>
+              )}
+            </div>
+          ) : readOnly ? (
+            <p className="text-xs text-stone-400">ยังไม่ได้ติ๊กว่าข้อมูลพร้อม</p>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 text-xs text-stone-500">
+                ข้อมูลครบพร้อมทำ Memo แล้วให้ติ๊กที่นี่ —
+                รายนี้จะไปแสดงในแท็บ “รอทำ Memo” บนหน้าบอร์ด
+                ให้ influ manager เห็นว่ามีเคสรออยู่
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => void toggleMemoReady()}
+                loading={markingReady}
+              >
+                <ClipboardCheck size={16} />
+                ติ๊กว่าข้อมูลพร้อมทำ Memo
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card className="space-y-4 p-5">
         <CopyBox label="เรื่อง" text={subjectText} />

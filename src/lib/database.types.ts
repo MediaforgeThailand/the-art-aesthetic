@@ -306,6 +306,8 @@ export type InfluencerRow = {
   memo_file_path: string | null;
   memo_file_name: string | null;
   memo_uploaded_at: string | null;
+  /** เวลาที่ติ๊กว่าข้อมูลสำหรับทำ memo ครบแล้ว (null = ยังไม่ติ๊ก) — แท็บ "รอทำ Memo" ใช้กรอง */
+  memo_ready_at: string | null;
   /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดใน Stage 4) */
   contract_file_path: string | null;
   contract_file_name: string | null;
