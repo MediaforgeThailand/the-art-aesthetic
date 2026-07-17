@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Check,
   ExternalLink,
   ListPlus,
   Pencil,
@@ -21,8 +22,13 @@ import {
   Modal,
   Textarea,
 } from "@/components/ui";
+import {
+  PRICE_GROUP_ORDER,
+  PRICE_GROUPS,
+  sortPriceGroups,
+} from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
-import type { PriceItemRow, PriceOffer } from "@/lib/types";
+import type { PriceGroup, PriceItemRow, PriceOffer } from "@/lib/types";
 
 type OfferDraft = { label: string; price: string; start: string; end: string };
 
@@ -35,6 +41,8 @@ type ItemDraft = {
   price_normal: string;
   promos: OfferDraft[];
   courses: OfferDraft[];
+  /** กลุ่มหัตถการ — ต้องมีอย่างน้อย 1 (DB บังคับด้วย constraint เช่นกัน) */
+  groups: PriceGroup[];
   /** แสดงบนหน้าสาธารณะหรือไม่ — false = ซ่อนจาก /price-list แต่ยังอยู่ในหลังบ้าน */
   active: boolean;
 };
@@ -48,6 +56,7 @@ const emptyDraft: ItemDraft = {
   price_normal: "",
   promos: [],
   courses: [],
+  groups: [],
   active: true,
 };
 
@@ -61,8 +70,69 @@ function toDraft(item: PriceItemRow): ItemDraft {
     price_normal: item.price_normal ?? "",
     promos: item.promos.map((o) => ({ ...o })),
     courses: item.courses.map((o) => ({ ...o })),
+    groups: sortPriceGroups(item.groups),
     active: item.active,
   };
+}
+
+/* ---------- ช่องเลือกกลุ่มหัตถการ (ติ๊กได้หลายกลุ่ม) ---------- */
+
+function GroupPicker({
+  value,
+  onChange,
+}: {
+  value: PriceGroup[];
+  onChange: (next: PriceGroup[]) => void;
+}) {
+  return (
+    <div>
+      <Label className="!mb-1">กลุ่มหัตถการ * (เลือกได้มากกว่า 1)</Label>
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        {PRICE_GROUP_ORDER.map((g) => {
+          const on = value.includes(g);
+          return (
+            <button
+              key={g}
+              type="button"
+              aria-pressed={on}
+              onClick={() =>
+                onChange(
+                  sortPriceGroups(
+                    on ? value.filter((x) => x !== g) : [...value, g]
+                  )
+                )
+              }
+              className={`cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors ${
+                on
+                  ? "border-brand-400 bg-brand-50"
+                  : "border-stone-200 bg-white hover:border-brand-200 hover:bg-brand-50/40"
+              }`}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-medium text-stone-800">
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    on
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-stone-300 bg-white"
+                  }`}
+                >
+                  {on && <Check size={11} strokeWidth={3} />}
+                </span>
+                {PRICE_GROUPS[g].label}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-stone-400">
+                {PRICE_GROUPS[g].hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-xs text-stone-400">
+        แพ็กเกจที่รวมหลายหัตถการให้ติ๊กหลายกลุ่ม (เช่น Ultraformer + Botox =
+        เครื่อง + ฉีด) — รายการจะไปโผล่ในทุกแท็บที่ติ๊กไว้บนหน้า Price List
+      </p>
+    </div>
+  );
 }
 
 /* ---------- แถวแก้ไขข้อเสนอ (โปร/คอร์ส) ---------- */
@@ -214,6 +284,12 @@ export function PriceItemsAdmin({
       setError("ต้องกรอกหมวดหมู่และชื่อรายการ");
       return;
     }
+    if (draft.groups.length === 0) {
+      setError(
+        "ต้องเลือกกลุ่มหัตถการอย่างน้อย 1 กลุ่ม — หน้า Price List แบ่งแท็บตามกลุ่มนี้ ถ้าไม่เลือกรายการจะไม่โผล่ที่ไหนเลย"
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
@@ -226,6 +302,7 @@ export function PriceItemsAdmin({
         draft.price_normal.trim() === "" ? null : draft.price_normal.trim(),
       promos: cleanOffers(draft.promos),
       courses: cleanOffers(draft.courses),
+      groups: draft.groups,
       active: draft.active,
       // updated_at ไม่ต้องส่ง — DB trigger ตั้งให้เอง (migration 0023)
     };
@@ -336,11 +413,12 @@ export function PriceItemsAdmin({
       )}
 
       <div className="max-h-96 overflow-auto rounded-lg border border-stone-200/70">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[680px] text-sm">
           <thead className="sticky top-0 bg-cream-soft/95 backdrop-blur">
             <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
               <th className="px-3 py-2 font-medium">หมวด</th>
               <th className="px-3 py-2 font-medium">รายการ</th>
+              <th className="px-3 py-2 font-medium">กลุ่ม</th>
               <th className="px-3 py-2 text-right font-medium">ราคาปกติ</th>
               <th className="px-3 py-2 font-medium">โปร/คอร์ส</th>
               <th className="px-3 py-2" />
@@ -364,6 +442,18 @@ export function PriceItemsAdmin({
                       ซ่อนจากหน้าเว็บ
                     </Badge>
                   )}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <span className="flex gap-1">
+                    {sortPriceGroups(item.groups).map((g) => (
+                      <span
+                        key={g}
+                        className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
+                      >
+                        {PRICE_GROUPS[g].label}
+                      </span>
+                    ))}
+                  </span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-stone-700">
                   {item.price_normal ?? "-"}
@@ -400,7 +490,7 @@ export function PriceItemsAdmin({
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-xs text-stone-400">
+                <td colSpan={6} className="px-3 py-6 text-center text-xs text-stone-400">
                   ไม่พบรายการ
                 </td>
               </tr>
@@ -457,6 +547,11 @@ export function PriceItemsAdmin({
               placeholder="เช่น Botox Hutox (50 Unit)"
             />
           </div>
+
+          <GroupPicker
+            value={draft.groups}
+            onChange={(groups) => setDraft({ ...draft, groups })}
+          />
 
           <div>
             <Label htmlFor="pi-normal">ราคาปกติ</Label>

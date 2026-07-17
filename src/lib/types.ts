@@ -29,6 +29,7 @@ export type {
   StaffKpiRow,
   PricePromotionRow,
   PriceOffer,
+  PriceGroup,
   PriceItemRow,
   InfluTier,
   InfluSizeGroup,

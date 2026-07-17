@@ -405,6 +405,10 @@ export type PriceOffer = {
   end: string;
 };
 
+/** กลุ่มหัตถการของรายการ Price List — 1 รายการติดได้หลายกลุ่ม
+    (แพ็กเกจรวมมักมีทั้งเครื่องและฉีด เช่น "Ultraformer + Botox") */
+export type PriceGroup = "injection" | "treatment" | "device";
+
 /** รายการใน Price List กลาง — แสดงบนหน้าสาธารณะ /price-list (anon อ่านได้) */
 export type PriceItemRow = {
   id: string;
@@ -416,6 +420,8 @@ export type PriceItemRow = {
   price_normal: string | null;
   promos: PriceOffer[];
   courses: PriceOffer[];
+  /** ต้องมีอย่างน้อย 1 กลุ่มเสมอ — DB บังคับด้วย constraint price_items_groups_valid */
+  groups: PriceGroup[];
   sort: number;
   active: boolean;
   created_at: string;
@@ -628,6 +634,8 @@ export interface Database {
         Insert: Partial<PriceItemRow> & {
           category: string;
           name: string;
+          /** DB บังคับอย่างน้อย 1 กลุ่ม — insert โดยไม่ส่งจะติด constraint */
+          groups: PriceGroup[];
         };
         Update: Partial<PriceItemRow>;
         Relationships: [];

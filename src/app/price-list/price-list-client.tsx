@@ -11,9 +11,14 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo";
+import {
+  PRICE_GROUP_ORDER,
+  PRICE_GROUPS,
+  sortPriceGroups,
+} from "@/lib/constants";
 import { formatDate, formatDateBangkok, todayISO } from "@/lib/format";
 import { MEMO_COMPANY } from "@/lib/influ-constants";
-import type { PriceItemRow, PriceOffer } from "@/lib/types";
+import type { PriceGroup, PriceItemRow, PriceOffer } from "@/lib/types";
 
 /* สถานะข้อเสนอ ณ วันนี้ — ใช้กติกาเดียวกับหลังบ้าน (ใกล้หมดเขต = เหลือ ≤ 14 วัน) */
 type OfferState = "upcoming" | "active" | "ending" | "expired";
@@ -65,8 +70,10 @@ export function PriceListClient({
 }) {
   const today = todayISO();
   const [search, setSearch] = useState("");
+  const [group, setGroup] = useState<PriceGroup | "all">("all");
   const [selected, setSelected] = useState<PriceItemRow | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const listRef = useRef<HTMLElement | null>(null);
 
   // popup เปิดอยู่: Esc ปิด + ล็อค scroll พื้นหลัง
   useEffect(() => {
@@ -103,7 +110,7 @@ export function PriceListClient({
     [items, today]
   );
 
-  const filtered = useMemo(() => {
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (q === "") return visible;
     return visible.filter(
@@ -113,6 +120,36 @@ export function PriceListClient({
         (i.benefits ?? "").toLowerCase().includes(q)
     );
   }, [visible, search]);
+
+  // จำนวนบนแท็บ — นับหลังค้นหา เพื่อบอกว่าผลค้นหาไปอยู่กลุ่มไหนบ้าง
+  // (แพ็กเกจที่ติดหลายกลุ่มถูกนับในทุกกลุ่มที่ติดไว้ ผลรวมจึงเกินจำนวนรายการจริงได้)
+  const groupCounts = useMemo(() => {
+    const c = { injection: 0, treatment: 0, device: 0 } as Record<
+      PriceGroup,
+      number
+    >;
+    for (const i of searched) {
+      for (const g of PRICE_GROUP_ORDER) if (i.groups.includes(g)) c[g]++;
+    }
+    return c;
+  }, [searched]);
+
+  const filtered = useMemo(
+    () =>
+      group === "all"
+        ? searched
+        : searched.filter((i) => i.groups.includes(group)),
+    [searched, group]
+  );
+
+  // สลับแท็บ = ลิสต์เปลี่ยนทั้งชุด — ถ้าเลื่อนลงมาลึกแล้วค้างที่เดิมจะงงว่าอยู่ตรงไหน
+  const selectGroup = (next: PriceGroup | "all") => {
+    setGroup(next);
+    const el = listRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY - 150;
+    if (window.scrollY > top) window.scrollTo({ top, behavior: "smooth" });
+  };
 
   const categories = useMemo(() => {
     const seen = new Map<string, PriceItemRow[]>();
@@ -156,6 +193,37 @@ export function PriceListClient({
       {/* แถบค้นหา + หมวด (sticky) */}
       <div className="sticky top-0 z-20 -mt-7 px-3 sm:px-6">
         <div className="glass mx-auto max-w-5xl rounded-2xl px-3 py-3 shadow-lg">
+          {/* แท็บ 3 กลุ่มใหญ่ — แพ็กเกจที่มีหลายหัตถการโผล่ในทุกกลุ่มที่ติดไว้ */}
+          <div className="mb-2 grid grid-cols-4 gap-1.5">
+            {(["all", ...PRICE_GROUP_ORDER] as const).map((key) => {
+              const active = group === key;
+              const label = key === "all" ? "ทั้งหมด" : PRICE_GROUPS[key].label;
+              const count =
+                key === "all" ? searched.length : groupCounts[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => selectGroup(key)}
+                  aria-pressed={active}
+                  className={`flex cursor-pointer items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-xs font-semibold transition-all active:scale-[0.97] ${
+                    active
+                      ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                      : "border border-stone-200/80 bg-white/70 text-stone-600 hover:bg-brand-50 hover:text-brand-700"
+                  }`}
+                >
+                  {label}
+                  <span
+                    className={`text-[10px] font-medium tabular-nums ${
+                      active ? "opacity-80" : "text-stone-400"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           <div className="relative">
             <Search
               size={16}
@@ -205,12 +273,17 @@ export function PriceListClient({
 
       {!loadError && filtered.length === 0 && (
         <p className="mx-auto mt-10 max-w-5xl px-4 text-center text-sm text-stone-500">
-          ไม่พบรายการที่ค้นหา — ลองคำอื่น เช่น ชื่อหัตถการหรือหมวดหมู่
+          {group !== "all" && searched.length > 0
+            ? `ไม่มีรายการในกลุ่ม${PRICE_GROUPS[group].label} — ลองแท็บอื่น`
+            : "ไม่พบรายการที่ค้นหา — ลองคำอื่น เช่น ชื่อหัตถการหรือหมวดหมู่"}
         </p>
       )}
 
       {/* รายการตามหมวด */}
-      <main className="mx-auto mt-6 max-w-5xl space-y-6 px-3 sm:px-6">
+      <main
+        ref={listRef}
+        className="mx-auto mt-6 max-w-5xl space-y-6 px-3 sm:px-6"
+      >
         {categories.map(([cat, list]) => {
           const [catTitle, catSub] = cat.split(/:(.+)/);
           return (
@@ -396,10 +469,20 @@ function ItemDetailModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* ชื่อ + หมวด */}
-          <p className="text-xs font-medium text-brand-600">
-            {item.category.split(":")[0].trim()}
-          </p>
+          {/* ชื่อ + หมวด + กลุ่มหัตถการ */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-xs font-medium text-brand-600">
+              {item.category.split(":")[0].trim()}
+            </p>
+            {sortPriceGroups(item.groups).map((g) => (
+              <span
+                key={g}
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
+              >
+                {PRICE_GROUPS[g].label}
+              </span>
+            ))}
+          </div>
           <h2 className="mt-0.5 whitespace-pre-line font-display text-xl font-bold leading-snug text-stone-900">
             {item.name}
           </h2>
@@ -571,6 +654,11 @@ function PriceRow({
     .map((o) => ({ ...o, state: offerState(o, today) }))
     .filter((o) => o.state !== "expired");
 
+  // ชิปกลุ่ม: โชว์เฉพาะแพ็กเกจที่รวมหลายหัตถการ (เช่น Ulthera + Botox = เครื่อง+ฉีด)
+  // รายการกลุ่มเดียวไม่ต้องโชว์ — ชื่อหมวดด้านบนบอกอยู่แล้ว และจะรกเปล่าๆ
+  const groups = sortPriceGroups(item.groups);
+  const showGroups = groups.length > 1;
+
   // โปรที่ใช้ได้ตอนนี้ — กติกาเดียวกับแถวไฮไลต์ใน popup (isCurrentPromo)
   const activePromo = promos.find((o) => isCurrentPromo(o));
   const b1g1 = promos.find(
@@ -623,8 +711,17 @@ function PriceRow({
           </span>
         </div>
 
-        {/* ป้ายสถานะ + คอร์ส */}
+        {/* ป้ายกลุ่ม (แพ็กเกจรวม) + สถานะ + คอร์ส */}
         <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
+          {showGroups &&
+            groups.map((g) => (
+              <span
+                key={g}
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
+              >
+                {PRICE_GROUPS[g].label}
+              </span>
+            ))}
           {activePromo && (
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${

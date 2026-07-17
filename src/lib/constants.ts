@@ -1,4 +1,4 @@
-import type { TaskPriority } from "./types";
+import type { PriceGroup, TaskPriority } from "./types";
 
 export const TASK_PRIORITY: Record<
   TaskPriority,
@@ -73,6 +73,41 @@ export const SALES_CATEGORIES = [
   "Products",
   "อื่นๆ",
 ] as const;
+
+/* ---------- Price List: กลุ่มหัตถการ ---------- */
+
+/** 3 กลุ่มใหญ่ที่หน้า /price-list แบ่งแท็บ — key เก็บใน price_items.groups
+ *  รายการหนึ่งติดได้หลายกลุ่ม (แพ็กเกจรวม เช่น "Ultraformer + Fat + Botox" = เครื่อง+ฉีด)
+ *  แล้วจะโผล่ในทุกแท็บที่ติดไว้; DB บังคับอย่างน้อย 1 กลุ่ม (constraint price_items_groups_valid)
+ *  สีไม่ใช้ emerald/amber/pink — สงวนให้ป้ายสถานะโปรบนแถวเดียวกัน */
+export const PRICE_GROUPS: Record<
+  PriceGroup,
+  { label: string; hint: string; chip: string }
+> = {
+  injection: {
+    label: "ฉีด",
+    hint: "Botox, Filler, Meso, IV Drip, ร้อยไหม",
+    chip: "bg-brand-100 text-brand-800",
+  },
+  treatment: {
+    label: "ทรีตเม้น",
+    hint: "ทรีตเม้นหน้า/ตัว, นวด, มาส์ก, ฉายแสง",
+    chip: "bg-violet-100 text-violet-700",
+  },
+  device: {
+    label: "เครื่อง",
+    hint: "Ulthera, Ultraformer, Doublo, เลเซอร์",
+    chip: "bg-sky-100 text-sky-700",
+  },
+};
+
+/** ลำดับที่ใช้แสดงทุกที่ (แท็บ, ชิป, ช่องติ๊กในหลังบ้าน) */
+export const PRICE_GROUP_ORDER = Object.keys(PRICE_GROUPS) as PriceGroup[];
+
+/** เรียงกลุ่มของรายการให้ตรงลำดับข้างบนเสมอ — ลำดับใน DB ไม่แน่นอน */
+export function sortPriceGroups(groups: PriceGroup[]): PriceGroup[] {
+  return PRICE_GROUP_ORDER.filter((g) => groups.includes(g));
+}
 
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
