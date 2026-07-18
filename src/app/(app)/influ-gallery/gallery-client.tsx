@@ -30,6 +30,28 @@ function contractDaysLeftOf(i: InfluencerListRow, today: string): number | null 
   );
 }
 
+/** ช่วงเวลาระหว่าง 2 วัน แบบ "Y เดือน Z วัน" (นับเป็นเดือนปฏิทิน ไม่ใช่หาร 30)
+    ใช้ทั้งเวลาเหลือจนหมดสัญญา และเวลาที่เลยกำหนดมาแล้ว */
+function monthsDaysBetween(fromISO: string, toISO: string): string {
+  const a = new Date(fromISO);
+  const b = new Date(toISO);
+  let months =
+    (b.getUTCFullYear() - a.getUTCFullYear()) * 12 +
+    (b.getUTCMonth() - a.getUTCMonth());
+  let days = b.getUTCDate() - a.getUTCDate();
+  if (days < 0) {
+    months -= 1;
+    // จำนวนวันของเดือนก่อนหน้าเดือนปลายทาง (เติมวันที่ยืมมา)
+    days += new Date(
+      Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), 0)
+    ).getUTCDate();
+  }
+  const parts: string[] = [];
+  if (months > 0) parts.push(`${months} เดือน`);
+  if (days > 0) parts.push(`${days} วัน`);
+  return parts.length ? parts.join(" ") : "วันนี้";
+}
+
 type ContractFilter = "all" | "active" | "expired";
 
 export function InfluGalleryClient({
@@ -265,12 +287,13 @@ function InfluCard({
             )}
           </div>
 
-          {/* อายุสัญญาคงเหลือ */}
-          {contractDaysLeft !== null && (
+          {/* อายุสัญญาคงเหลือ — บอกเป็น "เดือน + วัน" */}
+          {contractDaysLeft !== null && contractEnd && (
             <div>
               {contractDaysLeft < 0 ? (
                 <Badge className="border border-rose-200 bg-rose-50 text-rose-600">
-                  <FileSignature size={11} /> สัญญาหมดแล้ว
+                  <FileSignature size={11} /> หมดสัญญาแล้ว ·{" "}
+                  {monthsDaysBetween(contractEnd, today)}ก่อน
                 </Badge>
               ) : (
                 <Badge
@@ -281,7 +304,7 @@ function InfluCard({
                   }
                 >
                   <FileSignature size={11} /> สัญญาเหลือ{" "}
-                  {formatNumber(contractDaysLeft)} วัน
+                  {monthsDaysBetween(today, contractEnd)}
                 </Badge>
               )}
             </div>
