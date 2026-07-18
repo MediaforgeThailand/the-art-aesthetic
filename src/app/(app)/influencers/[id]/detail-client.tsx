@@ -249,6 +249,91 @@ function NameEditModal({
   );
 }
 
+/** แก้ "วันเข้ารับบริการ + แพทย์ที่รับเคส" ได้ทุก stage — สองช่องนี้ไม่บังคับตอน Stage 2
+    (influ มักยังไม่เคาะวัน / ยังไม่รู้ว่าแพทย์ท่านไหนรับเคส) แล้วมาเคาะทีหลังตอนอยู่ stage อื่น
+    ซึ่ง Stage 2 ถูกล็อก (readOnly = view < stage) ไปแล้ว — เป็นข้อมูลนัดหมาย ไม่ใช่สถานะงาน
+    จึงเปิดแก้ได้เสมอแบบเดียวกับ NameEditModal */
+function CaseInfoEditModal({
+  influencer,
+  onClose,
+}: {
+  influencer: InfluencerRow;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [serviceDate, setServiceDate] = useState(influencer.service_date ?? "");
+  const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    const { error } = await supabase
+      .from("influencers")
+      .update({
+        service_date: serviceDate === "" ? null : serviceDate,
+        doctor_name: doctorName.trim() || null,
+      })
+      .eq("id", influencer.id);
+    setBusy(false);
+    if (error) {
+      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onClose();
+    router.refresh();
+  };
+
+  return (
+    <Modal open onClose={onClose} title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส">
+      <form onSubmit={save} className="space-y-3">
+        <div>
+          <Label htmlFor="ci-date">วันเข้ารับบริการ</Label>
+          <Input
+            id="ci-date"
+            type="date"
+            value={serviceDate}
+            onChange={(e) => setServiceDate(e.target.value)}
+          />
+          <p className="mt-1 text-[11px] text-stone-400">
+            ยังไม่เคาะวันได้ — เว้นว่างไว้ก่อน แล้วกลับมากรอกทีหลัง
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="ci-doc">แพทย์ที่รับเคส</Label>
+          <Input
+            id="ci-doc"
+            value={doctorName}
+            onChange={(e) => setDoctorName(e.target.value)}
+            placeholder="เช่น นพ.ปิยะวัฒน์ วรสิงห์"
+          />
+        </div>
+        {err && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+            {err}
+          </p>
+        )}
+        <p className="text-xs text-stone-400">
+          ข้อมูลนี้ถูกใช้ในข้อความ Memo (Stage 3) —
+          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม
+        </p>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            ยกเลิก
+          </Button>
+          <Button type="submit" loading={busy}>
+            บันทึก
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /* ================================================================== */
 
 export function InfluDetailClient({
@@ -510,6 +595,7 @@ function OverviewPanel({
   contentTasks: TaskWithAssignee[];
   onGoStage: (step: number) => void;
 }) {
+  const [caseInfoOpen, setCaseInfoOpen] = useState(false);
   const fullName =
     [influencer.first_name, influencer.last_name].filter(Boolean).join(" ") ||
     null;
@@ -632,9 +718,22 @@ function OverviewPanel({
         </Card>
 
         <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-stone-900">
-            รายละเอียดเคส
-          </h3>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-stone-900">
+              รายละเอียดเคส
+            </h3>
+            {!influencer.completed && (
+              <button
+                type="button"
+                onClick={() => setCaseInfoOpen(true)}
+                title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส"
+                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+              >
+                <PenLine size={13} />
+                แก้วัน/แพทย์
+              </button>
+            )}
+          </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="หัตถการที่รับ" value={influencer.procedure_text} />
             <Field
@@ -653,7 +752,7 @@ function OverviewPanel({
                   : null
               }
             />
-            <Field label="แพทย์ผู้ดูแล" value={influencer.doctor_name} />
+            <Field label="แพทย์ที่รับเคส" value={influencer.doctor_name} />
           </dl>
           {influencer.procedure_history.length > 0 && (
             <p className="mt-3 text-xs text-stone-400">
@@ -747,6 +846,13 @@ function OverviewPanel({
           </dl>
         </Card>
       </div>
+
+      {caseInfoOpen && (
+        <CaseInfoEditModal
+          influencer={influencer}
+          onClose={() => setCaseInfoOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1027,6 +1133,7 @@ function CaseDetailStage({
   const [serviceDate, setServiceDate] = useState(
     influencer.service_date ?? ""
   );
+  const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
   const [caseValue, setCaseValue] = useState(
     influencer.case_value != null ? String(influencer.case_value) : ""
   );
@@ -1046,11 +1153,9 @@ function CaseDetailStage({
   const followersNum = Number(followers.replace(/[^0-9]/g, "")) || 0;
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
 
+  // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
   const canProceed =
-    occupation.trim() !== "" &&
-    procedure.trim() !== "" &&
-    serviceDate !== "" &&
-    followersNum > 0;
+    occupation.trim() !== "" && procedure.trim() !== "" && followersNum > 0;
 
   const upload = async (
     file: File,
@@ -1108,6 +1213,7 @@ function CaseDetailStage({
         occupation: occupation.trim() || null,
         procedure_text: procedure.trim() || null,
         service_date: serviceDate === "" ? null : serviceDate,
+        doctor_name: doctorName.trim() || null,
         case_value: caseValue === "" ? null : Number(caseValue),
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
@@ -1164,7 +1270,7 @@ function CaseDetailStage({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="d-date">วันที่เข้าทำหัตถการ *</Label>
+              <Label htmlFor="d-date">วันที่เข้าทำหัตถการ</Label>
               <Input
                 id="d-date"
                 type="date"
@@ -1172,6 +1278,9 @@ function CaseDetailStage({
                 value={serviceDate}
                 onChange={(e) => setServiceDate(e.target.value)}
               />
+              <p className="mt-1 text-[11px] text-stone-400">
+                ยังไม่เคาะวันได้ — เว้นว่างไว้ก่อน แล้วกลับมากรอกทีหลัง
+              </p>
             </div>
             <div>
               <Label htmlFor="d-value">มูลค่า (บาท)</Label>
@@ -1185,6 +1294,16 @@ function CaseDetailStage({
                 placeholder="78200"
               />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="d-doc">แพทย์ที่รับเคส</Label>
+            <Input
+              id="d-doc"
+              disabled={readOnly}
+              value={doctorName}
+              onChange={(e) => setDoctorName(e.target.value)}
+              placeholder="เช่น นพ.ปิยะวัฒน์ วรสิงห์"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

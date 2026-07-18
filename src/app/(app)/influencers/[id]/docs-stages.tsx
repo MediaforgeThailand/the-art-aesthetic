@@ -273,9 +273,13 @@ function MemoCopyStage({
         ? formatCurrency(influencer.case_value)
         : "-"
     }`,
+    // วันที่ไม่บังคับกรอก — บอกให้ชัดว่ายังไม่เคาะวัน ไม่ใช่ลืมกรอก (ข้อความนี้ถูกก๊อปไปลงเอกสารจริง)
     `วันที่ทำหัตถการ : ${
-      influencer.service_date ? formatDate(influencer.service_date) : "-"
+      influencer.service_date
+        ? formatDate(influencer.service_date)
+        : "(ยังไม่กำหนด)"
     }`,
+    `แพทย์ที่รับเคส : ${influencer.doctor_name || "-"}`,
     `ยอดผู้ติดตาม : ${
       influencer.follower_note ||
       (influencer.followers != null
@@ -635,6 +639,15 @@ function MemoCopyStage({
 
 /* ---------- แบบฟอร์มดิจิทัล (จำลองแบบฟอร์มจริง) — เก็บโค้ดไว้ ยังไม่เปิดใช้ (Coming soon) ---------- */
 
+/** ช่องกรอกเส้นประในแบบฟอร์ม — ต้องอยู่ระดับโมดูล (กฎ react-hooks/static-components) */
+function Line({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="border-b border-dotted border-stone-400 px-1">
+      {children}
+    </span>
+  );
+}
+
 export function MemoFormStage({
   influencer,
   signatures,
@@ -718,12 +731,6 @@ export function MemoFormStage({
     month: "long",
     year: "numeric",
   });
-
-  const Line = ({ children }: { children: React.ReactNode }) => (
-    <span className="border-b border-dotted border-stone-400 px-1">
-      {children}
-    </span>
-  );
 
   return (
     <div className="space-y-4">
@@ -835,8 +842,11 @@ export function MemoFormStage({
               <Line>
                 {influencer.service_date
                   ? formatDate(influencer.service_date)
-                  : "-"}
+                  : "(ยังไม่กำหนด)"}
               </Line>
+            </p>
+            <p>
+              แพทย์ที่รับเคส : <Line>{influencer.doctor_name || "-"}</Line>
             </p>
             <p>
               ยอดผู้ติดตาม :{" "}
