@@ -458,6 +458,11 @@ function MemoCopyStage({
         <CopyBox label="เรื่อง" text={subjectText} />
         <CopyBox label="เรียน" text={MEMO_COMPANY.to} />
         <CopyBox label="รายละเอียด" text={detailText} multiline />
+        {/* ก๊อปแยกเฉพาะชื่อแพทย์ได้ — ฟอร์ม memo บางแบบมีช่องแพทย์แยกจากรายละเอียด */}
+        <CopyBox
+          label="แพทย์ที่รับเคส"
+          text={influencer.doctor_name || "-"}
+        />
       </Card>
 
       {/* รายชื่อผู้ตรวจสอบ/ผู้อนุมัติ — แสดงอย่างเดียว ไม่มีปุ่มคัดลอก */}

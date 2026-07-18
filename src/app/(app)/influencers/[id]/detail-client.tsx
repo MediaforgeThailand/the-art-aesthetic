@@ -508,7 +508,12 @@ export function InfluDetailClient({
           />
         )}
         {view === 2 && (
-          <CaseDetailStage influencer={influencer} readOnly={readOnly} />
+          // Stage 2 แก้ได้เสมอจนกว่าจะปิดงาน (ไม่ใช้ readOnly รวมที่ล็อก stage ที่ผ่านแล้ว) —
+          // เป็นข้อมูลเคสไม่ใช่สถานะงาน มักต้องกลับมาเติมวัน/แพทย์/มูลค่าทีหลัง
+          <CaseDetailStage
+            influencer={influencer}
+            readOnly={influencer.completed}
+          />
         )}
         {view === 3 && (
           <MemoStage
@@ -1367,25 +1372,38 @@ function CaseDetailStage({
         </p>
       )}
 
-      {!readOnly && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <Button
-            variant="secondary"
-            loading={busy}
-            onClick={() => void save(false)}
-          >
-            บันทึกร่าง
-          </Button>
-          <Button
-            loading={busy}
-            disabled={!canProceed}
-            onClick={() => void save(true)}
-          >
-            <ArrowRight size={16} />
-            บันทึก + ไป Stage 3 (สร้าง Memo)
-          </Button>
-        </div>
-      )}
+      {!readOnly &&
+        (influencer.stage > 2 ? (
+          // เลย Stage 2 มาแล้ว: แก้ข้อมูลได้แต่ห้ามมีปุ่ม "ไป Stage 3" — save(true) ตั้ง stage=3
+          // จะดึงเคสที่อยู่ stage 4-6 ถอยหลัง
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-stone-500">
+              แก้ไขได้แม้เลยขั้นตอนนี้มาแล้ว — ข้อความ Memo ใน Stage 3
+              อัพเดทตาม แต่เอกสารที่พิมพ์/อัพโหลดไปแล้วไม่เปลี่ยน
+            </p>
+            <Button loading={busy} onClick={() => void save(false)}>
+              บันทึกการแก้ไข
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <Button
+              variant="secondary"
+              loading={busy}
+              onClick={() => void save(false)}
+            >
+              บันทึกร่าง
+            </Button>
+            <Button
+              loading={busy}
+              disabled={!canProceed}
+              onClick={() => void save(true)}
+            >
+              <ArrowRight size={16} />
+              บันทึก + ไป Stage 3 (สร้าง Memo)
+            </Button>
+          </div>
+        ))}
     </Card>
   );
 }
