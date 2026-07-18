@@ -62,6 +62,8 @@ export default async function TasksPage() {
     supabase
       .from("influencers")
       .select("id, first_name, last_name, nickname")
+      // ไม่รวมข้อมูลเก่าที่นำเข้า (archive-only) ในตัวเลือกผูกงานคอนเทนต์
+      .eq("archived", false)
       .order("created_at", { ascending: false }),
     supabase.from("task_reviewers").select("profile_id"),
     supabase

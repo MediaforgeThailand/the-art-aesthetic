@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 // คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
 // (~10-30KB/รายการ) หน้า list ไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
 const INFLU_LIST_COLUMNS =
-  "id, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, declined_at, created_by, created_at, updated_at";
+  "id, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, created_by, created_at, updated_at";
 
 export default async function InfluencersPage() {
   const access = await getAccess();
@@ -25,6 +25,8 @@ export default async function InfluencersPage() {
     supabase
       .from("influencers")
       .select(INFLU_LIST_COLUMNS)
+      // ซ่อนข้อมูลเก่าที่นำเข้า (archive-only) — โผล่เฉพาะหน้าโปรไฟล์ Influencer
+      .eq("archived", false)
       .order("created_at", { ascending: false }),
     // ดึงทั้ง done/ไม่ done — ใช้คำนวณ countdown ครบกำหนด และ "follow แล้วกี่วัน"
     // is_custom: ข้อของโหมดที่เคสนั้นไม่ได้ใช้ต้องไม่ถูกนับ (กรองด้วย activeFollowupTasks ฝั่ง client)

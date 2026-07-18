@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Archive,
   CheckCircle2,
   ClipboardList,
   FileSignature,
@@ -20,6 +21,17 @@ import {
   type InfluencerListRow,
 } from "../influencers/influencers-client";
 
+/** วันคงเหลือของสัญญา (บวก = ยังเหลือ, ลบ = หมดแล้ว, null = ไม่มีข้อมูลสัญญา) */
+function contractDaysLeftOf(i: InfluencerListRow, today: string): number | null {
+  if (!i.contract_start) return null;
+  const end = contractEndDate(i.contract_start, i.contract_months);
+  return Math.round(
+    (new Date(end).getTime() - new Date(today).getTime()) / 86400000
+  );
+}
+
+type ContractFilter = "all" | "active" | "expired";
+
 export function InfluGalleryClient({
   influencers,
   followupRemaining,
@@ -33,16 +45,44 @@ export function InfluGalleryClient({
 }) {
   const today = todayISO();
   const [search, setSearch] = useState("");
+  // ตัวกรองสถานะสัญญา — ช่วยดูว่าใคร "หมดสัญญาแล้ว" ได้เร็ว (จุดประสงค์หลักของข้อมูลเก่า)
+  const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (q === "") return influencers;
-    return influencers.filter(
-      (i) =>
+    return influencers.filter((i) => {
+      if (contractFilter !== "all") {
+        const daysLeft = contractDaysLeftOf(i, today);
+        if (daysLeft === null) return false; // ไม่มีข้อมูลสัญญา — ไม่เข้าเกณฑ์ active/expired
+        if (contractFilter === "active" && daysLeft < 0) return false;
+        if (contractFilter === "expired" && daysLeft >= 0) return false;
+      }
+      if (q === "") return true;
+      return (
         influName(i).toLowerCase().includes(q) ||
         (i.procedure_text ?? "").toLowerCase().includes(q)
-    );
-  }, [influencers, search]);
+      );
+    });
+  }, [influencers, search, contractFilter, today]);
+
+  const contractCounts = useMemo(() => {
+    let active = 0;
+    let expired = 0;
+    for (const i of influencers) {
+      const d = contractDaysLeftOf(i, today);
+      if (d === null) continue;
+      if (d < 0) expired += 1;
+      else active += 1;
+    }
+    return { all: influencers.length, active, expired };
+  }, [influencers, today]);
+
+  const contractChips: { key: ContractFilter; label: string; count: number }[] =
+    [
+      { key: "all", label: "ทั้งหมด", count: contractCounts.all },
+      { key: "active", label: "สัญญายังไม่หมด", count: contractCounts.active },
+      { key: "expired", label: "หมดสัญญาแล้ว", count: contractCounts.expired },
+    ];
 
   return (
     <>
@@ -66,8 +106,8 @@ export function InfluGalleryClient({
         </div>
       )}
 
-      <div className="mb-4 max-w-sm animate-fade-in-up">
-        <div className="relative">
+      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
+        <div className="relative min-w-56 flex-1 sm:max-w-sm">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -79,6 +119,29 @@ export function InfluGalleryClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {contractChips.map((chip) => {
+            const active = contractFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setContractFilter(chip.key)}
+                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
+                  active
+                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                    : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
+                }`}
+              >
+                {chip.label}
+                <span className={active ? "opacity-80" : "text-stone-400"}>
+                  {" "}
+                  ({chip.count})
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -180,6 +243,14 @@ function InfluCard({
               {i.completed ? "จบงานแล้ว" : `${i.stage}. ${stageInfo?.short ?? ""}`}
             </Badge>
           </span>
+          {/* ข้อมูลเก่าที่นำเข้า (archive-only) — ไม่โผล่บนบอร์ด Influ Management */}
+          {i.archived && (
+            <span className="absolute bottom-2 left-2">
+              <Badge className="border border-stone-300 bg-white/85 text-stone-600 shadow-sm">
+                <Archive size={11} /> ข้อมูลเก่า
+              </Badge>
+            </span>
+          )}
         </div>
 
         {/* ข้อมูล */}

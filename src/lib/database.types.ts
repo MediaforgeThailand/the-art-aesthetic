@@ -326,6 +326,9 @@ export type InfluencerRow = {
   size_group: InfluSizeGroup | null;
   /** ลำดับการ์ดในคอลัมน์บอร์ด — null = fallback จาก created_at ฝั่ง client */
   board_position: number | null;
+  /** true = ข้อมูล influencer เก่าที่นำเข้ามาเพื่อเก็บ/ค้นหา (archive-only) —
+      ซ่อนจากบอร์ด Influ Management + หน้าอายุสัญญา, แสดงเฉพาะหน้าโปรไฟล์ Influencer */
+  archived: boolean;
   /** เวลาที่ mark ว่า "ปฏิเสธ" (ไม่ร่วมงาน) — null = ไม่ได้ปฏิเสธ; ตัวกรองยกเว้นซ่อนได้ */
   declined_at: string | null;
   created_by: string | null;

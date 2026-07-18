@@ -21,6 +21,8 @@ export default async function InfluContractsPage() {
       .from("influencers")
       .select("*")
       .not("contract_start", "is", null)
+      // ซ่อนข้อมูลเก่าที่นำเข้า (archive-only) — หน้าอายุสัญญาโชว์เฉพาะเคสที่เดินงานในระบบ
+      .eq("archived", false)
       .order("contract_start", { ascending: false }),
     supabase
       .from("influ_campaigns")
