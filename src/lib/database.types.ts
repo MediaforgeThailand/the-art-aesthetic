@@ -308,6 +308,8 @@ export type InfluencerRow = {
   memo_uploaded_at: string | null;
   /** เวลาที่ติ๊กว่าข้อมูลสำหรับทำ memo ครบแล้ว (null = ยังไม่ติ๊ก) — แท็บ "รอทำ Memo" ใช้กรอง */
   memo_ready_at: string | null;
+  /** เวลาที่ติ๊กว่า "ส่งเอกสารแล้ว" ในคิวรอทำ Memo (null = ยังไม่ส่ง) — กันทีมทำงานซ้ำ */
+  docs_sent_at: string | null;
   /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดใน Stage 4) */
   contract_file_path: string | null;
   contract_file_name: string | null;
