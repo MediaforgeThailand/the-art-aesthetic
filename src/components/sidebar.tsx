@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  CalendarDays,
   ClipboardList,
   IdCard,
   LayoutDashboard,
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
   { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
+  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ" },
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },

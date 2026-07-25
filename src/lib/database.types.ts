@@ -384,6 +384,38 @@ export type InfluCampaignRow = {
   created_at: string;
 };
 
+/** ประเภทคิวบนปฏิทิน Influ Calendar — DB มี check constraint ตามรายการนี้
+    (เพิ่มชนิดใหม่ต้องแก้ทั้ง constraint และ INFLU_CALENDAR_KINDS) */
+export type InfluCalendarKind =
+  | "service"
+  | "shoot"
+  | "post"
+  | "meeting"
+  | "followup"
+  | "other";
+
+/** คิวงาน influencer บนปฏิทินรายเดือน (/influ-calendar)
+    influencer_id null = คิวทั่วไปไม่ผูกคน · start_time null = ทั้งวัน (ยังไม่เคาะเวลา) */
+export type InfluCalendarEventRow = {
+  id: string;
+  influencer_id: string | null;
+  title: string;
+  kind: InfluCalendarKind;
+  /** แพทย์ที่รับคิวนี้ — เติมอัตโนมัติจาก influencers.doctor_name ตอนเลือก influencer แต่แก้ได้ */
+  doctor_name: string | null;
+  /** วันที่ของคิว (YYYY-MM-DD — date ล้วน ไม่มี timezone) */
+  event_date: string;
+  /** เวลาเริ่ม/สิ้นสุด (HH:MM:SS) — null = ทั้งวัน */
+  start_time: string | null;
+  end_time: string | null;
+  location: string | null;
+  note: string | null;
+  done: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PricePromotionRow = {
   id: string;
   category: string;
@@ -632,6 +664,15 @@ export interface Database {
           name: string;
         };
         Update: Partial<InfluCampaignRow>;
+        Relationships: [];
+      };
+      influ_calendar_events: {
+        Row: InfluCalendarEventRow;
+        Insert: Partial<InfluCalendarEventRow> & {
+          title: string;
+          event_date: string;
+        };
+        Update: Partial<InfluCalendarEventRow>;
         Relationships: [];
       };
       price_items: {

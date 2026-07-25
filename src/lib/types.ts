@@ -40,6 +40,8 @@ export type {
   InfluSignatureRow,
   InfluTaskRow,
   InfluCampaignRow,
+  InfluCalendarKind,
+  InfluCalendarEventRow,
   FileLinkRow,
   FileLinkWithCreator,
 } from "./database.types";

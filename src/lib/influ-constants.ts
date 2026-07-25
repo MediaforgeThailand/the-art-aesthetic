@@ -1,4 +1,9 @@
-import type { InfluFollowupMode, InfluSizeGroup, InfluTier } from "./types";
+import type {
+  InfluCalendarKind,
+  InfluFollowupMode,
+  InfluSizeGroup,
+  InfluTier,
+} from "./types";
 
 /* ---------- Tier ตามยอดผู้ติดตาม (ตามแบบฟอร์มขออนุมัติเคส) ---------- */
 
@@ -85,6 +90,78 @@ export function sizeGroupFromFollowers(
   if (followers !== null && followers >= 1_000_000) return "l";
   if (followers !== null && followers >= 100_000) return "m";
   return "s";
+}
+
+/* ---------- Influ Calendar: ประเภทคิวบนปฏิทิน (/influ-calendar) ----------
+   เพิ่มชนิดใหม่ต้องแก้ 3 ที่: InfluCalendarKind (database.types), ตารางนี้
+   และ check constraint ของ influ_calendar_events (migration ใหม่) */
+
+export const INFLU_CALENDAR_KINDS: Record<
+  InfluCalendarKind,
+  { label: string; short: string; chip: string; dot: string }
+> = {
+  service: {
+    label: "เข้ารับบริการ / ทำหัตถการ",
+    short: "รับบริการ",
+    chip: "bg-brand-100 text-brand-800 border-brand-200",
+    dot: "bg-brand-500",
+  },
+  shoot: {
+    label: "ถ่ายทำ / ถ่ายคอนเทนต์",
+    short: "ถ่ายทำ",
+    chip: "bg-violet-100 text-violet-700 border-violet-200",
+    dot: "bg-violet-500",
+  },
+  post: {
+    label: "คิวโพสต์ / ลงคลิป",
+    short: "โพสต์",
+    chip: "bg-sky-100 text-sky-700 border-sky-200",
+    dot: "bg-sky-500",
+  },
+  meeting: {
+    label: "นัดคุย / ประชุม",
+    short: "นัดคุย",
+    chip: "bg-amber-100 text-amber-700 border-amber-200",
+    dot: "bg-amber-500",
+  },
+  followup: {
+    label: "ติดตามงาน / ส่งภาพอัปเดต",
+    short: "ตามงาน",
+    chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    dot: "bg-emerald-500",
+  },
+  other: {
+    label: "อื่นๆ",
+    short: "อื่นๆ",
+    chip: "bg-stone-100 text-stone-600 border-stone-200",
+    dot: "bg-stone-400",
+  },
+};
+
+export const INFLU_CALENDAR_KIND_ORDER: InfluCalendarKind[] = [
+  "service",
+  "shoot",
+  "post",
+  "meeting",
+  "followup",
+  "other",
+];
+
+/** เวลาแบบสั้นจากค่า time ของ Postgres ("14:30:00" → "14:30") */
+export function shortTime(value: string | null): string | null {
+  if (!value) return null;
+  return value.slice(0, 5);
+}
+
+/** ป้ายเวลาของคิว — ไม่กรอกเวลา = "ทั้งวัน", มีเวลาสิ้นสุด = ช่วงเวลา */
+export function calendarTimeLabel(
+  start: string | null,
+  end: string | null
+): string {
+  const s = shortTime(start);
+  if (!s) return "ทั้งวัน";
+  const e = shortTime(end);
+  return e ? `${s} – ${e}` : s;
 }
 
 /* ---------- Stage ของ pipeline ---------- */

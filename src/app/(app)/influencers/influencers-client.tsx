@@ -2,6 +2,7 @@
 
 import {
   BellRing,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -636,7 +637,14 @@ export function InfluencersClient({
         title="Influ Management"
         description="บอร์ด Influencer แบ่งตามขนาดผู้ติดตาม — ลากการ์ดย้ายกลุ่ม/เรียงลำดับได้ คลิกการ์ดเพื่อเดินงานทีละ stage"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/influ-calendar"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            >
+              <CalendarDays size={16} />
+              ปฏิทินคิว
+            </Link>
             <Link
               href="/influencers/contracts"
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
