@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 /* ---------- Button ---------- */
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
@@ -231,6 +231,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = "ลบ",
+  confirmVariant = "danger",
   onConfirm,
   onClose,
 }: {
@@ -238,6 +239,8 @@ export function ConfirmDialog({
   title: string;
   message: ReactNode;
   confirmLabel?: string;
+  /** โทนปุ่มยืนยัน — default danger (แดง) สำหรับการลบ; การกระทำอื่นส่ง "primary" มาได้ */
+  confirmVariant?: ButtonVariant;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -249,7 +252,7 @@ export function ConfirmDialog({
           ยกเลิก
         </Button>
         <Button
-          variant="danger"
+          variant={confirmVariant}
           onClick={() => {
             onConfirm();
             onClose();

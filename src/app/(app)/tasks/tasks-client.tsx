@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import {
   Button,
+  type ButtonVariant,
   ConfirmDialog,
   Input,
   Label,
@@ -72,6 +73,9 @@ const TASK_SELECT =
 type ConfirmState = {
   title: string;
   message: string;
+  /** ป้าย/โทนปุ่มยืนยัน — ไม่ระบุ = "ลบ" สีแดง (ค่าเดิมของกล่องลบ) */
+  confirmLabel?: string;
+  confirmVariant?: ButtonVariant;
   onConfirm: () => void;
 };
 
@@ -941,6 +945,8 @@ export function TasksClient({
     setConfirm({
       title: "อนุมัติจบทันที (ข้ามลำดับ 2)",
       message: `งาน "${task.title}" จะเสร็จสมบูรณ์ทันทีโดยไม่ส่งต่อให้ ${r2} ตรวจขั้นสุดท้าย ใช่หรือไม่?`,
+      confirmLabel: "อนุมัติจบทันที",
+      confirmVariant: "primary",
       onConfirm: () => approveTaskBypass(task),
     });
   };
@@ -2215,6 +2221,8 @@ export function TasksClient({
         open={confirm !== null}
         title={confirm?.title ?? ""}
         message={confirm?.message ?? ""}
+        confirmLabel={confirm?.confirmLabel}
+        confirmVariant={confirm?.confirmVariant}
         onConfirm={() => confirm?.onConfirm()}
         onClose={() => setConfirm(null)}
       />
