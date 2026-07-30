@@ -914,6 +914,37 @@ export function TasksClient({
     ]);
   };
 
+  /** ผู้ตรวจลำดับ 1 กด "อนุมัติจบทันที" — bypass ข้ามลำดับ 2 ให้งานเสร็จสมบูรณ์เลย
+      ล้าง reviewer2 ออกจากงาน: ไม่บันทึกว่าลำดับ 2 เป็นผู้อนุมัติทั้งที่ไม่ได้ตรวจ */
+  const approveTaskBypass = (task: TaskWithAssignee) => {
+    patchTask(task.id, {
+      db: {
+        review_status: "approved",
+        completed: true,
+        approved_at: new Date().toISOString(),
+        reviewer2_id: null,
+        review_step: 1,
+        review1_approved_at: null,
+      },
+      local: { reviewer2: null },
+    });
+    notify(task, [
+      { recipient: task.assignee_id, type: "approved" },
+      { recipient: task.created_by, type: "approved" },
+    ]);
+  };
+
+  /** ปุ่ม bypass ต้องยืนยันก่อน — เป็นการข้ามชั้นตรวจสุดท้ายของทีม ให้กดพลาดยาก */
+  const requestApproveBypass = (task: TaskWithAssignee) => {
+    if (isTempId(task.id)) return;
+    const r2 = task.reviewer2 ? profileName(task.reviewer2) : "ผู้ตรวจลำดับ 2";
+    setConfirm({
+      title: "อนุมัติจบทันที (ข้ามลำดับ 2)",
+      message: `งาน "${task.title}" จะเสร็จสมบูรณ์ทันทีโดยไม่ส่งต่อให้ ${r2} ตรวจขั้นสุดท้าย ใช่หรือไม่?`,
+      onConfirm: () => approveTaskBypass(task),
+    });
+  };
+
   /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล */
   const requestReject = (task: TaskWithAssignee) => {
     if (isTempId(task.id)) return;
@@ -1941,6 +1972,7 @@ export function TasksClient({
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onApprove={approveTask}
+            onApproveBypass={requestApproveBypass}
             onReject={requestReject}
           />
         ) : tab === "approved" ? (
@@ -1998,6 +2030,7 @@ export function TasksClient({
           onSubmitReview={submitForReview}
           onCancelReview={cancelReview}
           onApprove={approveTask}
+          onApproveBypass={requestApproveBypass}
           onReject={requestReject}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}

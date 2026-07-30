@@ -2,6 +2,7 @@
 
 import {
   ArrowUpRight,
+  CheckCheck,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -140,6 +141,7 @@ export function TaskPanel({
   onSubmitReview,
   onCancelReview,
   onApprove,
+  onApproveBypass,
   onReject,
   onReopen,
   onSetReviewer,
@@ -176,6 +178,8 @@ export function TaskPanel({
   onSubmitReview: (task: TaskWithAssignee) => void;
   onCancelReview: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
+  /** อนุมัติจบทันที (bypass) — ข้ามผู้ตรวจลำดับ 2 ให้งานเสร็จสมบูรณ์เลย (มี confirm) */
+  onApproveBypass: (task: TaskWithAssignee) => void;
   /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล + นับเป็นการแก้ไข 1 ครั้งของผู้รับผิดชอบ */
   onReject: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
@@ -928,6 +932,18 @@ export function TaskPanel({
                     : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
                   : "อนุมัติ"}
               </button>
+              {/* bypass — มีเฉพาะงานตรวจ 2 ทอดที่ยังอยู่ทอด 1: ปิดงานเลยไม่ส่งต่อลำดับ 2 */}
+              {hasChain && reviewStep < 2 && (
+                <button
+                  type="button"
+                  onClick={() => onApproveBypass(task)}
+                  title="อนุมัติจบทันทีโดยไม่ส่งต่อผู้ตรวจลำดับ 2 (มีกล่องยืนยันก่อน)"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3 py-1.5 text-sm font-medium text-emerald-600 transition-all duration-200 hover:bg-emerald-50 active:scale-[0.97]"
+                >
+                  <CheckCheck size={15} />
+                  อนุมัติจบทันที
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onReject(task)}

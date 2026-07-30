@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  CheckCheck,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -42,6 +43,7 @@ export function ReviewList({
   selectedId,
   onRowClick,
   onApprove,
+  onApproveBypass,
   onReject,
 }: {
   /** งานที่รอ "ฉัน" ตรวจในทอดปัจจุบัน */
@@ -54,6 +56,8 @@ export function ReviewList({
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
+  /** อนุมัติจบทันที (bypass) — ข้ามผู้ตรวจลำดับ 2 ให้งานเสร็จสมบูรณ์เลย (มี confirm) */
+  onApproveBypass: (task: TaskWithAssignee) => void;
   /** ตีกลับให้แก้ไข — บันทึกจำนวนรอบแก้ไขไว้เป็นสถิติของผู้รับผิดชอบ */
   onReject: (task: TaskWithAssignee) => void;
 }) {
@@ -208,6 +212,21 @@ export function ReviewList({
                       <CheckCircle2 size={15} />
                       {isFinalStep ? "อนุมัติ" : "อนุมัติ → ส่งต่อลำดับ 2"}
                     </button>
+                    {/* bypass — มีเฉพาะงานตรวจ 2 ทอดที่ยังอยู่ทอด 1: ปิดงานเลยไม่ส่งต่อลำดับ 2 */}
+                    {!isFinalStep && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onApproveBypass(task);
+                        }}
+                        title="อนุมัติจบทันทีโดยไม่ส่งต่อผู้ตรวจลำดับ 2 (มีกล่องยืนยันก่อน)"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3.5 py-2 text-sm font-medium text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95"
+                      >
+                        <CheckCheck size={15} />
+                        อนุมัติจบทันที
+                      </button>
+                    )}
                   </div>
                 </div>
               );
