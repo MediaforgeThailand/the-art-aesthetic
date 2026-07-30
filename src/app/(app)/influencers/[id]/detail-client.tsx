@@ -516,11 +516,14 @@ export function InfluDetailClient({
           />
         )}
         {view === 3 && (
+          // ไฟล์ Memo แก้ได้ (เปลี่ยนไฟล์) จนกว่าเคสจะปิดงาน แม้ stage นี้ผ่านไปแล้ว —
+          // เป็นเอกสารของเคส ไม่ใช่สถานะงาน; ส่วนปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม
           <MemoStage
             influencer={influencer}
             signatures={signatures}
             userName={userName}
             readOnly={readOnly}
+            fileEditable={!influencer.completed}
           />
         )}
         {view === 4 && (

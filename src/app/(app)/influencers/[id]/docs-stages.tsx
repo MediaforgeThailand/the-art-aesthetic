@@ -107,11 +107,17 @@ export function PhotosModal({
 
 /* ---------- Stage 3: Memo ขออนุมัติ ---------- */
 
-export function MemoStage(props: {
+export function MemoStage({
+  fileEditable,
+  ...props
+}: {
   influencer: InfluencerRow;
   signatures: InfluSignatureRow[];
   userName: string;
   readOnly: boolean;
+  /** เปลี่ยนไฟล์ Memo ได้ไหม — จริงจนกว่าเคสจะปิดงาน แม้ stage 3 ผ่านไปแล้ว
+      (ไฟล์เอกสารเป็นของเคส ไม่ใช่สถานะงาน — มัก memo ผิด/ได้ฉบับอนุมัติจริงทีหลัง) */
+  fileEditable: boolean;
 }) {
   // โหมดแบบฟอร์มดิจิทัล (MemoFormStage) เก็บโค้ดไว้แต่ยังไม่เปิดใช้ — Coming soon
   const [mode] = useState<"copy" | "form">("copy");
@@ -145,7 +151,7 @@ export function MemoStage(props: {
       </div>
 
       {mode === "copy" ? (
-        <MemoCopyStage {...props} />
+        <MemoCopyStage {...props} fileEditable={fileEditable} />
       ) : (
         <MemoFormStage {...props} />
       )}
@@ -215,11 +221,14 @@ function CopyBox({
 function MemoCopyStage({
   influencer,
   readOnly,
+  fileEditable,
 }: {
   influencer: InfluencerRow;
   signatures: InfluSignatureRow[];
   userName: string;
   readOnly: boolean;
+  /** เปลี่ยน/อัพโหลดไฟล์ Memo ได้ไหม — แยกจาก readOnly ที่ล็อกการเดิน stage */
+  fileEditable: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -576,11 +585,13 @@ function MemoCopyStage({
                 <Download size={13} />
                 ดาวน์โหลด
               </Button>
-              {!readOnly && (
+              {/* เปลี่ยนไฟล์ได้จนกว่าเคสจะปิดงาน — แม้ stage 3 ผ่านไปแล้ว (ไฟล์เดิมถูกแทนที่+ลบทิ้ง) */}
+              {fileEditable && (
                 <Button
                   variant="ghost"
                   onClick={() => memoInputRef.current?.click()}
                   loading={uploading}
+                  title="เลือกไฟล์ใหม่มาแทนไฟล์ Memo เดิม (ไฟล์เดิมจะถูกลบออกจากระบบ)"
                   className="!px-2.5 !py-1 !text-xs"
                 >
                   <Upload size={13} />
@@ -589,7 +600,7 @@ function MemoCopyStage({
               )}
             </div>
           </div>
-        ) : readOnly ? (
+        ) : !fileEditable ? (
           <p className="text-xs text-stone-400">ยังไม่มีไฟล์</p>
         ) : (
           <button
@@ -604,7 +615,15 @@ function MemoCopyStage({
               : "กดเพื่ออัพโหลดไฟล์ Memo ที่อนุมัติแล้ว (PDF / รูปภาพ / Word)"}
           </button>
         )}
-        {!readOnly && (
+        {/* stage ผ่านไปแล้วแต่ยังแก้ไฟล์ได้ — บอกให้ชัดว่าเปลี่ยนไฟล์ไม่กระทบ stage ของเคส */}
+        {readOnly && fileEditable && memoUploaded && (
+          <p className="mt-2.5 text-[11px] leading-5 text-stone-400">
+            Stage นี้ผ่านไปแล้ว — ยังเปลี่ยนไฟล์ Memo ได้
+            (เช่นได้ฉบับที่อนุมัติจริงมาทีหลัง หรืออัพผิดไฟล์)
+            โดยไม่กระทบ stage ปัจจุบันของเคส
+          </p>
+        )}
+        {fileEditable && (
           <input
             ref={memoInputRef}
             type="file"
