@@ -26,6 +26,9 @@
   --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-right: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-left: slide-in-left 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* ป้ายเตือนแบบ "เรืองแสง" — ใช้กับเรื่องที่ต้องสะดุดตาจริงๆ เท่านั้น
+     (ตอนนี้: เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ) */
+  --animate-glow-amber: glow-amber 1.8s ease-in-out infinite;
 
   @keyframes fade-in {
     from {
@@ -63,6 +66,20 @@
     to {
       opacity: 1;
       transform: translateX(0);
+    }
+  }
+  /* เรืองแสงเป็นจังหวะ (เหลืองอำพัน) — เงาวูบเข้าออก ไม่ขยับตำแหน่ง ไม่ทำให้แถวกระตุก */
+  @keyframes glow-amber {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgba(245, 158, 11, 0),
+        0 0 6px 0 rgba(245, 158, 11, 0.35);
+    }
+    50% {
+      box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.16),
+        0 0 14px 2px rgba(245, 158, 11, 0.6);
     }
   }
   /* drawer เมนูมือถือ — เลื่อนเข้าจากซ้ายทั้งบาน */
@@ -152,4 +169,15 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #cd9a86;
+}
+
+/* ป้ายเรืองแสงวิ่งตลอดเวลา — ปิดให้คนที่ตั้งค่าลดการเคลื่อนไหวไว้
+   (เงายังอยู่ที่จุดสว่างสุด ป้ายจึงยังเด่นเหมือนเดิม แค่ไม่กะพริบ) */
+@media (prefers-reduced-motion: reduce) {
+  .animate-glow-amber {
+    animation: none;
+    box-shadow:
+      0 0 0 4px rgba(245, 158, 11, 0.16),
+      0 0 14px 2px rgba(245, 158, 11, 0.6);
+  }
 }

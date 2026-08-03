@@ -27,6 +27,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Ban,
   BellRing,
+  CalendarClock,
   CheckCircle2,
   FileSignature,
   Phone,
@@ -99,6 +100,44 @@ export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
       : i.stage >= 2
         ? "accepted"
         : "waiting";
+
+/* ---------- เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ ----------
+   คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
+   influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
+   ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
+   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ Stage 2) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
+   ตัดที่ stage ≤ 5 เพราะขึ้น stage 6 = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
+export const needsDoctorBooking = (
+  i: InfluencerListRow,
+  bookedIds: ReadonlySet<string>
+): boolean =>
+  i.stage >= 3 &&
+  i.stage <= 5 &&
+  !i.completed &&
+  i.declined_at === null &&
+  !bookedIds.has(i.id);
+
+/** ป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" — ตัวเด่นสุดบนการ์ด เพราะเป็นงานที่ต้องรีบตาม
+    มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ */
+export function NoDoctorBookingBadge({
+  serviceDate,
+}: {
+  serviceDate: string | null;
+}) {
+  return (
+    <span
+      title={
+        serviceDate
+          ? `คุยวันไว้แล้ว (${formatDate(serviceDate)}) แต่ยังไม่มีคิวในปฏิทิน — ลงคิวฝั่งโรงพยาบาลแล้วมาเพิ่มคิวในปฏิทินให้ครบ`
+          : "ยังไม่ได้เคาะวันกับ influ และยังไม่มีคิวในปฏิทิน — ตามให้ยืนยันวันเข้ารับบริการ"
+      }
+      className="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-gradient-to-b from-amber-100 to-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900 animate-glow-amber"
+    >
+      <CalendarClock size={11} />
+      {serviceDate ? "ยังไม่ได้ลงคิวหมอ" : "ยังไม่เคาะวัน · ไม่มีคิวหมอ"}
+    </span>
+  );
+}
 
 export const INFLU_STATUS_META: Record<InfluStatusKey, { label: string }> = {
   waiting: { label: "ติดต่ออยู่ · รอตอบรับ" },
@@ -218,6 +257,7 @@ export function InfluCardContent({
   overlay = false,
   links,
   deleting = false,
+  needsBooking = false,
   onDelete,
   onToggleDeclined,
 }: {
@@ -229,6 +269,8 @@ export function InfluCardContent({
   /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
   links?: InfluLinkLite[];
   deleting?: boolean;
+  /** ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ติดป้ายเรืองแสง (ดู needsDoctorBooking) */
+  needsBooking?: boolean;
   onDelete?: (influ: InfluencerListRow) => void;
   /** mark/ยกเลิก "ปฏิเสธ" — ไม่ส่ง = ไม่มีปุ่ม (เช่นการ์ดใน overlay) */
   onToggleDeclined?: (influ: InfluencerListRow) => void;
@@ -348,8 +390,9 @@ export function InfluCardContent({
         </div>
       </div>
 
-      {/* สถานะตอบรับ + tier */}
+      {/* สถานะตอบรับ + tier — ป้าย "ยังไม่ได้ลงคิวหมอ" มาก่อนเพื่อน เพราะต้องรีบตาม */}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        {needsBooking && <NoDoctorBookingBadge serviceDate={i.service_date} />}
         {declined ? (
           <span title={`ปฏิเสธเมื่อ ${formatDate(thaiDateISO(i.declined_at!))}`}>
             <Badge className="border border-rose-300 bg-rose-100 font-semibold text-rose-700">
@@ -445,6 +488,7 @@ function SortableInfluCard({
   links,
   today,
   deleting,
+  needsBooking,
   onClick,
   onDelete,
   onToggleDeclined,
@@ -454,6 +498,7 @@ function SortableInfluCard({
   links: InfluLinkLite[] | undefined;
   today: string;
   deleting: boolean;
+  needsBooking: boolean;
   onClick: () => void;
   onDelete: (influ: InfluencerListRow) => void;
   onToggleDeclined: (influ: InfluencerListRow) => void;
@@ -487,6 +532,7 @@ function SortableInfluCard({
         links={links}
         today={today}
         deleting={deleting}
+        needsBooking={needsBooking}
         onDelete={onDelete}
         onToggleDeclined={onToggleDeclined}
       />
@@ -501,6 +547,7 @@ function BoardColumn({
   influs,
   statsByInflu,
   linksByInflu,
+  bookingAlertIds,
   today,
   highlight,
   deletingId,
@@ -512,6 +559,7 @@ function BoardColumn({
   influs: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  bookingAlertIds: ReadonlySet<string>;
   today: string;
   highlight: boolean;
   deletingId: string | null;
@@ -568,6 +616,7 @@ function BoardColumn({
               links={linksByInflu?.get(i.id)}
               today={today}
               deleting={deletingId === i.id}
+              needsBooking={bookingAlertIds.has(i.id)}
               onClick={() => onCardClick(i)}
               onDelete={onDelete}
               onToggleDeclined={onToggleDeclined}
@@ -585,6 +634,7 @@ export function InfluBoard({
   items,
   statsByInflu,
   linksByInflu,
+  bookingAlertIds,
   today,
   deletingId,
   onOpen,
@@ -597,6 +647,8 @@ export function InfluBoard({
   statsByInflu: Map<string, InfluStats>;
   /** ลิงก์ไฟล์ source ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด (ไม่ส่ง = ไม่มีปุ่ม) */
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  /** id ของเคสที่ต้องติดป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" */
+  bookingAlertIds: ReadonlySet<string>;
   today: string;
   deletingId: string | null;
   onOpen: (influ: InfluencerListRow) => void;
@@ -779,6 +831,7 @@ export function InfluBoard({
               influs={influs}
               statsByInflu={statsByInflu}
               linksByInflu={linksByInflu}
+              bookingAlertIds={bookingAlertIds}
               today={today}
               highlight={activeId !== null && overGroup === g}
               deletingId={deletingId}
@@ -796,6 +849,7 @@ export function InfluBoard({
             influ={activeInflu}
             stats={statsByInflu.get(activeInflu.id)}
             today={today}
+            needsBooking={bookingAlertIds.has(activeInflu.id)}
             overlay
           />
         )}
