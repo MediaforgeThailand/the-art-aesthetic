@@ -1234,184 +1234,184 @@ export function CalendarClient({
 
       {/* ---- ปฏิทิน (เต็มความกว้าง — แผงข้างเป็นแผงลอยทับ ไม่กินพื้นที่) ---- */}
       <div className="min-w-0">
-          <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up">
-            <div className="grid grid-cols-7 gap-px">
-              {WEEKDAYS.map((w, idx) => (
-                <div
-                  key={w}
-                  className={`pb-2 text-center text-xs font-semibold sm:text-sm ${
-                    idx === 0 || idx === 6 ? "text-brand-500" : "text-stone-500"
-                  }`}
-                >
-                  {w}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-brand-100/70">
-              {cells.map((day, idx) => {
-                if (day === null)
-                  return (
-                    <div
-                      key={`blank-${idx}`}
-                      className="min-h-[88px] bg-white/25 sm:min-h-[168px]"
-                    />
-                  );
-                const iso = isoOf(cursor.year, cursor.month, day);
-                const dayEvents = eventsByDate.get(iso) ?? [];
-                const dayServices = servicesByDate.get(iso) ?? [];
-                const isToday = iso === today;
-                const isPast = iso < today;
-                const isSelected = iso === selectedDay && panelOpen;
-                const weekend = idx % 7 === 0 || idx % 7 === 6;
+        <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up">
+          <div className="grid grid-cols-7 gap-px">
+            {WEEKDAYS.map((w, idx) => (
+              <div
+                key={w}
+                className={`pb-2 text-center text-xs font-semibold sm:text-sm ${
+                  idx === 0 || idx === 6 ? "text-brand-500" : "text-stone-500"
+                }`}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-brand-100/70">
+            {cells.map((day, idx) => {
+              if (day === null)
                 return (
-                  <button
-                    key={iso}
-                    type="button"
-                    onClick={() => openDate(iso)}
-                    title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
-                    className={`flex min-h-[88px] cursor-pointer flex-col gap-1 p-1.5 text-left transition-colors sm:min-h-[168px] sm:gap-1.5 sm:p-2 ${
-                      isSelected
-                        ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
-                        : isPast
-                          ? "bg-white/45"
-                          : weekend
-                            ? "bg-cream/60"
-                            : "bg-white/75"
-                    } hover:bg-brand-50/80`}
-                  >
-                    <span className="flex items-center gap-1">
-                      <span
-                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm ${
-                          isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                            : isPast
-                              ? "text-stone-400"
-                              : "text-stone-700"
-                        }`}
-                      >
-                        {day}
-                      </span>
-                      {(dayEvents.length > 0 || dayServices.length > 0) && (
-                        <span className="ml-auto hidden text-[11px] font-medium text-stone-400 sm:inline">
-                          {dayEvents.length + dayServices.length}
-                        </span>
-                      )}
-                    </span>
-
-                    {/* จอเล็ก: จุดสีบอกว่ามีคิว (ช่องแคบเกินกว่าจะใส่ชิป) */}
-                    <span className="flex flex-wrap gap-0.5 sm:hidden">
-                      {dayEvents.slice(0, 4).map((e) => (
-                        <span
-                          key={e.id}
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            INFLU_CALENDAR_KINDS[e.kind].dot
-                          } ${e.done ? "opacity-40" : ""}`}
-                        />
-                      ))}
-                      {dayServices.length > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full border border-brand-400" />
-                      )}
-                      {dayEvents.length > 4 && (
-                        <span className="text-[9px] leading-none text-stone-400">
-                          +{dayEvents.length - 4}
-                        </span>
-                      )}
-                    </span>
-
-                    {/* จอใหญ่: ชิปคิว 4 อันแรก (เรียงตามเวลาเริ่ม — เริ่มก่อนอยู่บน) */}
-                    <span className="hidden flex-col gap-1 sm:flex">
-                      {dayEvents.slice(0, 4).map((e) => (
-                        <EventChip key={e.id} event={e} doctors={doctors} />
-                      ))}
-                      {dayServices.slice(0, 2).map((s) => (
-                        <span
-                          key={s.id}
-                          title={`วันรับบริการจากเคส: ${nameOf(s)}${
-                            s.doctor_name ? ` · ${s.doctor_name}` : ""
-                          }`}
-                          className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-xs leading-tight text-brand-600"
-                        >
-                          <Sparkles size={11} className="shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">
-                            {nickOf(s)}
-                          </span>
-                          {s.doctor_name && (
-                            <DoctorAvatar
-                              doctor={doctorOf(s.doctor_name, doctors)}
-                              size="sm"
-                            />
-                          )}
-                        </span>
-                      ))}
-                      {dayEvents.length > 4 && (
-                        <span className="px-1 text-[11px] font-medium text-stone-400">
-                          +{dayEvents.length - 4} คิว
-                        </span>
-                      )}
-                    </span>
-                  </button>
+                  <div
+                    key={`blank-${idx}`}
+                    className="min-h-[88px] bg-white/25 sm:min-h-[168px]"
+                  />
                 );
-              })}
-            </div>
-          </Card>
+              const iso = isoOf(cursor.year, cursor.month, day);
+              const dayEvents = eventsByDate.get(iso) ?? [];
+              const dayServices = servicesByDate.get(iso) ?? [];
+              const isToday = iso === today;
+              const isPast = iso < today;
+              const isSelected = iso === selectedDay && panelOpen;
+              const weekend = idx % 7 === 0 || idx % 7 === 6;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => openDate(iso)}
+                  title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
+                  className={`flex min-h-[88px] cursor-pointer flex-col gap-1 p-1.5 text-left transition-colors sm:min-h-[168px] sm:gap-1.5 sm:p-2 ${
+                    isSelected
+                      ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
+                      : isPast
+                        ? "bg-white/45"
+                        : weekend
+                          ? "bg-cream/60"
+                          : "bg-white/75"
+                  } hover:bg-brand-50/80`}
+                >
+                  <span className="flex items-center gap-1">
+                    <span
+                      className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm ${
+                        isToday
+                          ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                          : isPast
+                            ? "text-stone-400"
+                            : "text-stone-700"
+                      }`}
+                    >
+                      {day}
+                    </span>
+                    {(dayEvents.length > 0 || dayServices.length > 0) && (
+                      <span className="ml-auto hidden text-[11px] font-medium text-stone-400 sm:inline">
+                        {dayEvents.length + dayServices.length}
+                      </span>
+                    )}
+                  </span>
 
-          {/* ---- คิวที่กำลังจะถึง ---- */}
-          <Card className="mt-4 p-4 animate-fade-in-up">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800">
-              <Clock3 size={15} className="text-brand-500" />
-              คิวที่กำลังจะถึง (14 วัน)
-            </h2>
-            {upcoming.length === 0 ? (
-              <p className="py-3 text-center text-sm text-stone-400">
-                ยังไม่มีคิวใน 14 วันข้างหน้า
-              </p>
-            ) : (
-              <ul className="divide-y divide-stone-100">
-                {upcoming.map((e) => {
-                  const meta = INFLU_CALENDAR_KINDS[e.kind];
-                  return (
-                    <li key={e.id}>
-                      <button
-                        type="button"
-                        onClick={() => openDate(e.event_date, e.id)}
-                        className="flex w-full cursor-pointer flex-wrap items-center gap-2 py-2 text-left transition-colors hover:bg-brand-50/60"
+                  {/* จอเล็ก: จุดสีบอกว่ามีคิว (ช่องแคบเกินกว่าจะใส่ชิป) */}
+                  <span className="flex flex-wrap gap-0.5 sm:hidden">
+                    {dayEvents.slice(0, 4).map((e) => (
+                      <span
+                        key={e.id}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          INFLU_CALENDAR_KINDS[e.kind].dot
+                        } ${e.done ? "opacity-40" : ""}`}
+                      />
+                    ))}
+                    {dayServices.length > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full border border-brand-400" />
+                    )}
+                    {dayEvents.length > 4 && (
+                      <span className="text-[9px] leading-none text-stone-400">
+                        +{dayEvents.length - 4}
+                      </span>
+                    )}
+                  </span>
+
+                  {/* จอใหญ่: ชิปคิว 4 อันแรก (เรียงตามเวลาเริ่ม — เริ่มก่อนอยู่บน) */}
+                  <span className="hidden flex-col gap-1 sm:flex">
+                    {dayEvents.slice(0, 4).map((e) => (
+                      <EventChip key={e.id} event={e} doctors={doctors} />
+                    ))}
+                    {dayServices.slice(0, 2).map((s) => (
+                      <span
+                        key={s.id}
+                        title={`วันรับบริการจากเคส: ${nameOf(s)}${
+                          s.doctor_name ? ` · ${s.doctor_name}` : ""
+                        }`}
+                        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-xs leading-tight text-brand-600"
                       >
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
-                        />
-                        <span className="w-28 shrink-0 text-xs font-medium text-stone-500">
-                          {e.event_date === today
-                            ? "วันนี้"
-                            : formatDate(e.event_date)}
+                        <Sparkles size={11} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {nickOf(s)}
                         </span>
-                        <span className="w-20 shrink-0 text-xs font-semibold text-stone-600 tabular-nums">
-                          {calendarTimeLabel(e.start_time, e.end_time)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
-                          {e.influencer && (
-                            <span className="font-medium">
-                              {nameOf(e.influencer)} ·{" "}
-                            </span>
-                          )}
-                          {e.title}
-                        </span>
-                        {e.doctor_name && (
-                          <span className="shrink-0 text-xs text-stone-500">
-                            <DoctorNameChip
-                              name={e.doctor_name}
-                              doctors={doctors}
-                            />
+                        {s.doctor_name && (
+                          <DoctorAvatar
+                            doctor={doctorOf(s.doctor_name, doctors)}
+                            size="sm"
+                          />
+                        )}
+                      </span>
+                    ))}
+                    {dayEvents.length > 4 && (
+                      <span className="px-1 text-[11px] font-medium text-stone-400">
+                        +{dayEvents.length - 4} คิว
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* ---- คิวที่กำลังจะถึง ---- */}
+        <Card className="mt-4 p-4 animate-fade-in-up">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800">
+            <Clock3 size={15} className="text-brand-500" />
+            คิวที่กำลังจะถึง (14 วัน)
+          </h2>
+          {upcoming.length === 0 ? (
+            <p className="py-3 text-center text-sm text-stone-400">
+              ยังไม่มีคิวใน 14 วันข้างหน้า
+            </p>
+          ) : (
+            <ul className="divide-y divide-stone-100">
+              {upcoming.map((e) => {
+                const meta = INFLU_CALENDAR_KINDS[e.kind];
+                return (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      onClick={() => openDate(e.event_date, e.id)}
+                      className="flex w-full cursor-pointer flex-wrap items-center gap-2 py-2 text-left transition-colors hover:bg-brand-50/60"
+                    >
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+                      />
+                      <span className="w-28 shrink-0 text-xs font-medium text-stone-500">
+                        {e.event_date === today
+                          ? "วันนี้"
+                          : formatDate(e.event_date)}
+                      </span>
+                      <span className="w-20 shrink-0 text-xs font-semibold text-stone-600 tabular-nums">
+                        {calendarTimeLabel(e.start_time, e.end_time)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                        {e.influencer && (
+                          <span className="font-medium">
+                            {nameOf(e.influencer)} ·{" "}
                           </span>
                         )}
-                        <Badge className={`border ${meta.chip}`}>
-                          {meta.short}
-                        </Badge>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+                        {e.title}
+                      </span>
+                      {e.doctor_name && (
+                        <span className="shrink-0 text-xs text-stone-500">
+                          <DoctorNameChip
+                            name={e.doctor_name}
+                            doctors={doctors}
+                          />
+                        </span>
+                      )}
+                      <Badge className={`border ${meta.chip}`}>
+                        {meta.short}
+                      </Badge>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </Card>
       </div>
 
