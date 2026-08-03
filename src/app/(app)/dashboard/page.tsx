@@ -49,9 +49,6 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  const access = await getAccess();
-  if (!hasPermission(access, "data")) return <AccessNotice />;
-
   const { period: rawPeriod } = await searchParams;
   const period: PeriodKey = isPeriodKey(rawPeriod) ? rawPeriod : "mtd";
 
@@ -69,7 +66,9 @@ export default async function DashboardPage({
     trendStart.getMonth() + 1
   )}-${pad(trendStart.getDate())}`;
 
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
+    access,
     summaryResult,
     prevTotalsResult,
     monthlyResult,
@@ -81,6 +80,7 @@ export default async function DashboardPage({
     { data: demoSales },
     { data: lastSync },
   ] = await Promise.all([
+    getAccess(),
     // ยอดขาย aggregate ใน SQL — ไม่โหลดรายบรรทัด (ข้อมูลจริงหลายหมื่นแถว)
     supabase.rpc("sales_dash_summary", { p_from: cutoff, p_to: today }),
     supabase.rpc("sales_totals", { p_from: prevWin.from, p_to: prevWin.to }),
@@ -118,6 +118,8 @@ export default async function DashboardPage({
       .limit(1)
       .maybeSingle(),
   ]);
+
+  if (!hasPermission(access, "data")) return <AccessNotice />;
 
   if (summaryResult.error) {
     throw new Error(`โหลดสรุปยอดขายไม่สำเร็จ: ${summaryResult.error.message}`);

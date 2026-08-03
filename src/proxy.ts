@@ -4,7 +4,11 @@ import { isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env
 
 export default async function proxy(request: NextRequest) {
   // หน้า Price List สาธารณะ — เปิดดูได้โดยไม่ต้องล็อกอิน (แชร์ให้ลูกค้า/ทีมภายนอก)
-  if (request.nextUrl.pathname === "/price-list") {
+  // /api/warm = endpoint อุ่นเครื่องที่ pg_cron ยิง ไม่มี session ต้องปล่อยผ่านเหมือนกัน
+  if (
+    request.nextUrl.pathname === "/price-list" ||
+    request.nextUrl.pathname === "/api/warm"
+  ) {
     return NextResponse.next({ request });
   }
   // ยังไม่ได้ตั้งค่า Supabase — ปล่อยผ่านเพื่อให้หน้า setup แสดงได้

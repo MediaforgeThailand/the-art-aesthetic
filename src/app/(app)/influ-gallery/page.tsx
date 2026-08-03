@@ -16,28 +16,33 @@ const INFLU_LIST_COLUMNS =
   "id, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, created_by, created_at, updated_at";
 
 export default async function InfluGalleryPage() {
-  const access = await getAccess();
+  const supabase = await createClient();
+
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [
+    access,
+    { data: influencers, error },
+    { data: influTasks },
+    { data: tasks },
+  ] = await Promise.all([
+    getAccess(),
+    supabase
+      .from("influencers")
+      .select(INFLU_LIST_COLUMNS)
+      .order("created_at", { ascending: false }),
+    // follow-up checklist ที่ยังไม่ทำ (stage 6) — is_custom ใช้ตัดข้อของโหมดที่เคสนั้นไม่ได้ใช้
+    supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
+    // งานคอนเทนต์ที่ผูกกับ influencer (ไม่นับงานในถังขยะ)
+    supabase
+      .from("tasks")
+      .select("influencer_id")
+      .not("influencer_id", "is", null)
+      .is("deleted_at", null),
+  ]);
+
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
   if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
     return <AccessNotice />;
-
-  const supabase = await createClient();
-
-  const [{ data: influencers, error }, { data: influTasks }, { data: tasks }] =
-    await Promise.all([
-      supabase
-        .from("influencers")
-        .select(INFLU_LIST_COLUMNS)
-        .order("created_at", { ascending: false }),
-      // follow-up checklist ที่ยังไม่ทำ (stage 6) — is_custom ใช้ตัดข้อของโหมดที่เคสนั้นไม่ได้ใช้
-      supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
-      // งานคอนเทนต์ที่ผูกกับ influencer (ไม่นับงานในถังขยะ)
-      supabase
-        .from("tasks")
-        .select("influencer_id")
-        .not("influencer_id", "is", null)
-        .is("deleted_at", null),
-    ]);
 
   // นับ follow-up ที่เหลือ + จำนวนงานคอนเทนต์ ต่อ influencer
   // ข้ามข้อของโหมดที่เคสนั้นไม่ได้ใช้ (ซ่อนอยู่ใน DB แต่ไม่ใช่งานค้างของเขา)

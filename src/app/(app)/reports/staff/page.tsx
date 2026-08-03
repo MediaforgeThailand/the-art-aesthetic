@@ -23,9 +23,6 @@ export default async function StaffReportPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  const access = await getAccess();
-  if (!hasPermission(access, "data")) return <AccessNotice />;
-
   const { period: rawPeriod } = await searchParams;
   const period: PeriodKey = isPeriodKey(rawPeriod) ? rawPeriod : "6m";
 
@@ -33,16 +30,20 @@ export default async function StaffReportPage({
   const today = todayISO();
   const cutoff = cutoffFor(period);
 
-  const [summaryResult, kpisResult, { data: demoSales }] = await Promise.all([
-    // aggregate ใน SQL — ข้อมูลจริงเป็นรายบรรทัดหลายหมื่นแถว ไม่โหลดมาทั้งก้อน
-    supabase.rpc("sales_dash_summary", { p_from: cutoff, p_to: today }),
-    supabase
-      .from("staff_kpis")
-      .select("*")
-      .eq("team", "sales")
-      .order("month", { ascending: true }),
-    supabase.from("sales_records").select("id").eq("note", "demo").limit(1),
-  ]);
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, summaryResult, kpisResult, { data: demoSales }] =
+    await Promise.all([
+      getAccess(),
+      // aggregate ใน SQL — ข้อมูลจริงเป็นรายบรรทัดหลายหมื่นแถว ไม่โหลดมาทั้งก้อน
+      supabase.rpc("sales_dash_summary", { p_from: cutoff, p_to: today }),
+      supabase
+        .from("staff_kpis")
+        .select("*")
+        .eq("team", "sales")
+        .order("month", { ascending: true }),
+      supabase.from("sales_records").select("id").eq("note", "demo").limit(1),
+    ]);
+  if (!hasPermission(access, "data")) return <AccessNotice />;
 
   if (summaryResult.error) {
     throw new Error(`โหลดข้อมูลยอดขายไม่สำเร็จ: ${summaryResult.error.message}`);

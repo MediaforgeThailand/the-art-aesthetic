@@ -14,12 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function TasksPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "team")) return <AccessNotice />;
-
   const supabase = await createClient();
-
-  const userId = access.uid;
 
   // ดึง tasks แบบแบ่งหน้า — PostgREST ตัดที่ ~1,000 แถว
   const fetchTasks = async () => {
@@ -41,7 +36,10 @@ export default async function TasksPage() {
     return { rows, error: null as string | null };
   };
 
+  // getAccess ยิงขนานกับ query หลัก — ไม่รอเช็คสิทธิ์จบก่อน (RLS กันข้อมูลอยู่แล้ว
+  // แค่ทิ้งผลลัพธ์ถ้าไม่มีสิทธิ์) ประหยัด round trip ไป DB หนึ่งเที่ยวต่อการเปิดหน้า
   const [
+    access,
     sectionsResult,
     tasksResult,
     profilesResult,
@@ -50,6 +48,7 @@ export default async function TasksPage() {
     categoriesResult,
     settingsResult,
   ] = await Promise.all([
+    getAccess(),
     supabase
       .from("task_sections")
       .select("*")
@@ -75,6 +74,9 @@ export default async function TasksPage() {
       .select("key, value")
       .in("key", ["default_reviewer_id", "default_reviewer2_id"]),
   ]);
+
+  if (!hasPermission(access, "team")) return <AccessNotice />;
+  const userId = access.uid;
 
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
   const tasks = tasksResult.rows;
