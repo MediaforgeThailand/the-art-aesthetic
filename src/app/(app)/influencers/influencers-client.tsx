@@ -14,6 +14,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Stethoscope,
   UsersRound,
   X,
 } from "lucide-react";
@@ -39,7 +40,8 @@ import {
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluSizeGroup } from "@/lib/types";
+import type { DoctorRow, InfluSizeGroup } from "@/lib/types";
+import { DoctorManagerModal } from "./doctor-manager";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -321,12 +323,15 @@ function MemoWaitingList({
 export function InfluencersClient({
   influencers,
   tasks,
+  doctors,
   loadError,
 }: {
   influencers: InfluencerListRow[];
   tasks: InfluTaskLite[];
+  doctors: DoctorRow[];
   loadError: string | null;
 }) {
+  const [doctorsOpen, setDoctorsOpen] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
@@ -638,6 +643,14 @@ export function InfluencersClient({
         description="บอร์ด Influencer แบ่งตามขนาดผู้ติดตาม — ลากการ์ดย้ายกลุ่ม/เรียงลำดับได้ คลิกการ์ดเพื่อเดินงานทีละ stage"
         action={
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDoctorsOpen(true)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            >
+              <Stethoscope size={16} />
+              จัดการหมอ
+            </button>
             <Link
               href="/influ-calendar"
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
@@ -913,6 +926,13 @@ export function InfluencersClient({
           if (deleteTarget) void handleDelete(deleteTarget);
         }}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ทั้งใน stage 2 และปฏิทินคิว */}
+      <DoctorManagerModal
+        open={doctorsOpen}
+        onClose={() => setDoctorsOpen(false)}
+        doctors={doctors}
       />
     </>
   );

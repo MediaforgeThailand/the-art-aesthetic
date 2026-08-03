@@ -39,10 +39,12 @@ import {
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  DoctorRow,
   InfluCalendarEventRow,
   InfluCalendarKind,
   InfluencerRow,
 } from "@/lib/types";
+import { DoctorNameChip, DoctorSelect } from "../influencers/doctor-select";
 
 /* ---------- types ที่หน้า server ส่งลงมา ---------- */
 
@@ -193,7 +195,7 @@ function DaySidebar({
   events,
   services,
   influencers,
-  doctorOptions,
+  doctors,
   focusEventId,
   saving,
   error,
@@ -206,7 +208,7 @@ function DaySidebar({
   events: CalendarEvent[];
   services: CalendarInflu[];
   influencers: CalendarInflu[];
-  doctorOptions: string[];
+  doctors: DoctorRow[];
   /** เปิดแผงมาที่รายละเอียดคิวนี้เลย (กดจากลิสต์ "คิวที่กำลังจะถึง") */
   focusEventId: string | null;
   saving: boolean;
@@ -489,9 +491,16 @@ function DaySidebar({
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
                 <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                  {activeEvent.doctor_name || (
-                    <span className="text-stone-400">ยังไม่ระบุ</span>
+                  {activeEvent.doctor_name ? (
+                    <DoctorNameChip
+                      name={activeEvent.doctor_name}
+                      doctors={doctors}
+                    />
+                  ) : (
+                    <>
+                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                      <span className="text-stone-400">ยังไม่ระบุ</span>
+                    </>
                   )}
                 </dd>
               </div>
@@ -599,9 +608,16 @@ function DaySidebar({
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
                 <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                  {activeService.doctor_name || (
-                    <span className="text-stone-400">ยังไม่ระบุ</span>
+                  {activeService.doctor_name ? (
+                    <DoctorNameChip
+                      name={activeService.doctor_name}
+                      doctors={doctors}
+                    />
+                  ) : (
+                    <>
+                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                      <span className="text-stone-400">ยังไม่ระบุ</span>
+                    </>
                   )}
                 </dd>
               </div>
@@ -693,20 +709,15 @@ function DaySidebar({
 
             <div>
               <Label htmlFor="cal-doctor">แพทย์ที่รับเคส</Label>
-              <Input
+              <DoctorSelect
                 id="cal-doctor"
-                list="cal-doctor-options"
+                doctors={doctors}
                 value={form.doctor}
-                onChange={(e) => patch({ doctor: e.target.value })}
-                placeholder="เช่น นพ. / พญ. ..."
+                onChange={(name) => patch({ doctor: name })}
               />
-              <datalist id="cal-doctor-options">
-                {doctorOptions.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
               <p className="mt-1 text-xs text-stone-400">
                 เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
+                (เพิ่มหมอใหม่ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management)
               </p>
             </div>
 
@@ -807,11 +818,13 @@ function DaySidebar({
 export function CalendarClient({
   events: initialEvents,
   influencers,
+  doctors,
   userId,
   loadError,
 }: {
   events: CalendarEvent[];
   influencers: CalendarInflu[];
+  doctors: DoctorRow[];
   userId: string | null;
   loadError: string | null;
 }) {
@@ -839,13 +852,14 @@ export function CalendarClient({
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  /** รายชื่อแพทย์ที่เคยใช้ — ตัวช่วยกรอกในฟอร์ม + ตัวกรองด้านบน */
+  /** รายชื่อแพทย์สำหรับตัวกรองด้านบน — ทะเบียนหมอ (active) + ชื่อที่เคยใช้ในคิว/เคสเดิม */
   const doctorOptions = useMemo(() => {
     const set = new Set<string>();
+    for (const d of doctors) if (d.active) set.add(d.name);
     for (const e of events) if (e.doctor_name) set.add(e.doctor_name);
     for (const i of influencers) if (i.doctor_name) set.add(i.doctor_name);
     return [...set].sort((a, b) => a.localeCompare(b, "th"));
-  }, [events, influencers]);
+  }, [doctors, events, influencers]);
 
   /* ---- กรองคิวตามคำค้น + ประเภท + แพทย์ ---- */
   const visibleEvents = useMemo(() => {
@@ -1351,7 +1365,7 @@ export function CalendarClient({
             events={eventsByDate.get(selectedDay) ?? []}
             services={servicesByDate.get(selectedDay) ?? []}
             influencers={influencers}
-            doctorOptions={doctorOptions}
+            doctors={doctors}
             focusEventId={focusEventId}
             saving={saving}
             error={actionError}

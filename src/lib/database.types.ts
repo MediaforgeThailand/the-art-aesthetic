@@ -416,6 +416,19 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
+/** ทะเบียนแพทย์ (จัดการหมอ) — ตัวเลือก "แพทย์ที่รับเคส" ใน Influ Management / Influ Calendar
+    จับคู่กับ influencers.doctor_name และ influ_calendar_events.doctor_name ด้วย "ชื่อ" (text)
+    active=false = ซ่อนจากตัวเลือก แต่ชื่อในเคส/คิวเก่ายังแสดงตามเดิม */
+export type DoctorRow = {
+  id: string;
+  name: string;
+  /** รูปโปรไฟล์ใน bucket documents path doctors/{id}/... — null = แสดงไอคอนแทน */
+  photo_path: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PricePromotionRow = {
   id: string;
   category: string;
@@ -673,6 +686,12 @@ export interface Database {
           event_date: string;
         };
         Update: Partial<InfluCalendarEventRow>;
+        Relationships: [];
+      };
+      doctors: {
+        Row: DoctorRow;
+        Insert: Partial<DoctorRow> & { name: string };
+        Update: Partial<DoctorRow>;
         Relationships: [];
       };
       price_items: {

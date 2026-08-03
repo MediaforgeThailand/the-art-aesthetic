@@ -53,6 +53,7 @@ import {
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  DoctorRow,
   InfluencerRow,
   InfluFollowupMode,
   InfluFollowupRow,
@@ -61,6 +62,7 @@ import type {
   ProcedureChange,
   TaskWithAssignee,
 } from "@/lib/types";
+import { DoctorNameChip, DoctorSelect } from "../doctor-select";
 import { useSignedUrl } from "../use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 import { PackageStage } from "./package-stage";
@@ -255,9 +257,11 @@ function NameEditModal({
     จึงเปิดแก้ได้เสมอแบบเดียวกับ NameEditModal */
 function CaseInfoEditModal({
   influencer,
+  doctors,
   onClose,
 }: {
   influencer: InfluencerRow;
+  doctors: DoctorRow[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -305,12 +309,15 @@ function CaseInfoEditModal({
         </div>
         <div>
           <Label htmlFor="ci-doc">แพทย์ที่รับเคส</Label>
-          <Input
+          <DoctorSelect
             id="ci-doc"
+            doctors={doctors}
             value={doctorName}
-            onChange={(e) => setDoctorName(e.target.value)}
-            placeholder="เช่น นพ.ปิยะวัฒน์ วรสิงห์"
+            onChange={setDoctorName}
           />
+          <p className="mt-1 text-[11px] text-stone-400">
+            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
+          </p>
         </div>
         {err && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
@@ -343,6 +350,7 @@ export function InfluDetailClient({
   tasks,
   contentTasks,
   userName,
+  doctors,
 }: {
   influencer: InfluencerRow;
   followups: InfluFollowupRow[];
@@ -350,6 +358,7 @@ export function InfluDetailClient({
   tasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   userName: string;
+  doctors: DoctorRow[];
 }) {
   // view = "overview" (หน้าสรุป) หรือเลข stage 1-6 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
   const [view, setView] = useState<"overview" | number>("overview");
@@ -497,6 +506,7 @@ export function InfluDetailClient({
             influencer={influencer}
             followupTasks={activeTasks}
             contentTasks={contentTasks}
+            doctors={doctors}
             onGoStage={(step) => setView(step)}
           />
         )}
@@ -512,6 +522,7 @@ export function InfluDetailClient({
           // เป็นข้อมูลเคสไม่ใช่สถานะงาน มักต้องกลับมาเติมวัน/แพทย์/มูลค่าทีหลัง
           <CaseDetailStage
             influencer={influencer}
+            doctors={doctors}
             readOnly={influencer.completed}
           />
         )}
@@ -596,11 +607,13 @@ function OverviewPanel({
   influencer,
   followupTasks,
   contentTasks,
+  doctors,
   onGoStage,
 }: {
   influencer: InfluencerRow;
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
+  doctors: DoctorRow[];
   onGoStage: (step: number) => void;
 }) {
   const [caseInfoOpen, setCaseInfoOpen] = useState(false);
@@ -760,7 +773,17 @@ function OverviewPanel({
                   : null
               }
             />
-            <Field label="แพทย์ที่รับเคส" value={influencer.doctor_name} />
+            <Field
+              label="แพทย์ที่รับเคส"
+              value={
+                influencer.doctor_name ? (
+                  <DoctorNameChip
+                    name={influencer.doctor_name}
+                    doctors={doctors}
+                  />
+                ) : null
+              }
+            />
           </dl>
           {influencer.procedure_history.length > 0 && (
             <p className="mt-3 text-xs text-stone-400">
@@ -858,6 +881,7 @@ function OverviewPanel({
       {caseInfoOpen && (
         <CaseInfoEditModal
           influencer={influencer}
+          doctors={doctors}
           onClose={() => setCaseInfoOpen(false)}
         />
       )}
@@ -1126,9 +1150,11 @@ function ContactStage({
 
 function CaseDetailStage({
   influencer,
+  doctors,
   readOnly,
 }: {
   influencer: InfluencerRow;
+  doctors: DoctorRow[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -1305,13 +1331,16 @@ function CaseDetailStage({
           </div>
           <div>
             <Label htmlFor="d-doc">แพทย์ที่รับเคส</Label>
-            <Input
+            <DoctorSelect
               id="d-doc"
+              doctors={doctors}
               disabled={readOnly}
               value={doctorName}
-              onChange={(e) => setDoctorName(e.target.value)}
-              placeholder="เช่น นพ.ปิยะวัฒน์ วรสิงห์"
+              onChange={setDoctorName}
             />
+            <p className="mt-1 text-[11px] text-stone-400">
+              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

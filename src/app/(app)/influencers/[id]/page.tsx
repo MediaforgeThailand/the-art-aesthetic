@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
+  DoctorRow,
   InfluencerRow,
   InfluFollowupRow,
   InfluSignatureRow,
@@ -39,6 +40,7 @@ export default async function InfluencerDetailPage({
     { data: tasks },
     { data: contentTasks },
     { data: profile },
+    { data: doctors },
   ] = await Promise.all([
     getAccess(),
     supabase.from("influencers").select("*").eq("id", id).single(),
@@ -69,6 +71,8 @@ export default async function InfluencerDetailPage({
           .eq("id", userId)
           .single()
       : Promise.resolve({ data: null }),
+    // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ใน stage 2 / โมดัลแก้วัน-แพทย์
+    supabase.from("doctors").select("*").order("name", { ascending: true }),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและ influ manager
@@ -87,6 +91,7 @@ export default async function InfluencerDetailPage({
         tasks={(tasks ?? []) as InfluTaskRow[]}
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         userName={profile?.full_name || profile?.email || ""}
+        doctors={(doctors ?? []) as DoctorRow[]}
       />
     </PageContainer>
   );
