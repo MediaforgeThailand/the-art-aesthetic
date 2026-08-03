@@ -10,30 +10,31 @@ export const metadata: Metadata = {
 };
 
 export default async function InfluCalendarPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
-
   const supabase = await createClient();
 
-  const [{ data: events, error }, { data: influencers }] = await Promise.all([
-    // ดึงคิวทั้งหมด แล้วแบ่งเดือนฝั่ง client (ปฏิทินเดินเดือนไปมาได้โดยไม่ต้องโหลดใหม่)
-    // — ตารางนี้โตช้ามาก (หลักร้อยแถว/ปี); ถ้าวันหนึ่งใหญ่เกินค่อยเปลี่ยนเป็นดึงเป็นช่วงเดือน
-    // ชื่อ influ join มาด้วย เพราะคิวเก่าอาจผูกกับคนที่ถูก archive แล้ว (ไม่อยู่ในลิสต์ตัวเลือก)
-    supabase
-      .from("influ_calendar_events")
-      .select(
-        "*, influencer:influencers(id, first_name, last_name, nickname)"
-      )
-      .order("event_date", { ascending: true }),
-    // ตัวเลือก influencer ของฟอร์ม + วันเข้ารับบริการจากเคส (ซ้อนบนปฏิทินแบบอ่านอย่างเดียว)
-    supabase
-      .from("influencers")
-      .select(
-        "id, first_name, last_name, nickname, service_date, doctor_name, stage, completed, declined_at, procedure_text"
-      )
-      .eq("archived", false)
-      .order("first_name", { ascending: true }),
-  ]);
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, { data: events, error }, { data: influencers }] =
+    await Promise.all([
+      getAccess(),
+      // ดึงคิวทั้งหมด แล้วแบ่งเดือนฝั่ง client (ปฏิทินเดินเดือนไปมาได้โดยไม่ต้องโหลดใหม่)
+      // — ตารางนี้โตช้ามาก (หลักร้อยแถว/ปี); ถ้าวันหนึ่งใหญ่เกินค่อยเปลี่ยนเป็นดึงเป็นช่วงเดือน
+      // ชื่อ influ join มาด้วย เพราะคิวเก่าอาจผูกกับคนที่ถูก archive แล้ว (ไม่อยู่ในลิสต์ตัวเลือก)
+      supabase
+        .from("influ_calendar_events")
+        .select(
+          "*, influencer:influencers(id, first_name, last_name, nickname)"
+        )
+        .order("event_date", { ascending: true }),
+      // ตัวเลือก influencer ของฟอร์ม + วันเข้ารับบริการจากเคส (ซ้อนบนปฏิทินแบบอ่านอย่างเดียว)
+      supabase
+        .from("influencers")
+        .select(
+          "id, first_name, last_name, nickname, service_date, doctor_name, stage, completed, declined_at, procedure_text"
+        )
+        .eq("archived", false)
+        .order("first_name", { ascending: true }),
+    ]);
+  if (!hasPermission(access, "influ")) return <AccessNotice />;
 
   return (
     <PageContainer>

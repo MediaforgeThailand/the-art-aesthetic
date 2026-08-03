@@ -11,9 +11,6 @@ export const metadata: Metadata = {
 };
 
 export default async function WorkloadPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "team")) return <AccessNotice />;
-
   const supabase = await createClient();
 
   // ดึง tasks แบบแบ่งหน้า — PostgREST ตัดที่ ~1,000 แถว
@@ -45,12 +42,15 @@ export default async function WorkloadPage() {
     bkkNow.getMonth() + 1
   ).padStart(2, "0")}-01T00:00:00+07:00`;
 
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
+    access,
     taskData,
     { data: profileData, error: profilesError },
     { data: sectionData, error: sectionsError },
     { data: revisionData, error: revisionsError },
   ] = await Promise.all([
+    getAccess(),
     fetchTasks(),
     supabase
       .from("profiles")
@@ -66,6 +66,8 @@ export default async function WorkloadPage() {
       .eq("is_revision", true)
       .gte("created_at", monthStart),
   ]);
+  if (!hasPermission(access, "team")) return <AccessNotice />;
+
   if (profilesError) {
     throw new Error(`โหลดข้อมูลทีมไม่สำเร็จ: ${profilesError.message}`);
   }

@@ -12,9 +12,6 @@ export const metadata: Metadata = {
 };
 
 export default async function TargetsReportPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "data")) return <AccessNotice />;
-
   const supabase = await createClient();
 
   const now = new Date();
@@ -24,8 +21,10 @@ export default async function TargetsReportPage() {
     start.getDate()
   )}`;
 
-  const [monthlyResult, targetsResult, { data: demoSales }] =
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, monthlyResult, targetsResult, { data: demoSales }] =
     await Promise.all([
+      getAccess(),
       // ยอดจริงรายเดือน aggregate ใน SQL — ไม่โหลดรายบรรทัด (ข้อมูลจริงหลายหมื่นแถว)
       supabase.rpc("sales_monthly_series", { p_from: startISO }),
       // เป้ารวมทั้งแผนก (branch = null)
@@ -37,6 +36,8 @@ export default async function TargetsReportPage() {
         .order("month", { ascending: true }),
       supabase.from("sales_records").select("id").eq("note", "demo").limit(1),
     ]);
+
+  if (!hasPermission(access, "data")) return <AccessNotice />;
 
   if (monthlyResult.error) {
     throw new Error(`โหลดข้อมูลยอดขายไม่สำเร็จ: ${monthlyResult.error.message}`);

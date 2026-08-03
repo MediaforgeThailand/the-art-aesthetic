@@ -24,18 +24,15 @@ export default async function InfluencerDetailPage({
 }) {
   const { id } = await params;
 
-  const access = await getAccess();
-  // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและ influ manager
-  // (บอร์ด/สัญญาใน Influ Management ยังจำกัดเฉพาะ influ)
-  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
-    return <AccessNotice />;
-
   const supabase = await createClient();
 
+  // getClaims อ่าน JWT ในเครื่อง ไม่ยิง network — ใช้ uid ประกอบ query ได้เลย
   const { data: claimsData } = await supabase.auth.getClaims();
   const userId = claimsData?.claims.sub ?? null;
 
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
+    access,
     { data: influencer },
     { data: followups },
     { data: signatures },
@@ -43,6 +40,7 @@ export default async function InfluencerDetailPage({
     { data: contentTasks },
     { data: profile },
   ] = await Promise.all([
+    getAccess(),
     supabase.from("influencers").select("*").eq("id", id).single(),
     supabase
       .from("influ_followups")
@@ -72,6 +70,11 @@ export default async function InfluencerDetailPage({
           .single()
       : Promise.resolve({ data: null }),
   ]);
+
+  // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและ influ manager
+  // (บอร์ด/สัญญาใน Influ Management ยังจำกัดเฉพาะ influ)
+  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
+    return <AccessNotice />;
 
   if (!influencer) notFound();
 

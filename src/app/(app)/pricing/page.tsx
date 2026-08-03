@@ -12,9 +12,6 @@ export const metadata: Metadata = {
 };
 
 export default async function PricingPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "pricing")) return <AccessNotice />;
-
   const supabase = await createClient();
 
   // รายการ price list (สำหรับหน้าสาธารณะ) — ดึงแบบแบ่งหน้า
@@ -38,7 +35,9 @@ export default async function PricingPage() {
     return { rows, error: null };
   };
 
-  const [{ data, error }, priceItemsResult] = await Promise.all([
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, { data, error }, priceItemsResult] = await Promise.all([
+    getAccess(),
     supabase
       .from("price_promotions")
       .select("*")
@@ -46,6 +45,7 @@ export default async function PricingPage() {
       .order("normal_price", { ascending: true }),
     fetchPriceItems(),
   ]);
+  if (!hasPermission(access, "pricing")) return <AccessNotice />;
 
   const promotions = (data ?? []) as PricePromotionRow[];
   const demo = promotions.some((p) => p.note === "demo");

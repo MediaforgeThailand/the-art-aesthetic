@@ -11,24 +11,25 @@ export const metadata: Metadata = {
 };
 
 export default async function InfluContractsPage() {
-  const access = await getAccess();
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
-
   const supabase = await createClient();
 
-  const [{ data: influencers }, { data: campaigns }] = await Promise.all([
-    supabase
-      .from("influencers")
-      .select("*")
-      .not("contract_start", "is", null)
-      // ซ่อนข้อมูลเก่าที่นำเข้า (archive-only) — หน้าอายุสัญญาโชว์เฉพาะเคสที่เดินงานในระบบ
-      .eq("archived", false)
-      .order("contract_start", { ascending: false }),
-    supabase
-      .from("influ_campaigns")
-      .select("*")
-      .order("created_at", { ascending: false }),
-  ]);
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, { data: influencers }, { data: campaigns }] =
+    await Promise.all([
+      getAccess(),
+      supabase
+        .from("influencers")
+        .select("*")
+        .not("contract_start", "is", null)
+        // ซ่อนข้อมูลเก่าที่นำเข้า (archive-only) — หน้าอายุสัญญาโชว์เฉพาะเคสที่เดินงานในระบบ
+        .eq("archived", false)
+        .order("contract_start", { ascending: false }),
+      supabase
+        .from("influ_campaigns")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
+  if (!hasPermission(access, "influ")) return <AccessNotice />;
 
   return (
     <PageContainer>
