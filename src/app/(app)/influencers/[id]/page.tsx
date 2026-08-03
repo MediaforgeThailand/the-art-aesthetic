@@ -7,10 +7,12 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   InfluencerRow,
   InfluFollowupRow,
+  InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import type { PriceCatalogEntry } from "../procedure-items-editor";
 import { InfluDetailClient } from "./detail-client";
 
 export const metadata: Metadata = {
@@ -38,6 +40,8 @@ export default async function InfluencerDetailPage({
     { data: signatures },
     { data: tasks },
     { data: contentTasks },
+    { data: procedureItems },
+    { data: priceCatalog },
     { data: profile },
   ] = await Promise.all([
     getAccess(),
@@ -62,6 +66,19 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
+    // รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้
+    supabase
+      .from("influ_procedure_items")
+      .select("*")
+      .eq("influencer_id", id)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
+    // ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2)
+    supabase
+      .from("price_items")
+      .select("id, name")
+      .eq("active", true)
+      .order("name", { ascending: true }),
     userId
       ? supabase
           .from("profiles")
@@ -86,6 +103,8 @@ export default async function InfluencerDetailPage({
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
+        procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
+        priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         userName={profile?.full_name || profile?.email || ""}
       />
     </PageContainer>

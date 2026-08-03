@@ -1,0 +1,50 @@
+import type { Metadata } from "next";
+import { AccessNotice } from "@/components/access-notice";
+import { PageContainer } from "@/components/ui";
+import { getAccess, hasPermission } from "@/lib/access";
+import { createClient } from "@/lib/supabase/server";
+import {
+  DashboardClient,
+  type DashCostItem,
+  type DashInflu,
+  type DashTask,
+} from "./dashboard-client";
+
+export const metadata: Metadata = {
+  title: "Influ Dashboard",
+};
+
+export default async function InfluDashboardPage() {
+  const supabase = await createClient();
+
+  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  const [access, { data: influencers, error }, { data: items }, { data: tasks }] =
+    await Promise.all([
+      getAccess(),
+      // เฉพาะเคสใน pipeline (archive = ข้อมูลนำเข้าเก่า ไม่นับในแดชบอร์ด)
+      supabase
+        .from("influencers")
+        .select(
+          "id, first_name, last_name, nickname, followers, tier, stage, completed, declined_at, service_date, doctor_name, procedure_text, contract_start, contract_months, followup_mode, created_at"
+        )
+        .eq("archived", false),
+      // รายการต้นทุน — join ฝั่ง client กับลิสต์ influ ข้างบน (ของเคส archive ถูกทิ้งไปเอง)
+      supabase
+        .from("influ_procedure_items")
+        .select("id, influencer_id, price, is_supported"),
+      // งาน follow-up (stage 6) — นับข้อค้างตามโหมดของแต่ละเคส
+      supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
+    ]);
+  if (!hasPermission(access, "influ")) return <AccessNotice />;
+
+  return (
+    <PageContainer>
+      <DashboardClient
+        influencers={(influencers ?? []) as DashInflu[]}
+        items={(items ?? []) as DashCostItem[]}
+        tasks={(tasks ?? []) as DashTask[]}
+        loadError={error?.message ?? null}
+      />
+    </PageContainer>
+  );
+}

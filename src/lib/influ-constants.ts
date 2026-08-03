@@ -583,6 +583,75 @@ export const FOLLOWUP_TEMPLATE: {
   },
 ];
 
+/* ---------- Influencer Cost: ต้นทุนค่าบริการรายโปรแกรม (/influ-cost) ---------- */
+
+/** เพดานความยาวชื่อโปรแกรมที่พิมพ์เอง (ชื่อใน Price List บางอันยาวมาก — ต้องตัดให้อ่านง่าย) */
+export const PROCEDURE_NAME_MAX = 80;
+
+/** ตัดชื่อโปรแกรมจาก Price List ให้สั้นลงตอนหยิบเข้ารายการ — พยายามตัดที่ขอบเขตคำ */
+export function shortenProgramName(name: string, max = 60): string {
+  const clean = name.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+/** ต้นทุนที่นับจริงของรายการ — ติ๊ก "แบรนด์ support" แล้วนับเป็น 0 */
+export function itemEffectiveCost(item: {
+  price: number;
+  is_supported: boolean;
+}): number {
+  return item.is_supported ? 0 : Number(item.price) || 0;
+}
+
+/** ข้อความสรุปรายการโปรแกรมของเคส — sync กลับ influencers.procedure_text
+    เพื่อให้ช่องก๊อป Memo / การ์ดบอร์ด / ปฏิทิน แสดงรูปแบบเดิม (คั่นด้วย " / " ตามข้อมูลจริง) */
+export function procedureSummaryText(items: { name: string }[]): string {
+  return items
+    .map((i) => i.name.trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
+/** สถานะการใช้ต้นทุน อิงวันเข้ารับบริการของเคส (เทียบกับวันนี้เวลาไทย) */
+export type CostUsage = "used" | "upcoming" | "unscheduled";
+
+export function costUsageOf(
+  serviceDate: string | null,
+  todayIso: string
+): CostUsage {
+  if (!serviceDate) return "unscheduled";
+  return serviceDate <= todayIso ? "used" : "upcoming";
+}
+
+export const COST_USAGE_META: Record<
+  CostUsage,
+  { label: string; chip: string; dot: string }
+> = {
+  used: {
+    label: "ใช้บริการแล้ว",
+    chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    dot: "bg-emerald-500",
+  },
+  upcoming: {
+    label: "กำลังจะมา",
+    chip: "bg-sky-100 text-sky-700 border-sky-200",
+    dot: "bg-sky-500",
+  },
+  unscheduled: {
+    label: "ยังไม่เคาะวัน",
+    chip: "bg-stone-100 text-stone-600 border-stone-200",
+    dot: "bg-stone-400",
+  },
+};
+
+export const COST_USAGE_ORDER: CostUsage[] = [
+  "upcoming",
+  "unscheduled",
+  "used",
+];
+
 /** เดดไลน์สัญญา = contract_start + contract_months
     หนีบวันที่ไว้ที่วันสุดท้ายของเดือนปลายทาง — กัน 31 ส.ค. + 6 เดือน ล้นไป 3 มี.ค. */
 export function contractEndDate(

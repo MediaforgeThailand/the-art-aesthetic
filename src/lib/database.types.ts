@@ -416,6 +416,22 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
+/** รายการโปรแกรม/หัตถการของ influencer รายรายการ (Influencer Cost)
+    price = ต้นทุนค่าบริการ (บาท; 0 = ยังไม่กรอก — backfill จาก procedure_text เดิมเป็น 0 ทั้งหมด)
+    is_supported = แบรนด์สินค้า support ของ → ต้นทุนรายการนี้นับเป็น 0 */
+export type InfluProcedureItemRow = {
+  id: string;
+  influencer_id: string;
+  name: string;
+  price: number;
+  is_supported: boolean;
+  /** ลิงก์ไป price_items (เลือกจาก dropdown Price List) — เพิ่มเองอิสระได้ = null */
+  price_item_id: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PricePromotionRow = {
   id: string;
   category: string;
@@ -673,6 +689,15 @@ export interface Database {
           event_date: string;
         };
         Update: Partial<InfluCalendarEventRow>;
+        Relationships: [];
+      };
+      influ_procedure_items: {
+        Row: InfluProcedureItemRow;
+        Insert: Partial<InfluProcedureItemRow> & {
+          influencer_id: string;
+          name: string;
+        };
+        Update: Partial<InfluProcedureItemRow>;
         Relationships: [];
       };
       price_items: {

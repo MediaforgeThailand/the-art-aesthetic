@@ -49,6 +49,7 @@ import {
   INFLU_FOLLOWUP_MODES,
   INFLU_STAGES,
   INFLU_TIERS,
+  itemEffectiveCost,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
@@ -56,11 +57,16 @@ import type {
   InfluencerRow,
   InfluFollowupMode,
   InfluFollowupRow,
+  InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
   ProcedureChange,
   TaskWithAssignee,
 } from "@/lib/types";
+import {
+  ProcedureItemsEditor,
+  type PriceCatalogEntry,
+} from "../procedure-items-editor";
 import { useSignedUrl } from "../use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 import { PackageStage } from "./package-stage";
@@ -342,6 +348,8 @@ export function InfluDetailClient({
   signatures,
   tasks,
   contentTasks,
+  procedureItems,
+  priceCatalog,
   userName,
 }: {
   influencer: InfluencerRow;
@@ -349,6 +357,10 @@ export function InfluDetailClient({
   signatures: InfluSignatureRow[];
   tasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
+  /** รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้ */
+  procedureItems: InfluProcedureItemRow[];
+  /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2) */
+  priceCatalog: PriceCatalogEntry[];
   userName: string;
 }) {
   // view = "overview" (หน้าสรุป) หรือเลข stage 1-6 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
@@ -497,6 +509,7 @@ export function InfluDetailClient({
             influencer={influencer}
             followupTasks={activeTasks}
             contentTasks={contentTasks}
+            procedureItems={procedureItems}
             onGoStage={(step) => setView(step)}
           />
         )}
@@ -512,6 +525,8 @@ export function InfluDetailClient({
           // เป็นข้อมูลเคสไม่ใช่สถานะงาน มักต้องกลับมาเติมวัน/แพทย์/มูลค่าทีหลัง
           <CaseDetailStage
             influencer={influencer}
+            initialItems={procedureItems}
+            priceCatalog={priceCatalog}
             readOnly={influencer.completed}
           />
         )}
@@ -596,14 +611,25 @@ function OverviewPanel({
   influencer,
   followupTasks,
   contentTasks,
+  procedureItems,
   onGoStage,
 }: {
   influencer: InfluencerRow;
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
+  procedureItems: InfluProcedureItemRow[];
   onGoStage: (step: number) => void;
 }) {
   const [caseInfoOpen, setCaseInfoOpen] = useState(false);
+  // ต้นทุนค่าบริการ (Influencer Cost) — รายการ support ของแบรนด์นับเป็น 0
+  const costTotal = procedureItems.reduce(
+    (s, i) => s + itemEffectiveCost(i),
+    0
+  );
+  const costSaved = procedureItems.reduce(
+    (s, i) => s + (i.is_supported ? Number(i.price) || 0 : 0),
+    0
+  );
   const fullName =
     [influencer.first_name, influencer.last_name].filter(Boolean).join(" ") ||
     null;
@@ -761,6 +787,25 @@ function OverviewPanel({
               }
             />
             <Field label="แพทย์ที่รับเคส" value={influencer.doctor_name} />
+            <Field
+              label="ต้นทุนค่าบริการ (Cost)"
+              value={
+                procedureItems.length > 0 ? (
+                  <span>
+                    {formatCurrency(costTotal)}{" "}
+                    <span className="text-xs text-stone-400">
+                      · {procedureItems.length} รายการ
+                    </span>
+                    {costSaved > 0 && (
+                      <span className="text-xs text-pink-600">
+                        {" "}
+                        · Support ประหยัด {formatCurrency(costSaved)}
+                      </span>
+                    )}
+                  </span>
+                ) : null
+              }
+            />
           </dl>
           {influencer.procedure_history.length > 0 && (
             <p className="mt-3 text-xs text-stone-400">
@@ -1126,9 +1171,13 @@ function ContactStage({
 
 function CaseDetailStage({
   influencer,
+  initialItems,
+  priceCatalog,
   readOnly,
 }: {
   influencer: InfluencerRow;
+  initialItems: InfluProcedureItemRow[];
+  priceCatalog: PriceCatalogEntry[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -1137,7 +1186,9 @@ function CaseDetailStage({
   const [occupation, setOccupation] = useState(
     influencer.occupation ?? "Tiktoker / Influencer"
   );
-  const [procedure, setProcedure] = useState(influencer.procedure_text ?? "");
+  // โปรแกรมที่รับ = รายการทีละอัน (Influencer Cost) — editor บันทึกลง DB เอง
+  // และ sync ข้อความสรุปกลับ procedure_text ให้ Memo/บอร์ดใช้รูปแบบเดิม
+  const [items, setItems] = useState<InfluProcedureItemRow[]>(initialItems);
   const [serviceDate, setServiceDate] = useState(
     influencer.service_date ?? ""
   );
@@ -1163,7 +1214,7 @@ function CaseDetailStage({
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
   const canProceed =
-    occupation.trim() !== "" && procedure.trim() !== "" && followersNum > 0;
+    occupation.trim() !== "" && items.length > 0 && followersNum > 0;
 
   const upload = async (
     file: File,
@@ -1219,7 +1270,7 @@ function CaseDetailStage({
       .update({
         nickname: nickname.trim() || null,
         occupation: occupation.trim() || null,
-        procedure_text: procedure.trim() || null,
+        // procedure_text ไม่ต้องส่ง — ProcedureItemsEditor sync ให้เองทุกครั้งที่รายการเปลี่ยน
         service_date: serviceDate === "" ? null : serviceDate,
         doctor_name: doctorName.trim() || null,
         case_value: caseValue === "" ? null : Number(caseValue),
@@ -1266,14 +1317,13 @@ function CaseDetailStage({
             </div>
           </div>
           <div>
-            <Label htmlFor="d-proc">หัตถการที่รับบริการ *</Label>
-            <Textarea
-              id="d-proc"
-              rows={2}
-              disabled={readOnly}
-              value={procedure}
-              onChange={(e) => setProcedure(e.target.value)}
-              placeholder="เช่น โปรแกรม Oligio X 300shot, Pure collagen 1 กล่องเติมใต้ตา, Harmonyca 2 หลอด"
+            <Label>โปรแกรม/หัตถการที่รับ * (Influencer Cost)</Label>
+            <ProcedureItemsEditor
+              influencerId={influencer.id}
+              items={items}
+              setItems={setItems}
+              catalog={priceCatalog}
+              readOnly={readOnly}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1505,7 +1555,8 @@ function ServiceDayStage({
         <p className="mb-4 text-xs text-stone-400">
           หากหน้างานมีการเปลี่ยนบริการ ให้กดแก้ไข — รายการเดิมจะถูกขีดฆ่า
           เขียนรายการใหม่ต่อ พร้อมแปะลายเซนหัวหน้างานกำกับข้างๆ
-          แบบเดียวกับแก้เอกสารจริง
+          แบบเดียวกับแก้เอกสารจริง (รายการต้นทุน Influencer Cost
+          ไม่เปลี่ยนตามการแก้หน้างาน — กลับไปปรับรายการใน Stage 2)
         </p>
 
         <div className="space-y-2 rounded-xl border border-stone-200 bg-white/80 px-4 py-3 text-sm leading-7">
