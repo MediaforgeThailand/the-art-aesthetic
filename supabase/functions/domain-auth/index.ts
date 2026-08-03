@@ -1,9 +1,15 @@
-// domain-auth — login flow ก่อนล็อกอิน (ไม่ต้อง JWT): เช็คอีเมล + สมัครครั้งแรกเฉพาะ domain artsurgery.co.th
+// domain-auth — login flow ก่อนล็อกอิน (ไม่ต้อง JWT): เช็คอีเมล + ตั้งรหัสผ่านครั้งแรก
 // actions: check | signup
 // ไฟล์นี้เป็น mirror ของ edge function ที่ deploy บน Supabase แล้ว (verify_jwt = false)
+//
+// 2026-08-03: ปิดการสมัครเองด้วย domain (@artsurgery.co.th) — ต้องอยู่ใน allowed_emails เท่านั้น
+// เหตุผล: endpoint นี้เปิดสาธารณะและสร้างบัญชีแบบ email_confirm=true โดยไม่พิสูจน์ว่าผู้สมัคร
+// เป็นเจ้าของอีเมลจริง ใครเดาที่อยู่อีเมลพนักงานได้ก็สร้างบัญชีแทนได้ และเมื่อ RLS ของทุกตาราง
+// เป็น "authenticated เข้าถึงได้ทั้งหมด" บัญชีนั้นอ่าน/แก้ข้อมูลทั้งฐานผ่าน REST ได้ทันที
+// (สิทธิ์ใน profiles.permissions กันแค่การมองเห็นเมนู ไม่ได้กันข้อมูล) — และพนักงานที่ถูกลบบัญชี
+// ไปแล้วก็สมัครกลับเข้ามาเองได้ · admin เพิ่มบัญชีผ่าน /accounts ซึ่ง upsert allowed_emails ให้อยู่แล้ว
+// กติกาเดียวกันนี้ถูกบังคับซ้ำที่ trigger handle_new_user (migration 0053) กันช่องทาง auth.signUp ตรงๆ
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const ALLOWED_DOMAIN = "artsurgery.co.th";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,15 +51,13 @@ Deno.serve(async (req: Request) => {
     if (!validEmail(email)) {
       return json({ ok: false, error: "invalid_email" }, 400);
     }
-    const domain = email.split("@")[1] ?? "";
-
-    // อีเมลนี้ได้รับอนุญาตหรือไม่ (domain ตรง หรืออยู่ใน allowlist)
+    // อีเมลนี้ได้รับอนุญาตหรือไม่ — ต้องอยู่ใน allowlist ที่ admin เพิ่มไว้เท่านั้น
     const { data: allowRow } = await admin
       .from("allowed_emails")
       .select("email")
       .eq("email", email)
       .maybeSingle();
-    const allowed = domain === ALLOWED_DOMAIN || allowRow !== null;
+    const allowed = allowRow !== null;
 
     const { data: exists, error: existsErr } = await admin.rpc(
       "email_exists",

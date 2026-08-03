@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { type Access, getAccess, hasPermission } from "@/lib/access";
 import { todayISO } from "@/lib/format";
 import {
   cutoffFor,
@@ -24,6 +25,16 @@ import { DashboardClient } from "./dashboard-client";
 export const metadata: Metadata = {
   title: "แดชบอร์ดผู้บริหาร",
 };
+
+/** หน้าแรกที่ผู้ใช้คนนี้เปิดได้จริง — ทั้ง `/` และการล็อกอินสำเร็จพามาที่ /dashboard
+    ซึ่งต้องมีสิทธิ์ `data` แต่ส่วนใหญ่ของทีมมีแค่ `team` จึงเจอ "ไม่มีสิทธิ์เข้าถึง"
+    เป็นหน้าจอแรกทุกครั้ง — พาไปหน้าที่เขาใช้งานได้แทน (ไม่มีสิทธิ์ไหนเลย = แจ้งตามเดิม) */
+function firstAllowedPath(access: Access): string | null {
+  if (hasPermission(access, "team")) return "/tasks";
+  if (hasPermission(access, "influ")) return "/influencers";
+  if (hasPermission(access, "pricing")) return "/pricing";
+  return null;
+}
 
 /** PostgREST ตัดผลลัพธ์ที่ ~1,000 แถว — ดึงแบบแบ่งหน้าจนครบเสมอ */
 async function fetchAllRows<T>(
@@ -119,7 +130,11 @@ export default async function DashboardPage({
       .maybeSingle(),
   ]);
 
-  if (!hasPermission(access, "data")) return <AccessNotice />;
+  if (!hasPermission(access, "data")) {
+    const fallback = firstAllowedPath(access);
+    if (fallback) redirect(fallback);
+    return <AccessNotice />;
+  }
 
   if (summaryResult.error) {
     throw new Error(`โหลดสรุปยอดขายไม่สำเร็จ: ${summaryResult.error.message}`);
@@ -151,6 +166,14 @@ export default async function DashboardPage({
   const salesDemo = (demoSales ?? []).length > 0;
   const adminDemo = adminRecords.some((r) => r.note === "demo");
   const tasksDemo = (demoTask ?? []).length > 0;
+  // เป้าขาย/เป้า KPI รายคนยังเป็นข้อมูลตัวอย่างอยู่ทั้งชุด — ต้องนับเข้าการตรวจจับ demo ด้วย
+  // ไม่งั้นวันที่ admin_records เปลี่ยนเป็นข้อมูลจริง แบนเนอร์จะหายทั้งที่กราฟ "ยอดจริงเทียบเป้า"
+  // ยังเทียบกับเป้าปลอมอยู่ (หน้า /reports/targets เช็คแบบนี้อยู่แล้ว)
+  const targetsDemo =
+    ((targetsResult.data ?? []) as SalesTargetRow[]).some(
+      (t) => t.note === "demo"
+    ) ||
+    ((kpisResult.data ?? []) as StaffKpiRow[]).some((k) => k.note === "demo");
 
   return (
     <PageContainer>
@@ -167,6 +190,7 @@ export default async function DashboardPage({
         salesDemo={salesDemo}
         adminDemo={adminDemo}
         tasksDemo={tasksDemo}
+        targetsDemo={targetsDemo}
         lastSyncAt={lastSync?.finished_at ?? null}
       />
     </PageContainer>

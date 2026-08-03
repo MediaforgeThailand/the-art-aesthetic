@@ -99,7 +99,10 @@ export function TargetsClient({
   const currentMonth = todayStr.slice(0, 7);
   const current = rows.find((r) => r.month === currentMonth) ?? null;
 
-  const withTarget = rows.filter((r) => r.target !== null);
+  // เดือนอนาคตยังไม่มียอดจริง ถ้าเอาเป้ามาบวกจะกด % รวมให้ต่ำเกินจริงทันทีที่ทีมตั้งเป้าล่วงหน้า
+  const withTarget = rows.filter(
+    (r) => r.target !== null && r.month <= currentMonth
+  );
   const totalActual = withTarget.reduce((s, r) => s + r.actual, 0);
   // เดือนปัจจุบันยังไม่จบ — คิดเป้าตามสัดส่วนวันที่ผ่านไป ให้ % รวมเทียบยุติธรรม
   const totalTarget = withTarget.reduce((s, r) => {

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
   briefContentTypeLabel,
@@ -463,6 +464,11 @@ export function TaskPanel({
     router.refresh();
   };
 
+  /** ไฟล์ที่กำลังจะลบ (รอยืนยัน) — null = ไม่มีกล่องยืนยันเปิดอยู่ */
+  const [confirmRemoveFile, setConfirmRemoveFile] = useState<TaskFileRow | null>(
+    null
+  );
+
   const removeFile = async (f: TaskFileRow) => {
     const { error } = await supabase.from("task_files").delete().eq("id", f.id);
     if (error) {
@@ -832,7 +838,13 @@ export function TaskPanel({
         preview,
       });
     }
-    for (const rid of [task.assignee_id, task.created_by, task.reviewer_id]) {
+    // ผู้ตรวจลำดับ 2 ต้องอยู่ในรายชื่อด้วย — ตอนงานอยู่ทอด 2 เขาคือคนที่งานค้างอยู่จริง
+    for (const rid of [
+      task.assignee_id,
+      task.created_by,
+      task.reviewer_id,
+      task.reviewer2_id,
+    ]) {
       if (!rid || rid === userId || seen.has(rid)) continue;
       seen.add(rid);
       notiRows.push({
@@ -1453,7 +1465,7 @@ export function TaskPanel({
                     key={f.id}
                     file={f}
                     onOpen={() => setLightboxIndex(i)}
-                    onRemove={() => void removeFile(f)}
+                    onRemove={() => setConfirmRemoveFile(f)}
                   />
                 ))}
               </div>
@@ -1755,6 +1767,24 @@ export function TaskPanel({
           onClose={() => setBriefLightboxIndex(null)}
         />
       )}
+
+      {/* ลบไฟล์งาน = ลบออกจาก storage ถาวร กู้ไม่ได้ — ต้องถามก่อนเสมอ
+          (ต่างจากลบการ์ดทั้งใบซึ่งเข้าถังขยะและกู้คืนได้) */}
+      <ConfirmDialog
+        open={confirmRemoveFile !== null}
+        title="ลบไฟล์งาน"
+        message={
+          <>
+            ลบไฟล์ <b>{confirmRemoveFile?.file_name ?? "นี้"}</b> ออกถาวรใช่หรือไม่?
+            <br />
+            ไฟล์จะถูกลบออกจากที่เก็บไฟล์ด้วย และ<b>กู้คืนไม่ได้</b>
+          </>
+        }
+        onConfirm={() => {
+          if (confirmRemoveFile) void removeFile(confirmRemoveFile);
+        }}
+        onClose={() => setConfirmRemoveFile(null)}
+      />
     </aside>
   );
 }
@@ -2125,7 +2155,9 @@ function DeliverableFileThumb({
           onClick={onRemove}
           title="ลบไฟล์"
           aria-label="ลบไฟล์"
-          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+          // จอสัมผัสไม่มี hover — ถ้าซ่อนด้วย opacity-0 ปุ่มจะมองไม่เห็นแต่ยังกดโดนได้
+          // (อยู่มุมที่นิ้วโดนพอดีตอนกดเปิดไฟล์) จึงโชว์ถาวรบนจอเล็ก ซ่อนเฉพาะจอที่ hover ได้
+          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 active:scale-90 sm:opacity-0 sm:group-hover:opacity-100"
         >
           <X size={12} />
         </button>

@@ -27,6 +27,7 @@ import {
   PRICE_GROUPS,
   sortPriceGroups,
 } from "@/lib/constants";
+import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { PriceGroup, PriceItemRow, PriceOffer } from "@/lib/types";
 
@@ -137,6 +138,14 @@ function GroupPicker({
 
 /* ---------- แถวแก้ไขข้อเสนอ (โปร/คอร์ส) ---------- */
 
+/** ช่วงวันตั้งต้นของข้อเสนอใหม่ = วันนี้ ถึงสิ้นปีปัจจุบัน (เวลาไทย)
+    ห้าม hardcode ปี — ของเดิมฝัง 2026 ไว้ พอขึ้นปีใหม่โปรที่เพิ่งสร้างจะหมดเขตทันที
+    แล้วหายจากหน้า /price-list ที่ซ่อนโปรหมดอายุ โดยไม่มีอะไรบอกผู้ใช้ */
+function defaultOfferRange(): { start: string; end: string } {
+  const today = todayISO();
+  return { start: today, end: `${today.slice(0, 4)}-12-31` };
+}
+
 function OfferEditor({
   title,
   hint,
@@ -159,7 +168,11 @@ function OfferEditor({
           onClick={() =>
             onChange([
               ...list,
-              { label: hint, price: "", start: "2026-01-01", end: "2026-12-31" },
+              {
+                label: hint,
+                price: "",
+                ...defaultOfferRange(),
+              },
             ])
           }
           className="inline-flex cursor-pointer items-center gap-1 text-xs text-brand-600 hover:underline"

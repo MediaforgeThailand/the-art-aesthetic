@@ -202,7 +202,7 @@ export function AdminClient({
         title="ผลงานทีมแอดมิน"
         description="ลูกค้าทักใหม่ · อัตราปิดนัด · ยอดปิดการขาย จากข้อมูลรายวันของทีมแอดมิน"
         action={
-          <div className="inline-flex rounded-lg border border-brand-100 bg-white p-1 shadow-sm">
+          <div className="flex max-w-full flex-wrap gap-1 rounded-lg border border-brand-100 bg-white p-1 shadow-sm">
             {PERIOD_OPTIONS.map((option) => (
               <button
                 key={option.key}

@@ -11,7 +11,7 @@ import {
   UserCog,
   X,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import {
@@ -120,7 +120,30 @@ export function TasksClient({
   isAdmin: boolean;
   loadError: string | null;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+
+  /** บอกให้ Next ทิ้ง cache ของหน้านี้ (staleTimes.dynamic = 30 วิ) หลังเขียน DB สำเร็จ
+      — Realtime ส่งเฉพาะเหตุการณ์ที่เกิด "หลัง" subscribe จึงซ่อมกรณีนี้ไม่ได้:
+      ออกจากหน้าแล้วกลับมาใน 30 วิ (หรือกดปุ่ม Back) จะได้ payload ก่อนแก้ แล้ว state
+      ถูก re-seed จาก props เก่า = การ์ดที่เพิ่งลบกลับมา / ตำแหน่งที่เพิ่งลากเด้งกลับ
+      รวบเป็นครั้งเดียวด้วย timeout สั้นๆ เพราะการลากหนึ่งครั้งยิง patchTask หลายรอบ */
+  const refreshTimer = useRef<number | null>(null);
+  const markServerStale = () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 400);
+  };
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+      }
+    },
+    []
+  );
 
   /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
   const [categories, setCategories] = useState<string[]>(initialCategories);
@@ -419,11 +442,23 @@ export function TasksClient({
       statusFilter === "all"
         ? excludeStatuses
         : excludeStatuses.filter((s) => s !== statusFilter);
+    // กติกาเดียวกันกับสถานะ: คนที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้น ไม่งั้นยกเว้นคน A ไว้
+    // แล้วเลือกดูงานของคน A จะได้บอร์ดว่างเปล่า ("งานของฉัน"/"เกี่ยวข้องกับฉัน" = ตัวเรา)
+    const pickedAssignee =
+      assigneeFilter === "me" || assigneeFilter === "involved"
+        ? userId
+        : assigneeFilter === "all"
+          ? null
+          : assigneeFilter;
+    const excludeAs =
+      pickedAssignee === null
+        ? excludeAssignees
+        : excludeAssignees.filter((a) => a !== pickedAssignee);
     return activeItems.filter((t) => {
       // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
       if (
-        excludeAssignees.length > 0 &&
-        excludeAssignees.includes(t.assignee_id ?? "none")
+        excludeAs.length > 0 &&
+        excludeAs.includes(t.assignee_id ?? "none")
       ) {
         return false;
       }
@@ -858,7 +893,9 @@ export function TasksClient({
             )
           );
           showError(`บันทึกไม่สำเร็จ: ${e.message}`);
+          return;
         }
+        markServerStale();
       });
   };
 

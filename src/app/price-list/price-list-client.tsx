@@ -160,6 +160,24 @@ export function PriceListClient({
     return [...seen.entries()];
   }, [filtered]);
 
+  /** ป้ายบนชิปหมวด — ปกติตัดส่วนหลัง ":" ออกให้สั้น แต่ถ้าตัดแล้วไปชนกับหมวดอื่น
+      (เช่น "IV Drip : ดูแลผิวพรรณ…" กับ "IV Drip : ลดบวม" เหลือ "IV Drip" เหมือนกัน)
+      ให้ใช้ชื่อเต็มแทน ไม่งั้นผู้ใช้เห็นชิปซ้ำสองอันแล้วแยกไม่ออกว่าอันไหนคืออะไร */
+  const chipLabels = useMemo(() => {
+    const short = (c: string) => c.split(":")[0].trim();
+    const count = new Map<string, number>();
+    for (const [cat] of categories) {
+      const s = short(cat);
+      count.set(s, (count.get(s) ?? 0) + 1);
+    }
+    return new Map(
+      categories.map(([cat]) => {
+        const s = short(cat);
+        return [cat, (count.get(s) ?? 0) > 1 ? cat.replace(/\s*:\s*/, " · ") : s];
+      })
+    );
+  }, [categories]);
+
   const scrollTo = (cat: string) =>
     sectionRefs.current[cat]?.scrollIntoView({
       behavior: "smooth",
@@ -253,9 +271,10 @@ export function PriceListClient({
                 key={cat}
                 type="button"
                 onClick={() => scrollTo(cat)}
+                title={cat}
                 className="shrink-0 cursor-pointer rounded-full border border-brand-200 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50"
               >
-                {cat.split(":")[0].trim()}
+                {chipLabels.get(cat)}
                 <span className="ml-1 text-[10px] text-stone-400">
                   {list.length}
                 </span>

@@ -136,7 +136,7 @@ export function StaffClient({
         title="ผลงานพนักงานขาย / หมอ"
         description="วัดยอดขายรายบุคคลจากข้อมูลการขาย — คลิกชื่อเพื่อดูรายละเอียด"
         action={
-          <div className="inline-flex rounded-lg border border-brand-100 bg-white p-1 shadow-sm">
+          <div className="flex max-w-full flex-wrap gap-1 rounded-lg border border-brand-100 bg-white p-1 shadow-sm">
             {PERIOD_OPTIONS.map((option) => (
               <button
                 key={option.key}

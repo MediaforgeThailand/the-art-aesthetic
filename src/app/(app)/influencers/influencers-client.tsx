@@ -473,7 +473,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`ย้ายการ์ดไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    router.refresh();
   };
 
   /** mark/ยกเลิกสถานะ "ปฏิเสธ" — การ์ดจะหายจากบอร์ดถ้าตัวกรองยกเว้นปฏิเสธอยู่ (ค่าเริ่มต้น)
@@ -492,7 +494,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`บันทึกสถานะปฏิเสธไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    router.refresh();
   };
 
   /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" ในคิวรอทำ Memo — บันทึกลง DB ให้ทั้งทีมเห็นตรงกัน
@@ -511,7 +515,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`บันทึกสถานะส่งเอกสารไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    router.refresh();
   };
 
   /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ
@@ -553,15 +559,27 @@ export function InfluencersClient({
   }, [activeTasks, today]);
 
   /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
-     ชิป "ปฏิเสธ" = ดูเฉพาะคนที่ปฏิเสธ (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */
+     ชิป "ปฏิเสธ" = ดูเฉพาะคนที่ปฏิเสธ (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า)
+
+     สถานะที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้นเสมอ — ไม่งั้นคนที่ยกเว้น "จบงาน" ไว้
+     แล้วกดชิป "จบงาน" จะได้บอร์ดว่างทั้งที่มีเคสอยู่ (บั๊กชนิดเดียวกับที่เคยแก้ใน /tasks) */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    /** สถานะที่ชิปปัจจุบันกำลังเจาะดู — ไม่เอาไปยกเว้นซ้ำ */
+    const picked: InfluStatusKey | null =
+      stageFilter === "done"
+        ? "done"
+        : typeof stageFilter === "number"
+          ? stageFilter === 1
+            ? "waiting"
+            : "accepted"
+          : null;
     return items.filter((i) => {
       const status = influStatusOf(i);
       if (stageFilter === "declined") {
         if (status !== "declined") return false;
       } else {
-        if (excluded.has(status)) return false;
+        if (status !== picked && excluded.has(status)) return false;
         if (stageFilter === "done" && status !== "done") return false;
         if (typeof stageFilter === "number") {
           if (status === "declined" || i.completed || i.stage !== stageFilter)
