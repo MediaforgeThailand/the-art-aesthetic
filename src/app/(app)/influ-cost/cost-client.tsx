@@ -91,6 +91,7 @@ export function CostClient({
   const [includeOld, setIncludeOld] = useState(false);
 
   const commitPrice = (id: string, price: number) => {
+    setErr(null);
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, price } : r)));
     void supabase
       .from("influ_procedure_items")
@@ -105,6 +106,7 @@ export function CostClient({
   const toggleSupport = (id: string) => {
     const cur = rows.find((r) => r.id === id);
     if (!cur) return;
+    setErr(null);
     const nextVal = !cur.is_supported;
     setRows((prev) =>
       prev.map((r) => (r.id === id ? { ...r, is_supported: nextVal } : r))

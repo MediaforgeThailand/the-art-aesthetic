@@ -10,6 +10,7 @@
  */
 
 import { Gift, Plus, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import {
   itemEffectiveCost,
@@ -116,6 +117,7 @@ export function ProcedureItemsEditor({
   catalog: PriceCatalogEntry[];
   readOnly: boolean;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -129,7 +131,8 @@ export function ProcedureItemsEditor({
     return catalog.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 40);
   }, [catalog, query]);
 
-  /** sync ข้อความสรุปกลับ procedure_text — ให้ Memo/บอร์ด/ปฏิทินเห็นรูปแบบเดิม (best effort) */
+  /** sync ข้อความสรุปกลับ procedure_text — ให้ Memo/บอร์ด/ปฏิทินเห็นรูปแบบเดิม (best effort)
+      แล้ว refresh ให้หน้าภาพรวม/Memo ในหน้าเดียวกันเห็นค่าล่าสุด (state ในฟอร์มนี้ไม่โดนทับ) */
   const syncText = (next: InfluProcedureItemRow[]) => {
     void supabase
       .from("influencers")
@@ -137,6 +140,7 @@ export function ProcedureItemsEditor({
       .eq("id", influencerId)
       .then(({ error }) => {
         if (error) setErr(`อัพเดทข้อความสรุปไม่สำเร็จ: ${error.message}`);
+        else router.refresh();
       });
   };
 
@@ -176,6 +180,7 @@ export function ProcedureItemsEditor({
     if (!cur) return name;
     const clean = name.trim();
     if (!clean || clean === cur.name) return cur.name;
+    setErr(null);
     const next = items.map((i) => (i.id === id ? { ...i, name: clean } : i));
     setItems(next);
     void supabase
@@ -190,6 +195,7 @@ export function ProcedureItemsEditor({
   };
 
   const commitPrice = (id: string, price: number) => {
+    setErr(null);
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, price } : i)));
     void supabase
       .from("influ_procedure_items")
@@ -197,12 +203,14 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`บันทึกราคาไม่สำเร็จ: ${error.message}`);
+        else router.refresh();
       });
   };
 
   const toggleSupport = (id: string) => {
     const cur = items.find((i) => i.id === id);
     if (!cur) return;
+    setErr(null);
     const nextVal = !cur.is_supported;
     setItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, is_supported: nextVal } : i))
@@ -213,10 +221,12 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`บันทึกสถานะ support ไม่สำเร็จ: ${error.message}`);
+        else router.refresh();
       });
   };
 
   const removeItem = (id: string) => {
+    setErr(null);
     const next = items.filter((i) => i.id !== id);
     setItems(next);
     void supabase
