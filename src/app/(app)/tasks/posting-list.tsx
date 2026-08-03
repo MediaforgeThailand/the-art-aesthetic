@@ -1,0 +1,194 @@
+"use client";
+
+import { BadgeCheck, Link2, Paperclip, Send } from "lucide-react";
+import { formatDateBangkok } from "@/lib/format";
+import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import {
+  AssigneeAvatar,
+  CardMediaPreview,
+  profileName,
+  waitDurationLabel,
+} from "./task-card";
+
+/** เวลาที่ถือว่างานตรวจผ่าน — เริ่มนับคิวรอโพสจากจุดนี้ */
+function approvedAtOf(t: TaskWithAssignee): string {
+  return t.approved_at ?? t.updated_at;
+}
+
+/** รอโพสเกิน 2 วัน = ป้ายเตือนเหลืองเข้ม (เกณฑ์เดียวกับคิวรอตรวจ)
+    — เรียก Date.now() จึงต้องอยู่ระดับโมดูล (กฎ react-hooks/purity) */
+function postWaitIsLate(sinceIso: string): boolean {
+  const ms = Date.now() - Date.parse(sinceIso);
+  return !Number.isNaN(ms) && ms > 2 * 24 * 3_600_000;
+}
+
+/**
+ * แท็บ "รอโพส" — คิวงานที่ผ่านการตรวจแล้ว (approved) แต่ยังไม่ถูกทำเครื่องหมายว่าโพส
+ * เรียงงานที่รอนานสุดขึ้นก่อน · ปุ่ม "โพสแล้ว" ใหญ่ชัดบนการ์ด กดแล้วงานออกจากคิวทันที
+ * (ยังดู/ยกเลิกสถานะโพสย้อนหลังได้ในแท็บ "งานเสร็จ")
+ */
+export function PostingList({
+  tasks,
+  sections,
+  selectedId,
+  onRowClick,
+  onMarkPosted,
+}: {
+  /** งานรอโพส (approved + ยังไม่โพส) เรียงรอนานสุดก่อน */
+  tasks: TaskWithAssignee[];
+  sections: TaskSectionRow[];
+  selectedId: string | null;
+  onRowClick: (task: TaskWithAssignee) => void;
+  /** ทำเครื่องหมายว่าโพสแล้ว (ตั้ง posted_at) — การ์ดจะหายจากคิวนี้ */
+  onMarkPosted: (task: TaskWithAssignee) => void;
+}) {
+  const sectionName = (id: string | null) =>
+    sections.find((s) => s.id === id)?.name ?? null;
+
+  if (tasks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
+        <Send size={40} strokeWidth={1.5} className="text-sky-200" />
+        <p className="text-sm font-medium text-stone-600">
+          ไม่มีงานค้างโพส 🎉
+        </p>
+        <p className="max-w-sm text-sm text-stone-400">
+          งานที่ผู้ตรวจอนุมัติแล้วแต่ยังไม่ได้กด &quot;โพสแล้ว&quot;
+          จะมาเข้าคิวรอที่นี่
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-6 pt-1 sm:px-6">
+      <p className="mb-3 text-xs text-stone-400">
+        งานที่ตรวจผ่านแล้วและยังไม่ได้โพส {tasks.length} งาน —
+        โพสเสร็จแล้วกดปุ่มบนการ์ดเพื่อปิดคิว
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {tasks.map((task) => (
+          <PostingCard
+            key={task.id}
+            task={task}
+            section={sectionName(task.section_id)}
+            selected={selectedId === task.id}
+            onClick={() => onRowClick(task)}
+            onMarkPosted={() => onMarkPosted(task)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- การ์ดงานรอโพสหนึ่งใบ — preview รูป + ปุ่ม "โพสแล้ว" ใหญ่ชัด ---------- */
+
+function PostingCard({
+  task,
+  section,
+  selected,
+  onClick,
+  onMarkPosted,
+}: {
+  task: TaskWithAssignee;
+  section: string | null;
+  selected: boolean;
+  onClick: () => void;
+  onMarkPosted: () => void;
+}) {
+  const files = task.files ?? [];
+  const since = approvedAtOf(task);
+  const wait = waitDurationLabel(since);
+  const late = postWaitIsLate(since);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`งานรอโพส ${task.title}`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onClick();
+      }}
+      className={`flex cursor-pointer flex-col rounded-lg border p-3 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
+        selected
+          ? "border-brand-400 bg-white/85 ring-1 ring-brand-300"
+          : "border-white/80 bg-white/85 hover:border-sky-300"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <p className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug text-stone-800">
+          {task.title}
+        </p>
+        {/* รอนานแค่ไหนแล้ว — เกิน 2 วันเน้นเหลืองเข้มให้รีบเคลียร์ */}
+        {wait && (
+          <span
+            title={`ตรวจผ่านเมื่อ ${formatDateBangkok(since)}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              late
+                ? "bg-amber-100 text-amber-700"
+                : "bg-stone-100 text-stone-500"
+            }`}
+          >
+            {wait}
+          </span>
+        )}
+      </div>
+
+      <CardMediaPreview files={files} />
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-stone-500">
+        {task.assignee && (
+          <span className="inline-flex items-center gap-1.5">
+            <AssigneeAvatar assignee={task.assignee} size={5} />
+            {profileName(task.assignee)}
+          </span>
+        )}
+        <span
+          className="inline-flex items-center gap-1 text-emerald-700"
+          title="ตรวจผ่านเมื่อ"
+        >
+          <BadgeCheck size={12} />
+          {formatDateBangkok(since)}
+        </span>
+        {section && <span className="text-stone-400">· {section}</span>}
+        {task.deliverable_url && (
+          <a
+            href={task.deliverable_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-sky-600 hover:underline"
+          >
+            <Link2 size={12} />
+            ลิงก์งาน
+          </a>
+        )}
+        {files.length > 0 && (
+          <span className="inline-flex items-center gap-0.5 text-brand-600">
+            <Paperclip size={11} />
+            {files.length}
+          </span>
+        )}
+      </div>
+
+      {/* ปุ่มหลักของแท็บนี้ — ใหญ่ชัด กดแล้วงานออกจากคิวรอโพสทันที
+          (mt-auto ดันปุ่มชิดท้ายการ์ด ให้ทุกใบในแถวปุ่มตรงแนวกัน) */}
+      <div className="mt-auto pt-3">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkPosted();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          aria-label={`ทำเครื่องหมายว่างาน ${task.title} โพสแล้ว`}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-600 px-4 py-3 text-base font-bold text-white shadow-md shadow-emerald-500/25 transition-all hover:from-emerald-600 hover:to-emerald-700 hover:shadow-lg active:scale-[0.97]"
+        >
+          <Send size={18} />
+          โพสแล้ว
+        </button>
+      </div>
+    </div>
+  );
+}

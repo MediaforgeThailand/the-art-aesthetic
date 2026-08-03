@@ -6,6 +6,7 @@ import {
   EyeOff,
   ListTodo,
   Search,
+  Send,
   Trash2,
   UserCog,
   X,
@@ -40,6 +41,7 @@ import { ApprovedList } from "./approved-list";
 import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ExcludeFilter } from "./exclude-filter";
 import { PersonSelect } from "./person-select";
+import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
 import {
   AssigneeAvatar,
@@ -143,9 +145,9 @@ export function TasksClient({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"work" | "review" | "approved" | "trash">(
-    "work"
-  );
+  const [tab, setTab] = useState<
+    "work" | "review" | "posting" | "approved" | "trash"
+  >("work");
   useEffect(() => setItems(tasks), [tasks]);
   useEffect(() => setSections(initialSections), [initialSections]);
 
@@ -671,6 +673,20 @@ export function TasksClient({
   const approvedAll = useMemo(
     () => activeItems.filter((t) => t.review_status === "approved"),
     [activeItems]
+  );
+
+  /** คิว "รอโพส" — งานตรวจผ่านแล้วแต่ยังไม่ถูกทำเครื่องหมายว่าโพส เรียงรอนานสุดก่อน
+      (คิวนี้ไม่ผูกตัวกรองใดๆ — ต้องเห็นครบเสมอ กติกาเดียวกับคิวรอทำ Memo) */
+  const postQueue = useMemo(
+    () =>
+      approvedAll
+        .filter((t) => t.posted_at === null)
+        .sort((a, b) =>
+          (a.approved_at ?? a.updated_at).localeCompare(
+            b.approved_at ?? b.updated_at
+          )
+        ),
+    [approvedAll]
   );
 
   const approvedFiltered = useMemo(() => {
@@ -1669,6 +1685,30 @@ export function TasksClient({
               </span>
             )}
           </button>
+          {/* รอโพส = คิวงานตรวจผ่านที่ยังไม่ได้โพส — badge นับงานค้างทั้งทีม */}
+          <button
+            type="button"
+            onClick={() => setTab("posting")}
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "posting"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <Send size={16} />
+            รอโพส
+            {postQueue.length > 0 && (
+              <span
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                  tab === "posting"
+                    ? "bg-white/25 text-cream"
+                    : "bg-sky-100 text-sky-700"
+                }`}
+              >
+                {postQueue.length}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => setTab("approved")}
@@ -1980,6 +2020,14 @@ export function TasksClient({
             onApprove={approveTask}
             onApproveBypass={requestApproveBypass}
             onReject={requestReject}
+          />
+        ) : tab === "posting" ? (
+          <PostingList
+            tasks={postQueue}
+            sections={sections}
+            selectedId={selectedId}
+            onRowClick={(t) => setSelectedId(t.id)}
+            onMarkPosted={togglePosted}
           />
         ) : tab === "approved" ? (
           <ApprovedList
