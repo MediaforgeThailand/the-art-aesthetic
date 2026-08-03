@@ -432,6 +432,19 @@ export type InfluProcedureItemRow = {
   updated_at: string;
 };
 
+/** ลิงก์ไฟล์ source ของ influencer (Google Drive ฯลฯ) — แปะได้หลายลิงก์ต่อคน
+    เปิดเร็วจากการ์ดบอร์ด / การ์ดแกลเลอรี / หน้า detail */
+export type InfluLinkRow = {
+  id: string;
+  influencer_id: string;
+  /** ชื่อกำกับลิงก์ — null/ว่าง = แสดง hostname แทน */
+  title: string | null;
+  url: string;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** ทะเบียนแพทย์ (จัดการหมอ) — ตัวเลือก "แพทย์ที่รับเคส" ใน Influ Management / Influ Calendar
     จับคู่กับ influencers.doctor_name และ influ_calendar_events.doctor_name ด้วย "ชื่อ" (text)
     active=false = ซ่อนจากตัวเลือก แต่ชื่อในเคส/คิวเก่ายังแสดงตามเดิม */
@@ -717,6 +730,15 @@ export interface Database {
         Row: DoctorRow;
         Insert: Partial<DoctorRow> & { name: string };
         Update: Partial<DoctorRow>;
+        Relationships: [];
+      };
+      influ_links: {
+        Row: InfluLinkRow;
+        Insert: Partial<InfluLinkRow> & {
+          influencer_id: string;
+          url: string;
+        };
+        Update: Partial<InfluLinkRow>;
         Relationships: [];
       };
       price_items: {

@@ -141,7 +141,7 @@ export function DashboardClient({
       if (!inf || inf.declined_at !== null) continue;
       const eff = itemEffectiveCost(it);
       cost.total += eff;
-      cost[costUsageOf(inf.service_date, today)] += eff;
+      cost[costUsageOf(inf)] += eff;
       if (it.is_supported) cost.saved += Number(it.price) || 0;
       costByInflu.set(inf.id, (costByInflu.get(inf.id) ?? 0) + eff);
     }
@@ -301,6 +301,7 @@ export function DashboardClient({
           iconClass="bg-emerald-50 text-emerald-600"
           label="ใช้บริการแล้ว"
           value={formatCurrency(stats.cost.used)}
+          sub="เคสที่ผ่าน Stage 5 แล้ว"
           delay={40}
         />
         <HeroCard

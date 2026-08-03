@@ -48,6 +48,7 @@ import {
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluencerRow, InfluSizeGroup, InfluTaskRow } from "@/lib/types";
+import { type InfluLinkLite, SourceLinkQuickButton } from "./influ-links";
 
 /** แถว influencer สำหรับหน้า list — ตัด procedure_history ออก
     (jsonb เก็บลายเซน base64 ก้อนใหญ่ ~10-30KB/รายการ หน้า list ไม่ได้ใช้ เลยไม่ต้อง fetch) */
@@ -215,6 +216,7 @@ export function InfluCardContent({
   stats,
   today,
   overlay = false,
+  links,
   deleting = false,
   onDelete,
   onToggleDeclined,
@@ -224,6 +226,8 @@ export function InfluCardContent({
   today: string;
   /** true = การ์ดลอยใน DragOverlay ระหว่างลาก */
   overlay?: boolean;
+  /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
+  links?: InfluLinkLite[];
   deleting?: boolean;
   onDelete?: (influ: InfluencerListRow) => void;
   /** mark/ยกเลิก "ปฏิเสธ" — ไม่ส่ง = ไม่มีปุ่ม (เช่นการ์ดใน overlay) */
@@ -295,6 +299,7 @@ export function InfluCardContent({
           </p>
         </div>
         <div className="-mr-1.5 -mt-1.5 flex shrink-0 items-center">
+          <SourceLinkQuickButton links={links} compact />
           {onToggleDeclined && (
             <button
               type="button"
@@ -437,6 +442,7 @@ export function InfluCardContent({
 function SortableInfluCard({
   influ,
   stats,
+  links,
   today,
   deleting,
   onClick,
@@ -445,6 +451,7 @@ function SortableInfluCard({
 }: {
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
+  links: InfluLinkLite[] | undefined;
   today: string;
   deleting: boolean;
   onClick: () => void;
@@ -477,6 +484,7 @@ function SortableInfluCard({
       <InfluCardContent
         influ={influ}
         stats={stats}
+        links={links}
         today={today}
         deleting={deleting}
         onDelete={onDelete}
@@ -492,6 +500,7 @@ function BoardColumn({
   group,
   influs,
   statsByInflu,
+  linksByInflu,
   today,
   highlight,
   deletingId,
@@ -502,6 +511,7 @@ function BoardColumn({
   group: InfluSizeGroup;
   influs: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
+  linksByInflu?: Map<string, InfluLinkLite[]>;
   today: string;
   highlight: boolean;
   deletingId: string | null;
@@ -555,6 +565,7 @@ function BoardColumn({
               key={i.id}
               influ={i}
               stats={statsByInflu.get(i.id)}
+              links={linksByInflu?.get(i.id)}
               today={today}
               deleting={deletingId === i.id}
               onClick={() => onCardClick(i)}
@@ -573,6 +584,7 @@ function BoardColumn({
 export function InfluBoard({
   items,
   statsByInflu,
+  linksByInflu,
   today,
   deletingId,
   onOpen,
@@ -583,6 +595,8 @@ export function InfluBoard({
   /** รายชื่อหลังกรอง (ค้นหา/stage/ยกเว้น) แล้ว — บอร์ดจัดกลุ่ม+เรียงเอง */
   items: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
+  /** ลิงก์ไฟล์ source ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด (ไม่ส่ง = ไม่มีปุ่ม) */
+  linksByInflu?: Map<string, InfluLinkLite[]>;
   today: string;
   deletingId: string | null;
   onOpen: (influ: InfluencerListRow) => void;
@@ -764,6 +778,7 @@ export function InfluBoard({
               group={g}
               influs={influs}
               statsByInflu={statsByInflu}
+              linksByInflu={linksByInflu}
               today={today}
               highlight={activeId !== null && overGroup === g}
               deletingId={deletingId}

@@ -20,7 +20,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { HeroCard } from "@/components/report-viz";
 import { Badge, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
-import { formatCurrency, formatDate, todayISO } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import {
   COST_USAGE_META,
   COST_USAGE_ORDER,
@@ -73,7 +73,6 @@ export function CostClient({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const today = todayISO();
 
   // local copy — แก้ราคา/ติ๊ก support แบบ optimistic แล้วค่อย refresh เบื้องหลัง
   const [rows, setRows] = useState<CostItem[]>(items);
@@ -159,7 +158,8 @@ export function CostClient({
       influIds: new Set<string>(),
     };
     for (const r of base) {
-      const usage = costUsageOf(r.influencer?.service_date ?? null, today);
+      if (!r.influencer) continue;
+      const usage = costUsageOf(r.influencer);
       const eff = itemEffectiveCost(r);
       s.total += eff;
       s[usage] += eff;
@@ -169,10 +169,10 @@ export function CostClient({
       } else if (Number(r.price) === 0) {
         s.unpricedCount += 1;
       }
-      if (r.influencer) s.influIds.add(r.influencer.id);
+      s.influIds.add(r.influencer.id);
     }
     return s;
-  }, [base, today]);
+  }, [base]);
 
   // จัดกลุ่มตามเคส แล้วแยกเป็น section ตามสถานะการใช้
   const sections = useMemo(() => {
@@ -180,7 +180,7 @@ export function CostClient({
     for (const r of base) {
       const inf = r.influencer;
       if (!inf) continue;
-      const usage = costUsageOf(inf.service_date, today);
+      const usage = costUsageOf(inf);
       if (usageFilter !== "all" && usage !== usageFilter) continue;
       let g = byInflu.get(inf.id);
       if (!g) {
@@ -227,7 +227,7 @@ export function CostClient({
         });
       return { usage, groups: list };
     }).filter((s) => s.groups.length > 0);
-  }, [base, usageFilter, today]);
+  }, [base, usageFilter]);
 
   return (
     <div>
@@ -264,7 +264,7 @@ export function CostClient({
           iconClass="bg-emerald-50 text-emerald-600"
           label="ใช้บริการแล้ว"
           value={formatCurrency(sums.used)}
-          sub="เคสที่ถึงวันเข้ารับบริการแล้ว"
+          sub="เคสที่ผ่าน Stage 5 (เข้ารับบริการ) แล้ว"
           delay={40}
         />
         <HeroCard

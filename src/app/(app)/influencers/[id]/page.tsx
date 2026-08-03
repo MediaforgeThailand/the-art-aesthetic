@@ -8,6 +8,7 @@ import type {
   DoctorRow,
   InfluencerRow,
   InfluFollowupRow,
+  InfluLinkRow,
   InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
@@ -43,6 +44,7 @@ export default async function InfluencerDetailPage({
     { data: contentTasks },
     { data: procedureItems },
     { data: priceCatalog },
+    { data: sourceLinks },
     { data: profile },
     { data: doctors },
   ] = await Promise.all([
@@ -81,6 +83,13 @@ export default async function InfluencerDetailPage({
       .select("id, name")
       .eq("active", true)
       .order("name", { ascending: true }),
+    // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
+    supabase
+      .from("influ_links")
+      .select("*")
+      .eq("influencer_id", id)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
     userId
       ? supabase
           .from("profiles")
@@ -109,6 +118,7 @@ export default async function InfluencerDetailPage({
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
       />

@@ -17,6 +17,7 @@ import {
   PenLine,
   PhoneCall,
   Send,
+  Undo2,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,6 +28,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Input,
   Label,
   Modal,
@@ -58,6 +60,7 @@ import type {
   InfluencerRow,
   InfluFollowupMode,
   InfluFollowupRow,
+  InfluLinkRow,
   InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
@@ -65,6 +68,7 @@ import type {
   TaskWithAssignee,
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../doctor-select";
+import { InfluLinksCard } from "../influ-links";
 import {
   ProcedureItemsEditor,
   type PriceCatalogEntry,
@@ -357,6 +361,7 @@ export function InfluDetailClient({
   contentTasks,
   procedureItems,
   priceCatalog,
+  sourceLinks,
   userName,
   doctors,
 }: {
@@ -369,9 +374,13 @@ export function InfluDetailClient({
   procedureItems: InfluProcedureItemRow[];
   /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2) */
   priceCatalog: PriceCatalogEntry[];
+  /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
+  sourceLinks: InfluLinkRow[];
   userName: string;
   doctors: DoctorRow[];
 }) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   // view = "overview" (หน้าสรุป) หรือเลข stage 1-6 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
   const [view, setView] = useState<"overview" | number>("overview");
   // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
@@ -391,6 +400,31 @@ export function InfluDetailClient({
   const readOnly =
     influencer.completed || (typeof view === "number" && view < influencer.stage);
   const [nameOpen, setNameOpen] = useState(false);
+
+  // ย้อนกลับ 1 stage — ใช้เมื่อเงื่อนไขเคสเปลี่ยน (เช่น influ ขอเปลี่ยนโปรแกรมที่รับ)
+  // แล้วต้องกลับไปแก้ข้อมูล/ยื่นเอกสารรอบใหม่; ข้อมูล-ไฟล์ที่กรอกไว้แล้วไม่ถูกลบ
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [rollbackErr, setRollbackErr] = useState<string | null>(null);
+  const rollbackStage = async () => {
+    const target = influencer.stage - 1;
+    if (target < 1 || influencer.completed) return;
+    setRollbackErr(null);
+    const { error } = await supabase
+      .from("influencers")
+      .update({
+        stage: target,
+        // ถอยออกจากจุดที่เพิ่งผ่านการเซนสัญญา (5→4): ล้างวันเริ่มสัญญา —
+        // จะถูกตั้งใหม่เป็นวันยืนยันเซนครบ เมื่อผ่าน Stage 4 อีกครั้ง
+        ...(influencer.stage === 5 ? { contract_start: null } : {}),
+      })
+      .eq("id", influencer.id);
+    if (error) {
+      setRollbackErr(`ย้อน stage ไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    // effect ที่เฝ้า influencer.stage จะพา view ไปหน้า stage ใหม่เองหลัง refresh
+    router.refresh();
+  };
 
   // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
   const activeTasks = useMemo(
@@ -510,7 +544,24 @@ export function InfluDetailClient({
             </button>
           );
         })}
+        {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข ต้องกลับไปยื่นเอกสารใหม่ */}
+        {!influencer.completed && influencer.stage > 1 && (
+          <button
+            type="button"
+            onClick={() => setRollbackOpen(true)}
+            title={`ย้อนจาก Stage ${influencer.stage} กลับไป Stage ${influencer.stage - 1} — ใช้เมื่อ influ ขอเปลี่ยนโปรแกรม/เงื่อนไข แล้วต้องทำเอกสารรอบใหม่`}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-stone-300 bg-white/40 px-3 py-2 text-xs font-medium text-stone-400 transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 active:scale-[0.97]"
+          >
+            <Undo2 size={13} />
+            ย้อน Stage
+          </button>
+        )}
       </div>
+      {rollbackErr && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+          {rollbackErr}
+        </p>
+      )}
 
       <div className="animate-fade-in" key={String(view)}>
         {view === "overview" && (
@@ -519,6 +570,7 @@ export function InfluDetailClient({
             followupTasks={activeTasks}
             contentTasks={contentTasks}
             procedureItems={procedureItems}
+            sourceLinks={sourceLinks}
             doctors={doctors}
             onGoStage={(step) => setView(step)}
           />
@@ -580,6 +632,42 @@ export function InfluDetailClient({
           onClose={() => setNameOpen(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={rollbackOpen}
+        title={`ย้อนกลับไป Stage ${influencer.stage - 1}?`}
+        message={
+          <>
+            เคสจะถอยจาก Stage {influencer.stage} กลับไป Stage{" "}
+            {influencer.stage - 1} — ใช้เมื่อเงื่อนไขเปลี่ยน เช่น influ
+            ขอเปลี่ยนโปรแกรมที่รับ แล้วต้องแก้ข้อมูล/ยื่นเอกสารขออนุมัติรอบใหม่
+            <br />
+            ข้อมูลและไฟล์ที่กรอกไว้แล้วไม่ถูกลบ — กลับมาแก้แล้วเดินหน้าต่อได้เลย
+            {influencer.stage === 5 && (
+              <>
+                <br />
+                <span className="text-amber-700">
+                  วันเริ่มสัญญาจะถูกล้าง
+                  และตั้งใหม่เมื่อยืนยันเซนสัญญาครบอีกครั้ง
+                </span>
+              </>
+            )}
+            {influencer.stage === 6 && (
+              <>
+                <br />
+                <span className="text-amber-700">
+                  ต้นทุนของเคสนี้จะกลับไปนับเป็น &quot;กำลังจะมา&quot;
+                  (ยังไม่ผ่าน Stage 5)
+                </span>
+              </>
+            )}
+          </>
+        }
+        confirmLabel="ย้อน Stage"
+        confirmVariant="primary"
+        onConfirm={() => void rollbackStage()}
+        onClose={() => setRollbackOpen(false)}
+      />
     </div>
   );
 }
@@ -623,6 +711,7 @@ function OverviewPanel({
   followupTasks,
   contentTasks,
   procedureItems,
+  sourceLinks,
   doctors,
   onGoStage,
 }: {
@@ -630,6 +719,7 @@ function OverviewPanel({
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   procedureItems: InfluProcedureItemRow[];
+  sourceLinks: InfluLinkRow[];
   doctors: DoctorRow[];
   onGoStage: (step: number) => void;
 }) {
@@ -921,6 +1011,12 @@ function OverviewPanel({
             />
           </dl>
         </Card>
+
+        {/* ลิงก์ไฟล์ source (Google Drive) — แก้ได้เสมอแม้ปิดงานแล้ว (คลังไฟล์อ้างอิง) */}
+        <InfluLinksCard
+          influencerId={influencer.id}
+          initialLinks={sourceLinks}
+        />
       </div>
 
       {caseInfoOpen && (

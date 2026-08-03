@@ -614,15 +614,18 @@ export function procedureSummaryText(items: { name: string }[]): string {
     .join(" / ");
 }
 
-/** สถานะการใช้ต้นทุน อิงวันเข้ารับบริการของเคส (เทียบกับวันนี้เวลาไทย) */
+/** สถานะการใช้ต้นทุน — "ใช้บริการแล้ว" = เคสผ่าน Stage 5 (วันเข้ารับบริการ) มาแล้ว
+    คือขึ้น Stage 6 หรือปิดงาน (เกณฑ์จากผู้ใช้ 2026-08-03: การเดิน stage คือตัวยืนยันว่าเข้ามาจริง
+    ไม่ใช่แค่วันที่นัดถึงกำหนด — วันที่เลยมาแล้วแต่ยังไม่ผ่าน Stage 5 = อาจเลื่อนนัด ยังไม่นับ) */
 export type CostUsage = "used" | "upcoming" | "unscheduled";
 
-export function costUsageOf(
-  serviceDate: string | null,
-  todayIso: string
-): CostUsage {
-  if (!serviceDate) return "unscheduled";
-  return serviceDate <= todayIso ? "used" : "upcoming";
+export function costUsageOf(c: {
+  service_date: string | null;
+  stage: number;
+  completed: boolean;
+}): CostUsage {
+  if (c.completed || c.stage > 5) return "used";
+  return c.service_date ? "upcoming" : "unscheduled";
 }
 
 export const COST_USAGE_META: Record<

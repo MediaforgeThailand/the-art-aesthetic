@@ -42,6 +42,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { DoctorRow, InfluSizeGroup } from "@/lib/types";
 import { DoctorManagerModal } from "./doctor-manager";
+import type { InfluLinkLite } from "./influ-links";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -324,11 +325,14 @@ export function InfluencersClient({
   influencers,
   tasks,
   doctors,
+  sourceLinks,
   loadError,
 }: {
   influencers: InfluencerListRow[];
   tasks: InfluTaskLite[];
   doctors: DoctorRow[];
+  /** ลิงก์ไฟล์ source (Google Drive) ทั้งหมด — ปุ่มเปิดเร็วบนการ์ด */
+  sourceLinks: InfluLinkLite[];
   loadError: string | null;
 }) {
   const [doctorsOpen, setDoctorsOpen] = useState(false);
@@ -339,6 +343,17 @@ export function InfluencersClient({
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
+
+  // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer — ปุ่มเปิดเร็วบนการ์ด
+  const linksByInflu = useMemo(() => {
+    const m = new Map<string, InfluLinkLite[]>();
+    for (const l of sourceLinks) {
+      const arr = m.get(l.influencer_id);
+      if (arr) arr.push(l);
+      else m.set(l.influencer_id, [l]);
+    }
+    return m;
+  }, [sourceLinks]);
 
   /** แท็บ: บอร์ดปกติ | คิวรอทำ Memo (stage 3 ที่ติ๊กว่าข้อมูลครบแล้ว) */
   const [tab, setTab] = useState<"board" | "memo">("board");
@@ -826,6 +841,7 @@ export function InfluencersClient({
         <InfluBoard
           items={filtered}
           statsByInflu={statsByInflu}
+          linksByInflu={linksByInflu}
           today={today}
           deletingId={deletingId}
           onOpen={(i) => router.push(`/influencers/${i.id}`)}
