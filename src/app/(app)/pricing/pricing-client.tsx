@@ -221,7 +221,10 @@ export function PricingClient({
       { key: "all", label: "ทั้งหมด", count: withStatus.length },
       { key: "active", label: "ใช้ได้", count: counts.active },
       { key: "expiring", label: "ใกล้หมดเขต", count: counts.expiring },
-      { key: "expired", label: "หมดเขตแล้ว", count: counts.expired },
+      // โปรหมดเขตถูกกรองออกตั้งแต่ server — ชิปนี้โผล่เฉพาะกรณีข้อมูลค้าง (เช่น หมดเขตระหว่างเปิดหน้า)
+      ...(counts.expired > 0
+        ? [{ key: "expired" as const, label: "หมดเขตแล้ว", count: counts.expired }]
+        : []),
       // แสดงชิป "ยังไม่เริ่ม" เฉพาะเมื่อมีจริง — ปกติโปรอนุมัติมักเริ่มแล้ว
       ...(counts.upcoming > 0
         ? [{ key: "upcoming" as const, label: "ยังไม่เริ่ม", count: counts.upcoming }]

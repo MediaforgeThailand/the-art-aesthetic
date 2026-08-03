@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
+import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { PriceItemRow, PricePromotionRow } from "@/lib/types";
 import { PriceItemsAdmin } from "./price-items-admin";
@@ -41,6 +42,8 @@ export default async function PricingPage() {
     supabase
       .from("price_promotions")
       .select("*")
+      // โปรที่เลยวันหมดเขตถือว่าปิดไปแล้ว — ไม่ดึงมาแสดง (แถวยังอยู่ในตารางเป็นประวัติ)
+      .or(`expires_on.is.null,expires_on.gte.${todayISO()}`)
       .order("category", { ascending: true })
       .order("normal_price", { ascending: true }),
     fetchPriceItems(),
