@@ -361,13 +361,13 @@ export function InfluCardContent({
               }}
               onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              className={`shrink-0 cursor-pointer rounded-lg p-1.5 transition-colors active:scale-90 ${
+              className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors active:scale-90 sm:h-7 sm:w-7 ${
                 declined
                   ? "text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
                   : "text-stone-300 hover:bg-rose-50 hover:text-rose-500"
               }`}
             >
-              {declined ? <RotateCcw size={14} /> : <Ban size={14} />}
+              {declined ? <RotateCcw size={16} /> : <Ban size={16} />}
             </button>
           )}
           {onDelete && (
@@ -382,9 +382,9 @@ export function InfluCardContent({
               }}
               onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              className="shrink-0 cursor-pointer rounded-lg p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:opacity-40 sm:h-7 sm:w-7"
             >
-              <Trash2 size={14} />
+              <Trash2 size={16} />
             </button>
           )}
         </div>

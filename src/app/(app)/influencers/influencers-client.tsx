@@ -123,6 +123,16 @@ function InfluExcludeFilter({
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  /** ตำแหน่งแผง (fixed) — หนีบขอบจอทั้งแนวนอนและแนวตั้ง จอแคบต้องไม่ล้นออกนอกจอ */
+  const placeAt = (btn: HTMLElement) => {
+    const r = btn.getBoundingClientRect();
+    const panelW = Math.min(264, window.innerWidth - 16);
+    return {
+      x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
+      y: r.bottom + 6,
+    };
+  };
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
@@ -133,24 +143,24 @@ function InfluExcludeFilter({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    // แผงเป็น position:fixed — เลื่อนจอ/หมุนเครื่องแล้วต้องย้ายตามปุ่ม ไม่งั้นค้างลอยผิดที่
+    const reposition = () => {
+      if (btnRef.current) setPos(placeAt(btnRef.current));
+    };
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
   }, [open]);
 
   const toggleOpen = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const panelW = 264;
-      // หนีบขอบจอ — จอแคบเมนูต้องไม่ล้นออกนอกจอ
-      setPos({
-        x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
-        y: r.bottom + 6,
-      });
-    }
+    if (!open && btnRef.current) setPos(placeAt(btnRef.current));
     setOpen((o) => !o);
   };
 
@@ -803,7 +813,7 @@ export function InfluencersClient({
                 key={String(chip.key)}
                 type="button"
                 onClick={() => setStageFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
+                className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
                   active
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
@@ -943,7 +953,7 @@ export function InfluencersClient({
             Stage 1: กรอกแค่ชื่อกับเบอร์ติดต่อพอ — รายละเอียดเคสไปกรอกใน stage
             ถัดไปหลังยืนยันร่วมงาน
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="inf-first">ชื่อ *</Label>
               <Input

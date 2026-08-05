@@ -79,6 +79,26 @@ export function DoctorNameChip({
  * เมนู render ผ่าน portal + fixed แบบเดียวกับ PersonSelect (กันโดน overflow/transform ตัด)
  * ค่าเดิมที่ไม่ตรงกับทะเบียน (เคสเก่าพิมพ์เอง) แสดงเป็นตัวเลือก "ชื่อเดิม" ให้คงไว้ได้
  */
+/** ขนาด/ตำแหน่งเมนูที่หนีบให้อยู่ในจอเสมอ — จอแคบใช้เกือบเต็มความกว้าง
+    (ค่าเดิมตรึงไว้ 268px + คำนวณ x จาก innerWidth-276 ทำให้จอ <300px เมนูโผล่นอกจอ) */
+function menuBox(btn: HTMLElement) {
+  const r = btn.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(300, vw - 16);
+  const spaceBelow = vh - r.bottom - 8;
+  const spaceAbove = r.top - 8;
+  // กางลงล่างถ้าที่พอ ไม่งั้นกางขึ้นบน — สูงสุดเท่าที่ฝั่งนั้นเหลือ (ไม่เกิน 340)
+  const below = spaceBelow >= Math.min(240, spaceAbove) || spaceBelow >= 240;
+  const height = Math.min(340, below ? spaceBelow : spaceAbove);
+  return {
+    x: Math.max(8, Math.min(r.left, vw - width - 8)),
+    y: below ? r.bottom + 4 : Math.max(8, r.top - height - 4),
+    width,
+    height: Math.max(160, height),
+  };
+}
+
 export function DoctorSelect({
   doctors,
   value,
@@ -96,7 +116,7 @@ export function DoctorSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<ReturnType<typeof menuBox> | null>(null);
   const [query, setQuery] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -114,20 +134,31 @@ export function DoctorSelect({
         setOpen(false);
       }
     };
-    // เลื่อนจอ/ย่อขยายแล้วปิดเมนู — ตำแหน่ง fixed จะค้างผิดที่ (เลื่อนในเมนูเองไม่นับ)
-    const close = (e: Event) => {
+    /* เลื่อนจอ/ย่อขยาย = ย้ายเมนูตามปุ่ม ไม่ใช่ปิดเมนู
+       (ของเดิมปิดทิ้ง — บนมือถือคีย์บอร์ดที่เด้งขึ้นยิง resize ทันทีที่เมนูเปิด
+        เมนูเลยหุบก่อนจะกดเลือกได้ = อาการ "กดเลือกหมอไม่ได้")
+       เลื่อนภายในเมนูเองไม่ต้องคิดตำแหน่งใหม่ */
+    const reposition = (e: Event) => {
       if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
-      setOpen(false);
+      const b = btnRef.current;
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      // ปุ่มถูกเลื่อนพ้นจอไปแล้ว — เมนูลอยเท้งเต้งไม่มีประโยชน์ ปิดทิ้ง
+      if (r.bottom < 0 || r.top > window.innerHeight) {
+        setOpen(false);
+        return;
+      }
+      setPos(menuBox(b));
     };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
   }, [open]);
 
@@ -144,15 +175,7 @@ export function DoctorSelect({
   const toggle = () => {
     if (disabled) return;
     if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const menuH = Math.min(46 * (active.length + 2) + 60, 320);
-      setPos({
-        x: Math.min(r.left, window.innerWidth - 276),
-        y:
-          r.bottom + menuH > window.innerHeight - 8
-            ? Math.max(8, r.top - menuH - 4)
-            : r.bottom + 4,
-      });
+      setPos(menuBox(btnRef.current));
       setQuery("");
     }
     setOpen((o) => !o);
@@ -166,8 +189,9 @@ export function DoctorSelect({
   const selectedDoctor =
     value === "" ? null : (doctors.find((d) => d.name === value) ?? { name: value, photo_path: null });
 
+  // py-2.5 = สูง ~44px ตามขนาดเป้านิ้วขั้นต่ำ (ของเดิม py-1.5 = 38px กดพลาดง่ายบนมือถือ)
   const itemClass =
-    "flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-stone-700 transition-colors hover:bg-brand-50";
+    "flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50";
 
   return (
     <>
@@ -179,7 +203,7 @@ export function DoctorSelect({
         aria-expanded={open}
         disabled={disabled}
         onClick={toggle}
-        className="flex h-[38px] w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 text-left text-sm text-stone-900 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400"
+        className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 text-left text-sm text-stone-900 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400 sm:h-[38px]"
       >
         {selectedDoctor ? (
           <>
@@ -199,19 +223,29 @@ export function DoctorSelect({
           <div
             ref={menuRef}
             role="listbox"
-            style={{ left: pos.x, top: pos.y }}
+            style={{
+              left: pos.x,
+              top: pos.y,
+              width: pos.width,
+              maxHeight: pos.height,
+            }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="fixed z-[60] flex max-h-80 w-[268px] flex-col rounded-lg border border-white/70 bg-white/95 shadow-xl backdrop-blur-xl animate-scale-in"
+            className="fixed z-[60] flex flex-col rounded-lg border border-white/70 bg-white/95 shadow-xl backdrop-blur-xl animate-scale-in"
           >
-            {/* ช่องกรอง — ทะเบียนมีได้หลายสิบชื่อ พิมพ์บางส่วนแล้วเลือกเร็วกว่าไล่หา */}
+            {/* ช่องกรอง — ทะเบียนมีได้หลายสิบชื่อ พิมพ์บางส่วนแล้วเลือกเร็วกว่าไล่หา
+                โฟกัสอัตโนมัติเฉพาะเมาส์: บนมือถือคีย์บอร์ดจะเด้งมาบังลิสต์ทันที
+                ทั้งที่ส่วนใหญ่แค่อยากกดเลือกจากรายการสั้นๆ (แตะช่องเองได้ถ้าจะค้น) */}
             <div className="p-1.5 pb-0">
               <input
-                autoFocus
+                autoFocus={
+                  typeof window !== "undefined" &&
+                  window.matchMedia("(pointer: fine)").matches
+                }
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="พิมพ์ค้นหาชื่อหมอ..."
-                className="w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none"
+                className="w-full rounded-md border border-stone-200 bg-white px-2 py-2 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
               />
             </div>
             <div className="flex-1 overflow-y-auto p-1.5">

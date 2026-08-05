@@ -96,7 +96,7 @@ export function CostPriceInput({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className="w-20 bg-transparent text-right text-sm tabular-nums text-stone-800 outline-none placeholder:text-stone-300"
+        className="w-20 bg-transparent py-1 text-right text-base tabular-nums text-stone-800 outline-none placeholder:text-stone-300 sm:py-0 sm:text-sm"
       />
     </span>
   );
@@ -274,7 +274,7 @@ export function ProcedureItemsEditor({
                     if (e.key === "Enter")
                       (e.target as HTMLInputElement).blur();
                   }}
-                  className="min-w-[150px] flex-1 bg-transparent text-sm text-stone-800 outline-none focus:rounded-md focus:bg-white/80 focus:px-1"
+                  className="min-w-[150px] flex-1 bg-transparent py-1.5 text-base text-stone-800 outline-none focus:rounded-md focus:bg-white/80 focus:px-1 sm:py-0 sm:text-sm"
                 />
               )}
               <span className="ml-auto flex items-center gap-1.5">
@@ -361,14 +361,16 @@ export function ProcedureItemsEditor({
               }}
               placeholder="พิมพ์ชื่อโปรแกรม เช่น Ultraformer III 300 shot..."
               maxLength={PROCEDURE_NAME_MAX}
-              className="w-full bg-transparent text-sm text-stone-900 outline-none placeholder:text-stone-400"
+              className="w-full bg-transparent text-base text-stone-900 outline-none placeholder:text-stone-400 sm:text-sm"
             />
           </div>
           {open && (
             <div
-              // กัน blur ของ input ก่อน click จะทำงาน — ตัวเลือกใช้ onMouseDown แทน onClick
-              onMouseDown={(e) => e.preventDefault()}
-              className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-stone-200 bg-white shadow-xl animate-fade-in"
+              // กัน blur ของ input ก่อนตัวเลือกจะทำงาน — ต้องดักที่ pointerdown ไม่ใช่ mousedown
+              // เพราะบนจอสัมผัส mousedown เป็นอีเวนต์จำลองที่มาหลัง blur ไปแล้ว
+              // (ลิสต์ถูก unmount ก่อน = แตะเลือกโปรแกรมไม่ติดบนมือถือ)
+              onPointerDown={(e) => e.preventDefault()}
+              className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-fade-in"
             >
               {filtered.length > 0 ? (
                 <>
@@ -379,8 +381,8 @@ export function ProcedureItemsEditor({
                     <button
                       key={c.id}
                       type="button"
-                      onMouseDown={() => void addItem(c.name, c.id)}
-                      className="block w-full cursor-pointer truncate px-3 py-2 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50"
+                      onPointerDown={() => void addItem(c.name, c.id)}
+                      className="block w-full cursor-pointer truncate px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
                       title={c.name}
                     >
                       {c.name}
@@ -395,8 +397,8 @@ export function ProcedureItemsEditor({
               {query.trim() !== "" && (
                 <button
                   type="button"
-                  onMouseDown={() => void addItem(query, null)}
-                  className="sticky bottom-0 flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 bg-white px-3 py-2.5 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                  onPointerDown={() => void addItem(query, null)}
+                  className="sticky bottom-0 flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 bg-white px-3 py-3 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
                 >
                   <Plus size={14} />
                   เพิ่ม &quot;{shortenProgramName(query, PROCEDURE_NAME_MAX)}

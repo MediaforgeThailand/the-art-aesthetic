@@ -274,7 +274,7 @@ export function DoctorManagerModal({
                       setEditName(d.name);
                       setError(null);
                     }}
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                    className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-8 sm:w-8"
                   >
                     <Pencil size={14} />
                   </button>
@@ -282,7 +282,7 @@ export function DoctorManagerModal({
                     type="button"
                     title={d.active ? "ซ่อนจากตัวเลือก (หมอที่ไม่ได้รับเคสแล้ว)" : "แสดงในตัวเลือก"}
                     onClick={() => void toggleActive(d)}
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                    className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-8 sm:w-8"
                   >
                     {d.active ? <Eye size={14} /> : <EyeOff size={14} />}
                   </button>
@@ -290,7 +290,7 @@ export function DoctorManagerModal({
                     type="button"
                     title="ลบออกจากทะเบียน"
                     onClick={() => setConfirmDelete(d)}
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-400 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90"
+                    className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90 sm:h-8 sm:w-8"
                   >
                     <Trash2 size={14} />
                   </button>

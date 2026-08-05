@@ -80,9 +80,9 @@ export function SourceLinkQuickButton({
         onClick={open}
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
-        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-stone-300 transition-colors hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
       >
-        <FolderOpen size={14} />
+        <FolderOpen size={16} />
       </button>
     );
   return (
@@ -149,14 +149,18 @@ export function InfluLinksCard({
 
   const remove = (id: string) => {
     setErr(null);
-    setLinks((prev) => prev.filter((l) => l.id !== id));
+    const prevLinks = links;
+    setLinks((prev) => prev.filter((l) => l.id !== id)); // optimistic
     void supabase
       .from("influ_links")
       .delete()
       .eq("id", id)
       .then(({ error }) => {
-        if (error) setErr(`ลบลิงก์ไม่สำเร็จ: ${error.message}`);
-        else router.refresh();
+        if (error) {
+          // คืนลิงก์กลับมา — ไม่งั้นจอบอกว่าลบแล้วทั้งที่ยังอยู่ใน DB (หายไปจนกว่าจะรีเฟรช)
+          setLinks(prevLinks);
+          setErr(`ลบลิงก์ไม่สำเร็จ: ${error.message}`);
+        } else router.refresh();
       });
   };
 
@@ -195,10 +199,11 @@ export function InfluLinksCard({
               <button
                 type="button"
                 title="ลบลิงก์นี้"
+                aria-label={`ลบลิงก์ ${linkLabel(l)}`}
                 onClick={() => remove(l.id)}
-                className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90 sm:h-8 sm:w-8"
               >
-                <X size={14} />
+                <X size={16} />
               </button>
             </li>
           ))}

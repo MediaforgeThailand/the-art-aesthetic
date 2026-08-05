@@ -65,8 +65,10 @@ export function Card({
 
 /* ---------- Form controls ---------- */
 
+/* text-base บนจอเล็ก: iOS Safari ซูมหน้าเข้าอัตโนมัติเมื่อโฟกัสช่องที่ฟอนต์ < 16px
+   แล้วไม่ซูมกลับ — ผู้ใช้ต้องถ่างนิ้วออกเองทุกครั้งที่กรอกฟอร์ม (จอ ≥sm ใช้ 14px ตามเดิม) */
 const controlBase =
-  "w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 disabled:text-stone-400";
+  "w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-400 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 disabled:text-stone-400 sm:text-sm";
 
 export function Input({
   className = "",
