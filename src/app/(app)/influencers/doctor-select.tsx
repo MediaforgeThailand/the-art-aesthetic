@@ -1,8 +1,9 @@
 "use client";
 
 import { Check, ChevronDown, Stethoscope } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import type { DoctorRow } from "@/lib/types";
 import { useSignedUrl } from "./use-signed-url";
 
@@ -79,25 +80,7 @@ export function DoctorNameChip({
  * เมนู render ผ่าน portal + fixed แบบเดียวกับ PersonSelect (กันโดน overflow/transform ตัด)
  * ค่าเดิมที่ไม่ตรงกับทะเบียน (เคสเก่าพิมพ์เอง) แสดงเป็นตัวเลือก "ชื่อเดิม" ให้คงไว้ได้
  */
-/** ขนาด/ตำแหน่งเมนูที่หนีบให้อยู่ในจอเสมอ — จอแคบใช้เกือบเต็มความกว้าง
-    (ค่าเดิมตรึงไว้ 268px + คำนวณ x จาก innerWidth-276 ทำให้จอ <300px เมนูโผล่นอกจอ) */
-function menuBox(btn: HTMLElement) {
-  const r = btn.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const width = Math.min(300, vw - 16);
-  const spaceBelow = vh - r.bottom - 8;
-  const spaceAbove = r.top - 8;
-  // กางลงล่างถ้าที่พอ ไม่งั้นกางขึ้นบน — สูงสุดเท่าที่ฝั่งนั้นเหลือ (ไม่เกิน 340)
-  const below = spaceBelow >= Math.min(240, spaceAbove) || spaceBelow >= 240;
-  const height = Math.min(340, below ? spaceBelow : spaceAbove);
-  return {
-    x: Math.max(8, Math.min(r.left, vw - width - 8)),
-    y: below ? r.bottom + 4 : Math.max(8, r.top - height - 4),
-    width,
-    height: Math.max(160, height),
-  };
-}
+const place = (btn: HTMLElement) => menuBox(btn, { width: 300, maxHeight: 340 });
 
 export function DoctorSelect({
   doctors,
@@ -116,51 +99,18 @@ export function DoctorSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<ReturnType<typeof menuBox> | null>(null);
+  const [pos, setPos] = useState<MenuBox | null>(null);
   const [query, setQuery] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    /* เลื่อนจอ/ย่อขยาย = ย้ายเมนูตามปุ่ม ไม่ใช่ปิดเมนู
-       (ของเดิมปิดทิ้ง — บนมือถือคีย์บอร์ดที่เด้งขึ้นยิง resize ทันทีที่เมนูเปิด
-        เมนูเลยหุบก่อนจะกดเลือกได้ = อาการ "กดเลือกหมอไม่ได้")
-       เลื่อนภายในเมนูเองไม่ต้องคิดตำแหน่งใหม่ */
-    const reposition = (e: Event) => {
-      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
-      const b = btnRef.current;
-      if (!b) return;
-      const r = b.getBoundingClientRect();
-      // ปุ่มถูกเลื่อนพ้นจอไปแล้ว — เมนูลอยเท้งเต้งไม่มีประโยชน์ ปิดทิ้ง
-      if (r.bottom < 0 || r.top > window.innerHeight) {
-        setOpen(false);
-        return;
-      }
-      setPos(menuBox(b));
-    };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    };
-  }, [open]);
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
 
   const active = doctors
     .filter((d) => d.active)
@@ -175,7 +125,7 @@ export function DoctorSelect({
   const toggle = () => {
     if (disabled) return;
     if (!open && btnRef.current) {
-      setPos(menuBox(btnRef.current));
+      setPos(place(btnRef.current));
       setQuery("");
     }
     setOpen((o) => !o);
