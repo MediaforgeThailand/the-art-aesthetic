@@ -1972,7 +1972,7 @@ function SubtaskRowItem({
               onClick={() => fileInputRef.current?.click()}
               title="แนบไฟล์ (หลายไฟล์ได้)"
               aria-label="แนบไฟล์งานย่อย"
-              className="relative cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-brand-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+              className="relative cursor-pointer rounded p-1 text-stone-300 reveal-on-hover opacity-0 transition-all hover:text-brand-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
             >
               <Paperclip size={13} />
               {sub.files.length > 0 && (
@@ -1998,7 +1998,7 @@ function SubtaskRowItem({
               onClick={onDelete}
               title="ลบงานย่อย"
               aria-label="ลบงานย่อย"
-              className="cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+              className="cursor-pointer rounded p-1 text-stone-300 reveal-on-hover opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
             >
               <X size={13} />
             </button>
@@ -2125,7 +2125,7 @@ function DeliverableFileThumb({
           onClick={onRemove}
           title="ลบไฟล์"
           aria-label="ลบไฟล์"
-          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 reveal-on-hover opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
         >
           <X size={12} />
         </button>

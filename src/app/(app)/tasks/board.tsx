@@ -198,7 +198,7 @@ function SectionHeader({
       {!disabled && (
         <div
           onKeyDown={(e) => e.stopPropagation()}
-          className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
+          className="ml-auto flex items-center gap-0.5 reveal-on-hover opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
         >
           <button
             type="button"

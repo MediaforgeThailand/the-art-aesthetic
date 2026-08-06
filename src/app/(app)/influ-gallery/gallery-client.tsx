@@ -246,6 +246,10 @@ function InfluCard({
             <img
               src={photoUrl}
               alt={influName(i)}
+              // รูปเป็นไฟล์จากกล้องขนาดเต็ม (หลาย MB/ใบ) และหน้านี้แสดงทุกคนพร้อมกัน —
+              // ไม่ lazy = เปิดบน 4G แล้วดึงหลายสิบเมกพร้อมกันจนแท็บถูกระบบ kill
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover"
             />
           ) : (

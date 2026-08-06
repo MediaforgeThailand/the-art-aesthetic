@@ -151,7 +151,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    // min-h-dvh ไม่ใช่ min-h-screen: 100vh บนมือถือคือความสูง "ตอนแถบ address ยุบ"
+    // การ์ดฟอร์มเลยถูกจัดกึ่งกลางของกล่องที่สูงเกินจริง ปุ่มตกใต้ fold ตั้งแต่เปิดหน้าแรก
+    <div className="flex min-h-dvh">
       {/* แผงแบรนด์ฝั่งซ้าย — desktop (ไล่เฉดตาม artwork โลโก้) */}
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-[#dcab9c] via-[#c48b78] to-[#a3634f] lg:flex lg:w-1/2 lg:flex-col lg:items-center lg:justify-center">
         <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-cream/10 blur-2xl" />
@@ -346,14 +348,15 @@ function EmailRow({
   onChange: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white/70 px-3 py-2 text-sm">
+    <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white/70 py-1 pl-3 pr-1 text-sm">
       <span className="min-w-0 truncate text-stone-700">{email}</span>
+      {/* ทางเดียวที่จะย้อนไปแก้อีเมลที่พิมพ์ผิด — ของเดิมไม่มี padding เลย เป้ากดสูง 16px */}
       <button
         type="button"
         onClick={onChange}
-        className="ml-2 flex shrink-0 items-center gap-1 text-xs font-medium text-brand-600 transition-colors hover:text-brand-800 cursor-pointer"
+        className="ml-2 flex min-h-11 shrink-0 cursor-pointer items-center gap-1 rounded-lg px-3 text-xs font-medium text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-800 active:scale-95 sm:min-h-0 sm:py-1.5"
       >
-        <ArrowLeft size={12} /> เปลี่ยน
+        <ArrowLeft size={14} /> เปลี่ยน
       </button>
     </div>
   );
