@@ -50,6 +50,11 @@ export type CostInflu = {
 
 export type CostItem = InfluProcedureItemRow & { influencer: CostInflu | null };
 
+/** "ยังไม่กรอกต้นทุน" = ไม่ support + ราคา 0 + ไม่ได้ผูก Price List
+    (แถวที่ผูก Price List ราคาอ้างอิงจากเมนูและล็อกไว้ — เป็น 0 ก็คือของแถมราคา 0 จริง) */
+const isUnpriced = (r: CostItem) =>
+  !r.is_supported && Number(r.price) === 0 && !r.price_item_id;
+
 function influName(i: CostInflu): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
@@ -130,7 +135,7 @@ export function CostClient({
         return false;
       if (supportFilter === "supported" && !r.is_supported) return false;
       if (supportFilter === "unsupported" && r.is_supported) return false;
-      if (unpricedOnly && (r.is_supported || Number(r.price) > 0)) return false;
+      if (unpricedOnly && !isUnpriced(r)) return false;
       if (dateFrom || dateTo) {
         // กรองช่วงวันเข้ารับบริการ — เคสที่ยังไม่เคาะวันไม่เข้าช่วง
         if (!inf.service_date) return false;
@@ -166,7 +171,7 @@ export function CostClient({
       if (r.is_supported) {
         s.saved += Number(r.price) || 0;
         s.supportedCount += 1;
-      } else if (Number(r.price) === 0) {
+      } else if (isUnpriced(r)) {
         s.unpricedCount += 1;
       }
       s.influIds.add(r.influencer.id);
@@ -197,7 +202,7 @@ export function CostClient({
       g.items.push(r);
       g.effective += itemEffectiveCost(r);
       if (r.is_supported) g.saved += Number(r.price) || 0;
-      else if (Number(r.price) === 0) g.unpriced += 1;
+      else if (isUnpriced(r)) g.unpriced += 1;
     }
     const groups = [...byInflu.values()];
     for (const g of groups)
@@ -445,7 +450,7 @@ export function CostClient({
                             >
                               {item.name}
                             </span>
-                            {!item.is_supported && Number(item.price) === 0 && (
+                            {isUnpriced(item) && (
                               <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">
                                 ยังไม่กรอก
                               </span>
@@ -458,6 +463,17 @@ export function CostClient({
                                   </span>
                                 )}
                                 ฿0
+                              </span>
+                            ) : item.price_item_id ? (
+                              /* ผูกกับ Price List = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
+                              <span
+                                title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (แก้รายการได้ที่ Stage 2 ของเคส)"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-2 py-1 text-xs tabular-nums text-brand-800"
+                              >
+                                {formatCurrency(Number(item.price) || 0)}
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-brand-400">
+                                  Price List
+                                </span>
                               </span>
                             ) : (
                               <CostPriceInput

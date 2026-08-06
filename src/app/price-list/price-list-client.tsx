@@ -117,7 +117,9 @@ export function PriceListClient({
       (i) =>
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q) ||
-        (i.benefits ?? "").toLowerCase().includes(q)
+        (i.benefits ?? "").toLowerCase().includes(q) ||
+        // คำเรียกปากเปล่า (search_aliases) — เช่น "โบเกาหลี" ต้องเจอ Botox Hutox
+        (i.search_aliases ?? "").toLowerCase().includes(q)
     );
   }, [visible, search]);
 

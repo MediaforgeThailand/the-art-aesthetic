@@ -77,10 +77,10 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
-    // ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2)
+    // ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2 — ส่งราคาไปโชว์/ใส่อัตโนมัติด้วย)
     supabase
       .from("price_items")
-      .select("id, name")
+      .select("id, name, price_normal, promos, search_aliases")
       .eq("active", true)
       .order("name", { ascending: true }),
     // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้

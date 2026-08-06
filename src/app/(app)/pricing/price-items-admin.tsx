@@ -38,6 +38,8 @@ type ItemDraft = {
   item_no: string;
   benefits: string;
   process: string;
+  /** คำค้นเพิ่มเติม/ชื่อเรียกปากเปล่า — ใช้ค้นหา ไม่แสดงบนเมนู (migration 0059) */
+  search_aliases: string;
   price_normal: string;
   promos: OfferDraft[];
   courses: OfferDraft[];
@@ -53,6 +55,7 @@ const emptyDraft: ItemDraft = {
   item_no: "",
   benefits: "",
   process: "",
+  search_aliases: "",
   price_normal: "",
   promos: [],
   courses: [],
@@ -67,6 +70,7 @@ function toDraft(item: PriceItemRow): ItemDraft {
     item_no: item.item_no != null ? String(item.item_no) : "",
     benefits: item.benefits ?? "",
     process: item.process ?? "",
+    search_aliases: item.search_aliases ?? "",
     price_normal: item.price_normal ?? "",
     promos: item.promos.map((o) => ({ ...o })),
     courses: item.courses.map((o) => ({ ...o })),
@@ -247,7 +251,9 @@ export function PriceItemsAdmin({
     if (q === "") return items;
     return items.filter(
       (i) =>
-        i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q)
+        i.name.toLowerCase().includes(q) ||
+        i.category.toLowerCase().includes(q) ||
+        (i.search_aliases ?? "").toLowerCase().includes(q)
     );
   }, [items, search]);
 
@@ -298,6 +304,8 @@ export function PriceItemsAdmin({
       item_no: draft.item_no.trim() === "" ? null : Number(draft.item_no),
       benefits: draft.benefits.trim() === "" ? null : draft.benefits.trim(),
       process: draft.process.trim() === "" ? null : draft.process.trim(),
+      search_aliases:
+        draft.search_aliases.trim() === "" ? null : draft.search_aliases.trim(),
       price_normal:
         draft.price_normal.trim() === "" ? null : draft.price_normal.trim(),
       promos: cleanOffers(draft.promos),
@@ -594,6 +602,19 @@ export function PriceItemsAdmin({
               rows={3}
               value={draft.process}
               onChange={(e) => setDraft({ ...draft, process: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="pi-aliases">
+              คำค้นเพิ่มเติม (ชื่อเรียกอื่น — ช่วยให้ค้นหาเจอ)
+            </Label>
+            <Input
+              id="pi-aliases"
+              value={draft.search_aliases}
+              onChange={(e) =>
+                setDraft({ ...draft, search_aliases: e.target.value })
+              }
+              placeholder="เช่น Botox Korea โบเกาหลี (คั่นด้วยเว้นวรรค — ไม่แสดงบนเมนู ใช้ค้นหาอย่างเดียว)"
             />
           </div>
 

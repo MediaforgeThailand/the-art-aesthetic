@@ -498,6 +498,8 @@ export type PriceItemRow = {
   name: string;
   benefits: string | null;
   process: string | null;
+  /** คำค้นเพิ่มเติม/ชื่อเรียกปากเปล่า (เช่น Hutox = "Botox Korea โบเกาหลี") — ใช้ประกอบการค้นหา ไม่แสดงบนเมนู (migration 0059) */
+  search_aliases: string | null;
   price_normal: string | null;
   promos: PriceOffer[];
   courses: PriceOffer[];

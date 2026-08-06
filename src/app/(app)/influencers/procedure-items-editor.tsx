@@ -3,7 +3,9 @@
 /**
  * ตัวกรอก "โปรแกรมที่รับ" แบบเพิ่มทีละรายการ (Influencer Cost)
  * — พิมพ์ค้นหาจาก Price List กลาง (price_items) หรือเพิ่มชื่อใหม่เองได้
- * — แต่ละรายการใส่ต้นทุนค่าบริการ (บาท) + ติ๊ก "แบรนด์ support" (ต้นทุนรายการนั้นนับเป็น 0)
+ * — เลือกจาก Price List = ราคาอ้างอิงตามเมนู ใส่ให้อัตโนมัติและล็อกไว้ (ห้ามกรอกเอง —
+ *   กติกาผู้ใช้ 2026-08-06; ราคาเปลี่ยนให้ลบแล้วเลือกใหม่) / พิมพ์เอง = กรอกต้นทุนที่ช่อง ฿
+ * — ติ๊ก "แบรนด์ support" ได้ทุกรายการ (ต้นทุนรายการนั้นนับเป็น 0)
  * — ทุกการแก้ไข sync ข้อความสรุปกลับ influencers.procedure_text เพื่อให้ช่องก๊อป Memo /
  *   การ์ดบอร์ด / ปฏิทิน แสดงรูปแบบเดิม (คั่นด้วย " / ")
  * ใช้ทั้งใน Stage 2 (หน้าเดินงาน) — ส่วนหน้า /influ-cost ใช้เฉพาะ SupportToggle + CostPriceInput
@@ -22,8 +24,23 @@ import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluProcedureItemRow } from "@/lib/types";
 
-/** ตัวเลือกจาก Price List กลาง (ส่งมาจาก server — id + ชื่อพอ) */
-export type PriceCatalogEntry = { id: string; name: string };
+/** ตัวเลือกจาก Price List กลาง (ส่งมาจาก server — id + ชื่อ + ราคาไว้โชว์ใน dropdown
+    + search_aliases = คำเรียกปากเปล่า เช่น "Botox Korea" → Hutox ให้ค้นหาเจอ) */
+export type PriceCatalogEntry = {
+  id: string;
+  name: string;
+  price_normal: string | null;
+  promos: { price?: string | null }[] | null;
+  search_aliases: string | null;
+};
+
+/** ราคาอ้างอิงของโปรแกรมใน Price List — ราคาปกติก่อน ไม่มีค่อยใช้ราคาโปรแรก
+    (ราคาเก็บเป็น text เช่น "39,000" / "18,900 / กล่อง" — ตัดหน่วยท้ายทิ้ง; คืน null = ไม่รู้ราคา) */
+export function catalogPriceOf(entry: PriceCatalogEntry): number | null {
+  const raw = entry.price_normal?.trim() || entry.promos?.[0]?.price || "";
+  const n = Number(String(raw).split("/")[0].replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 /* ---------- ชิ้นส่วนย่อยที่หน้า /influ-cost ใช้ร่วม ---------- */
 
@@ -128,7 +145,14 @@ export function ProcedureItemsEditor({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return catalog.slice(0, 40);
-    return catalog.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 40);
+    // ค้นทั้งชื่อจริงและคำเรียกปากเปล่า (search_aliases) — เช่น "botox korea" ต้องเจอ Hutox
+    return catalog
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.search_aliases ?? "").toLowerCase().includes(q)
+      )
+      .slice(0, 40);
   }, [catalog, query]);
 
   /** sync ข้อความสรุปกลับ procedure_text — ให้ Memo/บอร์ด/ปฏิทินเห็นรูปแบบเดิม (best effort)
@@ -144,7 +168,13 @@ export function ProcedureItemsEditor({
       });
   };
 
-  const addItem = async (name: string, priceItemId: string | null) => {
+  /** เพิ่มรายการ — เลือกจาก Price List = ใส่ราคาอ้างอิงให้เลย (ห้ามกรอกเอง),
+      พิมพ์เอง (ไม่มีใน Price List) = ราคา 0 รอกรอกที่ช่อง ฿ */
+  const addItem = async (
+    name: string,
+    priceItemId: string | null,
+    refPrice: number | null = null
+  ) => {
     const clean = shortenProgramName(name, priceItemId ? 60 : PROCEDURE_NAME_MAX);
     if (!clean || adding) return;
     setAdding(true);
@@ -155,7 +185,7 @@ export function ProcedureItemsEditor({
       .insert({
         influencer_id: influencerId,
         name: clean,
-        price: 0,
+        price: refPrice ?? 0,
         price_item_id: priceItemId,
         position: nextPos,
       })
@@ -287,6 +317,17 @@ export function ProcedureItemsEditor({
                     )}
                     ฿0
                   </span>
+                ) : item.price_item_id ? (
+                  /* ผูกกับ Price List = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
+                  <span
+                    title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (ถ้าราคาเปลี่ยนให้ลบแล้วเลือกใหม่)"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-2 py-1.5 text-sm tabular-nums text-brand-800"
+                  >
+                    {formatCurrency(Number(item.price) || 0)}
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-brand-400">
+                      Price List
+                    </span>
+                  </span>
                 ) : (
                   <CostPriceInput
                     value={Number(item.price) || 0}
@@ -375,19 +416,38 @@ export function ProcedureItemsEditor({
               {filtered.length > 0 ? (
                 <>
                   <p className="sticky top-0 border-b border-stone-100 bg-stone-50/95 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    จาก Price List กลาง — ชื่อยาวถูกตัดให้สั้นอัตโนมัติ
+                    จาก Price List กลาง — เลือกแล้วใส่ราคาให้อัตโนมัติ
                   </p>
-                  {filtered.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onPointerDown={() => void addItem(c.name, c.id)}
-                      className="block w-full cursor-pointer truncate px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
-                      title={c.name}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
+                  {filtered.map((c) => {
+                    const refPrice = catalogPriceOf(c);
+                    const q = query.trim().toLowerCase();
+                    // เจอเพราะคำเรียกปากเปล่า (ไม่ใช่ชื่อจริง) — โชว์ alias ให้รู้ว่าทำไมขึ้นมา
+                    const aliasHit =
+                      q !== "" &&
+                      !!c.search_aliases &&
+                      !c.name.toLowerCase().includes(q);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onPointerDown={() => void addItem(c.name, c.id, refPrice)}
+                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
+                        title={c.name}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{c.name}</span>
+                          {aliasHit && (
+                            <span className="block truncate text-[10px] text-stone-400">
+                              ({c.search_aliases})
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold tabular-nums text-brand-600">
+                          {refPrice !== null ? formatCurrency(refPrice) : "฿0"}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </>
               ) : (
                 <p className="px-3 py-2.5 text-xs text-stone-400">
@@ -408,9 +468,9 @@ export function ProcedureItemsEditor({
             </div>
           )}
           <p className="mt-1 text-[11px] text-stone-400">
-            เลือกจากรายการ หรือพิมพ์แล้วกด Enter เพื่อเพิ่มเอง —
-            เพิ่มแล้วใส่ต้นทุนที่ช่อง ฿ ของแต่ละรายการ (ติ๊ก Support
-            เมื่อแบรนด์ส่งของมาให้ = ไม่คิดต้นทุน)
+            เลือกจาก Price List = ราคาอ้างอิงตามเมนูอัตโนมัติ แก้เองไม่ได้ ·
+            พิมพ์แล้วกด Enter = โปรแกรมนอกเมนู กรอกต้นทุนเองที่ช่อง ฿ (ติ๊ก
+            Support เมื่อแบรนด์ส่งของมาให้ = ไม่คิดต้นทุน)
           </p>
         </div>
       )}
