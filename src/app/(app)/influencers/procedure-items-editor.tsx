@@ -11,7 +11,7 @@
 
 import { Gift, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   itemEffectiveCost,
   PROCEDURE_NAME_MAX,
@@ -74,6 +74,17 @@ export function CostPriceInput({
   onCommit: (next: number) => void;
   className?: string;
 }) {
+  // ช่องนี้เป็น uncontrolled (commit ตอน blur) — defaultValue จึงไม่อัปเดตเมื่อ props เปลี่ยน
+  // ถ้าคนอื่นแก้ราคาแล้วหน้า refresh ค่าใหม่มาถึง prop แต่ใน DOM ยังเป็นค่าเก่า พอผู้ใช้
+  // แค่คลิกเข้าแล้วคลิกออก (focus+blur) จะ commit ค่าเก่าทับค่าใหม่เงียบๆ
+  // → sync ค่าลง DOM เอง แต่ข้ามตอนที่ช่องกำลังถูกโฟกัส (ไม่แย่งสิ่งที่ผู้ใช้พิมพ์ค้างไว้)
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || document.activeElement === el) return;
+    el.value = value === 0 ? "" : String(value);
+  }, [value]);
+
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/80 px-2 py-1 ${
@@ -82,6 +93,7 @@ export function CostPriceInput({
     >
       <span className="text-[11px] text-stone-400">฿</span>
       <input
+        ref={inputRef}
         type="number"
         min={0}
         step="any"

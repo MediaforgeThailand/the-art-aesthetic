@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -312,6 +313,12 @@ function DaySidebar({
       setFormError("กรุณาเลือกวันที่");
       return;
     }
+    // กรอกเฉพาะเวลาสิ้นสุดจะบันทึกได้แต่ไม่ถูกแสดงที่ไหนเลย (calendarTimeLabel คืน "ทั้งวัน"
+    // เมื่อไม่มีเวลาเริ่ม) — บอกให้กรอกเวลาเริ่มก่อน ดีกว่าปล่อยให้ค่าหายเงียบๆ
+    if (form.end && !form.start) {
+      setFormError("กรุณากรอกเวลาเริ่มด้วย (หรือลบเวลาสิ้นสุดออกถ้าเป็นคิวทั้งวัน)");
+      return;
+    }
     if (form.start && form.end && form.end <= form.start) {
       setFormError("เวลาสิ้นสุดต้องหลังเวลาเริ่ม");
       return;
@@ -353,6 +360,14 @@ function DaySidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {/* error ของการลบ/ติ๊กเสร็จต้องขึ้นในแผงด้วย — บนมือถือแผงนี้เป็น overlay เต็มจอ
+            ทับแบนเนอร์ระดับหน้าไว้ ผู้ใช้เลยเห็นเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
+            (โหมดฟอร์มมีบรรทัด error ของตัวเองอยู่แล้ว จึงไม่ต้องซ้ำ) */}
+        {view !== "form" && error && (
+          <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 animate-fade-in">
+            {error}
+          </p>
+        )}
         {/* ---------- โหมด: รายชื่อคิวของวันนั้น ---------- */}
         {view === "list" && (
           <>
@@ -858,6 +873,7 @@ export function CalendarClient({
   userId: string | null;
   loadError: string | null;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
 
@@ -934,7 +950,10 @@ export function CalendarClient({
         !(i.doctor_name ?? "").toLowerCase().includes(q)
       )
         continue;
-      const dup = events.some(
+      // เทียบกับคิวที่ "มองเห็นอยู่จริง" ไม่ใช่ events ดิบ — ไม่งั้นพอซ่อนชนิด "รับบริการ"
+      // หรือกรองแพทย์ (ชื่อแพทย์ในคิวแก้แยกจากในเคสได้) คิวจะหายจากกริดแต่ยังกดทับ
+      // ไม่ให้ชิปวันรับบริการโผล่ = เคสนั้นหายไปทั้งคู่
+      const dup = visibleEvents.some(
         (e) =>
           e.influencer_id === i.id &&
           e.event_date === i.service_date &&
@@ -946,7 +965,7 @@ export function CalendarClient({
       else map.set(i.service_date, [i]);
     }
     return map;
-  }, [influencers, events, showServiceDates, search, doctorFilter]);
+  }, [influencers, visibleEvents, showServiceDates, search, doctorFilter]);
 
   const cells = useMemo(
     () => monthCells(cursor.year, cursor.month),
@@ -1049,6 +1068,7 @@ export function CalendarClient({
       }
       const saved = data as unknown as CalendarEvent;
       setEvents((cur) => cur.map((e) => (e.id === saved.id ? saved : e)));
+      router.refresh();
       // ย้ายคิวไปวันอื่น = ตามไปเปิดวันนั้นให้เห็นผลทันที
       if (saved.event_date !== selectedDay) openDate(saved.event_date, saved.id);
       return true;
@@ -1066,6 +1086,7 @@ export function CalendarClient({
     }
     const saved = data as unknown as CalendarEvent;
     setEvents((cur) => [...cur, saved]);
+    router.refresh();
     if (saved.event_date !== selectedDay) openDate(saved.event_date);
     return true;
   };
@@ -1081,7 +1102,9 @@ export function CalendarClient({
     if (error) {
       setEvents(prev);
       setActionError(`ลบไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    router.refresh();
   };
 
   const toggleDone = async (target: CalendarEvent) => {
@@ -1098,7 +1121,9 @@ export function CalendarClient({
     if (error) {
       setEvents(prev);
       setActionError(`บันทึกสถานะไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    router.refresh();
   };
 
   return (

@@ -243,7 +243,11 @@ function ApprovedCard({
         type="button"
         onClick={togglePosted}
         onKeyDown={(e) => e.stopPropagation()}
-        title={posted ? "โพสแล้ว — คลิกเพื่อยกเลิก" : "ทำเครื่องหมายว่าโพสแล้ว"}
+        title={
+          posted
+            ? `โพสแล้ว${task.poster ? ` โดย ${profileName(task.poster)}` : ""} — คลิกเพื่อยกเลิก`
+            : "ทำเครื่องหมายว่าโพสแล้ว"
+        }
         aria-label={posted ? "ยกเลิกโพสแล้ว" : "ทำเครื่องหมายว่าโพสแล้ว"}
         aria-pressed={posted}
         className={`absolute right-2 top-2 z-10 inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm transition-all active:scale-90 ${
@@ -294,6 +298,16 @@ function ApprovedCard({
           >
             <BadgeCheck size={12} />
             {profileName(task.reviewer2)}
+          </span>
+        )}
+        {/* ใครเป็นคนกดโพส — งานเก่าที่โพสก่อนมี posted_by จะไม่มีชื่อ ก็ไม่ต้องโชว์แถวนี้ */}
+        {posted && task.poster && (
+          <span
+            className="inline-flex items-center gap-1.5 text-sky-700"
+            title={`ผู้กดโพส${task.posted_at ? ` · ${formatDateBangkok(task.posted_at)}` : ""}`}
+          >
+            <AssigneeAvatar assignee={task.poster} size={5} />
+            โพสโดย {profileName(task.poster)}
           </span>
         )}
         {task.deliverable_url && (

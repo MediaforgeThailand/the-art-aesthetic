@@ -11,7 +11,7 @@ import {
   UserCog,
   X,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import {
@@ -68,9 +68,9 @@ function bangkokDay(iso: string): string {
   return BANGKOK_DAY_FORMAT.format(new Date(iso));
 }
 
-/** select ของ task พร้อม join (assignee/reviewer/creator/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
+/** select ของ task พร้อม join (assignee/reviewer/creator/poster/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;
@@ -120,7 +120,34 @@ export function TasksClient({
   isAdmin: boolean;
   loadError: string | null;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+
+  /** บอกให้ Next ทิ้ง cache ของหน้านี้ (staleTimes.dynamic = 30 วิ) หลังเขียน DB สำเร็จ
+      — Realtime ส่งเฉพาะเหตุการณ์ที่เกิด "หลัง" subscribe จึงซ่อมกรณีนี้ไม่ได้:
+      ออกจากหน้าแล้วกลับมาใน 30 วิ (หรือกดปุ่ม Back) จะได้ payload ก่อนแก้ แล้ว state
+      ถูก re-seed จาก props เก่า = การ์ดที่เพิ่งลบกลับมา / ตำแหน่งที่เพิ่งลากเด้งกลับ
+      รวบเป็นครั้งเดียวด้วย timeout สั้นๆ เพราะการลากหนึ่งครั้งยิง patchTask หลายรอบ */
+  const refreshTimer = useRef<number | null>(null);
+  const markServerStale = () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 400);
+  };
+  // ออกจากหน้าก่อนครบ 400ms = ต้อง "flush" ไม่ใช่ทิ้ง — เคสที่ต้องการแก้คือแก้เสร็จแล้ว
+  // เดินออกทันทีพอดี ถ้าทิ้ง timer ไปเฉยๆ cache จะยังเป็นของเก่าเหมือนเดิม
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+        router.refresh();
+      }
+    },
+    [router]
+  );
 
   /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
   const [categories, setCategories] = useState<string[]>(initialCategories);
@@ -363,9 +390,17 @@ export function TasksClient({
     setExcludeStatuses([]);
   };
 
+  /** true = การล้างตัวกรองรอบนี้เป็นระบบทำเอง (เปิดงานจากแจ้งเตือน) ไม่ใช่ผู้ใช้ตั้งใจ
+      — ข้ามการเขียนทับค่าที่จำไว้ 1 ครั้ง ไม่งั้นกดแจ้งเตือนทีเดียวตัวกรองที่ตั้งไว้หายถาวร */
+  const skipPersistRef = useRef(false);
+
   // จำค่าตัวกรองทุกครั้งที่เปลี่ยน
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
     try {
       window.localStorage.setItem(
         filterStorageKey,
@@ -419,11 +454,23 @@ export function TasksClient({
       statusFilter === "all"
         ? excludeStatuses
         : excludeStatuses.filter((s) => s !== statusFilter);
+    // กติกาเดียวกันกับสถานะ: คนที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้น ไม่งั้นยกเว้นคน A ไว้
+    // แล้วเลือกดูงานของคน A จะได้บอร์ดว่างเปล่า ("งานของฉัน"/"เกี่ยวข้องกับฉัน" = ตัวเรา)
+    const pickedAssignee =
+      assigneeFilter === "me" || assigneeFilter === "involved"
+        ? userId
+        : assigneeFilter === "all"
+          ? null
+          : assigneeFilter;
+    const excludeAs =
+      pickedAssignee === null
+        ? excludeAssignees
+        : excludeAssignees.filter((a) => a !== pickedAssignee);
     return activeItems.filter((t) => {
       // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
       if (
-        excludeAssignees.length > 0 &&
-        excludeAssignees.includes(t.assignee_id ?? "none")
+        excludeAs.length > 0 &&
+        excludeAs.includes(t.assignee_id ?? "none")
       ) {
         return false;
       }
@@ -675,9 +722,14 @@ export function TasksClient({
     [activeItems]
   );
 
-  /** คิว "รอโพส" — งานตรวจผ่านแล้วแต่ยังไม่ถูกทำเครื่องหมายว่าโพส เรียงรอนานสุดก่อน
-      (คิวนี้ไม่ผูกตัวกรองใดๆ — ต้องเห็นครบเสมอ กติกาเดียวกับคิวรอทำ Memo) */
-  const postQueue = useMemo(
+  /* ---------- แท็บ "รอโพส" + ตัวกรองของแท็บ ----------
+     จงใจไม่จำค่าลง localStorage (ต่างจากตัวกรองบอร์ด): เปิดหน้ามาใหม่ต้องเห็นคิวของตัวเองก่อนเสมอ */
+
+  /** all | me | none | <profileId> — เริ่มต้น = คิวของฉัน */
+  const [pqAssignee, setPqAssignee] = useState<string>(userId ? "me" : "all");
+
+  /** คิว "รอโพส" ทั้งทีม — งานตรวจผ่านแล้วแต่ยังไม่ถูกทำเครื่องหมายว่าโพส เรียงรอนานสุดก่อน */
+  const postQueueAll = useMemo(
     () =>
       approvedAll
         .filter((t) => t.posted_at === null)
@@ -688,6 +740,17 @@ export function TasksClient({
         ),
     [approvedAll]
   );
+
+  /** คิวที่โชว์จริง = กรองตามผู้รับผิดชอบ — badge บนแท็บก็นับชุดนี้ เลขจะได้ตรงกับที่เห็นในลิสต์
+      ("ของฉัน" ที่ไม่รู้ว่าใคร (userId หาย) ตกกลับเป็นทั้งทีม — ดีกว่าโชว์คิวว่างให้เข้าใจผิดว่าไม่มีงานค้าง) */
+  const postQueue = useMemo(() => {
+    if (pqAssignee === "all") return postQueueAll;
+    if (pqAssignee === "none")
+      return postQueueAll.filter((t) => t.assignee_id === null);
+    const targetId = pqAssignee === "me" ? userId : pqAssignee;
+    if (targetId === null) return postQueueAll;
+    return postQueueAll.filter((t) => t.assignee_id === targetId);
+  }, [postQueueAll, pqAssignee, userId]);
 
   const approvedFiltered = useMemo(() => {
     const q = apSearch.trim().toLowerCase();
@@ -777,6 +840,8 @@ export function TasksClient({
 
   /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น (ล้างตัวกรองให้การ์ดโผล่แน่นอน) */
   const navigateToTask = (taskId: string) => {
+    // ล้างตัวกรองเพื่อให้การ์ดเป้าหมายโผล่แน่ๆ แต่ไม่ทับค่าที่ผู้ใช้ตั้งไว้ใน localStorage
+    skipPersistRef.current = true;
     clearFilters();
     setTab("work");
     setSelectedId(taskId);
@@ -858,7 +923,9 @@ export function TasksClient({
             )
           );
           showError(`บันทึกไม่สำเร็จ: ${e.message}`);
+          return;
         }
+        markServerStale();
       });
   };
 
@@ -1045,10 +1112,16 @@ export function TasksClient({
     });
   };
 
-  /** สลับสถานะ "โพส/ใช้งานแล้ว" ของงานเสร็จ (การ์ดในแท็บงานเสร็จ) */
+  /** สลับสถานะ "โพส/ใช้งานแล้ว" (ปุ่มใหญ่ในแท็บรอโพส + การ์ดในแท็บงานเสร็จ)
+      เก็บคนกดไว้ด้วย (posted_by) ให้รู้ว่าใครเป็นคนโพส — กดยกเลิกล้างทั้งเวลาและคนกด */
   const togglePosted = (task: TaskWithAssignee) => {
+    const unposting = task.posted_at !== null;
     patchTask(task.id, {
-      db: { posted_at: task.posted_at ? null : new Date().toISOString() },
+      db: {
+        posted_at: unposting ? null : new Date().toISOString(),
+        posted_by: unposting ? null : userId,
+      },
+      local: { poster: unposting ? null : meProfile },
     });
   };
 
@@ -1088,6 +1161,7 @@ export function TasksClient({
     title: string,
     placement: QuickAddPlacement
   ) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     const isBrief = section?.type === "brief";
@@ -1142,6 +1216,7 @@ export function TasksClient({
       influencer_id: null,
       approved_at: null,
       posted_at: null,
+      posted_by: null,
       brief_content_type: null,
       brief_accepted_at: null,
       brief_source_id: null,
@@ -1153,6 +1228,7 @@ export function TasksClient({
       reviewer: reviewerPerson,
       reviewer2: null,
       creator: creatorPerson,
+      poster: null,
       influencer: null,
       files: [],
     };
@@ -1204,6 +1280,7 @@ export function TasksClient({
 
   /** ผู้รับกด "รับงาน" — ปิด brief (รับแล้ว) + สร้างการ์ด creative ในเซคชัน Creatives ทันที */
   const acceptBrief = async (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(task.id) || task.brief_accepted_at) return;
     if (!creativesSectionId) {
       showError("ยังไม่มีเซคชันชิ้นงาน (Creatives) สำหรับวางงานที่รับ");
@@ -1260,6 +1337,7 @@ export function TasksClient({
       influencer_id: task.influencer_id,
       approved_at: null,
       posted_at: null,
+      posted_by: null,
       brief_content_type: task.brief_content_type,
       brief_accepted_at: null,
       brief_source_id: task.id,
@@ -1271,6 +1349,7 @@ export function TasksClient({
       reviewer: reviewerPerson,
       reviewer2: null,
       creator: briefCreatorPerson,
+      poster: null,
       influencer: task.influencer ?? null,
       files: [],
     };
@@ -1325,6 +1404,7 @@ export function TasksClient({
 
   /** กู้งานคืนจากถังขยะ — กลับไปเซคชัน/สถานะเดิมทุกอย่าง */
   const restoreTask = (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     patchTask(task.id, { db: { deleted_at: null } });
   };
 
@@ -1448,6 +1528,7 @@ export function TasksClient({
 
   /** ลากหัวคอลัมน์เพื่อเรียงเซคชัน — อัพเดตเฉพาะตัวที่ลาก (float กึ่งกลางเพื่อนบ้าน) */
   const reorderSections = (activeId: string, overId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(activeId) || isTempId(overId)) return;
     const from = sections.findIndex((s) => s.id === activeId);
     const to = sections.findIndex((s) => s.id === overId);
@@ -1500,6 +1581,7 @@ export function TasksClient({
   /* ---------- section mutations ---------- */
 
   const renameSection = (sectionId: string, name: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const prevName = sections.find((s) => s.id === sectionId)?.name;
     if (prevName === undefined || prevName === name) return;
@@ -1522,6 +1604,7 @@ export function TasksClient({
 
   /** สลับชนิดเซคชัน work ↔ brief */
   const toggleSectionType = (sectionId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -1685,7 +1768,7 @@ export function TasksClient({
               </span>
             )}
           </button>
-          {/* รอโพส = คิวงานตรวจผ่านที่ยังไม่ได้โพส — badge นับงานค้างทั้งทีม */}
+          {/* รอโพส = คิวงานตรวจผ่านที่ยังไม่ได้โพส — badge นับตามตัวกรองที่เลือก (เริ่มต้น = ของฉัน) */}
           <button
             type="button"
             onClick={() => setTab("posting")}
@@ -1880,6 +1963,45 @@ export function TasksClient({
         </div>
         )}
 
+        {tab === "posting" && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
+            <div className="w-56">
+              <PersonSelect
+                ariaLabel="กรองคิวรอโพสตามผู้รับผิดชอบ"
+                value={pqAssignee}
+                onChange={setPqAssignee}
+                options={[
+                  { value: "all", label: "รอโพส: ทั้งทีม" },
+                  ...(userId !== null
+                    ? [
+                        {
+                          value: "me",
+                          label: "รอโพสของฉัน",
+                          profile: meProfile,
+                        },
+                      ]
+                    : []),
+                  { value: "none", label: "ไม่ระบุผู้รับผิดชอบ", profile: null },
+                  ...profiles
+                    .filter((p) => p.id !== userId)
+                    .map((p) => ({ value: p.id, profile: p })),
+                ]}
+              />
+            </div>
+            {/* กรองอยู่ก็ยังต้องรู้ว่าทั้งทีมค้างเท่าไร — กดแล้วสลับไปดูทั้งหมดได้เลย */}
+            {pqAssignee !== "all" && postQueueAll.length > postQueue.length && (
+              <button
+                type="button"
+                onClick={() => setPqAssignee("all")}
+                className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
+              >
+                <Send size={14} />
+                ทั้งทีมค้างโพส {postQueueAll.length} งาน — ดูทั้งหมด
+              </button>
+            )}
+          </div>
+        )}
+
         {tab === "approved" && (
           <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
             <div className="relative min-w-56 flex-1 sm:max-w-xs">
@@ -2024,6 +2146,7 @@ export function TasksClient({
         ) : tab === "posting" ? (
           <PostingList
             tasks={postQueue}
+            totalPending={postQueueAll.length}
             sections={sections}
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}

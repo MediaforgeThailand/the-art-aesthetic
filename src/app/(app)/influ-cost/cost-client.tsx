@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HeroCard } from "@/components/report-viz";
 import { Badge, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -75,7 +75,10 @@ export function CostClient({
   const supabase = useMemo(() => createClient(), []);
 
   // local copy — แก้ราคา/ติ๊ก support แบบ optimistic แล้วค่อย refresh เบื้องหลัง
+  // ต้องรับค่าใหม่จาก props ด้วย ไม่งั้น router.refresh() ที่เรียกหลังบันทึกไม่มีผลอะไรเลย
+  // (ของที่คนอื่นแก้ไม่ขึ้น และรายการที่ถูกลบใน Stage 2 ยังค้างเป็นแถวผี)
   const [rows, setRows] = useState<CostItem[]>(items);
+  useEffect(() => setRows(items), [items]);
   const [err, setErr] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");

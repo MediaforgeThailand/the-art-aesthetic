@@ -73,6 +73,8 @@ export type TaskRow = {
   approved_at: string | null;
   /** เวลาที่ทำเครื่องหมายว่า "โพส/ใช้งานแล้ว" (null = ยังไม่โพส) — ใช้ในแท็บ "งานเสร็จ" */
   posted_at: string | null;
+  /** ผู้กดปุ่ม "โพสแล้ว" (null = ยังไม่โพส หรืองานเก่าก่อนมีคอลัมน์นี้) — ล้างพร้อม posted_at ตอนกดยกเลิก */
+  posted_by: string | null;
   /** ถังขยะ — เวลาที่ถูกลบ (null = ยังอยู่); เก็บกู้คืนได้ 14 วันแล้วถูกลบถาวร */
   deleted_at: string | null;
   /** Brief workflow — ชนิดงานที่สั่ง (graphic|video); ตั้งบนการ์ด brief และสำเนาไปการ์ด creative */
@@ -814,6 +816,8 @@ export type TaskWithAssignee = TaskRow & {
   reviewer2?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   /** ผู้สร้างการ์ด (join จาก created_by) — การ์ด creative ที่มาจาก brief = ผู้สั่ง brief */
   creator?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  /** ผู้กด "โพสแล้ว" (join จาก posted_by) — โชว์บนการ์ดงานเสร็จ/แผงรายละเอียด */
+  poster?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   influencer?: InfluencerLite | null;
   files?: TaskFileRow[];
 };

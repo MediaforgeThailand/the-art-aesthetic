@@ -25,17 +25,21 @@ function postWaitIsLate(sinceIso: string): boolean {
 /**
  * แท็บ "รอโพส" — คิวงานที่ผ่านการตรวจแล้ว (approved) แต่ยังไม่ถูกทำเครื่องหมายว่าโพส
  * เรียงงานที่รอนานสุดขึ้นก่อน · ปุ่ม "โพสแล้ว" ใหญ่ชัดบนการ์ด กดแล้วงานออกจากคิวทันที
- * (ยังดู/ยกเลิกสถานะโพสย้อนหลังได้ในแท็บ "งานเสร็จ")
+ * (ยังดู/ยกเลิกสถานะโพสย้อนหลังได้ในแท็บ "งานเสร็จ" พร้อมชื่อคนที่กดโพส)
+ * ตัวกรองผู้รับผิดชอบอยู่ที่ tasks-client (เริ่มต้น = คิวของฉัน) — ที่นี่รับมาเป็น tasks ที่กรองแล้ว
  */
 export function PostingList({
   tasks,
+  totalPending,
   sections,
   selectedId,
   onRowClick,
   onMarkPosted,
 }: {
-  /** งานรอโพส (approved + ยังไม่โพส) เรียงรอนานสุดก่อน */
+  /** งานรอโพส (approved + ยังไม่โพส) หลังกรองผู้รับผิดชอบ เรียงรอนานสุดก่อน */
   tasks: TaskWithAssignee[];
+  /** จำนวนงานค้างโพสทั้งทีม (ก่อนกรอง) — ใช้แยกข้อความ empty state */
+  totalPending: number;
   sections: TaskSectionRow[];
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
@@ -50,11 +54,14 @@ export function PostingList({
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
         <Send size={40} strokeWidth={1.5} className="text-sky-200" />
         <p className="text-sm font-medium text-stone-600">
-          ไม่มีงานค้างโพส 🎉
+          {totalPending === 0
+            ? "ไม่มีงานค้างโพส 🎉"
+            : "ไม่มีงานรอโพสของคนที่เลือก"}
         </p>
         <p className="max-w-sm text-sm text-stone-400">
-          งานที่ผู้ตรวจอนุมัติแล้วแต่ยังไม่ได้กด &quot;โพสแล้ว&quot;
-          จะมาเข้าคิวรอที่นี่
+          {totalPending === 0
+            ? 'งานที่ผู้ตรวจอนุมัติแล้วแต่ยังไม่ได้กด "โพสแล้ว" จะมาเข้าคิวรอที่นี่'
+            : `ทั้งทีมยังค้างโพสอยู่ ${totalPending} งาน — เปลี่ยนตัวกรองด้านบนเพื่อดูคิวของคนอื่น`}
         </p>
       </div>
     );

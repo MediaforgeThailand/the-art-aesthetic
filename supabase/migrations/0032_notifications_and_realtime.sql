@@ -22,6 +22,29 @@ create policy "authenticated full access notifications"
   on public.notifications for all
   to authenticated using (true) with check (true);
 
--- Realtime: กระดิ่งอัพเดทสด — tasks/task_comments/task_sections/task_subtasks
--- ถูกเพิ่มเข้า publication supabase_realtime ไว้แล้ว (เปิดจาก dashboard) เหลือแค่ notifications
-alter publication supabase_realtime add table public.notifications;
+-- Realtime: กระดิ่งอัพเดทสด + บอร์ด Task อัพเดทสด
+--
+-- บนโปรเจกต์จริง publication `supabase_realtime` ถูกสร้างโดยแพลตฟอร์ม Supabase และ
+-- tasks/task_comments/task_sections/task_subtasks/task_categories ถูกเพิ่มเข้าไปจาก dashboard
+-- (ไม่ได้ผ่าน migration) — บน Postgres เปล่า publication จะไม่มี แล้ว alter publication จะ error
+-- ทำให้ migration ทั้งชุดหยุดที่ไฟล์นี้ จึงสร้างเองถ้ายังไม่มี แล้วค่อยเพิ่มตารางทีละตัวแบบ
+-- ไม่ซ้ำ (บนโปรเจกต์จริงทุกบรรทัดกลายเป็น no-op)
+do $$
+declare
+  t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  foreach t in array array[
+    'tasks', 'task_comments', 'task_sections', 'task_subtasks',
+    'task_categories', 'notifications'
+  ] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;

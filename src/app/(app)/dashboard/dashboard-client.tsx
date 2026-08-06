@@ -149,6 +149,7 @@ export function DashboardClient({
   salesDemo,
   adminDemo,
   tasksDemo,
+  targetsDemo,
   lastSyncAt,
 }: {
   period: PeriodKey;
@@ -163,6 +164,8 @@ export function DashboardClient({
   salesDemo: boolean;
   adminDemo: boolean;
   tasksDemo: boolean;
+  /** เป้าขาย/เป้า KPI รายคนยังเป็นข้อมูลตัวอย่าง — กราฟเทียบเป้าทั้งหน้าจึงยังไม่ใช่ของจริง */
+  targetsDemo: boolean;
   lastSyncAt: string | null;
 }) {
   // เปลี่ยนช่วงเวลา = ให้ server คำนวณ aggregate ใหม่ (ข้อมูลจริงหลายหมื่นแถว ไม่โหลดมา filter ฝั่งนี้)
@@ -389,7 +392,7 @@ export function DashboardClient({
         description="รายงานทุกส่วนในหน้าเดียว — เลื่อนลงเพื่อดูครบทุก section ตัวกรองด้านล่างใช้ร่วมกันทั้งหน้า"
       />
 
-      {(salesDemo || adminDemo || tasksDemo) && (
+      {(salesDemo || adminDemo || tasksDemo || targetsDemo) && (
         <DemoBanner onWhat="ข้อมูลยอดขายและผลงานทีม" />
       )}
 
@@ -628,7 +631,7 @@ export function DashboardClient({
           tone="violet"
         >
           <Card className="p-5">
-            <div className="mb-3 grid grid-cols-3 gap-2">
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <MiniStat
                 label="Income รวมทีม"
                 value={formatCurrency(periodTotal)}
@@ -677,7 +680,7 @@ export function DashboardClient({
           tone="sky"
         >
           <Card className="p-5">
-            <div className="mb-3 grid grid-cols-3 gap-2">
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <MiniStat
                 label="ลูกค้าทักใหม่"
                 value={formatNumber(adminTotals.leads)}
@@ -793,7 +796,7 @@ export function DashboardClient({
               <SectionTitle
                 icon={Goal}
                 title={`ยอดจริงเทียบเส้นเป้ารายเดือน (${period === "12m" ? "12" : "6"} เดือนล่าสุด)`}
-                demo={salesDemo}
+                demo={salesDemo || targetsDemo}
                 iconClass="text-emerald-600"
               />
               <div className="h-64">

@@ -359,6 +359,29 @@ export function InfluencersClient({
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
 
+  /** ทิ้ง cache ของหน้านี้หลังเขียน DB (Next cache 30 วิ · หน้านี้ไม่มี realtime)
+      รวบด้วย timeout สั้นๆ — ลากการ์ดรัวๆ จะยิง refresh ทุกครั้งไม่ได้ เพราะ payload ที่
+      กลับมาจะ re-seed items ทับตำแหน่งที่เพิ่งลากไปแต่ยังบันทึกไม่เสร็จ (การ์ดเด้งกลับ)
+      ออกจากหน้าก่อนครบเวลา = flush ทิ้งท้ายให้ ไม่งั้น cache ค้างเป็นของเก่า */
+  const refreshTimer = useRef<number | null>(null);
+  const markServerStale = () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 600);
+  };
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+        router.refresh();
+      }
+    },
+    [router]
+  );
+
   // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer — ปุ่มเปิดเร็วบนการ์ด
   const linksByInflu = useMemo(() => {
     const m = new Map<string, InfluLinkLite[]>();
@@ -498,7 +521,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`ย้ายการ์ดไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /** mark/ยกเลิกสถานะ "ปฏิเสธ" — การ์ดจะหายจากบอร์ดถ้าตัวกรองยกเว้นปฏิเสธอยู่ (ค่าเริ่มต้น)
@@ -517,7 +542,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`บันทึกสถานะปฏิเสธไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" ในคิวรอทำ Memo — บันทึกลง DB ให้ทั้งทีมเห็นตรงกัน
@@ -536,7 +563,9 @@ export function InfluencersClient({
     if (error) {
       setItems(prevItems);
       setActionError(`บันทึกสถานะส่งเอกสารไม่สำเร็จ: ${error.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ
@@ -578,9 +607,21 @@ export function InfluencersClient({
   }, [activeTasks, today]);
 
   /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
-     ชิป "ปฏิเสธ" / "รอลงคิวหมอ" = ดูเฉพาะกลุ่มนั้น (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */
+     ชิป "ปฏิเสธ" / "รอลงคิวหมอ" = ดูเฉพาะกลุ่มนั้น (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า)
+
+     สถานะที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้นเสมอ — ไม่งั้นคนที่ยกเว้น "จบงาน" ไว้
+     แล้วกดชิป "จบงาน" จะได้บอร์ดว่างทั้งที่มีเคสอยู่ (บั๊กชนิดเดียวกับที่เคยแก้ใน /tasks) */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    /** สถานะที่ชิปปัจจุบันกำลังเจาะดู — ไม่เอาไปยกเว้นซ้ำ */
+    const picked: InfluStatusKey | null =
+      stageFilter === "done"
+        ? "done"
+        : typeof stageFilter === "number"
+          ? stageFilter === 1
+            ? "waiting"
+            : "accepted"
+          : null;
     return items.filter((i) => {
       const status = influStatusOf(i);
       if (stageFilter === "needbooking") {
@@ -588,7 +629,7 @@ export function InfluencersClient({
       } else if (stageFilter === "declined") {
         if (status !== "declined") return false;
       } else {
-        if (excluded.has(status)) return false;
+        if (status !== picked && excluded.has(status)) return false;
         if (stageFilter === "done" && status !== "done") return false;
         if (typeof stageFilter === "number") {
           if (status === "declined" || i.completed || i.stage !== stageFilter)
