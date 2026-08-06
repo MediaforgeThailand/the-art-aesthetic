@@ -34,6 +34,12 @@ export const metadata: Metadata = {
     // กันเลขที่ไม่ใช่เบอร์ (ยอดขาย/จำนวนคน) กลายเป็นลิงก์โทรออกสีฟ้าบน iOS
     telephone: false,
   },
+  other: {
+    // Next 16 ปล่อยเฉพาะ `mobile-web-app-capable` (ชื่อมาตรฐานใหม่) เพราะตัวของ Apple
+    // ถูก deprecate แล้ว — iOS 15.4+ อ่าน display:standalone จาก manifest ได้เอง
+    // แต่เครื่องที่เก่ากว่านั้นยังต้องพึ่งแท็กนี้ ไม่งั้นกดไอคอนแล้วเปิดเป็นแท็บ Safari ธรรมดา
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
