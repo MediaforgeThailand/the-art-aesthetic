@@ -537,6 +537,60 @@ export type FileLinkRow = {
   created_at: string;
 };
 
+/* ---------- My List — งาน/โน้ตส่วนตัว (/my-tasks) ---------- */
+
+/** ระดับการเปิดเผยของรายการใน My List — วันนี้ทุกแถวเป็น 'private'
+    ('shared' เตรียมไว้ให้ UI แชร์ในอนาคต คู่กับตาราง list_task_shares) */
+export type ListVisibility = "private" | "shared";
+
+/** งาน/โน้ตส่วนตัวหนึ่งรายการ — เห็นเฉพาะเจ้าของ (RLS ยึด owner_id ไม่ใช่ "authenticated ทั้งหมด") */
+export type ListTaskRow = {
+  id: string;
+  /** เจ้าของรายการ — ทุก policy ยึดคอลัมน์นี้ (ลบบัญชี = ลิสต์ส่วนตัวหายไปด้วย) */
+  owner_id: string;
+  title: string;
+  /** โน้ต/รายละเอียดยาว (แก้ในแผงรายละเอียด) */
+  note: string | null;
+  /** ใช้ชุดเดียวกับบอร์ดทีม — สีของแถวเปลี่ยนตามค่านี้ (LIST_PRIORITY ใน constants) */
+  priority: TaskPriority;
+  due_date: string | null;
+  done: boolean;
+  /** DB ตั้ง/ล้างเองจาก trigger list_tasks_set_done_at — client ส่งมาก็ถูกทับ */
+  done_at: string | null;
+  /** ลำดับในลิสต์ (ลากเรียงเอง) — float กึ่งกลางเพื่อนบ้านเหมือนบอร์ด Task/Influ */
+  position: number;
+  visibility: ListVisibility;
+  created_at: string;
+  updated_at: string;
+};
+
+/** แท็กของ My List — เป็นของรายคน (unique ที่ owner_id + ชื่อ ไม่สนตัวพิมพ์) */
+export type ListTagRow = {
+  id: string;
+  owner_id: string;
+  name: string;
+  /** key ของชุดสีใน LIST_TAG_COLORS — ค่าที่ไม่รู้จัก fallback เป็น brand (DB ไม่มี check) */
+  color: string;
+  created_at: string;
+};
+
+export type ListTaskTagRow = {
+  task_id: string;
+  tag_id: string;
+};
+
+/** การแชร์รายการให้คนอื่น — เตรียมโครงไว้ ยังไม่มี UI สร้างแถว
+    (policy วันนี้ให้สิทธิ์อ่านอย่างเดียว; can_edit จะมีผลเมื่อเปิด UI แชร์) */
+export type ListTaskShareRow = {
+  task_id: string;
+  profile_id: string;
+  can_edit: boolean;
+  created_at: string;
+};
+
+/** รายการพร้อมแท็กที่ติดอยู่ — ประกอบฝั่ง client จาก list_task_tags */
+export type ListTaskWithTags = ListTaskRow & { tagIds: string[] };
+
 /** อีเมลที่ได้รับอนุญาตให้มีบัญชี — จัดการผ่าน edge function `admin-users` เท่านั้น (RLS ไม่มี policy) */
 export type AllowedEmailRow = {
   email: string;
@@ -765,6 +819,33 @@ export interface Database {
           promo_price: number;
         };
         Update: Partial<PricePromotionRow>;
+        Relationships: [];
+      };
+      list_tasks: {
+        Row: ListTaskRow;
+        Insert: Partial<ListTaskRow> & { owner_id: string; title: string };
+        Update: Partial<ListTaskRow>;
+        Relationships: [];
+      };
+      list_tags: {
+        Row: ListTagRow;
+        Insert: Partial<ListTagRow> & { owner_id: string; name: string };
+        Update: Partial<ListTagRow>;
+        Relationships: [];
+      };
+      list_task_tags: {
+        Row: ListTaskTagRow;
+        Insert: ListTaskTagRow;
+        Update: Partial<ListTaskTagRow>;
+        Relationships: [];
+      };
+      list_task_shares: {
+        Row: ListTaskShareRow;
+        Insert: Partial<ListTaskShareRow> & {
+          task_id: string;
+          profile_id: string;
+        };
+        Update: Partial<ListTaskShareRow>;
         Relationships: [];
       };
       staff_kpis: {

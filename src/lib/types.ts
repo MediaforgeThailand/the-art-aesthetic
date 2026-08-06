@@ -47,4 +47,10 @@ export type {
   DoctorRow,
   FileLinkRow,
   FileLinkWithCreator,
+  ListVisibility,
+  ListTaskRow,
+  ListTagRow,
+  ListTaskTagRow,
+  ListTaskShareRow,
+  ListTaskWithTags,
 } from "./database.types";

@@ -64,6 +64,91 @@ export function taskCategoryChipClass(category: string): string {
   return TASK_CATEGORY_CHIPS[hash % TASK_CATEGORY_CHIPS.length];
 }
 
+/* ---------- My List — งาน/โน้ตส่วนตัว (/my-tasks) ---------- */
+
+/** สีประจำความสำคัญของ My List — เลือกแล้ว "สีของ task เปลี่ยน" ทั้งแถบซ้ายและพื้นแถว
+ *  ใช้ TaskPriority ชุดเดียวกับบอร์ดทีม (DB check ก็ชุดเดียวกัน) จะได้ไม่ต้องจำสองระบบ
+ *  row = คลาสที่ใส่คู่กับ border-l-4 บนแถว (ต้องเป็นคลาสเต็มเสมอ — Tailwind v4 ไม่เห็นคลาสที่ต่อสตริงเอง) */
+export const LIST_PRIORITY: Record<
+  TaskPriority,
+  { label: string; chip: string; dot: string; row: string }
+> = {
+  urgent: {
+    label: "ด่วน",
+    chip: "bg-rose-100 text-rose-700",
+    dot: "bg-rose-500",
+    row: "border-l-rose-400 bg-rose-50/70",
+  },
+  high: {
+    label: "สูง",
+    chip: "bg-orange-100 text-orange-700",
+    dot: "bg-orange-500",
+    row: "border-l-orange-300 bg-orange-50/60",
+  },
+  medium: {
+    label: "ปานกลาง",
+    chip: "bg-amber-100 text-amber-700",
+    dot: "bg-amber-400",
+    row: "border-l-amber-300 bg-amber-50/50",
+  },
+  low: {
+    label: "ต่ำ",
+    chip: "bg-stone-100 text-stone-600",
+    dot: "bg-stone-300",
+    row: "border-l-stone-200 bg-white/70",
+  },
+};
+
+/** ลำดับที่แสดงในตัวเลือก — ด่วนอยู่บนสุด (คนเปิดเมนูมักจะมาเลือกอันนี้) */
+export const LIST_PRIORITY_ORDER: TaskPriority[] = [
+  "urgent",
+  "high",
+  "medium",
+  "low",
+];
+
+/** ชุดสีของแท็กที่ผู้ใช้เลือกเองได้ — key เก็บใน list_tags.color
+ *  DB ไม่มี check constraint (เพิ่มสีใหม่ได้โดยไม่ต้อง migrate) — สีที่ไม่รู้จัก fallback เป็น brand */
+export const LIST_TAG_COLORS: Record<
+  string,
+  { label: string; chip: string; dot: string }
+> = {
+  brand: {
+    label: "โรสโกลด์",
+    chip: "bg-brand-100 text-brand-800",
+    dot: "bg-brand-400",
+  },
+  rose: { label: "แดง", chip: "bg-rose-100 text-rose-700", dot: "bg-rose-400" },
+  amber: {
+    label: "เหลือง",
+    chip: "bg-amber-100 text-amber-700",
+    dot: "bg-amber-400",
+  },
+  emerald: {
+    label: "เขียว",
+    chip: "bg-emerald-100 text-emerald-700",
+    dot: "bg-emerald-400",
+  },
+  sky: { label: "ฟ้า", chip: "bg-sky-100 text-sky-700", dot: "bg-sky-400" },
+  violet: {
+    label: "ม่วง",
+    chip: "bg-violet-100 text-violet-700",
+    dot: "bg-violet-400",
+  },
+  stone: { label: "เทา", chip: "bg-stone-100 text-stone-600", dot: "bg-stone-400" },
+};
+
+export const LIST_TAG_COLOR_ORDER = Object.keys(LIST_TAG_COLORS);
+
+/** สีของแท็ก — ค่าที่ระบบไม่รู้จัก (ข้อมูลเก่า/สีที่ถอดออก) ตกลงมาที่ brand */
+export function listTagColor(key: string): {
+  label: string;
+  chip: string;
+  dot: string;
+} {
+  return LIST_TAG_COLORS[key] ?? LIST_TAG_COLORS.brand;
+}
+
 export const SALES_CATEGORIES = [
   "Botox",
   "Filler",

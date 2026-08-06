@@ -8,6 +8,7 @@ import {
   IdCard,
   LayoutDashboard,
   Link2,
+  ListTodo,
   LogOut,
   Menu,
   Settings,
@@ -44,6 +45,7 @@ type NavItem = {
 const MOBILE_NAV_ORDER = [
   "/tasks",
   "/influencers",
+  "/my-tasks",
   "/influ-calendar",
   "/dashboard",
   "/influ-gallery",
@@ -63,6 +65,9 @@ const navItems: NavItem[] = [
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน" },
+  // ลิสต์ส่วนตัว — perm: null เพราะเป็นพื้นที่ของแต่ละบัญชีเอง ไม่ใช่ข้อมูลของแผนก
+  // (RLS ที่ list_tasks ยึด owner_id — เปิดเมนูให้ทุกคนก็ไม่มีทางเห็นลิสต์ของคนอื่น)
+  { href: "/my-tasks", label: "งานของฉัน", icon: ListTodo, perm: null, short: "ของฉัน" },
   { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team", short: "ไฟล์" },
   { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },

@@ -22,6 +22,7 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influ-gallery", name: "influ-gallery" },
   { path: "/influencers/contracts", name: "influ-contracts" },
   { path: "/tasks", name: "tasks" },
+  { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
   { path: "/files", name: "files" },
   { path: "/accounts", name: "accounts" },
@@ -232,6 +233,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/files", label: "เพิ่มลิงก์", name: "files-add-link" },
     { path: "/accounts", label: "เพิ่มบัญชี", name: "accounts-add-user" },
     { path: "/influencers", label: "เพิ่ม Influencer", name: "influ-add" },
+    { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
   ];
   for (const a of ADD_BUTTONS) {
     await page.goto(a.path);

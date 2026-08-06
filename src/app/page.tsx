@@ -16,6 +16,7 @@ export default async function Home() {
   if (access.permissions.includes("pricing")) redirect("/pricing");
   // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ
   if (access.isAdmin) redirect("/accounts");
-  // ผู้ใช้ใหม่ที่ admin ยังไม่เปิดสิทธิ์ให้ — /dashboard จะขึ้น AccessNotice อธิบายให้เอง
-  redirect("/dashboard");
+  // ผู้ใช้ใหม่ที่ admin ยังไม่เปิดสิทธิ์ให้ — อย่างน้อย My List ใช้ได้ทันทีโดยไม่ต้องรอใคร
+  // (เป็นพื้นที่ส่วนตัวของบัญชีนั้นเอง ไม่ใช่ข้อมูลของแผนก)
+  redirect("/my-tasks");
 }
