@@ -110,9 +110,19 @@ Deno.serve(async (req: Request) => {
       });
       if (error || !created?.user) {
         // สร้างไม่สำเร็จ — ถอนอีเมลออกจาก allowlist ถ้ายังไม่มีบัญชีจริง
-        await admin.from("allowed_emails").delete().eq("email", email);
+        // ถ้าถอนไม่สำเร็จต้องบอกด้วย: ที่อยู่ที่ค้างใน allowlist โดยไม่มีบัญชีคู่กัน
+        // = ใครก็ตามที่รู้ที่อยู่นี้ไปตั้งรหัสผ่านเองได้ก่อนเจ้าตัว
+        const { error: rollbackErr } = await admin
+          .from("allowed_emails")
+          .delete()
+          .eq("email", email);
         return json(
-          { ok: false, error: error?.message ?? "create_failed" },
+          {
+            ok: false,
+            error: rollbackErr
+              ? `${error?.message ?? "create_failed"} — และถอน ${email} ออกจากรายชื่อที่อนุญาตไม่สำเร็จ (${rollbackErr.message}) กรุณาลบด้วยตนเอง`
+              : (error?.message ?? "create_failed"),
+          },
           400
         );
       }
@@ -199,13 +209,30 @@ Deno.serve(async (req: Request) => {
           return json({ ok: false, error: "last_admin" }, 400);
         }
       }
+      // อีเมลที่ใช้ถอนออกจาก allowlist ต้องมาจาก auth.users (ของจริง) ไม่ใช่ profiles.email
+      // เพราะ RLS ปล่อยให้เจ้าของแถวแก้ profiles ของตัวเองได้ — ถ้าเขาแก้อีเมลใน profiles
+      // ไว้ก่อนถูกลบ ระบบจะไปถอน allowlist ผิดที่อยู่ แล้วอีเมลจริงยังค้างอยู่ในรายการ
+      // = สมัครกลับเข้ามาเองได้อีก (ซึ่งเป็นสิ่งที่การปิด self-signup ตั้งใจกันไว้)
+      const { data: authUser } = await admin.auth.admin.getUserById(userId);
+      const realEmail = authUser?.user?.email ?? target?.email ?? null;
+
       const { error } = await admin.auth.admin.deleteUser(userId);
       if (error) return json({ ok: false, error: error.message }, 500);
-      if (target?.email) {
-        await admin
+      if (realEmail) {
+        const { error: allowDelErr } = await admin
           .from("allowed_emails")
           .delete()
-          .eq("email", target.email.toLowerCase());
+          .eq("email", realEmail.toLowerCase());
+        // ลบ user สำเร็จแล้วแต่ถอน allowlist ไม่ได้ = ที่อยู่นี้ยังสมัครใหม่ได้เอง — ต้องบอก admin
+        if (allowDelErr) {
+          return json(
+            {
+              ok: false,
+              error: `ลบบัญชีแล้ว แต่ถอนอีเมลออกจากรายชื่อที่อนุญาตไม่สำเร็จ (${allowDelErr.message}) — กรุณาลบ ${realEmail} ออกจาก allowed_emails ด้วยตนเอง`,
+            },
+            500
+          );
+        }
       }
       return json({ ok: true });
     }

@@ -35,21 +35,36 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   perm: AppPermission | AppPermission[] | "admin" | null;
+  /** ป้ายสั้นสำหรับแถบเมนูล่างบนมือถือ (ช่องกว้าง ~70px) — ไม่ใส่ = ไม่ขึ้นแถบล่าง */
+  short?: string;
 };
 
+/** ลำดับความสำคัญของแถบเมนูล่างบนมือถือ — หยิบ 4 อันแรกที่ผู้ใช้คนนั้นมีสิทธิ์
+    (เรียงตามที่ทีมเปิดบ่อยจริง ไม่ใช่ตามลำดับใน sidebar) */
+const MOBILE_NAV_ORDER = [
+  "/tasks",
+  "/influencers",
+  "/influ-calendar",
+  "/dashboard",
+  "/influ-gallery",
+  "/pricing",
+  "/files",
+];
+const MOBILE_NAV_MAX = 4;
+
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data" },
+  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด" },
   { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
-  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
-  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
-  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ" },
+  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา" },
+  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ", short: "Influ" },
+  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ", short: "ปฏิทิน" },
   { href: "/influ-dashboard", label: "Influ Dashboard", icon: Gauge, perm: "influ" },
   { href: "/influ-cost", label: "Influencer Cost", icon: Wallet, perm: "influ" },
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
-  { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์" },
+  { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน" },
   { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
-  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team" },
+  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team", short: "ไฟล์" },
   { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
 ];
 
@@ -146,6 +161,15 @@ export function Sidebar({
     return permissions.includes(item.perm);
   });
 
+  /** เมนูของแถบล่างบนมือถือ — 4 อันแรกตาม MOBILE_NAV_ORDER ที่ผู้ใช้คนนี้มีสิทธิ์เห็น
+      (ใช้ป้ายสั้น `short` เพราะช่องกว้างแค่ ~70px) */
+  const mobileNav = MOBILE_NAV_ORDER.map((href) =>
+    visibleNav.find((n) => n.href === href && n.short)
+  )
+    .filter((n): n is NavItem => n !== undefined)
+    .slice(0, MOBILE_NAV_MAX)
+    .map((n) => ({ ...n, label: n.short ?? n.label }));
+
   async function handleLogout() {
     const supabase = createClient();
     const { error } = await supabase.auth.signOut();
@@ -203,7 +227,11 @@ export function Sidebar({
         {/* กดที่ชื่อ/รูป = เปิดตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ + รูป) */}
         <button
           type="button"
-          onClick={() => setProfileOpen(true)}
+          onClick={() => {
+            // ปิด drawer ก่อน — ไม่งั้นโมดัลโผล่ทับ/ใต้ drawer แล้วดูเหมือนกดไม่ติด
+            setDrawerOpen(false);
+            setProfileOpen(true);
+          }}
           title="ตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ/รูป)"
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors duration-200 hover:bg-white/60 active:scale-[0.98]"
         >
@@ -235,9 +263,10 @@ export function Sidebar({
         <button
           onClick={handleLogout}
           title="ออกจากระบบ"
-          className="rounded-lg p-1.5 text-stone-400 transition-all duration-200 hover:bg-brand-50 hover:text-brand-700 cursor-pointer active:scale-90"
+          aria-label="ออกจากระบบ"
+          className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-all duration-200 hover:bg-brand-50 hover:text-brand-700 active:scale-90 max-lg:h-11 max-lg:w-11"
         >
-          <LogOut size={16} />
+          <LogOut size={18} />
         </button>
       </div>
     </div>
@@ -260,15 +289,17 @@ export function Sidebar({
         {renderFooter()}
       </aside>
 
-      {/* ---------- มือถือ: topbar (เมนู + โลโก้ + กระดิ่ง) ---------- */}
-      <header className="flex shrink-0 items-center gap-2.5 border-b border-white/60 bg-white/55 px-3 py-2 backdrop-blur-xl lg:hidden">
+      {/* ---------- มือถือ: topbar (เมนู + โลโก้ + กระดิ่ง) ----------
+           pt-safe = เผื่อ status bar ตอนติดตั้งเป็น PWA (standalone ไม่มีแถบเบราว์เซอร์
+           เนื้อหาจะไหลขึ้นไปใต้ notch ถ้าไม่กันพื้นที่ แถบนี้จะจมจนกดเมนูไม่ได้) */}
+      <header className="flex shrink-0 items-center gap-2.5 border-b border-white/60 bg-white/55 px-3 py-2 pt-safe backdrop-blur-xl lg:hidden">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-label="เปิดเมนู"
-          className="cursor-pointer rounded-lg p-2 text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700 active:scale-90"
+          className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700 active:scale-90"
         >
-          <Menu size={20} />
+          <Menu size={22} />
         </button>
         <LogoMark className="h-9 w-9" />
         <LogoWordmark />
@@ -279,6 +310,44 @@ export function Sidebar({
         )}
       </header>
 
+      {/* ---------- มือถือ: แถบเมนูล่าง ----------
+           หน้าที่ทีมเปิดบ่อยที่สุดอยู่ในระยะนิ้วโป้ง ไม่ต้องเปิด drawer ทุกครั้ง
+           เลือกเมนูตามสิทธิ์จริงของแต่ละคน (ดู mobileNav) + ช่องสุดท้ายเปิด drawer เมนูเต็ม */}
+      {/* z-40 = ชั้น "โครงแอป" ตั้งใจให้ต่ำกว่าทุกอย่างที่กินเต็มจอ (แผงงาน/แผงคิว/โมดัล = 50+)
+          แถบนี้จึงถูกแผงเหล่านั้นคลุมทับตอนเปิด แทนที่จะลอยค้างขวางปุ่มในแผง */}
+      <nav
+        aria-label="เมนูหลัก"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-white/60 bg-cream-soft/95 pb-safe backdrop-blur-xl lg:hidden"
+      >
+        {mobileNav.map(({ href, label, icon: Icon }) => {
+          const active = pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-colors active:scale-95 ${
+                active ? "text-brand-700" : "text-stone-500"
+              }`}
+            >
+              <Icon size={21} className={active ? "text-brand-600" : ""} />
+              <span className="w-full truncate px-0.5 text-center text-[10px] font-medium leading-tight">
+                {label}
+              </span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="เปิดเมนูทั้งหมด"
+          className="flex min-w-0 flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 py-1.5 text-stone-500 transition-colors active:scale-95"
+        >
+          <Menu size={21} />
+          <span className="text-[10px] font-medium leading-tight">เมนู</span>
+        </button>
+      </nav>
+
       {/* ---------- drawer เมนูมือถือ ---------- */}
       {drawerOpen && (
         <div className="fixed inset-0 z-[60] lg:hidden">
@@ -286,7 +355,7 @@ export function Sidebar({
             className="absolute inset-0 bg-brand-900/30 backdrop-blur-sm animate-fade-in"
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-white/70 bg-cream-soft/95 shadow-2xl backdrop-blur-2xl animate-slide-in-left">
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-white/70 bg-cream-soft/95 pt-safe pb-safe shadow-2xl backdrop-blur-2xl animate-slide-in-left">
             <div className="flex items-center gap-3 border-b border-white/60 px-4 py-4">
               <LogoMark className="h-11 w-11" />
               <LogoWordmark />

@@ -404,6 +404,12 @@ function useCachedSignedUrl(path: string): {
 }
 
 function CardMediaThumb({ file }: { file: TaskFileRow }) {
+  // key ตาม path — ไฟล์เปลี่ยน = component ใหม่ สถานะ broken จึงรีเซ็ตเอง
+  // (ก่อนหน้านี้ broken ค้างจากไฟล์เดิม ทำให้ไฟล์ใหม่ที่ปกติแสดงเป็น placeholder ไปด้วย)
+  return <CardMediaThumbInner key={file.file_path} file={file} />;
+}
+
+function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
   if (failed || broken) {

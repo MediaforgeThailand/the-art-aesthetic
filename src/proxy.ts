@@ -7,7 +7,10 @@ export default async function proxy(request: NextRequest) {
   // /api/warm = endpoint อุ่นเครื่องที่ pg_cron ยิง ไม่มี session ต้องปล่อยผ่านเหมือนกัน
   if (
     request.nextUrl.pathname === "/price-list" ||
-    request.nextUrl.pathname === "/api/warm"
+    request.nextUrl.pathname === "/api/warm" ||
+    // PWA: เบราว์เซอร์ดึง manifest แบบไม่ส่ง cookie — ไม่ปล่อยผ่านจะโดนเด้งไป /login
+    // แล้วติดตั้งลงหน้าจอโฮมไม่ได้ (matcher ข้างล่างยกเว้นแค่นามสกุลรูป ไม่ครอบคลุมอันนี้)
+    request.nextUrl.pathname === "/manifest.webmanifest"
   ) {
     return NextResponse.next({ request });
   }

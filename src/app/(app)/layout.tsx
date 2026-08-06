@@ -32,8 +32,12 @@ export default async function AppLayout({
     // h-dvh กันแถบ address bar มือถือกินความสูง (100vh เพี้ยนบน iOS/Android)
     <div className="flex h-dvh flex-col overflow-hidden lg:flex-row">
       <Sidebar userName={fullName} userEmail={email} />
-      {/* แต่ละหน้าคุม scroll เอง — หน้าปกติครอบด้วย PageContainer, หน้าบอร์ด (/tasks) เป็น full-bleed */}
-      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
+      {/* แต่ละหน้าคุม scroll เอง — หน้าปกติครอบด้วย PageContainer, หน้าบอร์ด (/tasks) เป็น full-bleed
+          pb-nav บนมือถือ = หลบแถบเมนูล่าง (3.5rem + safe area) ให้ครบทุกหน้าพร้อมกัน
+          ใส่ที่ main ไม่ใช่ที่ PageContainer เพราะ /tasks จัดเลย์เอาต์เองไม่ได้ใช้ PageContainer */}
+      <main className="min-h-0 min-w-0 flex-1 overflow-hidden pb-nav lg:pb-0">
+        {children}
+      </main>
     </div>
   );
 }

@@ -1,5 +1,21 @@
 import { redirect } from "next/navigation";
+import { getAccess } from "@/lib/access";
 
-export default function Home() {
+/**
+ * ปลายทางแรกของแต่ละคน — เลือกตามสิทธิ์ที่มีจริง
+ * ของเดิมส่งเข้า /dashboard ตายตัว ทีมที่มีแค่สิทธิ์ influ/team จึงเจอ "ไม่มีสิทธิ์เข้าถึง"
+ * ทุกครั้งที่เปิดแอป — และในโหมด PWA standalone ไม่มีแถบ address ให้พิมพ์หนีไปหน้าอื่นด้วย
+ * (manifest ตั้ง start_url เป็น "/" จึงวิ่งผ่านที่นี่เสมอตอนกดไอคอนบนหน้าจอโฮม)
+ */
+export default async function Home() {
+  const access = await getAccess();
+
+  if (access.permissions.includes("data")) redirect("/dashboard");
+  if (access.permissions.includes("influ")) redirect("/influencers");
+  if (access.permissions.includes("team")) redirect("/tasks");
+  if (access.permissions.includes("pricing")) redirect("/pricing");
+  // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ
+  if (access.isAdmin) redirect("/accounts");
+  // ผู้ใช้ใหม่ที่ admin ยังไม่เปิดสิทธิ์ให้ — /dashboard จะขึ้น AccessNotice อธิบายให้เอง
   redirect("/dashboard");
 }

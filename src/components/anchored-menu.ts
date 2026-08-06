@@ -25,8 +25,11 @@ export function menuBox(
 ): MenuBox {
   const { width: want = 280, maxHeight = 320, gap = 4 } = opts;
   const r = anchor.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  // visualViewport = พื้นที่ที่ "มองเห็นจริง" — บน iOS คีย์บอร์ดเด้งขึ้นแล้ว
+  // window.innerHeight ไม่หด ทำให้คำนวณว่ามีที่ว่างด้านล่างทั้งที่โดนคีย์บอร์ดบังอยู่
+  const vv = typeof window !== "undefined" ? window.visualViewport : null;
+  const vw = vv?.width ?? window.innerWidth;
+  const vh = vv?.height ?? window.innerHeight;
   const width = Math.min(want, vw - 16);
   const spaceBelow = vh - r.bottom - gap - 8;
   const spaceAbove = r.top - gap - 8;
@@ -35,9 +38,11 @@ export function menuBox(
     160,
     Math.min(maxHeight, below ? spaceBelow : spaceAbove)
   );
+  const rawY = below ? r.bottom + gap : r.top - height - gap;
   return {
     x: Math.max(8, Math.min(r.left, vw - width - 8)),
-    y: below ? r.bottom + gap : Math.max(8, r.top - height - gap),
+    // หนีบทั้งบนและล่าง — เดิมกันแต่ขอบบน สาขากางลงล่างจึงล้นพ้นจอได้
+    y: Math.max(8, Math.min(rawY, vh - height - 8)),
     width,
     height,
   };
@@ -100,11 +105,17 @@ export function useAnchoredMenu({
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
+    // iOS ยิง resize/scroll ของ visualViewport ตอนคีย์บอร์ดเด้ง/ซูม โดยที่ window ไม่ยิง
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", reposition);
+    vv?.addEventListener("scroll", reposition);
     return () => {
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
+      vv?.removeEventListener("resize", reposition);
+      vv?.removeEventListener("scroll", reposition);
     };
   }, [open, anchorRef, menuRef]);
 }

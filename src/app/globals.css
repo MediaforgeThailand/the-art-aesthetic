@@ -26,6 +26,8 @@
   --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-right: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-left: slide-in-left 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* bottom sheet บนมือถือ — เลื่อนขึ้นจากขอบล่าง */
+  --animate-slide-in-up: slide-in-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
   /* ป้ายเตือนแบบ "เรืองแสง" — ใช้กับเรื่องที่ต้องสะดุดตาจริงๆ เท่านั้น
      (ตอนนี้: เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ) */
   --animate-glow-amber: glow-amber 1.8s ease-in-out infinite;
@@ -82,6 +84,16 @@
         0 0 14px 2px rgba(245, 158, 11, 0.6);
     }
   }
+  @keyframes slide-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   /* drawer เมนูมือถือ — เลื่อนเข้าจากซ้ายทั้งบาน */
   @keyframes slide-in-left {
     from {
@@ -98,6 +110,47 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-noto-thai), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+}
+
+/* ---- Safe area (PWA standalone) ----------------------------------------
+   ติดตั้งลงหน้าจอโฮมแล้วไม่มีแถบเบราว์เซอร์ — เนื้อหาไหลไปจนสุดขอบจอ
+   ทุกอย่างที่เป็น fixed/sticky ติดขอบจอ **ต้อง** เผื่อ inset ไม่งั้นไปจมใต้
+   status bar (บน) หรือ home indicator (ล่าง) ซึ่งระบบกินการแตะไปเลย
+   ใช้ max() เพื่อคงระยะห่างขั้นต่ำเดิมไว้บนเครื่องที่ inset = 0 */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility px-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+/* เวอร์ชันที่การันตีระยะห่างขั้นต่ำ — ใช้กับแถบปุ่มท้ายแผง/ท้ายชีต */
+@utility pb-safe-3 {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+@utility pb-safe-4 {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+@utility mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* ความสูงของแถบเมนูล่างบนมือถือ — หน้าไหนมี fixed ท้ายจอต้องหลบให้พ้น */
+@utility pb-nav {
+  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- ปุ่มที่เผยตัวตอน hover ----------------------------------------------
+   ทัชสกรีนไม่มี hover: Android ไม่มีเลย, iOS ต้องแตะทิ้งเปล่า 1 ครั้งซึ่งมักโดน
+   element ข้างเคียงกลืนไป → ปุ่มที่ซ่อนด้วย opacity-0 + group-hover จะ "กดไม่ได้"
+   ติดคลาสนี้เพิ่มที่ปุ่มพวกนั้น แล้วมันจะแสดงตลอดบนเครื่องที่ไม่มี hover
+   (ใช้ !important เพราะต้องชนะ opacity-0 ที่เขียนไว้ในคลาสเดียวกันแน่ๆ) */
+@media (hover: none) {
+  .reveal-on-hover {
+    opacity: 1 !important;
+  }
 }
 
 /* ---- Glassmorphism (กระจกใสตาม CI) ----
@@ -124,6 +177,23 @@
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* มือถือ/แท็บเล็ต: ถอด backdrop-filter ออกแล้วใช้พื้นทึบแทน
+   blur ถูกใช้กับ Card เกือบทุกใบ (80+ จุด) — ในลิสต์ยาวๆ ทำให้ Android
+   กลางๆ เลื่อนกระตุกชัดเจน ส่วนหน้าตาต่างกันแทบไม่ออกเพราะพื้นหลังเป็น
+   gradient อ่อนอยู่แล้ว (จอ ≥lg ยังได้กระจกเต็มรูปแบบตาม CI เหมือนเดิม) */
+@media (max-width: 1023px) {
+  .glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.82);
+  }
+  .glass-soft {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.6);
+  }
 }
 
 /* พื้นหลังไล่เฉด rose gold ทั้งแอป — ให้เอฟเฟกต์กระจกมีสีลอดผ่าน */
@@ -156,19 +226,23 @@ body {
   color: #5e3a31;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #ddb9aa;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #cd9a86;
+/* scrollbar สีแบรนด์เฉพาะเครื่องที่มีเมาส์ — บนทัชสกรีนการบังคับ width
+   จะทับ overlay scrollbar ของระบบ (ที่ควรจางหายเอง) กลายเป็นแถบทึบกินพื้นที่จอ */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #ddb9aa;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #cd9a86;
+  }
 }
 
 /* ป้ายเรืองแสงวิ่งตลอดเวลา — ปิดให้คนที่ตั้งค่าลดการเคลื่อนไหวไว้

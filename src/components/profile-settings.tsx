@@ -196,7 +196,7 @@ export function ProfileSettingsModal({
                 {(name.trim() || email || "?").charAt(0).toUpperCase()}
               </span>
             )}
-            <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="absolute inset-0 flex items-center justify-center bg-black/45 reveal-on-hover opacity-0 transition-opacity group-hover:opacity-100">
               <Camera size={20} className="text-white" />
             </span>
           </button>

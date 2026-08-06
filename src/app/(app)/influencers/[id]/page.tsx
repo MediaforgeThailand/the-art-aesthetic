@@ -121,6 +121,7 @@ export default async function InfluencerDetailPage({
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
+        canManage={hasPermission(access, "influ")}
       />
     </PageContainer>
   );

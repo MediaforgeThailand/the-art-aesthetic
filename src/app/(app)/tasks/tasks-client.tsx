@@ -11,7 +11,7 @@ import {
   UserCog,
   X,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoBanner } from "@/components/demo-badge";
 import {
@@ -120,7 +120,34 @@ export function TasksClient({
   isAdmin: boolean;
   loadError: string | null;
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+
+  /** บอกให้ Next ทิ้ง cache ของหน้านี้ (staleTimes.dynamic = 30 วิ) หลังเขียน DB สำเร็จ
+      — Realtime ส่งเฉพาะเหตุการณ์ที่เกิด "หลัง" subscribe จึงซ่อมกรณีนี้ไม่ได้:
+      ออกจากหน้าแล้วกลับมาใน 30 วิ (หรือกดปุ่ม Back) จะได้ payload ก่อนแก้ แล้ว state
+      ถูก re-seed จาก props เก่า = การ์ดที่เพิ่งลบกลับมา / ตำแหน่งที่เพิ่งลากเด้งกลับ
+      รวบเป็นครั้งเดียวด้วย timeout สั้นๆ เพราะการลากหนึ่งครั้งยิง patchTask หลายรอบ */
+  const refreshTimer = useRef<number | null>(null);
+  const markServerStale = () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 400);
+  };
+  // ออกจากหน้าก่อนครบ 400ms = ต้อง "flush" ไม่ใช่ทิ้ง — เคสที่ต้องการแก้คือแก้เสร็จแล้ว
+  // เดินออกทันทีพอดี ถ้าทิ้ง timer ไปเฉยๆ cache จะยังเป็นของเก่าเหมือนเดิม
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+        router.refresh();
+      }
+    },
+    [router]
+  );
 
   /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
   const [categories, setCategories] = useState<string[]>(initialCategories);
@@ -363,9 +390,17 @@ export function TasksClient({
     setExcludeStatuses([]);
   };
 
+  /** true = การล้างตัวกรองรอบนี้เป็นระบบทำเอง (เปิดงานจากแจ้งเตือน) ไม่ใช่ผู้ใช้ตั้งใจ
+      — ข้ามการเขียนทับค่าที่จำไว้ 1 ครั้ง ไม่งั้นกดแจ้งเตือนทีเดียวตัวกรองที่ตั้งไว้หายถาวร */
+  const skipPersistRef = useRef(false);
+
   // จำค่าตัวกรองทุกครั้งที่เปลี่ยน
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
     try {
       window.localStorage.setItem(
         filterStorageKey,
@@ -419,11 +454,23 @@ export function TasksClient({
       statusFilter === "all"
         ? excludeStatuses
         : excludeStatuses.filter((s) => s !== statusFilter);
+    // กติกาเดียวกันกับสถานะ: คนที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้น ไม่งั้นยกเว้นคน A ไว้
+    // แล้วเลือกดูงานของคน A จะได้บอร์ดว่างเปล่า ("งานของฉัน"/"เกี่ยวข้องกับฉัน" = ตัวเรา)
+    const pickedAssignee =
+      assigneeFilter === "me" || assigneeFilter === "involved"
+        ? userId
+        : assigneeFilter === "all"
+          ? null
+          : assigneeFilter;
+    const excludeAs =
+      pickedAssignee === null
+        ? excludeAssignees
+        : excludeAssignees.filter((a) => a !== pickedAssignee);
     return activeItems.filter((t) => {
       // ยกเว้น (ซ่อน) ตามผู้รับผิดชอบที่เลือก — "none" = งานที่ไม่ระบุผู้รับผิดชอบ
       if (
-        excludeAssignees.length > 0 &&
-        excludeAssignees.includes(t.assignee_id ?? "none")
+        excludeAs.length > 0 &&
+        excludeAs.includes(t.assignee_id ?? "none")
       ) {
         return false;
       }
@@ -793,6 +840,8 @@ export function TasksClient({
 
   /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น (ล้างตัวกรองให้การ์ดโผล่แน่นอน) */
   const navigateToTask = (taskId: string) => {
+    // ล้างตัวกรองเพื่อให้การ์ดเป้าหมายโผล่แน่ๆ แต่ไม่ทับค่าที่ผู้ใช้ตั้งไว้ใน localStorage
+    skipPersistRef.current = true;
     clearFilters();
     setTab("work");
     setSelectedId(taskId);
@@ -874,7 +923,9 @@ export function TasksClient({
             )
           );
           showError(`บันทึกไม่สำเร็จ: ${e.message}`);
+          return;
         }
+        markServerStale();
       });
   };
 
@@ -1110,6 +1161,7 @@ export function TasksClient({
     title: string,
     placement: QuickAddPlacement
   ) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     const isBrief = section?.type === "brief";
@@ -1228,6 +1280,7 @@ export function TasksClient({
 
   /** ผู้รับกด "รับงาน" — ปิด brief (รับแล้ว) + สร้างการ์ด creative ในเซคชัน Creatives ทันที */
   const acceptBrief = async (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(task.id) || task.brief_accepted_at) return;
     if (!creativesSectionId) {
       showError("ยังไม่มีเซคชันชิ้นงาน (Creatives) สำหรับวางงานที่รับ");
@@ -1351,6 +1404,7 @@ export function TasksClient({
 
   /** กู้งานคืนจากถังขยะ — กลับไปเซคชัน/สถานะเดิมทุกอย่าง */
   const restoreTask = (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     patchTask(task.id, { db: { deleted_at: null } });
   };
 
@@ -1474,6 +1528,7 @@ export function TasksClient({
 
   /** ลากหัวคอลัมน์เพื่อเรียงเซคชัน — อัพเดตเฉพาะตัวที่ลาก (float กึ่งกลางเพื่อนบ้าน) */
   const reorderSections = (activeId: string, overId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(activeId) || isTempId(overId)) return;
     const from = sections.findIndex((s) => s.id === activeId);
     const to = sections.findIndex((s) => s.id === overId);
@@ -1526,6 +1581,7 @@ export function TasksClient({
   /* ---------- section mutations ---------- */
 
   const renameSection = (sectionId: string, name: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const prevName = sections.find((s) => s.id === sectionId)?.name;
     if (prevName === undefined || prevName === name) return;
@@ -1548,6 +1604,7 @@ export function TasksClient({
 
   /** สลับชนิดเซคชัน work ↔ brief */
   const toggleSectionType = (sectionId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     if (!section) return;

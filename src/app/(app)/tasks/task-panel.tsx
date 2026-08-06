@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
   briefContentTypeLabel,
@@ -252,6 +253,13 @@ export function TaskPanel({
   const [comments, setComments] = useState<TaskCommentWithAuthor[] | null>(
     null
   );
+  /** คอมเมนต์ที่มาทาง realtime ก่อน fetch รอบแรกจะเสร็จ — รวมเข้าลิสต์ตอน fetch จบ */
+  const pendingCommentsRef = useRef<TaskCommentWithAuthor[]>([]);
+  /** ไฟล์ที่กำลังจะลบ (รอยืนยัน) — null = ไม่มีกล่องยืนยันเปิดอยู่
+      ต้องประกาศก่อน effect ของ Esc ที่อ่านค่านี้ (ห้ามให้ Esc ปิดแผงทั้งอันขณะกล่องเปิด) */
+  const [confirmRemoveFile, setConfirmRemoveFile] = useState<TaskFileRow | null>(
+    null
+  );
 
   useEffect(() => {
     let alive = true;
@@ -288,10 +296,18 @@ export function TaskPanel({
       }
       if (!c.error) {
         const fetchedComments = (c.data ?? []) as unknown as TaskCommentWithAuthor[];
+        // คอมเมนต์ที่มาทาง realtime ระหว่างรอ fetch รอบแรกถูกพักไว้ใน ref — เอามารวมด้วย
+        // ไม่งั้นข้อความที่ส่งมาช่วงนั้นหายจนกว่าจะปิด-เปิดแผงใหม่
+        const buffered = pendingCommentsRef.current;
+        pendingCommentsRef.current = [];
         setComments((cur) => {
-          if (cur === null) return fetchedComments;
-          const ids = new Set(fetchedComments.map((x) => x.id));
-          return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
+          const base = cur === null ? fetchedComments : (() => {
+            const ids = new Set(fetchedComments.map((x) => x.id));
+            return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
+          })();
+          if (buffered.length === 0) return base;
+          const have = new Set(base.map((x) => x.id));
+          return [...base, ...buffered.filter((x) => !have.has(x.id))];
         });
       }
     });
@@ -320,8 +336,14 @@ export function TaskPanel({
             ? (profiles.find((p) => p.id === row.author_id) ?? null)
             : null;
           setComments((cur) => {
-            // ยังโหลดรอบแรกไม่เสร็จ — ปล่อยให้ fetch หลักเก็บแถวนี้เอง
-            if (cur === null) return cur;
+            // ยังโหลดรอบแรกไม่เสร็จ — พักไว้ก่อน แล้วให้ fetch หลักรวมให้ตอนจบ
+            // (แถวที่ insert หลัง query ยิงไปแล้วจะไม่อยู่ในผล fetch จึงต้องเก็บเอง)
+            if (cur === null) {
+              if (!pendingCommentsRef.current.some((c) => c.id === row.id)) {
+                pendingCommentsRef.current.push({ ...row, author });
+              }
+              return cur;
+            }
             if (cur.some((c) => c.id === row.id)) return cur;
             return [...cur, { ...row, author }];
           });
@@ -337,12 +359,13 @@ export function TaskPanel({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // lightbox เปิดอยู่ → ปล่อยให้ lightbox จัดการ Esc เอง ไม่ปิดแผง
+      // lightbox / กล่องยืนยันลบไฟล์ เปิดอยู่ → ปล่อยให้ตัวนั้นจัดการ Esc เอง ไม่ปิดแผง
       if (
         e.key !== "Escape" ||
         suspendEsc ||
         lightboxIndex !== null ||
-        briefLightboxIndex !== null
+        briefLightboxIndex !== null ||
+        confirmRemoveFile !== null
       )
         return;
       const el = document.activeElement as HTMLElement | null;
@@ -355,7 +378,7 @@ export function TaskPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, suspendEsc, lightboxIndex, briefLightboxIndex]);
+  }, [onClose, suspendEsc, lightboxIndex, briefLightboxIndex, confirmRemoveFile]);
 
   useEffect(() => {
     asideRef.current?.focus({ preventScroll: true });
@@ -832,7 +855,13 @@ export function TaskPanel({
         preview,
       });
     }
-    for (const rid of [task.assignee_id, task.created_by, task.reviewer_id]) {
+    // ผู้ตรวจลำดับ 2 ต้องอยู่ในรายชื่อด้วย — ตอนงานอยู่ทอด 2 เขาคือคนที่งานค้างอยู่จริง
+    for (const rid of [
+      task.assignee_id,
+      task.created_by,
+      task.reviewer_id,
+      task.reviewer2_id,
+    ]) {
       if (!rid || rid === userId || seen.has(rid)) continue;
       seen.add(rid);
       notiRows.push({
@@ -1260,6 +1289,15 @@ export function TaskPanel({
                       e.stopPropagation();
                       onSetInfluencer(task, null);
                     }}
+                    // เป็น span ใน <button> (ห้ามซ้อน button) — ต้องรับ Enter/Space เอง
+                    // ไม่งั้นคีย์บอร์ดโฟกัสถึงแต่กดไม่ได้
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSetInfluencer(task, null);
+                      }
+                    }}
                     className="shrink-0 cursor-pointer rounded p-0.5 text-stone-400 hover:text-rose-500"
                   >
                     <X size={13} />
@@ -1453,7 +1491,7 @@ export function TaskPanel({
                     key={f.id}
                     file={f}
                     onOpen={() => setLightboxIndex(i)}
-                    onRemove={() => void removeFile(f)}
+                    onRemove={() => setConfirmRemoveFile(f)}
                   />
                 ))}
               </div>
@@ -1593,7 +1631,7 @@ export function TaskPanel({
       )}
 
       {/* ช่องพิมพ์แชท — ติดล่างเสมอ */}
-      <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3">
+      <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3">
         {/* เมนูแท็กคน — โผล่เหนือช่องพิมพ์เมื่อพิมพ์ @ */}
         {mentionQuery !== null && mentionMatches.length > 0 && (
           <div className="absolute bottom-full left-4 right-4 z-30 mb-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl animate-scale-in">
@@ -1762,6 +1800,24 @@ export function TaskPanel({
           onClose={() => setBriefLightboxIndex(null)}
         />
       )}
+
+      {/* ลบไฟล์งาน = ลบออกจาก storage ถาวร กู้ไม่ได้ — ต้องถามก่อนเสมอ
+          (ต่างจากลบการ์ดทั้งใบซึ่งเข้าถังขยะและกู้คืนได้) */}
+      <ConfirmDialog
+        open={confirmRemoveFile !== null}
+        title="ลบไฟล์งาน"
+        message={
+          <>
+            ลบไฟล์ <b>{confirmRemoveFile?.file_name ?? "นี้"}</b> ออกถาวรใช่หรือไม่?
+            <br />
+            ไฟล์จะถูกลบออกจากที่เก็บไฟล์ด้วย และ<b>กู้คืนไม่ได้</b>
+          </>
+        }
+        onConfirm={() => {
+          if (confirmRemoveFile) void removeFile(confirmRemoveFile);
+        }}
+        onClose={() => setConfirmRemoveFile(null)}
+      />
     </aside>
   );
 }
@@ -1979,7 +2035,7 @@ function SubtaskRowItem({
               onClick={() => fileInputRef.current?.click()}
               title="แนบไฟล์ (หลายไฟล์ได้)"
               aria-label="แนบไฟล์งานย่อย"
-              className="relative cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-brand-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+              className="relative cursor-pointer rounded p-1 text-stone-300 reveal-on-hover opacity-0 transition-all hover:text-brand-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
             >
               <Paperclip size={13} />
               {sub.files.length > 0 && (
@@ -2005,7 +2061,7 @@ function SubtaskRowItem({
               onClick={onDelete}
               title="ลบงานย่อย"
               aria-label="ลบงานย่อย"
-              className="cursor-pointer rounded p-1 text-stone-300 opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+              className="cursor-pointer rounded p-1 text-stone-300 reveal-on-hover opacity-0 transition-all hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
             >
               <X size={13} />
             </button>
@@ -2132,7 +2188,11 @@ function DeliverableFileThumb({
           onClick={onRemove}
           title="ลบไฟล์"
           aria-label="ลบไฟล์"
-          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
+          // จอสัมผัสไม่มี hover — ถ้าซ่อนด้วย opacity-0 ปุ่มจะมองไม่เห็นแต่ยังกดโดนได้
+          // (อยู่มุมที่นิ้วโดนพอดีตอนกดเปิดไฟล์) จึงต้องโชว์ถาวรบนเครื่องที่ hover ไม่ได้
+          // ใช้ reveal-on-hover (อิงความสามารถ hover จริง) ไม่ใช่ sm: ที่อิงความกว้างจอ —
+          // แท็บเล็ตกว้าง ≥sm แต่ไม่มี hover จะยังพังถ้าใช้เบรกพอยต์
+          className="absolute right-1 top-1 cursor-pointer rounded-full bg-white/85 p-1 text-stone-500 reveal-on-hover opacity-0 shadow transition-all hover:text-rose-600 focus-visible:opacity-100 group-hover:opacity-100 active:scale-90"
         >
           <X size={12} />
         </button>

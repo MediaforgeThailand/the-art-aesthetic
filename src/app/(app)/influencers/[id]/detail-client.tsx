@@ -364,6 +364,7 @@ export function InfluDetailClient({
   sourceLinks,
   userName,
   doctors,
+  canManage,
 }: {
   influencer: InfluencerRow;
   followups: InfluFollowupRow[];
@@ -378,6 +379,10 @@ export function InfluDetailClient({
   sourceLinks: InfluLinkRow[];
   userName: string;
   doctors: DoctorRow[];
+  /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
+      ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
+      อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
+  canManage: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -398,7 +403,11 @@ export function InfluDetailClient({
 
   const maxStage = influencer.completed ? 6 : influencer.stage;
   const readOnly =
-    influencer.completed || (typeof view === "number" && view < influencer.stage);
+    !canManage ||
+    influencer.completed ||
+    (typeof view === "number" && view < influencer.stage);
+  /** แก้ข้อมูลเคสได้หรือไม่ — ใช้กับส่วนที่ปกติแก้ได้จนกว่าจะปิดงาน (Stage 2, ไฟล์, ชื่อ) */
+  const canEdit = canManage && !influencer.completed;
   const [nameOpen, setNameOpen] = useState(false);
 
   // ย้อนกลับ 1 stage — ใช้เมื่อเงื่อนไขเคสเปลี่ยน (เช่น influ ขอเปลี่ยนโปรแกรมที่รับ)
@@ -452,14 +461,16 @@ export function InfluDetailClient({
               <span className="text-stone-400"> ({influencer.nickname})</span>
             )}
           </span>
-          <button
-            type="button"
-            onClick={() => setNameOpen(true)}
-            title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
-            className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
-          >
-            <PenLine size={15} />
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setNameOpen(true)}
+              title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
+              className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+            >
+              <PenLine size={15} />
+            </button>
+          )}
         </h1>
         {influencer.tier && (
           <Badge className={INFLU_TIERS[influencer.tier].badge}>
@@ -545,7 +556,7 @@ export function InfluDetailClient({
           );
         })}
         {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข ต้องกลับไปยื่นเอกสารใหม่ */}
-        {!influencer.completed && influencer.stage > 1 && (
+        {canEdit && influencer.stage > 1 && (
           <button
             type="button"
             onClick={() => setRollbackOpen(true)}
@@ -572,6 +583,7 @@ export function InfluDetailClient({
             procedureItems={procedureItems}
             sourceLinks={sourceLinks}
             doctors={doctors}
+            canManage={canManage}
             onGoStage={(step) => setView(step)}
           />
         )}
@@ -590,7 +602,7 @@ export function InfluDetailClient({
             initialItems={procedureItems}
             priceCatalog={priceCatalog}
             doctors={doctors}
-            readOnly={influencer.completed}
+            readOnly={!canEdit}
           />
         )}
         {view === 3 && (
@@ -601,7 +613,7 @@ export function InfluDetailClient({
             signatures={signatures}
             userName={userName}
             readOnly={readOnly}
-            fileEditable={!influencer.completed}
+            fileEditable={canEdit}
           />
         )}
         {view === 4 && (
@@ -618,7 +630,7 @@ export function InfluDetailClient({
           <FollowupStage
             influencer={influencer}
             tasks={tasks}
-            readOnly={influencer.completed}
+            readOnly={!canEdit}
           />
         )}
       </div>
@@ -713,6 +725,7 @@ function OverviewPanel({
   procedureItems,
   sourceLinks,
   doctors,
+  canManage,
   onGoStage,
 }: {
   influencer: InfluencerRow;
@@ -721,6 +734,8 @@ function OverviewPanel({
   procedureItems: InfluProcedureItemRow[];
   sourceLinks: InfluLinkRow[];
   doctors: DoctorRow[];
+  /** false = สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี — ซ่อนปุ่มแก้ไขทั้งหมด */
+  canManage: boolean;
   onGoStage: (step: number) => void;
 }) {
   const [caseInfoOpen, setCaseInfoOpen] = useState(false);
@@ -859,7 +874,7 @@ function OverviewPanel({
             <h3 className="text-sm font-semibold text-stone-900">
               รายละเอียดเคส
             </h3>
-            {!influencer.completed && (
+            {canManage && !influencer.completed && (
               <button
                 type="button"
                 onClick={() => setCaseInfoOpen(true)}
@@ -1012,10 +1027,12 @@ function OverviewPanel({
           </dl>
         </Card>
 
-        {/* ลิงก์ไฟล์ source (Google Drive) — แก้ได้เสมอแม้ปิดงานแล้ว (คลังไฟล์อ้างอิง) */}
+        {/* ลิงก์ไฟล์ source (Google Drive) — แก้ได้เสมอแม้ปิดงานแล้ว (คลังไฟล์อ้างอิง)
+            แต่สิทธิ์ team ที่เข้ามาดูจากแกลเลอรีให้เปิดลิงก์ได้อย่างเดียว */}
         <InfluLinksCard
           influencerId={influencer.id}
           initialLinks={sourceLinks}
+          readOnly={!canManage}
         />
       </div>
 
@@ -1394,6 +1411,15 @@ function CaseDetailStage({
   };
 
   const save = async (thenNext: boolean) => {
+    // เคสที่เลย Stage 2 มาแล้วก็ยังต้องมีค่าบังคับครบ — แต่ห้ามปิดปุ่มบันทึกทิ้ง
+    // ไม่งั้นคนที่แค่อยากแก้เบอร์โทร/วันนัด จะบันทึกไม่ได้เลยเพราะช่องอื่นว่าง
+    // (บอกให้รู้ว่าขาดอะไร ดีกว่าปล่อยให้ล้างค่าทิ้งเงียบๆ หรือกดปุ่มไม่ได้โดยไม่บอกเหตุผล)
+    if (!canProceed) {
+      setError(
+        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ"
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: e } = await supabase
@@ -1568,6 +1594,8 @@ function CaseDetailStage({
               แก้ไขได้แม้เลยขั้นตอนนี้มาแล้ว — ข้อความ Memo ใน Stage 3
               อัพเดทตาม แต่เอกสารที่พิมพ์/อัพโหลดไปแล้วไม่เปลี่ยน
             </p>
+            {/* ค่าบังคับถูกเช็คใน save() แล้ว (ขึ้นข้อความบอกว่าขาดอะไร) — ไม่ปิดปุ่ม
+                เพื่อให้ยังแก้ช่องอื่นได้ตามปกติ */}
             <Button loading={busy} onClick={() => void save(false)}>
               บันทึกการแก้ไข
             </Button>
@@ -2097,7 +2125,8 @@ function FollowupStage({
             <CheckCircle2 size={12} /> ปิดงานแล้ว
           </Badge>
         ) : (
-          allDone && (
+          allDone &&
+          !readOnly && (
             <Button
               className="ml-auto"
               loading={finishing}

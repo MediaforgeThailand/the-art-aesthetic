@@ -173,7 +173,7 @@ export function SignaturePad({
           <div className="pointer-events-none absolute inset-x-16 bottom-14 border-b border-dotted border-stone-300" />
         </div>
 
-        <div className="flex items-center gap-2 border-t border-stone-100 px-5 py-3">
+        <div className="flex items-center gap-2 border-t border-stone-100 px-5 py-3 pb-safe-3 sm:pb-3">
           <Button variant="ghost" onClick={clear} disabled={!dirty}>
             <Eraser size={15} />
             ล้าง
