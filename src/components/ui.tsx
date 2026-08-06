@@ -32,7 +32,10 @@ export function Button({
 }) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100 ${buttonVariants[variant]} ${className}`}
+      // เป้านิ้ว 44px เฉพาะจอเล็ก — ใช้ max-sm: (ไม่ใช่ min-h-11 + sm:min-h-0) เพราะสอง
+      // utility ที่คุม property เดียวกันจะแพ้ชนะกันตามลำดับใน CSS ไม่ใช่ตามลำดับใน class
+      // ทำให้ปุ่มบนเดสก์ท็อปสูง 44px ตามไปด้วย; max-sm: ไม่ match ที่ ≥640px จึงไม่มีทางชนกัน
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100 max-sm:min-h-11 max-sm:py-2.5 ${buttonVariants[variant]} ${className}`}
       disabled={disabled || loading}
       {...props}
     >
@@ -119,7 +122,9 @@ export function InlineInput({
 }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`w-full rounded-md border border-brand-300 bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-100 ${className}`}
+      // text-base บนจอเล็กเหมือน controlBase — ช่องนี้ปล่อยให้ผู้เรียกกำหนดฟอนต์เองมาตลอด
+      // ทำให้ composer/rename โดน iOS ซูมเข้าแล้วไม่ซูมกลับทุกครั้งที่แตะ
+      className={`w-full rounded-md border border-brand-300 bg-white text-base text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm ${className}`}
       {...props}
     />
   );
@@ -191,7 +196,9 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-900/30 p-3 pt-8 backdrop-blur-sm animate-fade-in sm:p-4 sm:pt-16"
+      /* มือถือ = bottom sheet (ชิดขอบล่าง นิ้วเอื้อมถึง), จอ ≥sm = กล่องกลางจอแบบเดิม
+         z-[80] เพราะ drawer เมนูมือถือเป็น z-[60] — โมดัลที่เปิดจาก drawer เคยไปอยู่ข้างใต้ */
+      className="fixed inset-0 z-[80] flex items-end justify-center overflow-hidden bg-brand-900/30 backdrop-blur-sm animate-fade-in sm:items-start sm:overflow-y-auto sm:p-4 sm:pt-16"
       onMouseDown={(e) => {
         // overlay เป็นทั้งพื้นที่ปิด modal และกล่อง scroll — คลิก/ลาก scrollbar แนวตั้ง
         // จะโดน e.target === overlay ด้วย ทำให้ modal ปิดและฟอร์มที่กรอกค้างหายหมด
@@ -207,19 +214,28 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${wide ? "max-w-3xl" : "max-w-lg"} rounded-xl border border-white/70 bg-white/85 shadow-2xl outline-none backdrop-blur-2xl animate-scale-in`}
+        /* max-h + flex column: หัวกล่องติดหนึบ เนื้อในเลื่อนเอง
+           ของเดิมไม่มี max-h เลย ฟอร์มยาว (เพิ่มบัญชี/แก้ราคา) ปุ่มบันทึกจึงตกใต้ fold
+           และปุ่มปิดเลื่อนหลุดจอจนปิดไม่ได้ */
+        className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-white/70 bg-white/95 shadow-2xl outline-none animate-slide-in-up sm:max-h-[85dvh] sm:rounded-xl sm:bg-white/85 sm:backdrop-blur-2xl sm:animate-scale-in ${
+          wide ? "sm:max-w-3xl" : "sm:max-w-lg"
+        }`}
       >
-        <div className="flex items-center justify-between border-b border-brand-100/70 px-5 py-4">
-          <h2 className="text-base font-semibold text-stone-900">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between border-b border-brand-100/70 px-5 py-3.5">
+          <h2 className="min-w-0 truncate pr-2 text-base font-semibold text-stone-900">
+            {title}
+          </h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-1 text-stone-400 transition-colors duration-200 hover:bg-brand-50 hover:text-brand-700 cursor-pointer active:scale-90"
+            className="-mr-1.5 inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors duration-200 hover:bg-brand-50 hover:text-brand-700 active:scale-90 max-sm:-mr-2 max-sm:h-11 max-sm:w-11"
             aria-label="ปิด"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-safe-4">
+          {children}
+        </div>
       </div>
     </div>,
     document.body
@@ -249,7 +265,9 @@ export function ConfirmDialog({
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <p className="text-sm leading-6 text-stone-600">{message}</p>
-      <div className="mt-5 flex justify-end gap-2">
+      {/* มือถือ: ปุ่มเต็มความกว้างซ้อนกัน ปุ่มยืนยัน (มักเป็น "ลบ") อยู่บน ปุ่มยกเลิกอยู่ล่าง
+          ใกล้นิ้วโป้งกว่า — ของเดิมวางเรียงกันห่าง 8px บนเป้า 36px กดพลาดลบของจริงได้ */}
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="secondary" onClick={onClose}>
           ยกเลิก
         </Button>
