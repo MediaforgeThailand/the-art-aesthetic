@@ -98,43 +98,56 @@ export function sizeGroupFromFollowers(
 
 export const INFLU_CALENDAR_KINDS: Record<
   InfluCalendarKind,
-  { label: string; short: string; chip: string; dot: string }
+  {
+    label: string;
+    short: string;
+    chip: string;
+    dot: string;
+    /** ขอบซ้ายเข้มของชิปในช่องวัน — แยกประเภทด้วยสีขอบให้กวาดตาเจอเร็ว */
+    edge: string;
+  }
 > = {
   service: {
     label: "เข้ารับบริการ / ทำหัตถการ",
     short: "รับบริการ",
     chip: "bg-brand-100 text-brand-800 border-brand-200",
     dot: "bg-brand-500",
+    edge: "border-l-brand-500",
   },
   shoot: {
     label: "ถ่ายทำ / ถ่ายคอนเทนต์",
     short: "ถ่ายทำ",
     chip: "bg-violet-100 text-violet-700 border-violet-200",
     dot: "bg-violet-500",
+    edge: "border-l-violet-500",
   },
   post: {
     label: "คิวโพสต์ / ลงคลิป",
     short: "โพสต์",
     chip: "bg-sky-100 text-sky-700 border-sky-200",
     dot: "bg-sky-500",
+    edge: "border-l-sky-500",
   },
   meeting: {
     label: "นัดคุย / ประชุม",
     short: "นัดคุย",
     chip: "bg-amber-100 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
+    edge: "border-l-amber-500",
   },
   followup: {
     label: "ติดตามงาน / ส่งภาพอัปเดต",
     short: "ตามงาน",
     chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
     dot: "bg-emerald-500",
+    edge: "border-l-emerald-500",
   },
   other: {
     label: "อื่นๆ",
     short: "อื่นๆ",
     chip: "bg-stone-100 text-stone-600 border-stone-200",
     dot: "bg-stone-400",
+    edge: "border-l-stone-400",
   },
 };
 

@@ -8,7 +8,7 @@
 // เป็น "authenticated เข้าถึงได้ทั้งหมด" บัญชีนั้นอ่าน/แก้ข้อมูลทั้งฐานผ่าน REST ได้ทันที
 // (สิทธิ์ใน profiles.permissions กันแค่การมองเห็นเมนู ไม่ได้กันข้อมูล) — และพนักงานที่ถูกลบบัญชี
 // ไปแล้วก็สมัครกลับเข้ามาเองได้ · admin เพิ่มบัญชีผ่าน /accounts ซึ่ง upsert allowed_emails ให้อยู่แล้ว
-// กติกาเดียวกันนี้ถูกบังคับซ้ำที่ trigger handle_new_user (migration 0053) กันช่องทาง auth.signUp ตรงๆ
+// กติกาเดียวกันนี้ถูกบังคับซ้ำที่ trigger handle_new_user (migration 0056) กันช่องทาง auth.signUp ตรงๆ
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {

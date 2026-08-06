@@ -24,7 +24,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })

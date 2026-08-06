@@ -35,10 +35,6 @@ end $$;
 comment on column public.influencers.product_categories is
   'หมวดสินค้าของเคส — ยังไม่มีโค้ดใช้งาน (เพิ่มไว้ตอนซ่อม mirror 2026-08-05)';
 
--- 3) tasks.posted_by (FK → profiles, ปัจจุบัน 0 แถวที่มีค่า) — คู่กับ posted_at ของ 0030
---    แต่ไม่มีทั้ง migration และการใช้งานในโค้ด
-alter table public.tasks
-  add column if not exists posted_by uuid references public.profiles(id) on delete set null;
-
-comment on column public.tasks.posted_by is
-  'ผู้กดว่าโพสแล้ว — ยังไม่มีโค้ดใช้งาน (เพิ่มไว้ตอนซ่อม mirror 2026-08-05)';
+-- หมายเหตุ: `tasks.posted_by` เคยอยู่ในไฟล์นี้ตอนตรวจ (เจอในโปรดักชันแต่ไม่มี migration)
+-- ระหว่างนั้น session อื่นทำฟีเจอร์ "ใครกดโพสแล้ว" พอดีและเขียน mirror ไว้ที่ 0053_task_posted_by
+-- จึงถอดออกจากที่นี่ ปล่อยให้ 0053 เป็นเจ้าของคอลัมน์นั้นแต่ไฟล์เดียว

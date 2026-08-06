@@ -842,7 +842,7 @@ function OverviewPanel({
             {influencer.photo_path && (
               <OverviewPhoto path={influencer.photo_path} />
             )}
-            <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3">
+            <dl className="grid flex-1 grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
               <Field label="ชื่อเล่น" value={influencer.nickname} />
               <Field label="ชื่อ-นามสกุล" value={fullName} />
               <Field label="เบอร์โทร" value={influencer.phone} />
@@ -886,7 +886,7 @@ function OverviewPanel({
               </button>
             )}
           </div>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
             <Field label="หัตถการที่รับ" value={influencer.procedure_text} />
             <Field
               label="มูลค่าเคส"
@@ -947,7 +947,7 @@ function OverviewPanel({
           <h3 className="mb-3 text-sm font-semibold text-stone-900">
             เอกสาร & สัญญา
           </h3>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
             <Field
               label="Memo ขออนุมัติ"
               value={
@@ -995,7 +995,7 @@ function OverviewPanel({
           <h3 className="mb-3 text-sm font-semibold text-stone-900">
             การติดตามงาน
           </h3>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
             <Field
               label="สถานะรวม"
               value={
@@ -1199,12 +1199,17 @@ function ContactStage({
     router.refresh();
   };
 
+  // กันกดซ้ำระหว่างรอ DB ตอบ — เน็ตมือถือช้า ผู้ใช้มักกดรัวจนยิงซ้อนหลายครั้ง
+  const [joining, setJoining] = useState(false);
   const confirmJoin = async () => {
+    if (joining) return;
+    setJoining(true);
     setError(null);
     const { error: e } = await supabase
       .from("influencers")
       .update({ stage: 2 })
       .eq("id", influencer.id);
+    setJoining(false);
     if (e) {
       setError(`บันทึกไม่สำเร็จ: ${e.message}`);
       return;
@@ -1242,7 +1247,11 @@ function ContactStage({
           </p>
         )}
         {!readOnly && (
-          <Button className="mt-4 w-full" onClick={() => void confirmJoin()}>
+          <Button
+            className="mt-4 w-full"
+            loading={joining}
+            onClick={() => void confirmJoin()}
+          >
             <CheckCircle2 size={16} />
             ยืนยันตกลงร่วมงาน — ไป Stage 2
           </Button>
@@ -1443,7 +1452,7 @@ function CaseDetailStage({
       </h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="d-nick">ชื่อเล่น</Label>
               <Input
@@ -1474,7 +1483,7 @@ function CaseDetailStage({
               readOnly={readOnly}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="d-date">วันที่เข้าทำหัตถการ</Label>
               <Input
@@ -1514,7 +1523,7 @@ function CaseDetailStage({
               ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="d-fol">ยอดผู้ติดตาม (ตัวเลข) *</Label>
               <Input
@@ -2020,12 +2029,16 @@ function FollowupStage({
     }
   };
 
+  const [finishing, setFinishing] = useState(false);
   const finish = async () => {
+    if (finishing) return;
+    setFinishing(true);
     setErr(null);
     const { error } = await supabase
       .from("influencers")
       .update({ completed: true })
       .eq("id", influencer.id);
+    setFinishing(false);
     if (error) {
       setErr(`ปิดงานไม่สำเร็จ: ${error.message}`);
       return;
@@ -2114,7 +2127,11 @@ function FollowupStage({
         ) : (
           allDone &&
           !readOnly && (
-            <Button className="ml-auto" onClick={() => void finish()}>
+            <Button
+              className="ml-auto"
+              loading={finishing}
+              onClick={() => void finish()}
+            >
               <CheckCircle2 size={16} />
               ครบทุก step — ปิดงาน
             </Button>

@@ -26,6 +26,7 @@ export default async function InfluencersPage() {
     { data: tasks },
     { data: doctors },
     { data: sourceLinks },
+    { data: serviceBookings },
   ] = await Promise.all([
       getAccess(),
       supabase
@@ -46,6 +47,13 @@ export default async function InfluencersPage() {
         .from("influ_links")
         .select("id, influencer_id, title, url")
         .order("position", { ascending: true }),
+      // คิว "เข้ารับบริการ" ที่ลงในปฏิทินแล้ว = หลักฐานว่านัดหมอเรียบร้อย
+      // (influ manager ลงคิวฝั่งนี้ต่อจากคิวฝั่งระบบโรงพยาบาล) — ใช้ติดป้ายเตือนบนการ์ด
+      supabase
+        .from("influ_calendar_events")
+        .select("influencer_id")
+        .eq("kind", "service")
+        .not("influencer_id", "is", null),
     ]);
   if (!hasPermission(access, "influ")) return <AccessNotice />;
 
@@ -61,6 +69,11 @@ export default async function InfluencersPage() {
         }
         doctors={(doctors ?? []) as DoctorRow[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkLite[]}
+        bookedInfluIds={
+          (serviceBookings ?? [])
+            .map((b) => b.influencer_id)
+            .filter((id): id is string => id !== null)
+        }
         loadError={error?.message ?? null}
       />
     </PageContainer>

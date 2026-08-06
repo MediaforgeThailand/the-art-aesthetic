@@ -1,8 +1,9 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import { AssigneeAvatar, type ProfileOption, profileName } from "./task-card";
 
 /** ตัวเลือกหนึ่งรายการของ PersonSelect
@@ -44,54 +45,27 @@ export function PersonSelect({
   size?: "md" | "sm";
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<MenuBox | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    // เลื่อนจอ/ย่อขยายหน้าต่างแล้วปิดเมนู — ตำแหน่ง fixed จะค้างผิดที่
-    const close = (e: Event) => {
-      // เลื่อนภายในเมนูเอง (รายชื่อยาว) ไม่นับ
-      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+  const place = (btn: HTMLElement) =>
+    menuBox(btn, {
+      width: 248,
+      maxHeight: Math.min(48 * options.length + 12, 288),
+    });
+
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
 
   const toggle = () => {
     if (disabled) return;
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const menuH = Math.min(40 * options.length + 12, 288);
-      setPos({
-        x: Math.min(r.left, window.innerWidth - 248),
-        y:
-          r.bottom + menuH > window.innerHeight - 8
-            ? Math.max(8, r.top - menuH - 4)
-            : r.bottom + 4,
-      });
-    }
+    if (!open && btnRef.current) setPos(place(btnRef.current));
     setOpen((o) => !o);
   };
 
@@ -128,10 +102,15 @@ export function PersonSelect({
           <div
             ref={menuRef}
             role="listbox"
-            style={{ left: pos.x, top: pos.y }}
+            style={{
+              left: pos.x,
+              top: pos.y,
+              width: pos.width,
+              maxHeight: pos.height,
+            }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="fixed z-[60] max-h-72 w-60 overflow-y-auto rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
+            className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
           >
             {options.map((o) => (
               <button
@@ -143,7 +122,7 @@ export function PersonSelect({
                   onChange(o.value);
                   setOpen(false);
                 }}
-                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-brand-50 ${
+                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2.5 text-sm transition-colors hover:bg-brand-50 sm:py-1.5 ${
                   o.profile === undefined ? "text-stone-600" : "text-stone-700"
                 }`}
               >

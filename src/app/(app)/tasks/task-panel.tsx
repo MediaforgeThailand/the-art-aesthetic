@@ -1615,6 +1615,13 @@ export function TaskPanel({
           สร้างโดย {task.creator ? profileName(task.creator) : "-"} ·{" "}
           {formatDateTime(task.created_at)}
         </p>
+        {/* ผู้กดโพส — งานที่โพสไว้ก่อนมีคอลัมน์ posted_by จะไม่มีชื่อ โชว์ "ไม่ระบุ" แทน */}
+        {task.posted_at && (
+          <p className="px-2 text-[11px] text-sky-400">
+            โพสโดย {task.poster ? profileName(task.poster) : "ไม่ระบุ"} ·{" "}
+            {formatDateTime(task.posted_at)}
+          </p>
+        )}
       </div>
 
       {panelError && (
