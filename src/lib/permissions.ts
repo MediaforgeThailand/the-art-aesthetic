@@ -23,7 +23,7 @@ export const PERMISSION_META: {
     key: "influ",
     label: "Influ Manager",
     detail:
-      "จัดการ Influencer — บอร์ด Influ Management (pipeline), สัญญา และ Influ Calendar",
+      "จัดการ Influencer — บอร์ด Influ Management (pipeline), สัญญา, Influ Calendar, Influ Dashboard และ Influencer Cost · เป็นสิทธิ์เดียวที่เดินงาน/อัปโหลดเอกสารในเคสได้",
   },
   {
     key: "pricing",

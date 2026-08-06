@@ -18,8 +18,12 @@ export default async function InfluDashboardPage() {
   const supabase = await createClient();
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
-  const [access, { data: influencers, error }, { data: items }, { data: tasks }] =
-    await Promise.all([
+  const [
+    access,
+    { data: influencers, error },
+    { data: items, error: itemsError },
+    { data: tasks, error: tasksError },
+  ] = await Promise.all([
       getAccess(),
       // เฉพาะเคสใน pipeline (archive = ข้อมูลนำเข้าเก่า ไม่นับในแดชบอร์ด)
       supabase
@@ -43,7 +47,13 @@ export default async function InfluDashboardPage() {
         influencers={(influencers ?? []) as DashInflu[]}
         items={(items ?? []) as DashCostItem[]}
         tasks={(tasks ?? []) as DashTask[]}
-        loadError={error?.message ?? null}
+        // error ของ query ต้นทุน/follow-up ต้องแจ้งด้วย ไม่งั้นการ์ดขึ้น ฿0 เหมือน
+        // "ยังไม่มีใครกรอกต้นทุน" ทั้งที่จริงคือโหลดข้อมูลไม่สำเร็จ
+        loadError={
+          error?.message ??
+          (itemsError ? `โหลดต้นทุนไม่สำเร็จ: ${itemsError.message}` : null) ??
+          (tasksError ? `โหลดงาน follow-up ไม่สำเร็จ: ${tasksError.message}` : null)
+        }
       />
     </PageContainer>
   );

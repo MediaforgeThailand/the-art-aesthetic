@@ -136,13 +136,17 @@ export function TasksClient({
       router.refresh();
     }, 400);
   };
+  // ออกจากหน้าก่อนครบ 400ms = ต้อง "flush" ไม่ใช่ทิ้ง — เคสที่ต้องการแก้คือแก้เสร็จแล้ว
+  // เดินออกทันทีพอดี ถ้าทิ้ง timer ไปเฉยๆ cache จะยังเป็นของเก่าเหมือนเดิม
   useEffect(
     () => () => {
       if (refreshTimer.current !== null) {
         window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+        router.refresh();
       }
     },
-    []
+    [router]
   );
 
   /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
@@ -386,9 +390,17 @@ export function TasksClient({
     setExcludeStatuses([]);
   };
 
+  /** true = การล้างตัวกรองรอบนี้เป็นระบบทำเอง (เปิดงานจากแจ้งเตือน) ไม่ใช่ผู้ใช้ตั้งใจ
+      — ข้ามการเขียนทับค่าที่จำไว้ 1 ครั้ง ไม่งั้นกดแจ้งเตือนทีเดียวตัวกรองที่ตั้งไว้หายถาวร */
+  const skipPersistRef = useRef(false);
+
   // จำค่าตัวกรองทุกครั้งที่เปลี่ยน
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
     try {
       window.localStorage.setItem(
         filterStorageKey,
@@ -812,6 +824,8 @@ export function TasksClient({
 
   /** เปิดแผงของงานที่ลิงก์ + เลื่อนบอร์ดไปที่การ์ดนั้น (ล้างตัวกรองให้การ์ดโผล่แน่นอน) */
   const navigateToTask = (taskId: string) => {
+    // ล้างตัวกรองเพื่อให้การ์ดเป้าหมายโผล่แน่ๆ แต่ไม่ทับค่าที่ผู้ใช้ตั้งไว้ใน localStorage
+    skipPersistRef.current = true;
     clearFilters();
     setTab("work");
     setSelectedId(taskId);
@@ -1125,6 +1139,7 @@ export function TasksClient({
     title: string,
     placement: QuickAddPlacement
   ) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     const isBrief = section?.type === "brief";
@@ -1241,6 +1256,7 @@ export function TasksClient({
 
   /** ผู้รับกด "รับงาน" — ปิด brief (รับแล้ว) + สร้างการ์ด creative ในเซคชัน Creatives ทันที */
   const acceptBrief = async (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(task.id) || task.brief_accepted_at) return;
     if (!creativesSectionId) {
       showError("ยังไม่มีเซคชันชิ้นงาน (Creatives) สำหรับวางงานที่รับ");
@@ -1362,6 +1378,7 @@ export function TasksClient({
 
   /** กู้งานคืนจากถังขยะ — กลับไปเซคชัน/สถานะเดิมทุกอย่าง */
   const restoreTask = (task: TaskWithAssignee) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     patchTask(task.id, { db: { deleted_at: null } });
   };
 
@@ -1485,6 +1502,7 @@ export function TasksClient({
 
   /** ลากหัวคอลัมน์เพื่อเรียงเซคชัน — อัพเดตเฉพาะตัวที่ลาก (float กึ่งกลางเพื่อนบ้าน) */
   const reorderSections = (activeId: string, overId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(activeId) || isTempId(overId)) return;
     const from = sections.findIndex((s) => s.id === activeId);
     const to = sections.findIndex((s) => s.id === overId);
@@ -1537,6 +1555,7 @@ export function TasksClient({
   /* ---------- section mutations ---------- */
 
   const renameSection = (sectionId: string, name: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const prevName = sections.find((s) => s.id === sectionId)?.name;
     if (prevName === undefined || prevName === name) return;
@@ -1559,6 +1578,7 @@ export function TasksClient({
 
   /** สลับชนิดเซคชัน work ↔ brief */
   const toggleSectionType = (sectionId: string) => {
+    markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
     if (isTempId(sectionId)) return;
     const section = sections.find((s) => s.id === sectionId);
     if (!section) return;

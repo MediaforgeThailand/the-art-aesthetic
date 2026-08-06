@@ -344,6 +344,29 @@ export function InfluencersClient({
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
 
+  /** ทิ้ง cache ของหน้านี้หลังเขียน DB (Next cache 30 วิ · หน้านี้ไม่มี realtime)
+      รวบด้วย timeout สั้นๆ — ลากการ์ดรัวๆ จะยิง refresh ทุกครั้งไม่ได้ เพราะ payload ที่
+      กลับมาจะ re-seed items ทับตำแหน่งที่เพิ่งลากไปแต่ยังบันทึกไม่เสร็จ (การ์ดเด้งกลับ)
+      ออกจากหน้าก่อนครบเวลา = flush ทิ้งท้ายให้ ไม่งั้น cache ค้างเป็นของเก่า */
+  const refreshTimer = useRef<number | null>(null);
+  const markServerStale = () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 600);
+  };
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = null;
+        router.refresh();
+      }
+    },
+    [router]
+  );
+
   // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer — ปุ่มเปิดเร็วบนการ์ด
   const linksByInflu = useMemo(() => {
     const m = new Map<string, InfluLinkLite[]>();
@@ -475,7 +498,7 @@ export function InfluencersClient({
       setActionError(`ย้ายการ์ดไม่สำเร็จ: ${error.message}`);
       return;
     }
-    router.refresh();
+    markServerStale();
   };
 
   /** mark/ยกเลิกสถานะ "ปฏิเสธ" — การ์ดจะหายจากบอร์ดถ้าตัวกรองยกเว้นปฏิเสธอยู่ (ค่าเริ่มต้น)
@@ -496,7 +519,7 @@ export function InfluencersClient({
       setActionError(`บันทึกสถานะปฏิเสธไม่สำเร็จ: ${error.message}`);
       return;
     }
-    router.refresh();
+    markServerStale();
   };
 
   /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" ในคิวรอทำ Memo — บันทึกลง DB ให้ทั้งทีมเห็นตรงกัน
@@ -517,7 +540,7 @@ export function InfluencersClient({
       setActionError(`บันทึกสถานะส่งเอกสารไม่สำเร็จ: ${error.message}`);
       return;
     }
-    router.refresh();
+    markServerStale();
   };
 
   /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ

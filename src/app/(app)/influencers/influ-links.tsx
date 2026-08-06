@@ -105,9 +105,12 @@ export function SourceLinkQuickButton({
 export function InfluLinksCard({
   influencerId,
   initialLinks,
+  readOnly = false,
 }: {
   influencerId: string;
   initialLinks: InfluLinkRow[];
+  /** true = เปิดลิงก์ได้อย่างเดียว (สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี) */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -192,21 +195,25 @@ export function InfluLinksCard({
                 <span className="min-w-0 flex-1 truncate">{linkLabel(l)}</span>
                 <ExternalLink size={13} className="shrink-0 text-stone-300" />
               </a>
-              <button
-                type="button"
-                title="ลบลิงก์นี้"
-                onClick={() => remove(l.id)}
-                className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90"
-              >
-                <X size={14} />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  title="ลบลิงก์นี้"
+                  onClick={() => remove(l.id)}
+                  className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
       {/* ฟอร์มเพิ่มลิงก์ — เปิดตลอดแม้เคสปิดงานแล้ว (คลังไฟล์อ้างอิง ไม่ใช่สถานะงาน) */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className={`flex flex-wrap items-center gap-2 ${readOnly ? "hidden" : ""}`}
+      >
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

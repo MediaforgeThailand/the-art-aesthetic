@@ -411,8 +411,10 @@ function ItemDetailModal({
   if (item.price_normal != null) {
     rows.push({
       label: "ราคาปกติ (Price List)",
-      start: "2026-01-01",
-      end: "2026-12-31",
+      // ราคาปกติไม่มีวันหมดเขต — เดิมใส่ 2026-01-01 ถึง 2026-12-31 ตายตัว ทำให้ปีหน้า
+      // ลูกค้าเห็นว่าราคาปกติ "หมดอายุไปแล้ว"; ปล่อยว่างแล้วให้ตารางขึ้น "-" ตามที่รองรับอยู่แล้ว
+      start: null,
+      end: null,
       price: item.price_normal,
       state: null,
       isB1g1: false,

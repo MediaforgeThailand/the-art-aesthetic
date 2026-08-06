@@ -17,9 +17,12 @@ security definer
 set search_path = public
 as $$
 begin
+  -- เทียบแบบ lower ทั้งสองฝั่ง: /accounts บันทึกอีเมลเป็นตัวพิมพ์เล็กอยู่แล้ว แต่ถ้ามีใคร
+  -- insert allowed_emails ด้วย SQL มือแล้วติดตัวพิมพ์ใหญ่มา บัญชีจะสร้างไม่ได้แบบงงๆ
   if new.email is null
      or not exists (
-       select 1 from public.allowed_emails where email = lower(new.email)
+       select 1 from public.allowed_emails
+       where lower(email) = lower(new.email)
      ) then
     raise exception 'signup disabled: ask an admin to create your account';
   end if;

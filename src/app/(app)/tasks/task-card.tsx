@@ -153,15 +153,21 @@ export function AssigneePicker({
       }
     };
     // เลื่อนจอ/ย่อขยายหน้าต่างแล้วปิดเมนู — ตำแหน่ง fixed จะค้างผิดที่
+    // แต่ต้องไม่ปิดเมื่อ "เลื่อนในตัวเมนูเอง" (รายชื่อยาวกว่าจอ) ไม่งั้นเลือกคนไม่ได้เลย
+    const onScroll = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
     const close = () => setOpen(false);
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
   }, [open]);
@@ -421,6 +427,12 @@ function useCachedSignedUrl(path: string): {
 }
 
 function CardMediaThumb({ file }: { file: TaskFileRow }) {
+  // key ตาม path — ไฟล์เปลี่ยน = component ใหม่ สถานะ broken จึงรีเซ็ตเอง
+  // (ก่อนหน้านี้ broken ค้างจากไฟล์เดิม ทำให้ไฟล์ใหม่ที่ปกติแสดงเป็น placeholder ไปด้วย)
+  return <CardMediaThumbInner key={file.file_path} file={file} />;
+}
+
+function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
   if (failed || broken) {

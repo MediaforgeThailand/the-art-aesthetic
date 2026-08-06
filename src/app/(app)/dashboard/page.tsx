@@ -65,6 +65,17 @@ export default async function DashboardPage({
 
   const supabase = await createClient();
 
+  // หน้านี้เป็นปลายทางของ `/` และของการล็อกอิน แต่ผู้ใช้ส่วนใหญ่ไม่มีสิทธิ์ `data`
+  // — เช็คสิทธิ์ก่อนยิง query ชุดใหญ่ (RPC ยอดขาย + KPI + เป้า) ไม่งั้นทุกคนที่ไม่มีสิทธิ์
+  // ต้องรอ query ที่หนักที่สุดของระบบทำงานจนจบก่อนถูก redirect ทิ้งอยู่ดี
+  // (แลกกับ round trip เดียวสำหรับคนที่มีสิทธิ์ — DB อยู่ region เดียวกับ function)
+  const access = await getAccess();
+  if (!hasPermission(access, "data")) {
+    const fallback = firstAllowedPath(access);
+    if (fallback) redirect(fallback);
+    return <AccessNotice />;
+  }
+
   const today = todayISO();
   const cutoff = cutoffFor(period);
   const prevWin = previousWindow(cutoff, today);
@@ -77,9 +88,8 @@ export default async function DashboardPage({
     trendStart.getMonth() + 1
   )}-${pad(trendStart.getDate())}`;
 
-  // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
+  // สิทธิ์เช็คไปแล้วข้างบน (ต้องรู้ก่อนว่าจะ redirect ไหม) — ที่เหลือยิงขนานตามปกติ
   const [
-    access,
     summaryResult,
     prevTotalsResult,
     monthlyResult,
@@ -91,7 +101,6 @@ export default async function DashboardPage({
     { data: demoSales },
     { data: lastSync },
   ] = await Promise.all([
-    getAccess(),
     // ยอดขาย aggregate ใน SQL — ไม่โหลดรายบรรทัด (ข้อมูลจริงหลายหมื่นแถว)
     supabase.rpc("sales_dash_summary", { p_from: cutoff, p_to: today }),
     supabase.rpc("sales_totals", { p_from: prevWin.from, p_to: prevWin.to }),
@@ -129,12 +138,6 @@ export default async function DashboardPage({
       .limit(1)
       .maybeSingle(),
   ]);
-
-  if (!hasPermission(access, "data")) {
-    const fallback = firstAllowedPath(access);
-    if (fallback) redirect(fallback);
-    return <AccessNotice />;
-  }
 
   if (summaryResult.error) {
     throw new Error(`โหลดสรุปยอดขายไม่สำเร็จ: ${summaryResult.error.message}`);

@@ -328,6 +328,14 @@ function DaySidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {/* error ของการลบ/ติ๊กเสร็จต้องขึ้นในแผงด้วย — บนมือถือแผงนี้เป็น overlay เต็มจอ
+            ทับแบนเนอร์ระดับหน้าไว้ ผู้ใช้เลยเห็นเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
+            (โหมดฟอร์มมีบรรทัด error ของตัวเองอยู่แล้ว จึงไม่ต้องซ้ำ) */}
+        {view !== "form" && error && (
+          <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 animate-fade-in">
+            {error}
+          </p>
+        )}
         {/* ---------- โหมด: รายชื่อคิวของวันนั้น ---------- */}
         {view === "list" && (
           <>

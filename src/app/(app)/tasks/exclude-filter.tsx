@@ -42,7 +42,12 @@ export function ExcludeFilter({
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<{
+    x: number;
+    y: number;
+    /** ความสูงสูงสุดที่วางได้จริงในจอ — คำนวณตอนเปิดเพราะขึ้นกับตำแหน่งปุ่ม */
+    maxH: number;
+  } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -78,9 +83,16 @@ export function ExcludeFilter({
   const toggle = () => {
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
+      // พื้นที่ใต้ปุ่มไม่พอ (เช่นแถบตัวกรองอยู่ครึ่งล่างของจอมือถือ) ให้พลิกไปเปิดด้านบนแทน
+      // ไม่งั้นเมนูยาวลงไปนอกจอแล้วเลื่อนไม่ถึงรายการล่างๆ
+      const below = window.innerHeight - r.bottom - 12;
+      const above = r.top - 12;
+      const flipUp = below < 240 && above > below;
+      const height = Math.max(160, Math.min(window.innerHeight * 0.7, flipUp ? above : below));
       setPos({
-        x: Math.min(r.left, window.innerWidth - 272),
-        y: r.bottom + 6,
+        x: Math.max(8, Math.min(r.left, window.innerWidth - 272)),
+        y: flipUp ? Math.max(8, r.top - 6 - height) : r.bottom + 6,
+        maxH: height,
       });
     }
     setOpen((o) => !o);
@@ -117,8 +129,8 @@ export function ExcludeFilter({
         createPortal(
         <div
           ref={panelRef}
-          style={{ left: pos.x, top: pos.y }}
-          className="glass fixed z-[60] max-h-[70vh] w-64 overflow-y-auto rounded-xl p-3 shadow-xl animate-scale-in"
+          style={{ left: pos.x, top: pos.y, maxHeight: pos.maxH }}
+          className="glass fixed z-[60] w-64 overflow-y-auto rounded-xl p-3 shadow-xl animate-scale-in"
         >
           <div className="mb-1 flex items-center justify-between">
             <p className="text-xs font-semibold text-stone-700">

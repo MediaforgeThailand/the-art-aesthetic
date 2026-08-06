@@ -253,6 +253,13 @@ export function TaskPanel({
   const [comments, setComments] = useState<TaskCommentWithAuthor[] | null>(
     null
   );
+  /** คอมเมนต์ที่มาทาง realtime ก่อน fetch รอบแรกจะเสร็จ — รวมเข้าลิสต์ตอน fetch จบ */
+  const pendingCommentsRef = useRef<TaskCommentWithAuthor[]>([]);
+  /** ไฟล์ที่กำลังจะลบ (รอยืนยัน) — null = ไม่มีกล่องยืนยันเปิดอยู่
+      ต้องประกาศก่อน effect ของ Esc ที่อ่านค่านี้ (ห้ามให้ Esc ปิดแผงทั้งอันขณะกล่องเปิด) */
+  const [confirmRemoveFile, setConfirmRemoveFile] = useState<TaskFileRow | null>(
+    null
+  );
 
   useEffect(() => {
     let alive = true;
@@ -289,10 +296,18 @@ export function TaskPanel({
       }
       if (!c.error) {
         const fetchedComments = (c.data ?? []) as unknown as TaskCommentWithAuthor[];
+        // คอมเมนต์ที่มาทาง realtime ระหว่างรอ fetch รอบแรกถูกพักไว้ใน ref — เอามารวมด้วย
+        // ไม่งั้นข้อความที่ส่งมาช่วงนั้นหายจนกว่าจะปิด-เปิดแผงใหม่
+        const buffered = pendingCommentsRef.current;
+        pendingCommentsRef.current = [];
         setComments((cur) => {
-          if (cur === null) return fetchedComments;
-          const ids = new Set(fetchedComments.map((x) => x.id));
-          return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
+          const base = cur === null ? fetchedComments : (() => {
+            const ids = new Set(fetchedComments.map((x) => x.id));
+            return [...fetchedComments, ...cur.filter((x) => !ids.has(x.id))];
+          })();
+          if (buffered.length === 0) return base;
+          const have = new Set(base.map((x) => x.id));
+          return [...base, ...buffered.filter((x) => !have.has(x.id))];
         });
       }
     });
@@ -321,8 +336,14 @@ export function TaskPanel({
             ? (profiles.find((p) => p.id === row.author_id) ?? null)
             : null;
           setComments((cur) => {
-            // ยังโหลดรอบแรกไม่เสร็จ — ปล่อยให้ fetch หลักเก็บแถวนี้เอง
-            if (cur === null) return cur;
+            // ยังโหลดรอบแรกไม่เสร็จ — พักไว้ก่อน แล้วให้ fetch หลักรวมให้ตอนจบ
+            // (แถวที่ insert หลัง query ยิงไปแล้วจะไม่อยู่ในผล fetch จึงต้องเก็บเอง)
+            if (cur === null) {
+              if (!pendingCommentsRef.current.some((c) => c.id === row.id)) {
+                pendingCommentsRef.current.push({ ...row, author });
+              }
+              return cur;
+            }
             if (cur.some((c) => c.id === row.id)) return cur;
             return [...cur, { ...row, author }];
           });
@@ -338,12 +359,13 @@ export function TaskPanel({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // lightbox เปิดอยู่ → ปล่อยให้ lightbox จัดการ Esc เอง ไม่ปิดแผง
+      // lightbox / กล่องยืนยันลบไฟล์ เปิดอยู่ → ปล่อยให้ตัวนั้นจัดการ Esc เอง ไม่ปิดแผง
       if (
         e.key !== "Escape" ||
         suspendEsc ||
         lightboxIndex !== null ||
-        briefLightboxIndex !== null
+        briefLightboxIndex !== null ||
+        confirmRemoveFile !== null
       )
         return;
       const el = document.activeElement as HTMLElement | null;
@@ -356,7 +378,7 @@ export function TaskPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, suspendEsc, lightboxIndex, briefLightboxIndex]);
+  }, [onClose, suspendEsc, lightboxIndex, briefLightboxIndex, confirmRemoveFile]);
 
   useEffect(() => {
     asideRef.current?.focus({ preventScroll: true });
@@ -463,11 +485,6 @@ export function TaskPanel({
     }
     router.refresh();
   };
-
-  /** ไฟล์ที่กำลังจะลบ (รอยืนยัน) — null = ไม่มีกล่องยืนยันเปิดอยู่ */
-  const [confirmRemoveFile, setConfirmRemoveFile] = useState<TaskFileRow | null>(
-    null
-  );
 
   const removeFile = async (f: TaskFileRow) => {
     const { error } = await supabase.from("task_files").delete().eq("id", f.id);
@@ -1271,6 +1288,15 @@ export function TaskPanel({
                     onClick={(e) => {
                       e.stopPropagation();
                       onSetInfluencer(task, null);
+                    }}
+                    // เป็น span ใน <button> (ห้ามซ้อน button) — ต้องรับ Enter/Space เอง
+                    // ไม่งั้นคีย์บอร์ดโฟกัสถึงแต่กดไม่ได้
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSetInfluencer(task, null);
+                      }
                     }}
                     className="shrink-0 cursor-pointer rounded p-0.5 text-stone-400 hover:text-rose-500"
                   >
