@@ -847,7 +847,7 @@ function DaySidebar({
 
       {/* ---- ปุ่มเพิ่ม influ ประจำวันนั้น (ซ่อนตอนอยู่ในฟอร์ม) ---- */}
       {view !== "form" && (
-        <div className="border-t border-brand-100/70 px-4 py-3">
+        <div className="border-t border-brand-100/70 px-4 py-3 pb-safe-3 sm:pb-3">
           <Button className="w-full" onClick={() => openForm()}>
             <UserPlus size={16} />
             เพิ่ม Influ ในวันนี้

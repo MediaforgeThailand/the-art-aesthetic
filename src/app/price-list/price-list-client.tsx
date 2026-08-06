@@ -639,7 +639,7 @@ function ItemDetailModal({
         </div>
 
         {/* ปุ่มย้อนกลับล่าง — กดสะดวกบนมือถือ */}
-        <div className="border-t border-stone-100 px-4 py-3">
+        <div className="border-t border-stone-100 px-4 py-3 pb-safe-3 sm:pb-3">
           <button
             type="button"
             onClick={onClose}

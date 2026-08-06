@@ -1631,7 +1631,7 @@ export function TaskPanel({
       )}
 
       {/* ช่องพิมพ์แชท — ติดล่างเสมอ */}
-      <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3">
+      <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3">
         {/* เมนูแท็กคน — โผล่เหนือช่องพิมพ์เมื่อพิมพ์ @ */}
         {mentionQuery !== null && mentionMatches.length > 0 && (
           <div className="absolute bottom-full left-4 right-4 z-30 mb-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl animate-scale-in">
