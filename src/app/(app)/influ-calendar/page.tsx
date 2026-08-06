@@ -3,6 +3,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
+import type { DoctorRow } from "@/lib/types";
 import { CalendarClient, type CalendarEvent, type CalendarInflu } from "./calendar-client";
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export default async function InfluCalendarPage() {
   const supabase = await createClient();
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
-  const [access, { data: events, error }, { data: influencers }] =
+  const [access, { data: events, error }, { data: influencers }, { data: doctors }] =
     await Promise.all([
       getAccess(),
       // ดึงคิวทั้งหมด แล้วแบ่งเดือนฝั่ง client (ปฏิทินเดินเดือนไปมาได้โดยไม่ต้องโหลดใหม่)
@@ -33,6 +34,8 @@ export default async function InfluCalendarPage() {
         )
         .eq("archived", false)
         .order("first_name", { ascending: true }),
+      // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มคิว + รูปโปรไฟล์ในแผงข้าง
+      supabase.from("doctors").select("*").order("name", { ascending: true }),
     ]);
   if (!hasPermission(access, "influ")) return <AccessNotice />;
 
@@ -41,6 +44,7 @@ export default async function InfluCalendarPage() {
       <CalendarClient
         events={(events ?? []) as unknown as CalendarEvent[]}
         influencers={(influencers ?? []) as CalendarInflu[]}
+        doctors={(doctors ?? []) as DoctorRow[]}
         userId={access.uid}
         loadError={error?.message ?? null}
       />

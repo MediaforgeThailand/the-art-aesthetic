@@ -2,6 +2,7 @@
 
 import {
   BellRing,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -14,6 +15,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Stethoscope,
   UsersRound,
   X,
 } from "lucide-react";
@@ -39,7 +41,9 @@ import {
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluSizeGroup } from "@/lib/types";
+import type { DoctorRow, InfluSizeGroup } from "@/lib/types";
+import { DoctorManagerModal } from "./doctor-manager";
+import type { InfluLinkLite } from "./influ-links";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -50,6 +54,7 @@ import {
   influStatusOf,
   type InfluStatusKey,
   type InfluTaskLite,
+  needsDoctorBooking,
   thaiDateISO,
 } from "./influ-board";
 
@@ -118,6 +123,16 @@ function InfluExcludeFilter({
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  /** ตำแหน่งแผง (fixed) — หนีบขอบจอทั้งแนวนอนและแนวตั้ง จอแคบต้องไม่ล้นออกนอกจอ */
+  const placeAt = (btn: HTMLElement) => {
+    const r = btn.getBoundingClientRect();
+    const panelW = Math.min(264, window.innerWidth - 16);
+    return {
+      x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
+      y: r.bottom + 6,
+    };
+  };
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
@@ -128,24 +143,24 @@ function InfluExcludeFilter({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    // แผงเป็น position:fixed — เลื่อนจอ/หมุนเครื่องแล้วต้องย้ายตามปุ่ม ไม่งั้นค้างลอยผิดที่
+    const reposition = () => {
+      if (btnRef.current) setPos(placeAt(btnRef.current));
+    };
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
   }, [open]);
 
   const toggleOpen = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const panelW = 264;
-      // หนีบขอบจอ — จอแคบเมนูต้องไม่ล้นออกนอกจอ
-      setPos({
-        x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
-        y: r.bottom + 6,
-      });
-    }
+    if (!open && btnRef.current) setPos(placeAt(btnRef.current));
     setOpen((o) => !o);
   };
 
@@ -321,12 +336,21 @@ function MemoWaitingList({
 export function InfluencersClient({
   influencers,
   tasks,
+  doctors,
+  sourceLinks,
+  bookedInfluIds,
   loadError,
 }: {
   influencers: InfluencerListRow[];
   tasks: InfluTaskLite[];
+  doctors: DoctorRow[];
+  /** ลิงก์ไฟล์ source (Google Drive) ทั้งหมด — ปุ่มเปิดเร็วบนการ์ด */
+  sourceLinks: InfluLinkLite[];
+  /** influencer ที่มีคิว "เข้ารับบริการ" ในปฏิทินแล้ว = นัดหมอเรียบร้อย */
+  bookedInfluIds: string[];
   loadError: string | null;
 }) {
+  const [doctorsOpen, setDoctorsOpen] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
@@ -335,12 +359,33 @@ export function InfluencersClient({
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
   useEffect(() => setItems(influencers), [influencers]);
 
+  // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer — ปุ่มเปิดเร็วบนการ์ด
+  const linksByInflu = useMemo(() => {
+    const m = new Map<string, InfluLinkLite[]>();
+    for (const l of sourceLinks) {
+      const arr = m.get(l.influencer_id);
+      if (arr) arr.push(l);
+      else m.set(l.influencer_id, [l]);
+    }
+    return m;
+  }, [sourceLinks]);
+
+  /* เคสที่ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ป้ายเรืองแสงบนการ์ด + ตัวกรองด้านบน */
+  const bookedIds = useMemo(() => new Set(bookedInfluIds), [bookedInfluIds]);
+  const bookingAlertIds = useMemo(
+    () =>
+      new Set(
+        items.filter((i) => needsDoctorBooking(i, bookedIds)).map((i) => i.id)
+      ),
+    [items, bookedIds]
+  );
+
   /** แท็บ: บอร์ดปกติ | คิวรอทำ Memo (stage 3 ที่ติ๊กว่าข้อมูลครบแล้ว) */
   const [tab, setTab] = useState<"board" | "memo">("board");
 
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<
-    number | "all" | "done" | "declined"
+    number | "all" | "done" | "declined" | "needbooking"
   >("all");
 
   // สถานะที่ถูก "ยกเว้น" ออกจากบอร์ด — จำค่าไว้ใน localStorage (เริ่มต้นซ่อนคนปฏิเสธ)
@@ -533,12 +578,14 @@ export function InfluencersClient({
   }, [activeTasks, today]);
 
   /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
-     ชิป "ปฏิเสธ" = ดูเฉพาะคนที่ปฏิเสธ (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */
+     ชิป "ปฏิเสธ" / "รอลงคิวหมอ" = ดูเฉพาะกลุ่มนั้น (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า) */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((i) => {
       const status = influStatusOf(i);
-      if (stageFilter === "declined") {
+      if (stageFilter === "needbooking") {
+        if (!bookingAlertIds.has(i.id)) return false;
+      } else if (stageFilter === "declined") {
         if (status !== "declined") return false;
       } else {
         if (excluded.has(status)) return false;
@@ -555,7 +602,7 @@ export function InfluencersClient({
         (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, stageFilter, excluded]);
+  }, [items, search, stageFilter, excluded, bookingAlertIds]);
 
   /** คิว "รอทำ Memo" — ติ๊กว่าข้อมูลครบแล้ว (Stage 3) แต่ยังไม่ได้อัพโหลดไฟล์ Memo
       = ยังไม่มีใครลงมือทำ; อัพโหลดแล้วหลุดจากคิวเอง — เรียงคนที่รอนานสุดขึ้นก่อน
@@ -631,6 +678,8 @@ export function InfluencersClient({
                 i.stage === key
             ).length;
 
+  const bookingAlertActive = stageFilter === "needbooking";
+
   return (
     <>
       <PageHeader
@@ -638,6 +687,14 @@ export function InfluencersClient({
         description="บอร์ด Influencer แบ่งตามขนาดผู้ติดตาม — ลากการ์ดย้ายกลุ่ม/เรียงลำดับได้ คลิกการ์ดเพื่อเดินงานทีละ stage"
         action={
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDoctorsOpen(true)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            >
+              <Stethoscope size={16} />
+              จัดการหมอ
+            </button>
             <Link
               href="/influ-calendar"
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
@@ -713,6 +770,24 @@ export function InfluencersClient({
         </div>
       )}
 
+      {tab === "board" && bookingAlertIds.size > 0 && !bookingAlertActive && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 animate-fade-in">
+          <CalendarClock size={16} className="shrink-0" />
+          <span>
+            มี {formatNumber(bookingAlertIds.size)} เคสที่ผ่าน Memo แล้วแต่
+            <span className="font-semibold">ยังไม่มีคิวหมอในปฏิทิน</span> —
+            ตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอเรียบร้อย
+          </span>
+          <button
+            type="button"
+            onClick={() => setStageFilter("needbooking")}
+            className="ml-auto cursor-pointer rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-amber-600 active:scale-[0.97]"
+          >
+            ดูเฉพาะเคสเหล่านี้
+          </button>
+        </div>
+      )}
+
       {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง) */}
       {tab === "board" && (
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
@@ -738,7 +813,7 @@ export function InfluencersClient({
                 key={String(chip.key)}
                 type="button"
                 onClick={() => setStageFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
+                className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
                   active
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
@@ -753,6 +828,35 @@ export function InfluencersClient({
             );
           })}
         </div>
+        {/* ตัวกรองเตือน: ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ปุ่มเรืองแสงเมื่อมีเคสค้าง */}
+        <button
+          type="button"
+          onClick={() =>
+            setStageFilter(bookingAlertActive ? "all" : "needbooking")
+          }
+          title="เคสที่ผ่าน Stage 3 (Memo) แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
+            bookingAlertActive
+              ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
+              : bookingAlertIds.size > 0
+                ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-glow-amber"
+                : "border-brand-200 bg-white/70 text-stone-500 hover:border-brand-300 hover:bg-brand-50"
+          }`}
+        >
+          <CalendarClock size={14} />
+          รอลงคิวหมอ
+          <span
+            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+              bookingAlertActive
+                ? "bg-white/25 text-white"
+                : bookingAlertIds.size > 0
+                  ? "bg-amber-200 text-amber-900"
+                  : "bg-stone-100 text-stone-400"
+            }`}
+          >
+            {bookingAlertIds.size}
+          </span>
+        </button>
         <InfluExcludeFilter
           excluded={excluded}
           onChange={setExcluded}
@@ -803,16 +907,26 @@ export function InfluencersClient({
         </Card>
       ) : filtered.length === 0 ? (
         <Card>
-          <EmptyState
-            icon={<Search size={40} strokeWidth={1.5} />}
-            title="ไม่พบรายชื่อที่ตรงกับตัวกรอง"
-            description="ลองเปลี่ยนคำค้นหา, stage หรือเช็คตัวกรอง 'ยกเว้น' (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
-          />
+          {bookingAlertActive && search === "" ? (
+            <EmptyState
+              icon={<CalendarClock size={40} strokeWidth={1.5} />}
+              title="ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
+              description="ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึง Stage 3 (Memo) แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+            />
+          ) : (
+            <EmptyState
+              icon={<Search size={40} strokeWidth={1.5} />}
+              title="ไม่พบรายชื่อที่ตรงกับตัวกรอง"
+              description="ลองเปลี่ยนคำค้นหา, stage หรือเช็คตัวกรอง 'ยกเว้น' (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
+            />
+          )}
         </Card>
       ) : (
         <InfluBoard
           items={filtered}
           statsByInflu={statsByInflu}
+          linksByInflu={linksByInflu}
+          bookingAlertIds={bookingAlertIds}
           today={today}
           deletingId={deletingId}
           onOpen={(i) => router.push(`/influencers/${i.id}`)}
@@ -839,7 +953,7 @@ export function InfluencersClient({
             Stage 1: กรอกแค่ชื่อกับเบอร์ติดต่อพอ — รายละเอียดเคสไปกรอกใน stage
             ถัดไปหลังยืนยันร่วมงาน
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="inf-first">ชื่อ *</Label>
               <Input
@@ -913,6 +1027,13 @@ export function InfluencersClient({
           if (deleteTarget) void handleDelete(deleteTarget);
         }}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ทั้งใน stage 2 และปฏิทินคิว */}
+      <DoctorManagerModal
+        open={doctorsOpen}
+        onClose={() => setDoctorsOpen(false)}
+        doctors={doctors}
       />
     </>
   );

@@ -98,43 +98,56 @@ export function sizeGroupFromFollowers(
 
 export const INFLU_CALENDAR_KINDS: Record<
   InfluCalendarKind,
-  { label: string; short: string; chip: string; dot: string }
+  {
+    label: string;
+    short: string;
+    chip: string;
+    dot: string;
+    /** ขอบซ้ายเข้มของชิปในช่องวัน — แยกประเภทด้วยสีขอบให้กวาดตาเจอเร็ว */
+    edge: string;
+  }
 > = {
   service: {
     label: "เข้ารับบริการ / ทำหัตถการ",
     short: "รับบริการ",
     chip: "bg-brand-100 text-brand-800 border-brand-200",
     dot: "bg-brand-500",
+    edge: "border-l-brand-500",
   },
   shoot: {
     label: "ถ่ายทำ / ถ่ายคอนเทนต์",
     short: "ถ่ายทำ",
     chip: "bg-violet-100 text-violet-700 border-violet-200",
     dot: "bg-violet-500",
+    edge: "border-l-violet-500",
   },
   post: {
     label: "คิวโพสต์ / ลงคลิป",
     short: "โพสต์",
     chip: "bg-sky-100 text-sky-700 border-sky-200",
     dot: "bg-sky-500",
+    edge: "border-l-sky-500",
   },
   meeting: {
     label: "นัดคุย / ประชุม",
     short: "นัดคุย",
     chip: "bg-amber-100 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
+    edge: "border-l-amber-500",
   },
   followup: {
     label: "ติดตามงาน / ส่งภาพอัปเดต",
     short: "ตามงาน",
     chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
     dot: "bg-emerald-500",
+    edge: "border-l-emerald-500",
   },
   other: {
     label: "อื่นๆ",
     short: "อื่นๆ",
     chip: "bg-stone-100 text-stone-600 border-stone-200",
     dot: "bg-stone-400",
+    edge: "border-l-stone-400",
   },
 };
 
@@ -581,6 +594,78 @@ export const FOLLOWUP_TEMPLATE: {
     script:
       "สรุปผลแคมเปญคุณ{ชื่อเล่น}: ยอดรวม, ลูกค้าที่เข้ามาจากโค้ด/ลิงก์, ความคุ้มค่า และเสนอว่าควรต่อสัญญา/ชวนร่วม campaign ถัดไปหรือไม่",
   },
+];
+
+/* ---------- Influencer Cost: ต้นทุนค่าบริการรายโปรแกรม (/influ-cost) ---------- */
+
+/** เพดานความยาวชื่อโปรแกรมที่พิมพ์เอง (ชื่อใน Price List บางอันยาวมาก — ต้องตัดให้อ่านง่าย) */
+export const PROCEDURE_NAME_MAX = 80;
+
+/** ตัดชื่อโปรแกรมจาก Price List ให้สั้นลงตอนหยิบเข้ารายการ — พยายามตัดที่ขอบเขตคำ */
+export function shortenProgramName(name: string, max = 60): string {
+  const clean = name.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+/** ต้นทุนที่นับจริงของรายการ — ติ๊ก "แบรนด์ support" แล้วนับเป็น 0 */
+export function itemEffectiveCost(item: {
+  price: number;
+  is_supported: boolean;
+}): number {
+  return item.is_supported ? 0 : Number(item.price) || 0;
+}
+
+/** ข้อความสรุปรายการโปรแกรมของเคส — sync กลับ influencers.procedure_text
+    เพื่อให้ช่องก๊อป Memo / การ์ดบอร์ด / ปฏิทิน แสดงรูปแบบเดิม (คั่นด้วย " / " ตามข้อมูลจริง) */
+export function procedureSummaryText(items: { name: string }[]): string {
+  return items
+    .map((i) => i.name.trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
+/** สถานะการใช้ต้นทุน — "ใช้บริการแล้ว" = เคสผ่าน Stage 5 (วันเข้ารับบริการ) มาแล้ว
+    คือขึ้น Stage 6 หรือปิดงาน (เกณฑ์จากผู้ใช้ 2026-08-03: การเดิน stage คือตัวยืนยันว่าเข้ามาจริง
+    ไม่ใช่แค่วันที่นัดถึงกำหนด — วันที่เลยมาแล้วแต่ยังไม่ผ่าน Stage 5 = อาจเลื่อนนัด ยังไม่นับ) */
+export type CostUsage = "used" | "upcoming" | "unscheduled";
+
+export function costUsageOf(c: {
+  service_date: string | null;
+  stage: number;
+  completed: boolean;
+}): CostUsage {
+  if (c.completed || c.stage > 5) return "used";
+  return c.service_date ? "upcoming" : "unscheduled";
+}
+
+export const COST_USAGE_META: Record<
+  CostUsage,
+  { label: string; chip: string; dot: string }
+> = {
+  used: {
+    label: "ใช้บริการแล้ว",
+    chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    dot: "bg-emerald-500",
+  },
+  upcoming: {
+    label: "กำลังจะมา",
+    chip: "bg-sky-100 text-sky-700 border-sky-200",
+    dot: "bg-sky-500",
+  },
+  unscheduled: {
+    label: "ยังไม่เคาะวัน",
+    chip: "bg-stone-100 text-stone-600 border-stone-200",
+    dot: "bg-stone-400",
+  },
+};
+
+export const COST_USAGE_ORDER: CostUsage[] = [
+  "upcoming",
+  "unscheduled",
+  "used",
 ];
 
 /** เดดไลน์สัญญา = contract_start + contract_months

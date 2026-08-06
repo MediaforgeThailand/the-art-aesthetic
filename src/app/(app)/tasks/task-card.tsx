@@ -24,6 +24,7 @@ import {
 const useIsoLayoutEffect =
   typeof document !== "undefined" ? useLayoutEffect : useEffect;
 import { createPortal } from "react-dom";
+import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import { Badge } from "@/components/ui";
 import {
   briefContentTypeLabel,
@@ -135,50 +136,27 @@ export function AssigneePicker({
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<MenuBox | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    // เลื่อนจอ/ย่อขยายหน้าต่างแล้วปิดเมนู — ตำแหน่ง fixed จะค้างผิดที่
-    const close = () => setOpen(false);
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+  const place = (btn: HTMLElement) =>
+    menuBox(btn, {
+      width: 240,
+      maxHeight: Math.min(48 * (profiles.length + 1) + 12, 280),
+    });
+
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const menuH = Math.min(44 * (profiles.length + 1) + 12, 280);
-      setPos({
-        x: Math.min(r.left, window.innerWidth - 240),
-        y:
-          r.bottom + menuH > window.innerHeight - 8
-            ? Math.max(8, r.top - menuH - 4)
-            : r.bottom + 4,
-      });
-    }
+    if (!open && btnRef.current) setPos(place(btnRef.current));
     setOpen((o) => !o);
   };
 
@@ -212,10 +190,15 @@ export function AssigneePicker({
         createPortal(
           <div
             ref={menuRef}
-            style={{ left: pos.x, top: pos.y }}
+            style={{
+              left: pos.x,
+              top: pos.y,
+              width: pos.width,
+              maxHeight: pos.height,
+            }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="fixed z-[60] max-h-72 w-56 overflow-y-auto rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
+            className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
           >
             <button
               type="button"

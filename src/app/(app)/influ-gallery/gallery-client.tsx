@@ -15,6 +15,10 @@ import { useMemo, useState } from "react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import { contractEndDate, INFLU_STAGES, INFLU_TIERS } from "@/lib/influ-constants";
+import {
+  type InfluLinkLite,
+  SourceLinkQuickButton,
+} from "../influencers/influ-links";
 import { useSignedUrl } from "../influencers/use-signed-url";
 import {
   influName,
@@ -58,11 +62,14 @@ export function InfluGalleryClient({
   influencers,
   followupRemaining,
   contentTaskCount,
+  sourceLinks,
   loadError,
 }: {
   influencers: InfluencerListRow[];
   followupRemaining: Record<string, number>;
   contentTaskCount: Record<string, number>;
+  /** ลิงก์ไฟล์ source (Google Drive) ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด */
+  sourceLinks: Record<string, InfluLinkLite[]>;
   loadError: string | null;
 }) {
   const today = todayISO();
@@ -191,6 +198,7 @@ export function InfluGalleryClient({
               today={today}
               followupLeft={followupRemaining[i.id] ?? 0}
               contentTasks={contentTaskCount[i.id] ?? 0}
+              links={sourceLinks[i.id]}
             />
           ))}
         </div>
@@ -204,11 +212,13 @@ function InfluCard({
   today,
   followupLeft,
   contentTasks,
+  links,
 }: {
   influ: InfluencerListRow;
   today: string;
   followupLeft: number;
   contentTasks: number;
+  links: InfluLinkLite[] | undefined;
 }) {
   // ถ้าขอ signed URL ไม่สำเร็จ (failed) จะ fallback ไปแสดงอวตารตัวอักษรด้านล่างเอง
   const { url: photoUrl } = useSignedUrl(i.photo_path);
@@ -285,6 +295,8 @@ function InfluCard({
                 <UsersRound size={12} /> {followerText}
               </span>
             )}
+            {/* ปุ่มเปิดไฟล์ source — อยู่ในการ์ดที่เป็นลิงก์ จึง stopPropagation เปิดแท็บใหม่เอง */}
+            <SourceLinkQuickButton links={links} />
           </div>
 
           {/* อายุสัญญาคงเหลือ — บอกเป็น "เดือน + วัน" */}

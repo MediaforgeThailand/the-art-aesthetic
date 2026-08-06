@@ -3,6 +3,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
+import type { InfluLinkLite } from "../influencers/influ-links";
 import type { InfluencerListRow } from "../influencers/influencers-client";
 import { InfluGalleryClient } from "./gallery-client";
 
@@ -24,6 +25,7 @@ export default async function InfluGalleryPage() {
     { data: influencers, error },
     { data: influTasks },
     { data: tasks },
+    { data: links },
   ] = await Promise.all([
     getAccess(),
     supabase
@@ -38,6 +40,11 @@ export default async function InfluGalleryPage() {
       .select("influencer_id")
       .not("influencer_id", "is", null)
       .is("deleted_at", null),
+    // ลิงก์ไฟล์ source (Google Drive) — ปุ่มเปิดเร็วบนการ์ดโปรไฟล์
+    supabase
+      .from("influ_links")
+      .select("id, influencer_id, title, url")
+      .order("position", { ascending: true }),
   ]);
 
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
@@ -68,6 +75,11 @@ export default async function InfluGalleryPage() {
     contentTaskCount[t.influencer_id] =
       (contentTaskCount[t.influencer_id] ?? 0) + 1;
   }
+  // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer
+  const sourceLinks: Record<string, InfluLinkLite[]> = {};
+  for (const l of (links ?? []) as InfluLinkLite[]) {
+    (sourceLinks[l.influencer_id] ??= []).push(l);
+  }
 
   return (
     <PageContainer>
@@ -75,6 +87,7 @@ export default async function InfluGalleryPage() {
         influencers={(influencers ?? []) as InfluencerListRow[]}
         followupRemaining={followupRemaining}
         contentTaskCount={contentTaskCount}
+        sourceLinks={sourceLinks}
         loadError={error?.message ?? null}
       />
     </PageContainer>

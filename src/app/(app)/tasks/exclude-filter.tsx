@@ -1,8 +1,9 @@
 "use client";
 
 import { EyeOff, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import type { ProfileRow } from "@/lib/types";
 import { AssigneeAvatar, profileName } from "./task-card";
 
@@ -42,47 +43,24 @@ export function ExcludeFilter({
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<MenuBox | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // ปิด popover เมื่อคลิกนอกกล่อง / กด Esc / เลื่อนจอ (ตำแหน่ง fixed จะค้างผิดที่)
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    const close = (e: Event) => {
-      // เลื่อนภายใน popover เอง (รายชื่อยาว) ไม่นับ
-      if (e.target instanceof Node && panelRef.current?.contains(e.target))
-        return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+  const place = (btn: HTMLElement) =>
+    menuBox(btn, { width: 272, maxHeight: 420, gap: 6 });
+
+  // แตะนอกกล่อง/Esc = ปิด · เลื่อนจอ/ย่อขยาย = ย้ายตามปุ่ม ไม่ปิด (ดูเหตุผลใน anchored-menu.ts)
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef: panelRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
 
   const toggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({
-        x: Math.min(r.left, window.innerWidth - 272),
-        y: r.bottom + 6,
-      });
-    }
+    if (!open && btnRef.current) setPos(place(btnRef.current));
     setOpen((o) => !o);
   };
 
@@ -117,8 +95,13 @@ export function ExcludeFilter({
         createPortal(
         <div
           ref={panelRef}
-          style={{ left: pos.x, top: pos.y }}
-          className="glass fixed z-[60] max-h-[70vh] w-64 overflow-y-auto rounded-xl p-3 shadow-xl animate-scale-in"
+          style={{
+            left: pos.x,
+            top: pos.y,
+            width: pos.width,
+            maxHeight: pos.height,
+          }}
+          className="glass fixed z-[60] overflow-y-auto overscroll-contain rounded-xl p-3 shadow-xl animate-scale-in"
         >
           <div className="mb-1 flex items-center justify-between">
             <p className="text-xs font-semibold text-stone-700">

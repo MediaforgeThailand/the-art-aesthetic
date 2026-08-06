@@ -19,7 +19,8 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Badge,
   Button,
@@ -39,10 +40,16 @@ import {
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  DoctorRow,
   InfluCalendarEventRow,
   InfluCalendarKind,
   InfluencerRow,
 } from "@/lib/types";
+import {
+  DoctorAvatar,
+  DoctorNameChip,
+  DoctorSelect,
+} from "../influencers/doctor-select";
 
 /* ---------- types ที่หน้า server ส่งลงมา ---------- */
 
@@ -91,10 +98,28 @@ const nameOf = (
   return i.nickname ? `${full} (${i.nickname})` : full;
 };
 
-/** เรียงคิวในหนึ่งวัน — ไม่ระบุเวลา (ทั้งวัน) ขึ้นก่อน แล้วเรียงตามเวลาเริ่ม */
+/** ชื่อสั้นสำหรับชิปในช่องวัน — ใช้ชื่อเล่นก่อน (ช่องแคบ ชื่อเต็มอ่านไม่ทัน) */
+const nickOf = (
+  i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname"> | null
+): string => {
+  if (!i) return "";
+  return i.nickname?.trim() || i.first_name?.trim() || "";
+};
+
+/** โปรไฟล์หมอจากทะเบียนตามชื่อ — ไม่อยู่ในทะเบียน (ชื่อเก่า) ก็ยังได้ไอคอนแทนรูป */
+const doctorOf = (
+  name: string | null,
+  doctors: Pick<DoctorRow, "name" | "photo_path">[]
+): Pick<DoctorRow, "name" | "photo_path"> | null => {
+  if (!name) return null;
+  return doctors.find((d) => d.name === name) ?? { name, photo_path: null };
+};
+
+/** เรียงคิวในหนึ่งวัน — เริ่มก่อนอยู่บนสุด เริ่มทีหลังไล่ลงล่าง
+    คิวที่ยังไม่เคาะเวลา (ทั้งวัน) ไปอยู่ล่างสุด เพราะยังไม่รู้ว่าแทรกช่วงไหน */
 const sortEvents = (a: CalendarEvent, b: CalendarEvent) => {
-  if (!a.start_time && b.start_time) return -1;
-  if (a.start_time && !b.start_time) return 1;
+  if (a.start_time && !b.start_time) return -1;
+  if (!a.start_time && b.start_time) return 1;
   if (a.start_time && b.start_time && a.start_time !== b.start_time)
     return a.start_time.localeCompare(b.start_time);
   return a.title.localeCompare(b.title, "th");
@@ -167,21 +192,30 @@ const formOf = (e: CalendarEvent): FormState => ({
 
 /* ---------- ชิปคิวในช่องวัน ---------- */
 
-function EventChip({ event }: { event: CalendarEvent }) {
+function EventChip({
+  event,
+  doctors,
+}: {
+  event: CalendarEvent;
+  doctors: DoctorRow[];
+}) {
   const meta = INFLU_CALENDAR_KINDS[event.kind];
-  const who = nameOf(event.influencer);
+  const who = nickOf(event.influencer) || event.title;
+  const doctor = doctorOf(event.doctor_name, doctors);
   return (
     <span
-      className={`flex w-full items-center gap-1 truncate rounded border px-1 py-0.5 text-[10px] leading-tight ${meta.chip} ${
+      title={`${calendarTimeLabel(event.start_time, event.end_time)} · ${meta.label}${
+        nameOf(event.influencer) ? ` · ${nameOf(event.influencer)}` : ""
+      }${event.doctor_name ? ` · ${event.doctor_name}` : ""}`}
+      className={`flex w-full items-center gap-1.5 rounded-md border border-l-4 px-1.5 py-1 text-xs leading-tight shadow-sm ${meta.chip} ${meta.edge} ${
         event.done ? "opacity-50 line-through" : ""
       }`}
     >
-      {event.start_time && (
-        <span className="shrink-0 font-semibold tabular-nums">
-          {shortTime(event.start_time)}
-        </span>
-      )}
-      <span className="truncate">{who || event.title}</span>
+      <span className="shrink-0 font-bold tabular-nums">
+        {shortTime(event.start_time) ?? "ทั้งวัน"}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium">{who}</span>
+      {doctor && <DoctorAvatar doctor={doctor} size="sm" />}
     </span>
   );
 }
@@ -193,7 +227,7 @@ function DaySidebar({
   events,
   services,
   influencers,
-  doctorOptions,
+  doctors,
   focusEventId,
   saving,
   error,
@@ -206,7 +240,7 @@ function DaySidebar({
   events: CalendarEvent[];
   services: CalendarInflu[];
   influencers: CalendarInflu[];
-  doctorOptions: string[];
+  doctors: DoctorRow[];
   /** เปิดแผงมาที่รายละเอียดคิวนี้เลย (กดจากลิสต์ "คิวที่กำลังจะถึง") */
   focusEventId: string | null;
   saving: boolean;
@@ -295,13 +329,13 @@ function DaySidebar({
   return (
     <aside
       aria-label={`คิววันที่ ${formatDate(dateISO)}`}
-      // มือถือ: overlay เต็มจอ / จอใหญ่ (≥lg): แผงข้างขวาที่ติดหนึบตอนเลื่อนหน้า
-      className="fixed inset-0 z-50 flex w-full flex-col bg-white/95 shadow-xl backdrop-blur-2xl animate-slide-in-right lg:sticky lg:top-0 lg:z-auto lg:max-h-[calc(100dvh-7rem)] lg:w-[23rem] lg:shrink-0 lg:rounded-xl lg:border lg:border-white/70 lg:bg-white/80 lg:shadow-[0_8px_28px_rgba(94,58,49,0.08)]"
+      // แผงลอยทับปฏิทิน — เปิดเฉพาะตอนกดเลือกวัน (ปฏิทินจึงกินพื้นที่เต็มความกว้างตลอด)
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[27rem] flex-col border-white/70 bg-white/95 shadow-[0_0_60px_rgba(94,58,49,0.25)] backdrop-blur-2xl animate-slide-in-right sm:inset-y-3 sm:right-3 sm:rounded-2xl sm:border"
     >
       {/* ---- หัวแผง ---- */}
       <div className="flex items-center gap-2 border-b border-brand-100/70 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-stone-900">
+          <p className="truncate text-base font-semibold text-stone-900">
             {formatDate(dateISO)}
           </p>
           <p className="text-xs text-stone-400">
@@ -312,7 +346,7 @@ function DaySidebar({
           type="button"
           onClick={onClose}
           aria-label="ปิดแผง"
-          className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 lg:hidden"
+          className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
         >
           <X size={18} />
         </button>
@@ -336,7 +370,7 @@ function DaySidebar({
                   return (
                     <li
                       key={e.id}
-                      className="flex items-start gap-2 rounded-lg border border-stone-200 bg-white/80 p-2 transition-colors hover:border-brand-200"
+                      className={`flex items-start gap-2 rounded-lg border border-l-4 border-stone-200 bg-white/80 p-2 transition-colors hover:border-brand-200 ${meta.edge}`}
                     >
                       <button
                         type="button"
@@ -376,9 +410,7 @@ function DaySidebar({
                           </span>
                           <span>· {meta.short}</span>
                           {e.doctor_name && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <Stethoscope size={11} /> {e.doctor_name}
-                            </span>
+                            <DoctorNameChip name={e.doctor_name} doctors={doctors} />
                           )}
                         </span>
                       </button>
@@ -489,9 +521,16 @@ function DaySidebar({
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
                 <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                  {activeEvent.doctor_name || (
-                    <span className="text-stone-400">ยังไม่ระบุ</span>
+                  {activeEvent.doctor_name ? (
+                    <DoctorNameChip
+                      name={activeEvent.doctor_name}
+                      doctors={doctors}
+                    />
+                  ) : (
+                    <>
+                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                      <span className="text-stone-400">ยังไม่ระบุ</span>
+                    </>
                   )}
                 </dd>
               </div>
@@ -599,9 +638,16 @@ function DaySidebar({
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
                 <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                  {activeService.doctor_name || (
-                    <span className="text-stone-400">ยังไม่ระบุ</span>
+                  {activeService.doctor_name ? (
+                    <DoctorNameChip
+                      name={activeService.doctor_name}
+                      doctors={doctors}
+                    />
+                  ) : (
+                    <>
+                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                      <span className="text-stone-400">ยังไม่ระบุ</span>
+                    </>
                   )}
                 </dd>
               </div>
@@ -693,20 +739,15 @@ function DaySidebar({
 
             <div>
               <Label htmlFor="cal-doctor">แพทย์ที่รับเคส</Label>
-              <Input
+              <DoctorSelect
                 id="cal-doctor"
-                list="cal-doctor-options"
+                doctors={doctors}
                 value={form.doctor}
-                onChange={(e) => patch({ doctor: e.target.value })}
-                placeholder="เช่น นพ. / พญ. ..."
+                onChange={(name) => patch({ doctor: name })}
               />
-              <datalist id="cal-doctor-options">
-                {doctorOptions.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
               <p className="mt-1 text-xs text-stone-400">
                 เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
+                (เพิ่มหมอใหม่ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management)
               </p>
             </div>
 
@@ -807,11 +848,13 @@ function DaySidebar({
 export function CalendarClient({
   events: initialEvents,
   influencers,
+  doctors,
   userId,
   loadError,
 }: {
   events: CalendarEvent[];
   influencers: CalendarInflu[];
+  doctors: DoctorRow[];
   userId: string | null;
   loadError: string | null;
 }) {
@@ -839,13 +882,14 @@ export function CalendarClient({
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  /** รายชื่อแพทย์ที่เคยใช้ — ตัวช่วยกรอกในฟอร์ม + ตัวกรองด้านบน */
+  /** รายชื่อแพทย์สำหรับตัวกรองด้านบน — ทะเบียนหมอ (active) + ชื่อที่เคยใช้ในคิว/เคสเดิม */
   const doctorOptions = useMemo(() => {
     const set = new Set<string>();
+    for (const d of doctors) if (d.active) set.add(d.name);
     for (const e of events) if (e.doctor_name) set.add(e.doctor_name);
     for (const i of influencers) if (i.doctor_name) set.add(i.doctor_name);
     return [...set].sort((a, b) => a.localeCompare(b, "th"));
-  }, [events, influencers]);
+  }, [doctors, events, influencers]);
 
   /* ---- กรองคิวตามคำค้น + ประเภท + แพทย์ ---- */
   const visibleEvents = useMemo(() => {
@@ -940,7 +984,7 @@ export function CalendarClient({
     setCursor({ year: y, month: m - 1 });
   };
 
-  /** เลือกวัน → เปิดแผงข้าง (มือถือเป็น overlay); ส่ง eventId มาด้วยเพื่อเปิดรายละเอียดเลย */
+  /** เลือกวัน → เปิดแผงลอยทับปฏิทิน; ส่ง eventId มาด้วยเพื่อเปิดรายละเอียดเลย */
   const openDate = (dateISO: string, eventId: string | null = null) => {
     const [y, m] = dateISO.split("-").map(Number);
     setCursor({ year: y, month: m - 1 });
@@ -950,6 +994,22 @@ export function CalendarClient({
     setPanelOpen(true);
     setActionError(null);
   };
+
+  const closePanel = () => {
+    setPanelOpen(false);
+    setFocusEventId(null);
+  };
+
+  /* Esc ปิดแผงลอย — dropdown เลือกแพทย์ดัก Esc ไว้ตั้งแต่ capture phase แล้ว
+     (stopPropagation) ตัวฟังนี้จึงไม่ไปปิดแผงทั้งบานตอนแค่อยากปิดเมนู */
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanelOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
 
   const toggleKind = (kind: InfluCalendarKind) =>
     setHiddenKinds((cur) => {
@@ -1045,7 +1105,7 @@ export function CalendarClient({
     <>
       <PageHeader
         title="Influ Calendar"
-        description="ปฏิทินคิวงาน Influencer รายเดือน — กดที่ช่องวันเพื่อดูรายชื่อคิวของวันนั้นในแผงข้าง"
+        description="ปฏิทินคิวงาน Influencer รายเดือน — กดที่ช่องวันเพื่อเปิดแผงคิวของวันนั้น (แผงลอยทับปฏิทิน กดพื้นหลังหรือ Esc เพื่อปิด)"
         action={
           <div className="flex flex-wrap gap-2">
             <Link
@@ -1172,196 +1232,220 @@ export function CalendarClient({
         </button>
       </div>
 
-      {/* ---- ปฏิทิน + แผงข้างขวา ---- */}
-      <div className="flex gap-4">
-        <div className="min-w-0 flex-1">
-          <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up">
-            <div className="grid grid-cols-7 gap-px">
-              {WEEKDAYS.map((w, idx) => (
-                <div
-                  key={w}
-                  className={`pb-1.5 text-center text-[11px] font-semibold sm:text-xs ${
-                    idx === 0 || idx === 6 ? "text-brand-500" : "text-stone-500"
-                  }`}
-                >
-                  {w}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-brand-100/70">
-              {cells.map((day, idx) => {
-                if (day === null)
-                  return (
-                    <div
-                      key={`blank-${idx}`}
-                      className="min-h-[72px] bg-white/25 sm:min-h-[116px]"
-                    />
-                  );
-                const iso = isoOf(cursor.year, cursor.month, day);
-                const dayEvents = eventsByDate.get(iso) ?? [];
-                const dayServices = servicesByDate.get(iso) ?? [];
-                const isToday = iso === today;
-                const isPast = iso < today;
-                const isSelected = iso === selectedDay;
-                const weekend = idx % 7 === 0 || idx % 7 === 6;
+      {/* ---- ปฏิทิน (เต็มความกว้าง — แผงข้างเป็นแผงลอยทับ ไม่กินพื้นที่) ---- */}
+      <div className="min-w-0">
+        <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up">
+          <div className="grid grid-cols-7 gap-px">
+            {WEEKDAYS.map((w, idx) => (
+              <div
+                key={w}
+                className={`pb-2 text-center text-xs font-semibold sm:text-sm ${
+                  idx === 0 || idx === 6 ? "text-brand-500" : "text-stone-500"
+                }`}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-brand-100/70">
+            {cells.map((day, idx) => {
+              if (day === null)
                 return (
-                  <button
-                    key={iso}
-                    type="button"
-                    onClick={() => openDate(iso)}
-                    title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
-                    className={`flex min-h-[72px] cursor-pointer flex-col gap-1 p-1 text-left transition-colors sm:min-h-[116px] sm:p-1.5 ${
-                      isSelected
-                        ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
-                        : isPast
-                          ? "bg-white/45"
-                          : weekend
-                            ? "bg-cream/60"
-                            : "bg-white/75"
-                    } hover:bg-brand-50/80`}
-                  >
-                    <span className="flex items-center gap-1">
-                      <span
-                        className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold tabular-nums sm:text-xs ${
-                          isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                            : isPast
-                              ? "text-stone-400"
-                              : "text-stone-700"
-                        }`}
-                      >
-                        {day}
+                  <div
+                    key={`blank-${idx}`}
+                    className="min-h-[88px] bg-white/25 sm:min-h-[168px]"
+                  />
+                );
+              const iso = isoOf(cursor.year, cursor.month, day);
+              const dayEvents = eventsByDate.get(iso) ?? [];
+              const dayServices = servicesByDate.get(iso) ?? [];
+              const isToday = iso === today;
+              const isPast = iso < today;
+              const isSelected = iso === selectedDay && panelOpen;
+              const weekend = idx % 7 === 0 || idx % 7 === 6;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => openDate(iso)}
+                  title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
+                  className={`flex min-h-[88px] cursor-pointer flex-col gap-1 p-1.5 text-left transition-colors sm:min-h-[168px] sm:gap-1.5 sm:p-2 ${
+                    isSelected
+                      ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
+                      : isPast
+                        ? "bg-white/45"
+                        : weekend
+                          ? "bg-cream/60"
+                          : "bg-white/75"
+                  } hover:bg-brand-50/80`}
+                >
+                  <span className="flex items-center gap-1">
+                    <span
+                      className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm ${
+                        isToday
+                          ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                          : isPast
+                            ? "text-stone-400"
+                            : "text-stone-700"
+                      }`}
+                    >
+                      {day}
+                    </span>
+                    {(dayEvents.length > 0 || dayServices.length > 0) && (
+                      <span className="ml-auto hidden text-[11px] font-medium text-stone-400 sm:inline">
+                        {dayEvents.length + dayServices.length}
                       </span>
-                      {(dayEvents.length > 0 || dayServices.length > 0) && (
-                        <span className="ml-auto hidden text-[10px] font-medium text-stone-400 sm:inline">
-                          {dayEvents.length + dayServices.length}
-                        </span>
-                      )}
-                    </span>
+                    )}
+                  </span>
 
-                    {/* จอเล็ก: จุดสีบอกว่ามีคิว (ช่องแคบเกินกว่าจะใส่ชิป) */}
-                    <span className="flex flex-wrap gap-0.5 sm:hidden">
-                      {dayEvents.slice(0, 4).map((e) => (
-                        <span
-                          key={e.id}
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            INFLU_CALENDAR_KINDS[e.kind].dot
-                          } ${e.done ? "opacity-40" : ""}`}
-                        />
-                      ))}
-                      {dayServices.length > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full border border-brand-400" />
-                      )}
-                      {dayEvents.length > 4 && (
-                        <span className="text-[9px] leading-none text-stone-400">
-                          +{dayEvents.length - 4}
-                        </span>
-                      )}
-                    </span>
+                  {/* จอเล็ก: จุดสีบอกว่ามีคิว (ช่องแคบเกินกว่าจะใส่ชิป) */}
+                  <span className="flex flex-wrap gap-0.5 sm:hidden">
+                    {dayEvents.slice(0, 4).map((e) => (
+                      <span
+                        key={e.id}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          INFLU_CALENDAR_KINDS[e.kind].dot
+                        } ${e.done ? "opacity-40" : ""}`}
+                      />
+                    ))}
+                    {dayServices.length > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full border border-brand-400" />
+                    )}
+                    {dayEvents.length > 4 && (
+                      <span className="text-[9px] leading-none text-stone-400">
+                        +{dayEvents.length - 4}
+                      </span>
+                    )}
+                  </span>
 
-                    {/* จอใหญ่: ชิปคิว 3 อันแรก */}
-                    <span className="hidden flex-col gap-0.5 sm:flex">
-                      {dayEvents.slice(0, 3).map((e) => (
-                        <EventChip key={e.id} event={e} />
-                      ))}
-                      {dayServices.slice(0, 2).map((s) => (
-                        <span
-                          key={s.id}
-                          className="flex w-full items-center gap-1 truncate rounded border border-dashed border-brand-300 px-1 py-0.5 text-[10px] leading-tight text-brand-600"
-                        >
-                          <Sparkles size={9} className="shrink-0" />
-                          <span className="truncate">{nameOf(s)}</span>
+                  {/* จอใหญ่: ชิปคิว 4 อันแรก (เรียงตามเวลาเริ่ม — เริ่มก่อนอยู่บน) */}
+                  <span className="hidden flex-col gap-1 sm:flex">
+                    {dayEvents.slice(0, 4).map((e) => (
+                      <EventChip key={e.id} event={e} doctors={doctors} />
+                    ))}
+                    {dayServices.slice(0, 2).map((s) => (
+                      <span
+                        key={s.id}
+                        title={`วันรับบริการจากเคส: ${nameOf(s)}${
+                          s.doctor_name ? ` · ${s.doctor_name}` : ""
+                        }`}
+                        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-xs leading-tight text-brand-600"
+                      >
+                        <Sparkles size={11} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {nickOf(s)}
                         </span>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <span className="px-1 text-[10px] text-stone-400">
-                          +{dayEvents.length - 3} คิว
+                        {s.doctor_name && (
+                          <DoctorAvatar
+                            doctor={doctorOf(s.doctor_name, doctors)}
+                            size="sm"
+                          />
+                        )}
+                      </span>
+                    ))}
+                    {dayEvents.length > 4 && (
+                      <span className="px-1 text-[11px] font-medium text-stone-400">
+                        +{dayEvents.length - 4} คิว
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* ---- คิวที่กำลังจะถึง ---- */}
+        <Card className="mt-4 p-4 animate-fade-in-up">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800">
+            <Clock3 size={15} className="text-brand-500" />
+            คิวที่กำลังจะถึง (14 วัน)
+          </h2>
+          {upcoming.length === 0 ? (
+            <p className="py-3 text-center text-sm text-stone-400">
+              ยังไม่มีคิวใน 14 วันข้างหน้า
+            </p>
+          ) : (
+            <ul className="divide-y divide-stone-100">
+              {upcoming.map((e) => {
+                const meta = INFLU_CALENDAR_KINDS[e.kind];
+                return (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      onClick={() => openDate(e.event_date, e.id)}
+                      className="flex w-full cursor-pointer flex-wrap items-center gap-2 py-2 text-left transition-colors hover:bg-brand-50/60"
+                    >
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+                      />
+                      <span className="w-28 shrink-0 text-xs font-medium text-stone-500">
+                        {e.event_date === today
+                          ? "วันนี้"
+                          : formatDate(e.event_date)}
+                      </span>
+                      <span className="w-20 shrink-0 text-xs font-semibold text-stone-600 tabular-nums">
+                        {calendarTimeLabel(e.start_time, e.end_time)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                        {e.influencer && (
+                          <span className="font-medium">
+                            {nameOf(e.influencer)} ·{" "}
+                          </span>
+                        )}
+                        {e.title}
+                      </span>
+                      {e.doctor_name && (
+                        <span className="shrink-0 text-xs text-stone-500">
+                          <DoctorNameChip
+                            name={e.doctor_name}
+                            doctors={doctors}
+                          />
                         </span>
                       )}
-                    </span>
-                  </button>
+                      <Badge className={`border ${meta.chip}`}>
+                        {meta.short}
+                      </Badge>
+                    </button>
+                  </li>
                 );
               })}
-            </div>
-          </Card>
-
-          {/* ---- คิวที่กำลังจะถึง ---- */}
-          <Card className="mt-4 p-4 animate-fade-in-up">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800">
-              <Clock3 size={15} className="text-brand-500" />
-              คิวที่กำลังจะถึง (14 วัน)
-            </h2>
-            {upcoming.length === 0 ? (
-              <p className="py-3 text-center text-sm text-stone-400">
-                ยังไม่มีคิวใน 14 วันข้างหน้า
-              </p>
-            ) : (
-              <ul className="divide-y divide-stone-100">
-                {upcoming.map((e) => {
-                  const meta = INFLU_CALENDAR_KINDS[e.kind];
-                  return (
-                    <li key={e.id}>
-                      <button
-                        type="button"
-                        onClick={() => openDate(e.event_date, e.id)}
-                        className="flex w-full cursor-pointer flex-wrap items-center gap-2 py-2 text-left transition-colors hover:bg-brand-50/60"
-                      >
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
-                        />
-                        <span className="w-28 shrink-0 text-xs font-medium text-stone-500">
-                          {e.event_date === today
-                            ? "วันนี้"
-                            : formatDate(e.event_date)}
-                        </span>
-                        <span className="w-20 shrink-0 text-xs font-semibold text-stone-600 tabular-nums">
-                          {calendarTimeLabel(e.start_time, e.end_time)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
-                          {e.influencer && (
-                            <span className="font-medium">
-                              {nameOf(e.influencer)} ·{" "}
-                            </span>
-                          )}
-                          {e.title}
-                          {e.doctor_name && (
-                            <span className="text-stone-400">
-                              {" "}
-                              · {e.doctor_name}
-                            </span>
-                          )}
-                        </span>
-                        <Badge className={`border ${meta.chip}`}>
-                          {meta.short}
-                        </Badge>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        {/* แผงข้าง — จอ ≥lg แสดงตลอด, มือถือเป็น overlay เต็มจอเมื่อกดวัน */}
-        <div className={panelOpen ? "contents" : "hidden lg:contents"}>
-          <DaySidebar
-            key={`${selectedDay}#${panelSeq}`}
-            dateISO={selectedDay}
-            events={eventsByDate.get(selectedDay) ?? []}
-            services={servicesByDate.get(selectedDay) ?? []}
-            influencers={influencers}
-            doctorOptions={doctorOptions}
-            focusEventId={focusEventId}
-            saving={saving}
-            error={actionError}
-            onClose={() => setPanelOpen(false)}
-            onSave={saveEvent}
-            onDelete={deleteEvent}
-            onToggleDone={toggleDone}
-          />
-        </div>
+            </ul>
+          )}
+        </Card>
       </div>
+
+      {/* แผงข้าง — เปิดเฉพาะตอนกดเลือกวัน แล้วลอยทับปฏิทิน (กดฉากหลัง/Esc เพื่อปิด)
+          portal ออกไป body ตามกติกาเดียวกับ Modal: parent ที่มี backdrop-filter/transform
+          จะทำให้ position:fixed ของแผงไปยึดกับกล่องนั้นแทนทั้งจอ
+          (ปลอดภัยกับ SSR เพราะ panelOpen เริ่มเป็น false — portal เกิดหลัง hydrate เสมอ) */}
+      {panelOpen &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              aria-label="ปิดแผงคิว"
+              onClick={closePanel}
+              className="fixed inset-0 z-40 cursor-default bg-stone-900/15 backdrop-blur-[2px] animate-fade-in"
+            />
+            <DaySidebar
+              key={`${selectedDay}#${panelSeq}`}
+              dateISO={selectedDay}
+              events={eventsByDate.get(selectedDay) ?? []}
+              services={servicesByDate.get(selectedDay) ?? []}
+              influencers={influencers}
+              doctors={doctors}
+              focusEventId={focusEventId}
+              saving={saving}
+              error={actionError}
+              onClose={closePanel}
+              onSave={saveEvent}
+              onDelete={deleteEvent}
+              onToggleDone={toggleDone}
+            />
+          </>,
+          document.body
+        )}
     </>
   );
 }

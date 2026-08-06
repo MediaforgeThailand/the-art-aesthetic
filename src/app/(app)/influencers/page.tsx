@@ -3,7 +3,8 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { InfluTaskRow } from "@/lib/types";
+import type { DoctorRow, InfluTaskRow } from "@/lib/types";
+import type { InfluLinkLite } from "./influ-links";
 import { InfluencersClient, type InfluencerListRow } from "./influencers-client";
 
 export const metadata: Metadata = {
@@ -19,8 +20,14 @@ export default async function InfluencersPage() {
   const supabase = await createClient();
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
-  const [access, { data: influencers, error }, { data: tasks }] =
-    await Promise.all([
+  const [
+    access,
+    { data: influencers, error },
+    { data: tasks },
+    { data: doctors },
+    { data: sourceLinks },
+    { data: serviceBookings },
+  ] = await Promise.all([
       getAccess(),
       supabase
         .from("influencers")
@@ -33,6 +40,20 @@ export default async function InfluencersPage() {
       supabase
         .from("influ_tasks")
         .select("influencer_id, due_date, done, done_at, is_custom"),
+      // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" + โมดัลจัดการหมอ
+      supabase.from("doctors").select("*").order("name", { ascending: true }),
+      // ลิงก์ไฟล์ source (Google Drive) — ปุ่มเปิดเร็วบนการ์ด
+      supabase
+        .from("influ_links")
+        .select("id, influencer_id, title, url")
+        .order("position", { ascending: true }),
+      // คิว "เข้ารับบริการ" ที่ลงในปฏิทินแล้ว = หลักฐานว่านัดหมอเรียบร้อย
+      // (influ manager ลงคิวฝั่งนี้ต่อจากคิวฝั่งระบบโรงพยาบาล) — ใช้ติดป้ายเตือนบนการ์ด
+      supabase
+        .from("influ_calendar_events")
+        .select("influencer_id")
+        .eq("kind", "service")
+        .not("influencer_id", "is", null),
     ]);
   if (!hasPermission(access, "influ")) return <AccessNotice />;
 
@@ -45,6 +66,13 @@ export default async function InfluencersPage() {
             InfluTaskRow,
             "influencer_id" | "due_date" | "done" | "done_at" | "is_custom"
           >[]
+        }
+        doctors={(doctors ?? []) as DoctorRow[]}
+        sourceLinks={(sourceLinks ?? []) as InfluLinkLite[]}
+        bookedInfluIds={
+          (serviceBookings ?? [])
+            .map((b) => b.influencer_id)
+            .filter((id): id is string => id !== null)
         }
         loadError={error?.message ?? null}
       />

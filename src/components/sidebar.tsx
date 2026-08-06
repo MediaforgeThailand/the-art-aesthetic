@@ -4,6 +4,7 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  Gauge,
   IdCard,
   LayoutDashboard,
   Link2,
@@ -14,6 +15,7 @@ import {
   Tags,
   UserCog,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +43,8 @@ const navItems: NavItem[] = [
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing" },
   { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ" },
   { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ" },
+  { href: "/influ-dashboard", label: "Influ Dashboard", icon: Gauge, perm: "influ" },
+  { href: "/influ-cost", label: "Influencer Cost", icon: Wallet, perm: "influ" },
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"] },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team" },

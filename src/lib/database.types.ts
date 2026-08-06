@@ -418,6 +418,48 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
+/** รายการโปรแกรม/หัตถการของ influencer รายรายการ (Influencer Cost)
+    price = ต้นทุนค่าบริการ (บาท; 0 = ยังไม่กรอก — backfill จาก procedure_text เดิมเป็น 0 ทั้งหมด)
+    is_supported = แบรนด์สินค้า support ของ → ต้นทุนรายการนี้นับเป็น 0 */
+export type InfluProcedureItemRow = {
+  id: string;
+  influencer_id: string;
+  name: string;
+  price: number;
+  is_supported: boolean;
+  /** ลิงก์ไป price_items (เลือกจาก dropdown Price List) — เพิ่มเองอิสระได้ = null */
+  price_item_id: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** ลิงก์ไฟล์ source ของ influencer (Google Drive ฯลฯ) — แปะได้หลายลิงก์ต่อคน
+    เปิดเร็วจากการ์ดบอร์ด / การ์ดแกลเลอรี / หน้า detail */
+export type InfluLinkRow = {
+  id: string;
+  influencer_id: string;
+  /** ชื่อกำกับลิงก์ — null/ว่าง = แสดง hostname แทน */
+  title: string | null;
+  url: string;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
+/** ทะเบียนแพทย์ (จัดการหมอ) — ตัวเลือก "แพทย์ที่รับเคส" ใน Influ Management / Influ Calendar
+    จับคู่กับ influencers.doctor_name และ influ_calendar_events.doctor_name ด้วย "ชื่อ" (text)
+    active=false = ซ่อนจากตัวเลือก แต่ชื่อในเคส/คิวเก่ายังแสดงตามเดิม */
+export type DoctorRow = {
+  id: string;
+  name: string;
+  /** รูปโปรไฟล์ใน bucket documents path doctors/{id}/... — null = แสดงไอคอนแทน */
+  photo_path: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PricePromotionRow = {
   id: string;
   category: string;
@@ -675,6 +717,30 @@ export interface Database {
           event_date: string;
         };
         Update: Partial<InfluCalendarEventRow>;
+        Relationships: [];
+      };
+      influ_procedure_items: {
+        Row: InfluProcedureItemRow;
+        Insert: Partial<InfluProcedureItemRow> & {
+          influencer_id: string;
+          name: string;
+        };
+        Update: Partial<InfluProcedureItemRow>;
+        Relationships: [];
+      };
+      doctors: {
+        Row: DoctorRow;
+        Insert: Partial<DoctorRow> & { name: string };
+        Update: Partial<DoctorRow>;
+        Relationships: [];
+      };
+      influ_links: {
+        Row: InfluLinkRow;
+        Insert: Partial<InfluLinkRow> & {
+          influencer_id: string;
+          url: string;
+        };
+        Update: Partial<InfluLinkRow>;
         Relationships: [];
       };
       price_items: {
