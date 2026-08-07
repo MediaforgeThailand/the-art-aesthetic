@@ -3,6 +3,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
+  AnalysisLinkRow,
   InfluencerLite,
   TaskSectionRow,
   TaskWithAssignee,
@@ -47,6 +48,7 @@ export default async function TasksPage() {
     reviewersResult,
     categoriesResult,
     settingsResult,
+    analysisResult,
   ] = await Promise.all([
     getAccess(),
     supabase
@@ -73,6 +75,11 @@ export default async function TasksPage() {
       .from("app_settings")
       .select("key, value")
       .in("key", ["default_reviewer_id", "default_reviewer2_id"]),
+    // แท็บ "ผลวิเคราะห์" — เรียง/จัดกลุ่มจริงทำฝั่ง client (ข้อมูลโตช้า สัปดาห์ละไม่กี่ลิงก์)
+    supabase
+      .from("analysis_links")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!hasPermission(access, "team")) return <AccessNotice />;
@@ -89,6 +96,7 @@ export default async function TasksPage() {
     settingRows.find((r) => r.key === "default_reviewer_id")?.value ?? null;
   const defaultReviewer2Id =
     settingRows.find((r) => r.key === "default_reviewer2_id")?.value ?? null;
+  const analysisLinks = (analysisResult.data ?? []) as AnalysisLinkRow[];
   const loadError =
     sectionsResult.error?.message ??
     tasksResult.error ??
@@ -96,6 +104,7 @@ export default async function TasksPage() {
     influencersResult.error?.message ??
     reviewersResult.error?.message ??
     categoriesResult.error?.message ??
+    analysisResult.error?.message ??
     null;
 
   return (
@@ -108,6 +117,7 @@ export default async function TasksPage() {
       defaultReviewerId={defaultReviewerId}
       defaultReviewer2Id={defaultReviewer2Id}
       categories={categories}
+      analysisLinks={analysisLinks}
       userId={userId}
       isAdmin={access.isAdmin}
       loadError={loadError}

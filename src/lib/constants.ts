@@ -1,4 +1,9 @@
-import type { PriceGroup, RevisionKind, TaskPriority } from "./types";
+import type {
+  AnalysisCategory,
+  PriceGroup,
+  RevisionKind,
+  TaskPriority,
+} from "./types";
 
 export const TASK_PRIORITY: Record<
   TaskPriority,
@@ -365,6 +370,27 @@ export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
 
 /** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
 export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
+
+/* ---------- คลังลิงก์ผลวิเคราะห์ (migration 0065) ----------
+   แท็บ "ผลวิเคราะห์" หน้า Task — ลิงก์ Canva ราย สัปดาห์/เดือน ที่หัวหน้าทีมแปะแชร์ */
+
+/** หมวดผลวิเคราะห์ — ป้าย+สีชิปบนแถวลิสต์และปุ่มเลือกในโมดัล */
+export const ANALYSIS_CATEGORIES: Record<
+  AnalysisCategory,
+  { label: string; chip: string }
+> = {
+  content: { label: "Content", chip: "bg-sky-100 text-sky-700" },
+  ads: { label: "Ads", chip: "bg-amber-100 text-amber-700" },
+  artwork: { label: "Artwork", chip: "bg-violet-100 text-violet-700" },
+  other: { label: "อื่นๆ", chip: "bg-stone-100 text-stone-600" },
+};
+
+export const ANALYSIS_CATEGORY_ORDER: AnalysisCategory[] = [
+  "content",
+  "ads",
+  "artwork",
+  "other",
+];
 
 /* ---------- ย่อรูปก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้

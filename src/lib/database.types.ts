@@ -453,6 +453,31 @@ export type InfluLinkRow = {
   created_at: string;
 };
 
+/** หมวดของผลวิเคราะห์ที่แชร์ในแท็บ "ผลวิเคราะห์" หน้า Task (migration 0065) */
+export type AnalysisCategory = "content" | "ads" | "artwork" | "other";
+
+/** ช่วงเวลาของผลวิเคราะห์ — รายสัปดาห์ (week = 1-5) หรือรายเดือน (week = null) */
+export type AnalysisPeriod = "weekly" | "monthly";
+
+/** ลิงก์ผลวิเคราะห์ (Canva) — หัวหน้าทีมแปะแชร์ให้ทีมใช้เป็นต้นแบบ (migration 0065)
+    เพิ่ม/แก้/ลบเฉพาะ admin (คุมที่ UI) — ทีม team เห็นอ่านอย่างเดียว */
+export type AnalysisLinkRow = {
+  id: string;
+  /** ชื่อกำกับลิงก์ — null/ว่าง = แสดงชื่อหมวดแทน */
+  title: string | null;
+  url: string;
+  category: AnalysisCategory;
+  period: AnalysisPeriod;
+  /** ปี ค.ศ. เสมอ (DB มี check 2020-2100 กันเผลอกรอกปี พ.ศ.) */
+  year: number;
+  month: number;
+  /** สัปดาห์ที่ในเดือน 1-5 — null เมื่อ period = monthly (DB บังคับด้วย constraint) */
+  week: number | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** ทะเบียนแพทย์ (จัดการหมอ) — ตัวเลือก "แพทย์ที่รับเคส" ใน Influ Management / Influ Calendar
     จับคู่กับ influencers.doctor_name และ influ_calendar_events.doctor_name ด้วย "ชื่อ" (text)
     active=false = ซ่อนจากตัวเลือก แต่ชื่อในเคส/คิวเก่ายังแสดงตามเดิม */
@@ -803,6 +828,18 @@ export interface Database {
           url: string;
         };
         Update: Partial<InfluLinkRow>;
+        Relationships: [];
+      };
+      analysis_links: {
+        Row: AnalysisLinkRow;
+        /** week บังคับมีเมื่อ period='weekly' (DB constraint — type บังคับให้ไม่ได้) */
+        Insert: Partial<AnalysisLinkRow> & {
+          url: string;
+          period: AnalysisPeriod;
+          year: number;
+          month: number;
+        };
+        Update: Partial<AnalysisLinkRow>;
         Relationships: [];
       };
       price_items: {

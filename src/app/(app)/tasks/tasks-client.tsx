@@ -2,6 +2,7 @@
 
 import {
   BadgeCheck,
+  BarChart3,
   ClipboardCheck,
   EyeOff,
   ListTodo,
@@ -34,6 +35,7 @@ import {
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  AnalysisLinkRow,
   InfluencerLite,
   NotificationType,
   ProfileRow,
@@ -41,6 +43,7 @@ import type {
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import { AnalysisList } from "./analysis-list";
 import { ApprovedList } from "./approved-list";
 import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ExcludeFilter } from "./exclude-filter";
@@ -105,6 +108,7 @@ export function TasksClient({
   defaultReviewerId,
   defaultReviewer2Id,
   categories: initialCategories,
+  analysisLinks,
   userId,
   isAdmin,
   loadError,
@@ -120,6 +124,8 @@ export function TasksClient({
   defaultReviewer2Id: string | null;
   /** หมวดหมู่งานที่จัดการได้ (task_categories) */
   categories: string[];
+  /** ลิงก์ผลวิเคราะห์ (Canva) ของแท็บ "ผลวิเคราะห์" — จัดกลุ่ม/เรียงใน AnalysisList */
+  analysisLinks: AnalysisLinkRow[];
   userId: string | null;
   isAdmin: boolean;
   loadError: string | null;
@@ -177,7 +183,7 @@ export function TasksClient({
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<
-    "work" | "review" | "posting" | "approved" | "trash"
+    "work" | "review" | "posting" | "approved" | "analysis" | "trash"
   >("work");
   useEffect(() => setItems(tasks), [tasks]);
   useEffect(() => setSections(initialSections), [initialSections]);
@@ -1825,6 +1831,19 @@ export function TasksClient({
               </span>
             )}
           </button>
+          {/* ผลวิเคราะห์ = คลังลิงก์ Canva ที่หัวหน้าทีมแปะแชร์ — ไม่มี badge เพราะเป็นคลัง ไม่ใช่คิวงาน */}
+          <button
+            type="button"
+            onClick={() => setTab("analysis")}
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === "analysis"
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
+            }`}
+          >
+            <BarChart3 size={16} />
+            ผลวิเคราะห์
+          </button>
           <button
             type="button"
             onClick={() => setTab("trash")}
@@ -2171,6 +2190,12 @@ export function TasksClient({
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onTogglePosted={togglePosted}
+          />
+        ) : tab === "analysis" ? (
+          <AnalysisList
+            initialItems={analysisLinks}
+            isAdmin={isAdmin}
+            userId={userId}
           />
         ) : (
           <TrashList
