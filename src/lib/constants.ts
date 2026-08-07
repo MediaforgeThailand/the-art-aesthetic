@@ -366,11 +366,9 @@ export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
 /** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
 export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
 
-/* ---------- ขนาดไฟล์อัพโหลด ----------
-   ต้องไม่เกินเพดานของ bucket ที่ตั้งไว้ใน Supabase Dashboard → Storage → Settings
-   (**ห้ามตั้ง storage.buckets.file_size_limit ด้วย SQL** — เคยทำอัพโหลดพังทั้งระบบ 2026-07-24)
-   ค่านี้ใช้เตือนผู้ใช้ฝั่งหน้าเว็บก่อนยิงไฟล์ขึ้นไปให้เสียเวลา ไม่ใช่ตัวบังคับจริง */
-export const MAX_UPLOAD_MB = 500;
+/* ---------- ย่อรูปก่อนอัพโหลด ----------
+   เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้
+   ใน Supabase Dashboard → Storage → Settings; **ห้ามตั้งด้วย SQL** — เคยทำอัพโหลดพังทั้งระบบ) */
 
 /** ไฟล์รูปที่ใหญ่กว่านี้จะถูกย่อ/บีบอัดในเบราว์เซอร์ก่อนอัพ (รูปจากมือถือมักใหญ่ 3-12MB) */
 export const IMAGE_COMPRESS_OVER_MB = 1;

@@ -33,7 +33,12 @@ import {
 } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import { prepareUpload, prepareUploads } from "@/lib/upload-prepare";
+import {
+  fileTooLargeMessage,
+  tooLargeSummary,
+  uploadWithProgress,
+} from "@/lib/upload";
+import { compressImageFile, compressImages } from "@/lib/upload-prepare";
 import type {
   InfluencerLite,
   NotificationType,
@@ -432,6 +437,12 @@ export function TaskPanel({
     task.deliverable_url ?? ""
   );
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  /** ความคืบหน้าตอนอัพ: ไฟล์ที่เท่าไรจากทั้งหมด + % ของไฟล์ปัจจุบัน */
+  const [uploadProgress, setUploadProgress] = useState<{
+    index: number;
+    total: number;
+    pct: number;
+  } | null>(null);
   const deliverableInputRef = useRef<HTMLInputElement>(null);
   const files = task.files ?? [];
 
@@ -447,55 +458,66 @@ export function TaskPanel({
   };
 
   const uploadFiles = async (fileList: FileList) => {
+    // ย่อรูปในเบราว์เซอร์ก่อน แล้วค่อยเช็คเพดาน — รูปจากมือถือที่เกินเพดาน
+    // มักผ่านได้หลังย่อ (วิดีโอไม่ถูกแตะ)
+    const picked = await compressImages(Array.from(fileList));
+    // กันไฟล์ใหญ่เกินเพดานตั้งแต่ก่อนเริ่ม — ไม่ต้องรออัพวิดีโอเป็นนาทีแล้วค่อยเจอ error
+    const tooLarge = tooLargeSummary(picked);
+    if (tooLarge) {
+      showError(tooLarge);
+      return;
+    }
     setUploadingFiles(true);
+    setUploadProgress({ index: 0, total: picked.length, pct: 0 });
     const rows: { task_id: string; file_path: string; file_name: string }[] =
       [];
-    // ย่อรูป + กันไฟล์เกินเพดาน bucket ก่อนเริ่มอัพ (ล้มตั้งแต่ยังไม่แตะ storage)
-    let prepared;
+    // try/finally: ปุ่มต้องกลับมากดได้เสมอแม้ระหว่างทางมี exception
+    // (ไม่งั้นปุ่มค้างที่ "กำลังอัพโหลด..." จนกว่าจะปิด-เปิดแผงงานใหม่)
     try {
-      prepared = await prepareUploads(Array.from(fileList));
-    } catch (e) {
-      setUploadingFiles(false);
-      showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
-      return;
-    }
-    for (const { file } of prepared) {
-      const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${sanitizeFileName(file.name)}`;
-      const { error } = await supabase.storage
-        .from(STORAGE_BUCKET_DOCUMENTS)
-        .upload(path, file);
-      if (error) {
-        // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ (best effort) — ยังไม่มีแถว task_files อ้างถึง
-        if (rows.length > 0) {
-          try {
-            await supabase.storage
-              .from(STORAGE_BUCKET_DOCUMENTS)
-              .remove(rows.map((r) => r.file_path));
-          } catch {
-            // เพิกเฉย
+      for (const [i, file] of picked.entries()) {
+        const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${sanitizeFileName(file.name)}`;
+        setUploadProgress({ index: i, total: picked.length, pct: 0 });
+        const { error } = await uploadWithProgress(
+          STORAGE_BUCKET_DOCUMENTS,
+          path,
+          file,
+          (ratio) =>
+            setUploadProgress({ index: i, total: picked.length, pct: ratio })
+        );
+        if (error) {
+          // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ (best effort) — ยังไม่มีแถว task_files อ้างถึง
+          if (rows.length > 0) {
+            try {
+              await supabase.storage
+                .from(STORAGE_BUCKET_DOCUMENTS)
+                .remove(rows.map((r) => r.file_path));
+            } catch {
+              // เพิกเฉย
+            }
           }
+          showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
+          return;
         }
-        setUploadingFiles(false);
-        showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
+        rows.push({ task_id: task.id, file_path: path, file_name: file.name });
+      }
+      const { error: insErr } = await supabase.from("task_files").insert(rows);
+      if (insErr) {
+        // เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
+        try {
+          await supabase.storage
+            .from(STORAGE_BUCKET_DOCUMENTS)
+            .remove(rows.map((r) => r.file_path));
+        } catch {
+          // เพิกเฉย
+        }
+        showError(`บันทึกไฟล์ไม่สำเร็จ: ${insErr.message}`);
         return;
       }
-      rows.push({ task_id: task.id, file_path: path, file_name: file.name });
+      router.refresh();
+    } finally {
+      setUploadingFiles(false);
+      setUploadProgress(null);
     }
-    const { error: insErr } = await supabase.from("task_files").insert(rows);
-    setUploadingFiles(false);
-    if (insErr) {
-      // เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
-      try {
-        await supabase.storage
-          .from(STORAGE_BUCKET_DOCUMENTS)
-          .remove(rows.map((r) => r.file_path));
-      } catch {
-        // เพิกเฉย
-      }
-      showError(`บันทึกไฟล์ไม่สำเร็จ: ${insErr.message}`);
-      return;
-    }
-    router.refresh();
   };
 
   const removeFile = async (f: TaskFileRow) => {
@@ -555,19 +577,21 @@ export function TaskPanel({
   /** แนบไฟล์ (หลายไฟล์) เข้างานย่อย */
   const uploadSubtaskFiles = async (sub: TaskSubtaskRow, fileList: FileList) => {
     if (sub.id.startsWith("temp-")) return;
-    const added: TaskSubtaskFileRow[] = [];
-    let prepared;
-    try {
-      prepared = await prepareUploads(Array.from(fileList));
-    } catch (e) {
-      showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
+    // ย่อรูปก่อนเช็คเพดาน เหมือนไฟล์งานบนการ์ด
+    const picked = await compressImages(Array.from(fileList));
+    const tooLarge = tooLargeSummary(picked);
+    if (tooLarge) {
+      showError(tooLarge);
       return;
     }
-    for (const { file } of prepared) {
+    const added: TaskSubtaskFileRow[] = [];
+    for (const file of picked) {
       const path = `tasks/${task.id}/subtasks/${sub.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
-      const { error: upErr } = await supabase.storage
-        .from(STORAGE_BUCKET_DOCUMENTS)
-        .upload(path, file);
+      const { error: upErr } = await uploadWithProgress(
+        STORAGE_BUCKET_DOCUMENTS,
+        path,
+        file
+      );
       if (upErr) {
         showError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
         break;
@@ -759,18 +783,20 @@ export function TaskPanel({
     // อัพไฟล์แนบก่อน (ถ้ามี) — ล้มเหลวก็ยังไม่แตะรายการคอมเมนต์
     let filePath: string | null = null;
     if (file) {
-      let ready: File;
-      try {
-        ready = (await prepareUpload(file)).file;
-      } catch (e) {
+      // ย่อรูปก่อน (วิดีโอ/ไฟล์อื่นส่งต่อตามเดิม) แล้วค่อยเช็คเพดาน
+      const ready = await compressImageFile(file);
+      const tooLarge = fileTooLargeMessage(ready);
+      if (tooLarge) {
         setSending(false);
-        showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
+        showError(tooLarge);
         return;
       }
       const p = `tasks/${task.id}/comments/${Date.now()}_${sanitizeFileName(ready.name)}`;
-      const { error: upErr } = await supabase.storage
-        .from(STORAGE_BUCKET_DOCUMENTS)
-        .upload(p, ready);
+      const { error: upErr } = await uploadWithProgress(
+        STORAGE_BUCKET_DOCUMENTS,
+        p,
+        ready
+      );
       if (upErr) {
         setSending(false);
         showError(`อัพโหลดไฟล์แนบไม่สำเร็จ: ${upErr.message}`);
@@ -1533,9 +1559,19 @@ export function TaskPanel({
             >
               <Upload size={14} />
               {uploadingFiles
-                ? "กำลังอัพโหลด..."
-                : "อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์)"}
+                ? uploadProgress
+                  ? `กำลังอัพโหลด ${uploadProgress.index + 1}/${uploadProgress.total} · ${Math.round(uploadProgress.pct * 100)}%`
+                  : "กำลังอัพโหลด..."
+                : "อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์ · ไม่เกิน 50MB ต่อไฟล์)"}
             </button>
+            {uploadProgress && (
+              <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className="h-full rounded-full bg-brand-500 transition-[width] duration-150"
+                  style={{ width: `${Math.round(uploadProgress.pct * 100)}%` }}
+                />
+              </div>
+            )}
             <input
               ref={deliverableInputRef}
               type="file"
@@ -1804,8 +1840,15 @@ export function TaskPanel({
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) setAttachFile(f);
               e.target.value = "";
+              if (!f) return;
+              // บอกตั้งแต่ตอนเลือก ไม่ใช่ตอนกดส่ง
+              const tooLarge = fileTooLargeMessage(f);
+              if (tooLarge) {
+                showError(tooLarge);
+                return;
+              }
+              setAttachFile(f);
             }}
           />
         </div>
