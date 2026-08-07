@@ -26,11 +26,14 @@ import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
   briefContentTypeLabel,
+  DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
+  REVISION_KINDS,
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
+import { prepareUpload, prepareUploads } from "@/lib/upload-prepare";
 import type {
   InfluencerLite,
   NotificationType,
@@ -447,7 +450,16 @@ export function TaskPanel({
     setUploadingFiles(true);
     const rows: { task_id: string; file_path: string; file_name: string }[] =
       [];
-    for (const file of Array.from(fileList)) {
+    // ย่อรูป + กันไฟล์เกินเพดาน bucket ก่อนเริ่มอัพ (ล้มตั้งแต่ยังไม่แตะ storage)
+    let prepared;
+    try {
+      prepared = await prepareUploads(Array.from(fileList));
+    } catch (e) {
+      setUploadingFiles(false);
+      showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
+      return;
+    }
+    for (const { file } of prepared) {
       const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${sanitizeFileName(file.name)}`;
       const { error } = await supabase.storage
         .from(STORAGE_BUCKET_DOCUMENTS)
@@ -544,7 +556,14 @@ export function TaskPanel({
   const uploadSubtaskFiles = async (sub: TaskSubtaskRow, fileList: FileList) => {
     if (sub.id.startsWith("temp-")) return;
     const added: TaskSubtaskFileRow[] = [];
-    for (const file of Array.from(fileList)) {
+    let prepared;
+    try {
+      prepared = await prepareUploads(Array.from(fileList));
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
+      return;
+    }
+    for (const { file } of prepared) {
       const path = `tasks/${task.id}/subtasks/${sub.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
       const { error: upErr } = await supabase.storage
         .from(STORAGE_BUCKET_DOCUMENTS)
@@ -740,10 +759,18 @@ export function TaskPanel({
     // อัพไฟล์แนบก่อน (ถ้ามี) — ล้มเหลวก็ยังไม่แตะรายการคอมเมนต์
     let filePath: string | null = null;
     if (file) {
-      const p = `tasks/${task.id}/comments/${Date.now()}_${sanitizeFileName(file.name)}`;
+      let ready: File;
+      try {
+        ready = (await prepareUpload(file)).file;
+      } catch (e) {
+        setSending(false);
+        showError(e instanceof Error ? e.message : "เตรียมไฟล์ไม่สำเร็จ");
+        return;
+      }
+      const p = `tasks/${task.id}/comments/${Date.now()}_${sanitizeFileName(ready.name)}`;
       const { error: upErr } = await supabase.storage
         .from(STORAGE_BUCKET_DOCUMENTS)
-        .upload(p, file);
+        .upload(p, ready);
       if (upErr) {
         setSending(false);
         showError(`อัพโหลดไฟล์แนบไม่สำเร็จ: ${upErr.message}`);
@@ -761,6 +788,7 @@ export function TaskPanel({
       // การแก้ไขนับจาก "การตีกลับ" ของผู้ตรวจเท่านั้น — คอมเมนต์ทั่วไปไม่ใช่ revision
       is_revision: false,
       revision_number: null,
+      revision_kind: null,
       file_path: filePath,
       link_url: link === "" ? null : link,
       created_at: new Date().toISOString(),
@@ -1894,12 +1922,19 @@ function CommentItem({
           }`}
         >
           {c.is_revision && (
+            // ประเภทการตีกลับ: "คำผิด" นับเป็นข้อผิดพลาดใน KPI · "เพิ่มเติม" ไม่นับ
+            // (แถวเก่าก่อน migration 0063 ไม่มีค่า → ถือเป็นคำผิดตามเดิม)
             <span
               className={`mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                mine ? "bg-white/25 text-cream" : "bg-amber-100 text-amber-700"
+                mine
+                  ? "bg-white/25 text-cream"
+                  : REVISION_KINDS[c.revision_kind ?? DEFAULT_REVISION_KIND]
+                      .chip
               }`}
             >
-              ตีกลับให้แก้ไข ครั้งที่ {c.revision_number ?? "-"}
+              ตีกลับ ·{" "}
+              {REVISION_KINDS[c.revision_kind ?? DEFAULT_REVISION_KIND].label}{" "}
+              ครั้งที่ {c.revision_number ?? "-"}
             </span>
           )}
           {c.body !== "" && (

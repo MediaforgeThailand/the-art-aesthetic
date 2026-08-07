@@ -1,4 +1,4 @@
-import type { PriceGroup, TaskPriority } from "./types";
+import type { PriceGroup, RevisionKind, TaskPriority } from "./types";
 
 export const TASK_PRIORITY: Record<
   TaskPriority,
@@ -330,3 +330,50 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export const STORAGE_BUCKET_DOCUMENTS = "documents";
+
+/* ---------- ตีกลับงาน 2 แบบ (migration 0063) ----------
+   ต่างกันที่ "นับเป็นข้อผิดพลาดไหม" เท่านั้น — ทั้งคู่ดึงงานกลับเป็น "กำลังทำ" เหมือนกัน
+   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload */
+export const REVISION_KINDS: Record<
+  RevisionKind,
+  {
+    label: string;
+    /** คำอธิบายในกล่องเลือกตอนตีกลับ */
+    hint: string;
+    countsAsError: boolean;
+    chip: string;
+    dot: string;
+  }
+> = {
+  mistake: {
+    label: "คำผิด",
+    hint: "งานผิดพลาดจริง เช่น สะกดผิด ข้อมูลผิด ใช้ไฟล์ผิด — นับเป็นข้อผิดพลาดใน KPI",
+    countsAsError: true,
+    chip: "border border-rose-200 bg-rose-50 text-rose-700",
+    dot: "bg-rose-500",
+  },
+  addition: {
+    label: "เพิ่มเติม",
+    hint: "ผู้ตรวจแนะนำให้ปรับเพื่อคุมคุณภาพ ไม่ใช่ความผิด — บันทึกไว้แต่ไม่นับเป็นข้อผิดพลาด",
+    countsAsError: false,
+    chip: "border border-sky-200 bg-sky-50 text-sky-700",
+    dot: "bg-sky-500",
+  },
+};
+
+export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
+
+/** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
+export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
+
+/* ---------- ขนาดไฟล์อัพโหลด ----------
+   ต้องไม่เกินเพดานของ bucket ที่ตั้งไว้ใน Supabase Dashboard → Storage → Settings
+   (**ห้ามตั้ง storage.buckets.file_size_limit ด้วย SQL** — เคยทำอัพโหลดพังทั้งระบบ 2026-07-24)
+   ค่านี้ใช้เตือนผู้ใช้ฝั่งหน้าเว็บก่อนยิงไฟล์ขึ้นไปให้เสียเวลา ไม่ใช่ตัวบังคับจริง */
+export const MAX_UPLOAD_MB = 500;
+
+/** ไฟล์รูปที่ใหญ่กว่านี้จะถูกย่อ/บีบอัดในเบราว์เซอร์ก่อนอัพ (รูปจากมือถือมักใหญ่ 3-12MB) */
+export const IMAGE_COMPRESS_OVER_MB = 1;
+
+/** ด้านยาวสุดของรูปหลังย่อ — พอสำหรับดูตรวจงานบนจอ 4K โดยไฟล์เล็กลงหลายเท่า */
+export const IMAGE_MAX_DIMENSION = 2560;

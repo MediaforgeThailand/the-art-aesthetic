@@ -30,13 +30,21 @@ import {
 } from "recharts";
 import { DemoBadge, DemoBanner } from "@/components/demo-badge";
 import { Badge, Card, EmptyState, PageHeader, Select } from "@/components/ui";
-import { TASK_PRIORITY, taskCategoryChipClass } from "@/lib/constants";
+import {
+  DEFAULT_REVISION_KIND,
+  REVISION_KINDS,
+  TASK_PRIORITY,
+  taskCategoryChipClass,
+} from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
+import type { MediaItem } from "@/lib/media";
 import type {
   ProfileRow,
+  RevisionKind,
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import { PersonTab } from "./person-tab";
 
 type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email">;
 
@@ -79,8 +87,10 @@ interface PersonStat {
   pending: number;
   done: number;
   overdue: number;
-  /** จำนวนคอมเมนต์ "ส่งงานแก้ไข" บนงานของคนนี้ ในเดือนปัจจุบัน — ใช้วัด KPI */
+  /** ตีกลับแบบ "คำผิด" บนงานของคนนี้ในเดือนปัจจุบัน — ตัวเลข KPI ข้อผิดพลาดจริง */
   revisions: number;
+  /** ตีกลับแบบ "เพิ่มเติม" (ผู้ตรวจขอให้ปรับเพื่อคุมคุณภาพ) — แสดงคู่กันแต่ไม่นับเป็นข้อผิดพลาด */
+  additions: number;
 }
 
 /* ---------- ส่วนประกอบย่อย ---------- */
@@ -145,17 +155,34 @@ export function WorkloadClient({
   profiles,
   sections,
   monthRevisions,
+  kpiSince,
+  media,
+  userId,
 }: {
   tasks: TaskWithAssignee[];
   profiles: ProfileOption[];
   sections: TaskSectionRow[];
-  /** คอมเมนต์ "ส่งงานแก้ไข" ของเดือนนี้ (เวลาไทย) — นับต่อคนจาก task ที่ตนรับผิดชอบ */
-  monthRevisions: { task_id: string }[];
+  /** การตีกลับของเดือนนี้ (เวลาไทย) — นับต่อคนจาก task ที่ตนรับผิดชอบ
+      revision_kind: mistake = ข้อผิดพลาด (นับ KPI) · addition = ขอเพิ่มเติม (ไม่นับ)
+      null = แถวก่อน migration 0063 ถือเป็นคำผิดตามเดิม */
+  monthRevisions: {
+    task_id: string;
+    revision_kind: RevisionKind | null;
+    created_at: string;
+  }[];
+  /** จุดเริ่มนับ KPI การตีกลับ (app_settings.kpi_reset_at) — ผู้ใช้สั่งรีเซ็ตตัวนับ 2026-08-08 */
+  kpiSince: string;
+  /** ไฟล์ทั้งหมดของงาน — แท็บ "รายบุคคล" แสดงเป็น media card ของคนที่เลือก */
+  media: MediaItem[];
+  /** ผู้ใช้ที่ล็อกอินอยู่ — แท็บรายบุคคลเปิดมาที่ตัวเองก่อน */
+  userId: string | null;
 }) {
   const today = todayISO();
   const hasDemo = tasks.some((t) => t.description === "demo");
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** แท็บ: ภาพรวมทีม | รายบุคคล (งาน + ไฟล์ของคนที่เลือก) */
+  const [tab, setTab] = useState<"team" | "person">("team");
 
   /* ---- ตัวกรอง — เลือกดู performance เฉพาะกลุ่ม (คน / section / หมวดหมู่ / สถานะ) ---- */
   const [personFilter, setPersonFilter] = useState<string>("all"); // all | none | <profileId>
@@ -274,6 +301,7 @@ export function WorkloadClient({
       done: 0,
       overdue: 0,
       revisions: 0,
+      additions: 0,
     }));
     const unassigned: PersonStat = {
       key: "none",
@@ -284,6 +312,7 @@ export function WorkloadClient({
       done: 0,
       overdue: 0,
       revisions: 0,
+      additions: 0,
     };
     const byId = new Map(rows.map((r) => [r.key, r]));
 
@@ -295,18 +324,23 @@ export function WorkloadClient({
       if (isOverdue(t, today)) row.overdue += 1;
     }
 
-    // นับ "ส่งงานแก้ไข" เดือนนี้ต่อคน — ผูกกับผู้รับผิดชอบของ task ที่ถูกแก้
+    // นับการตีกลับเดือนนี้ต่อคน — ผูกกับผู้รับผิดชอบของ task ที่ถูกตีกลับ
     // เฉพาะงานที่อยู่ในชุดหลังกรอง (งานที่ถูกกรองออกไม่นับ)
     const assigneeById = new Map(filteredTasks.map((t) => [t.id, t.assignee_id]));
     for (const r of monthRevisions) {
       if (!assigneeById.has(r.task_id)) continue;
       const assigneeId = assigneeById.get(r.task_id) ?? null;
       const row = (assigneeId && byId.get(assigneeId)) || unassigned;
-      row.revisions += 1;
+      // "เพิ่มเติม" เป็นคำแนะนำเพื่อคุมคุณภาพ ไม่ใช่ความผิด — แยกช่องไม่ปนกับ KPI ข้อผิดพลาด
+      if (REVISION_KINDS[r.revision_kind ?? DEFAULT_REVISION_KIND].countsAsError) {
+        row.revisions += 1;
+      } else {
+        row.additions += 1;
+      }
     }
 
     const result = [...rows];
-    if (unassigned.total > 0 || unassigned.revisions > 0) {
+    if (unassigned.total > 0 || unassigned.revisions > 0 || unassigned.additions > 0) {
       result.push(unassigned);
     }
     return result.sort(
@@ -383,6 +417,42 @@ export function WorkloadClient({
 
       {hasDemo && <DemoBanner onWhat="งานบางส่วน" />}
 
+      {/* แท็บ: ภาพรวมทั้งทีม / เจาะรายคน (งาน + ไฟล์) */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {(
+          [
+            { key: "team" as const, label: "ภาพรวมทีม" },
+            { key: "person" as const, label: "รายบุคคล" },
+          ]
+        ).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`cursor-pointer rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 active:scale-[0.97] ${
+              tab === t.key
+                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
+                : "border border-stone-200 bg-white/60 text-stone-600 hover:bg-white"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "person" && (
+        <PersonTab
+          tasks={tasks}
+          profiles={profiles}
+          media={media}
+          revisions={monthRevisions}
+          kpiSince={kpiSince}
+          initialPersonId={userId}
+        />
+      )}
+
+      {tab === "team" && (
+      <>
       {/* ตัวกรอง — เจาะดู performance เฉพาะกลุ่ม (คน / section / หมวดหมู่ / สถานะ) */}
       <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in-up">
         <div className="flex items-center gap-1.5 text-sm text-stone-500">
@@ -642,18 +712,24 @@ export function WorkloadClient({
                 <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
                   <th className="px-5 py-3 font-medium">ผู้รับผิดชอบ</th>
                   <th className="px-4 py-3 text-right font-medium">ทั้งหมด</th>
-                  <th className="px-4 py-3 text-right font-medium">ยังไม่เสร็จ</th>
+                  <th className="px-4 py-3 text-right font-medium">ค้างอยู่</th>
                   <th className="px-4 py-3 text-right font-medium">เสร็จแล้ว</th>
-                  <th className="px-4 py-3 text-right font-medium">เลยกำหนด</th>
-                  <th className="px-4 py-3 text-right font-medium">
-                    แก้ไข (เดือนนี้)
+                  <th
+                    className="px-4 py-3 text-right font-medium"
+                    title="ตีกลับแบบ 'คำผิด' เดือนนี้ — ความผิดพลาดของงานจริง"
+                  >
+                    คำผิด (เดือนนี้)
                   </th>
-                  <th className="px-5 py-3 font-medium">อัตราเสร็จ</th>
+                  <th
+                    className="px-4 py-3 text-right font-medium"
+                    title="ตีกลับแบบ 'เพิ่มเติม' เดือนนี้ — ผู้ตรวจขอให้ปรับเพื่อคุมคุณภาพ ไม่นับเป็นข้อผิดพลาด"
+                  >
+                    เพิ่มเติม (เดือนนี้)
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {visibleStats.map((p) => {
-                  const rate = p.total > 0 ? (p.done / p.total) * 100 : null;
                   const active = selectedKey === p.key;
                   return (
                     <tr
@@ -708,41 +784,22 @@ export function WorkloadClient({
                           </td>
                           <td
                             className={`px-4 py-3 text-right tabular-nums ${
-                              p.overdue > 0
-                                ? "font-semibold text-rose-600"
-                                : "text-stone-400"
-                            }`}
-                          >
-                            {formatNumber(p.overdue)}
-                          </td>
-                          <td
-                            className={`px-4 py-3 text-right tabular-nums ${
                               p.revisions > 0
-                                ? "font-semibold text-amber-600"
+                                ? "font-semibold text-rose-600"
                                 : "text-stone-400"
                             }`}
                           >
                             {formatNumber(p.revisions)}
                           </td>
+                          <td
+                            className={`px-4 py-3 text-right tabular-nums ${
+                              p.additions > 0 ? "text-sky-600" : "text-stone-400"
+                            }`}
+                          >
+                            {formatNumber(p.additions)}
+                          </td>
                         </>
                       )}
-                      <td className="px-5 py-3">
-                        {rate === null ? (
-                          <span className="text-stone-300">-</span>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-24 overflow-hidden rounded-full bg-stone-100">
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500"
-                                style={{ width: `${rate}%` }}
-                              />
-                            </div>
-                            <span className="w-10 text-right text-xs font-medium tabular-nums text-stone-700">
-                              {rate.toFixed(0)}%
-                            </span>
-                          </div>
-                        )}
-                      </td>
                     </tr>
                   );
                 })}
@@ -813,6 +870,8 @@ export function WorkloadClient({
           </Card>
         )}
       </div>
+      )}
+      </>
       )}
     </div>
   );

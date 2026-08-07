@@ -25,7 +25,10 @@ import {
   Textarea,
 } from "@/components/ui";
 import {
+  DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
+  REVISION_KIND_ORDER,
+  REVISION_KINDS,
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
@@ -34,6 +37,7 @@ import type {
   InfluencerLite,
   NotificationType,
   ProfileRow,
+  RevisionKind,
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
@@ -206,6 +210,9 @@ export function TasksClient({
   );
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  /** ประเภทการตีกลับ — "คำผิด" นับเป็นข้อผิดพลาดใน KPI, "เพิ่มเติม" ไม่นับ */
+  const [rejectKind, setRejectKind] =
+    useState<RevisionKind>(DEFAULT_REVISION_KIND);
 
   /** คนที่เลือกเป็นผู้ตรวจงานได้ (ตามลำดับชื่อจาก profiles) */
   const reviewerProfiles = useMemo(
@@ -1038,6 +1045,7 @@ export function TasksClient({
   const requestReject = (task: TaskWithAssignee) => {
     if (isTempId(task.id)) return;
     setRejectReason("");
+    setRejectKind(DEFAULT_REVISION_KIND);
     setRejectTarget(task);
   };
 
@@ -1070,6 +1078,7 @@ export function TasksClient({
       body: rejectReason.trim(),
       is_revision: true,
       revision_number: revisionNumber,
+      revision_kind: rejectKind,
     });
     setRejecting(false);
     if (cErr) {
@@ -1091,7 +1100,8 @@ export function TasksClient({
       {
         recipient: task.assignee_id,
         type: "rejected",
-        preview: rejectReason.trim() || null,
+        // ใส่ประเภทนำหน้าเหตุผล — ผู้รับผิดชอบต้องรู้ตั้งแต่ในกระดิ่งว่าเป็นคำผิดหรือแค่ขอเพิ่มเติม
+        preview: `[${REVISION_KINDS[rejectKind].label}] ${rejectReason.trim()}`.trim(),
       },
     ]);
     setRejectTarget(null);
@@ -2344,7 +2354,8 @@ export function TasksClient({
         </div>
       </Modal>
 
-      {/* ตีกลับงาน: ระบุสิ่งที่ต้องแก้ (ไม่บังคับ) แล้วยืนยัน → นับเป็นการแก้ไข 1 ครั้ง */}
+      {/* ตีกลับงาน: เลือกประเภท + ระบุสิ่งที่ต้องแก้ (ไม่บังคับ) → งานกลับไป "กำลังทำ"
+          ทั้งสองประเภท ต่างกันแค่ "คำผิด" นับเป็นข้อผิดพลาดใน KPI ส่วน "เพิ่มเติม" ไม่นับ */}
       <Modal
         open={rejectTarget !== null}
         onClose={() => setRejectTarget(null)}
@@ -2361,9 +2372,52 @@ export function TasksClient({
               ? profileName(rejectTarget.assignee)
               : "ผู้รับผิดชอบ"}
           </span>{" "}
-          แก้ไข และนับเป็นการแก้ไข 1 ครั้ง (เก็บเป็นสถิติรายคนในหน้า Team
-          Workload)
+          แก้ไข
         </p>
+        <div className="mt-4">
+          <Label htmlFor="reject-kind">ประเภทการตีกลับ</Label>
+          <div id="reject-kind" className="mt-1.5 grid gap-2 sm:grid-cols-2">
+            {REVISION_KIND_ORDER.map((k) => {
+              const meta = REVISION_KINDS[k];
+              const active = rejectKind === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setRejectKind(k)}
+                  className={`cursor-pointer rounded-xl border p-3 text-left transition-all active:scale-[0.99] ${
+                    active
+                      ? "border-brand-400 bg-brand-50/70 shadow-sm"
+                      : "border-stone-200 bg-white/60 hover:border-stone-300"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${
+                        active ? "" : "opacity-40"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-semibold ${
+                        active ? "text-brand-800" : "text-stone-700"
+                      }`}
+                    >
+                      {meta.label}
+                    </span>
+                    {meta.countsAsError && (
+                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                        นับ KPI
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-5 text-stone-500">
+                    {meta.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="mt-3">
           <Label htmlFor="reject-reason">สิ่งที่ต้องแก้ไข / เหตุผล (ไม่บังคับ)</Label>
           <Textarea
@@ -2383,7 +2437,7 @@ export function TasksClient({
             loading={rejecting}
             onClick={() => void confirmReject()}
           >
-            ตีกลับให้แก้ไข
+            ตีกลับ ({REVISION_KINDS[rejectKind].label})
           </Button>
         </div>
       </Modal>

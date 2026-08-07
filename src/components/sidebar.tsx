@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Gauge,
   IdCard,
+  Images,
   LayoutDashboard,
   Link2,
   ListTodo,
@@ -67,6 +68,8 @@ const navItems: NavItem[] = [
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์", rail: "โปรไฟล์" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
+  // คลังไฟล์รวมของงาน (ดู/ดาวน์โหลดอย่างเดียว — อัพโหลดทำที่การ์ดงาน)
+  { href: "/all-media", label: "All Media", icon: Images, perm: "team", rail: "Media" },
   // ลิสต์ส่วนตัว — perm: null เพราะเป็นพื้นที่ของแต่ละบัญชีเอง ไม่ใช่ข้อมูลของแผนก
   // (RLS ที่ list_tasks ยึด owner_id — เปิดเมนูให้ทุกคนก็ไม่มีทางเห็นลิสต์ของคนอื่น)
   { href: "/my-tasks", label: "งานของฉัน", icon: ListTodo, perm: null, short: "ของฉัน", rail: "ของฉัน" },

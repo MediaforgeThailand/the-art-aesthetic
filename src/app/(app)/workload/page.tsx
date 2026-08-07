@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 import { PageContainer } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
-import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import type {
+  RevisionKind,
+  TaskSectionRow,
+  TaskWithAssignee,
+} from "@/lib/types";
 import { getAccess, hasPermission } from "@/lib/access";
 import { AccessNotice } from "@/components/access-notice";
+import { fetchTaskMedia } from "@/lib/media-query";
 import { WorkloadClient } from "./workload-client";
 
 export const metadata: Metadata = {
@@ -34,13 +39,21 @@ export default async function WorkloadPage() {
     return rows;
   };
 
-  // จุดเริ่มเดือนปัจจุบันตามเวลาไทย — ใช้นับ "ส่งงานแก้ไข" เดือนนี้ (วัด KPI รายคน)
+  // จุดเริ่มนับ KPI การตีกลับ — อ่านจาก app_settings key 'kpi_reset_at' (migration 0064)
+  // ผู้ใช้สั่งให้ "เริ่มนับใหม่" เมื่อ 2026-08-08 จึงไม่ผูกกับต้นเดือนอีกต่อไป
+  // ไม่มีค่า = ตกกลับไปนับตั้งแต่ต้นเดือนปัจจุบัน (พฤติกรรมเดิม)
   const bkkNow = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" })
   );
   const monthStart = `${bkkNow.getFullYear()}-${String(
     bkkNow.getMonth() + 1
   ).padStart(2, "0")}-01T00:00:00+07:00`;
+  const { data: resetRow } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "kpi_reset_at")
+    .maybeSingle();
+  const kpiSince = resetRow?.value ?? monthStart;
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
@@ -49,6 +62,8 @@ export default async function WorkloadPage() {
     { data: profileData, error: profilesError },
     { data: sectionData, error: sectionsError },
     { data: revisionData, error: revisionsError },
+    media,
+    claimsRes,
   ] = await Promise.all([
     getAccess(),
     fetchTasks(),
@@ -61,10 +76,14 @@ export default async function WorkloadPage() {
       .select("*")
       .order("position", { ascending: true }),
     supabase
+      // revision_kind แยก "คำผิด" (นับเป็นข้อผิดพลาด) ออกจาก "เพิ่มเติม" (ไม่นับ) — migration 0063
       .from("task_comments")
-      .select("task_id")
+      .select("task_id, revision_kind, created_at")
       .eq("is_revision", true)
-      .gte("created_at", monthStart),
+      .gte("created_at", kpiSince),
+    // คลังไฟล์ของงาน — แท็บ "รายบุคคล" แสดงเป็น media card ของคนที่เลือก
+    fetchTaskMedia(),
+    supabase.auth.getClaims(),
   ]);
   if (!hasPermission(access, "team")) return <AccessNotice />;
 
@@ -83,7 +102,11 @@ export default async function WorkloadPage() {
   const tasks = taskData;
   const profiles = profileData ?? [];
   const sections = (sectionData ?? []) as TaskSectionRow[];
-  const monthRevisions = (revisionData ?? []) as { task_id: string }[];
+  const monthRevisions = (revisionData ?? []) as {
+    task_id: string;
+    revision_kind: RevisionKind | null;
+    created_at: string;
+  }[];
 
   return (
     <PageContainer>
@@ -92,6 +115,9 @@ export default async function WorkloadPage() {
         profiles={profiles}
         sections={sections}
         monthRevisions={monthRevisions}
+        kpiSince={kpiSince}
+        media={media}
+        userId={claimsRes.data?.claims.sub ?? null}
       />
     </PageContainer>
   );

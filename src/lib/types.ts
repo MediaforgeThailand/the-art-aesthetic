@@ -14,6 +14,7 @@ export type {
   AppSettingRow,
   TaskCommentRow,
   TaskCommentWithAuthor,
+  RevisionKind,
   NotificationType,
   NotificationRow,
   NotificationWithJoins,

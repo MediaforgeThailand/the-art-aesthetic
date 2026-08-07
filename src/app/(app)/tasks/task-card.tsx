@@ -33,6 +33,7 @@ import {
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
+import { isImagePath, isVideoPath } from "@/lib/media";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import { useSignedUrl } from "../influencers/use-signed-url";
@@ -42,14 +43,9 @@ export type ProfileOption = Pick<
   "id" | "full_name" | "email" | "avatar_path"
 >;
 
-/* เฉพาะฟอร์แมตที่ Chrome/Edge เปิดได้จริง — .heic/.avi ไม่รองรับ ให้ตกไปเป็นไฟล์แนบธรรมดา */
-export function isImagePath(path: string): boolean {
-  return /\.(png|jpe?g|gif|webp|avif)$/i.test(path);
-}
-
-export function isVideoPath(path: string): boolean {
-  return /\.(mp4|mov|webm|m4v)$/i.test(path);
-}
+/* นิยามจริงอยู่ที่ `@/lib/media` (ใช้ร่วมกับหน้า All Media ฝั่ง server) —
+   re-export ไว้ให้ไฟล์เดิมที่ import จากที่นี่ใช้ได้เหมือนเดิม */
+export { isImagePath, isVideoPath };
 
 /** id ชั่วคราวของแถว optimistic ที่ยังไม่ได้คำตอบจาก DB */
 export function isTempId(id: string): boolean {

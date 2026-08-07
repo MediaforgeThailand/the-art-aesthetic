@@ -138,15 +138,21 @@ export type AppSettingRow = {
   updated_at: string;
 };
 
+/** ประเภทการตีกลับ (migration 0063) — mistake = ข้อผิดพลาด นับเป็น KPI,
+    addition = ผู้ตรวจขอให้ปรับเพิ่มเพื่อคุมคุณภาพ บันทึกไว้แต่ไม่นับเป็นข้อผิดพลาด */
+export type RevisionKind = "mistake" | "addition";
+
 export type TaskCommentRow = {
   id: string;
   task_id: string;
   author_id: string | null;
   body: string;
-  /** true = คอมเมนต์นี้เป็นการส่งงานแก้ไข (นับครั้งเพื่อวัด KPI) */
+  /** true = คอมเมนต์นี้เป็นการตีกลับให้แก้ไข (นับครั้งเพื่อวัด KPI) */
   is_revision: boolean;
   /** ลำดับการแก้ไขของ task นี้ (1, 2, ...) — มีค่าเมื่อ is_revision */
   revision_number: number | null;
+  /** ประเภทการตีกลับ — มีค่าเมื่อ is_revision เท่านั้น (DB บังคับด้วย check constraint) */
+  revision_kind: RevisionKind | null;
   /** ไฟล์แนบในคอมเมนต์ (path ใน storage) */
   file_path: string | null;
   /** ลิงก์แนบในคอมเมนต์ (เช่น Google Drive) */
