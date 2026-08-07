@@ -1,3 +1,4 @@
+import { todayISO } from "./format";
 import type {
   InfluCalendarKind,
   InfluFollowupMode,
@@ -177,15 +178,48 @@ export function calendarTimeLabel(
   return e ? `${s} – ${e}` : s;
 }
 
-/* ---------- Stage ของ pipeline ---------- */
+/* ---------- Stage ของ pipeline ----------
+   ปรับเป็น 5 ขั้นเมื่อ 2026-08-07 (migration 0062) ตามคำสั่งผู้ใช้:
+   - "เซนสัญญา" (เดิม 4) กับ "วันเข้ารับบริการ" (เดิม 5) รวมเป็นขั้นเดียว เพราะสัญญาถูกเซน
+     และอัพโหลดตอน influ เข้ามารับบริการอยู่แล้ว — เป็นงานวันเดียวกัน
+   - "Follow up งาน" เลื่อนจาก 6 → 5
+   **ห้ามเทียบเลข stage ตรงๆ ในโค้ดใหม่ — ใช้ค่าคงที่ INFLU_STAGE ด้านล่างเสมอ**
+   (การรวมขั้นครั้งนี้ต้องไล่แก้เลขดิบทั้งระบบ เพราะเดิมกระจายอยู่หลายไฟล์) */
+
+/** เลขขั้นของแต่ละ stage — ใช้แทนเลขดิบทุกที่ */
+export const INFLU_STAGE = {
+  /** 1. ติดต่อ / follow up ก่อนตอบรับ */
+  contact: 1,
+  /** 2. เก็บรายละเอียดเคส (โปรแกรม/ยอดผู้ติดตาม/แพทย์) */
+  caseDetail: 2,
+  /** 3. Memo ขออนุมัติ — อัพไฟล์ Memo ที่อนุมัติแล้ว = ผ่านขั้นนี้อัตโนมัติ */
+  memo: 3,
+  /** 4. เซนสัญญา + วันเข้ารับบริการ (ขั้นรวม) */
+  contractService: 4,
+  /** 5. Follow up งานตามเอกสารแนบท้ายสัญญา (ขั้นสุดท้าย) */
+  followup: 5,
+} as const;
+
+/** ขั้นสุดท้ายของ pipeline — ใช้กับ stepper / เคสที่ปิดงานแล้ว */
+export const INFLU_STAGE_LAST = INFLU_STAGE.followup;
+
+/** วันเริ่มนับสัญญา 6 เดือน (เกณฑ์ผู้ใช้ 2026-08-07) — ใช้ "วันรับบริการ" ที่กรอกไว้
+    เพราะสัญญาถูกเซนวันที่ influ เข้ามารับบริการ; ยังไม่กรอกวันค่อยตกไปใช้วันที่อัพไฟล์สัญญา
+    (วันนี้ตามเวลาไทย — ไม่อิงนาฬิกาเครื่องผู้ใช้) */
+export function contractStartFor(c: { service_date: string | null }): string {
+  return c.service_date ?? todayISO();
+}
 
 export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
-  { step: 1, title: "ติดต่อ / Follow up", short: "ติดต่อ" },
-  { step: 2, title: "เก็บรายละเอียดเคส", short: "รายละเอียด" },
-  { step: 3, title: "Memo ขออนุมัติ", short: "Memo" },
-  { step: 4, title: "เซนสัญญา", short: "สัญญา" },
-  { step: 5, title: "วันเข้ารับบริการ", short: "รับบริการ" },
-  { step: 6, title: "Follow up งาน", short: "ตามงาน" },
+  { step: INFLU_STAGE.contact, title: "ติดต่อ / Follow up", short: "ติดต่อ" },
+  { step: INFLU_STAGE.caseDetail, title: "เก็บรายละเอียดเคส", short: "รายละเอียด" },
+  { step: INFLU_STAGE.memo, title: "Memo ขออนุมัติ", short: "Memo" },
+  {
+    step: INFLU_STAGE.contractService,
+    title: "เซนสัญญา + วันรับบริการ",
+    short: "สัญญา/รับบริการ",
+  },
+  { step: INFLU_STAGE.followup, title: "Follow up งาน", short: "ตามงาน" },
 ];
 
 /* ---------- ผู้เซน memo (preset ตามแบบฟอร์มจริง — ผู้จัดทำเป็นคนใหม่ทุกครั้ง) ---------- */
@@ -262,10 +296,10 @@ export const INFLU_CONTRACT_TEMPLATES: {
   },
 ];
 
-/* ---------- Stage 6: checklist ติดตามงาน Influencer (ตามเอกสารแนบท้ายสัญญาของโรงพยาบาล) ----------
+/* ---------- ขั้น Follow up: checklist ติดตามงาน Influencer (ตามเอกสารแนบท้ายสัญญาของโรงพยาบาล) ----------
    แบ่ง 5 หมวด เรียงตามเอกสารจริง
    offsetDays: null = ไม่มีกำหนดเวลา (ไม่ต้องเตือน/นับถอยหลัง)
-   มีค่า = นับจาก "วันที่เข้าสู่ stage 6" แล้วแจ้งเตือนเมื่อใกล้ถึงกำหนด (≤ 7 วัน) */
+   มีค่า = นับจาก "วันที่เข้าสู่ขั้น Follow up" แล้วแจ้งเตือนเมื่อใกล้ถึงกำหนด (≤ 7 วัน) */
 
 export const INFLU_CHECKLIST: {
   step: number;
@@ -627,9 +661,9 @@ export function procedureSummaryText(items: { name: string }[]): string {
     .join(" / ");
 }
 
-/** สถานะการใช้ต้นทุน — "ใช้บริการแล้ว" = เคสผ่าน Stage 5 (วันเข้ารับบริการ) มาแล้ว
-    คือขึ้น Stage 6 หรือปิดงาน (เกณฑ์จากผู้ใช้ 2026-08-03: การเดิน stage คือตัวยืนยันว่าเข้ามาจริง
-    ไม่ใช่แค่วันที่นัดถึงกำหนด — วันที่เลยมาแล้วแต่ยังไม่ผ่าน Stage 5 = อาจเลื่อนนัด ยังไม่นับ) */
+/** สถานะการใช้ต้นทุน — "ใช้บริการแล้ว" = เคสผ่านขั้น "เซนสัญญา + วันรับบริการ" มาแล้ว
+    คือขึ้นขั้น Follow up หรือปิดงาน (เกณฑ์จากผู้ใช้ 2026-08-03: การเดิน stage คือตัวยืนยันว่าเข้ามาจริง
+    ไม่ใช่แค่วันที่นัดถึงกำหนด — วันที่เลยมาแล้วแต่ยังไม่ผ่านขั้นรับบริการ = อาจเลื่อนนัด ยังไม่นับ) */
 export type CostUsage = "used" | "upcoming" | "unscheduled";
 
 export function costUsageOf(c: {
@@ -637,7 +671,7 @@ export function costUsageOf(c: {
   stage: number;
   completed: boolean;
 }): CostUsage {
-  if (c.completed || c.stage > 5) return "used";
+  if (c.completed || c.stage > INFLU_STAGE.contractService) return "used";
   return c.service_date ? "upcoming" : "unscheduled";
 }
 

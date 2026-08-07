@@ -272,7 +272,7 @@ export function CostClient({
           iconClass="bg-emerald-50 text-emerald-600"
           label="ใช้บริการแล้ว"
           value={formatCurrency(sums.used)}
-          sub="เคสที่ผ่าน Stage 5 (เข้ารับบริการ) แล้ว"
+          sub="เคสที่ผ่านขั้นรับบริการแล้ว"
           delay={40}
         />
         <HeroCard

@@ -15,7 +15,7 @@ import { formatDate, formatDateTime, todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluTaskRow } from "@/lib/types";
 
-/* ============ Stage 6 โหมด "แพ็คเกจเฉพาะ" ============
+/* ============ ขั้นตามงาน โหมด "แพ็คเกจเฉพาะ" ============
    เคสดารา/คนที่เราจ่ายค่าตัว — เงื่อนไขไม่เหมือนเคสมาตรฐาน
    ขอบเขตงานเขียนเป็น note ก้อนใหญ่ (influencers.package_note)
    แล้วแตกเป็น checklist ที่ทีมพิมพ์เอง (influ_tasks ที่ is_custom = true) */

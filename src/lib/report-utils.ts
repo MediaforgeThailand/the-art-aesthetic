@@ -88,11 +88,6 @@ export interface MonthlySalesPoint {
   bills: number;
 }
 
-export interface StaffDetail {
-  categories: NamedTotal[];
-  top_items: ItemTotal[];
-}
-
 export const EMPTY_SALES_SUMMARY: SalesDashSummary = {
   total: 0,
   lines: 0,

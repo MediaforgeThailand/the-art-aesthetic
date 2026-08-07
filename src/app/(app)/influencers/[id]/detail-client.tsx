@@ -45,10 +45,13 @@ import {
 import {
   activeFollowupTasks,
   contractEndDate,
+  contractStartFor,
   INFLU_CHECKLIST,
   INFLU_CHECKLIST_SECTIONS,
   INFLU_FOLLOWUP_MODE_ORDER,
   INFLU_FOLLOWUP_MODES,
+  INFLU_STAGE,
+  INFLU_STAGE_LAST,
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
@@ -82,7 +85,7 @@ function sanitizeFileName(fileName: string): string {
 }
 
 /** สร้าง checklist ติดตามงานจากเอกสาร 5 หมวด (idempotent) — คืน error message ถ้าล้ม
-    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ stage 6" (วันนี้ ณ ตอน generate)
+    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ขั้น Follow up" (วันนี้ ณ ตอน generate)
     เช็คเฉพาะข้อของเทมเพลตมาตรฐาน (is_custom = false) — ข้อที่ทีมพิมพ์เองในโหมดแพ็คเกจเฉพาะ
     ไม่ควรบล็อคการสร้างเทมเพลต ไม่งั้นเคสที่ generate ล้มแล้วไปกรอกเอง จะสร้างมาตรฐานกลับมาไม่ได้ */
 async function generateFollowupTasks(
@@ -386,7 +389,7 @@ export function InfluDetailClient({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  // view = "overview" (หน้าสรุป) หรือเลข stage 1-6 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
+  // view = "overview" (หน้าสรุป) หรือเลข stage 1-5 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
   const [view, setView] = useState<"overview" | number>("overview");
   // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
   // แต่ตอน mount ครั้งแรกให้อยู่ที่ภาพรวมเสมอ
@@ -401,7 +404,7 @@ export function InfluDetailClient({
     .filter(Boolean)
     .join(" ");
 
-  const maxStage = influencer.completed ? 6 : influencer.stage;
+  const maxStage = influencer.completed ? INFLU_STAGE_LAST : influencer.stage;
   const readOnly =
     !canManage ||
     influencer.completed ||
@@ -422,9 +425,11 @@ export function InfluDetailClient({
       .from("influencers")
       .update({
         stage: target,
-        // ถอยออกจากจุดที่เพิ่งผ่านการเซนสัญญา (5→4): ล้างวันเริ่มสัญญา —
-        // จะถูกตั้งใหม่เป็นวันยืนยันเซนครบ เมื่อผ่าน Stage 4 อีกครั้ง
-        ...(influencer.stage === 5 ? { contract_start: null } : {}),
+        // ถอยออกจากขั้นสัญญา+รับบริการ (4→3): ล้างวันเริ่มสัญญา —
+        // จะถูกตั้งใหม่เมื่ออัพไฟล์สัญญาในขั้นนั้นอีกครั้ง
+        ...(influencer.stage === INFLU_STAGE.contractService
+          ? { contract_start: null }
+          : {}),
       })
       .eq("id", influencer.id);
     if (error) {
@@ -435,7 +440,7 @@ export function InfluDetailClient({
     router.refresh();
   };
 
-  // สรุป: follow-up ที่เหลือ (stage 6 checklist ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  // สรุป: follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
   const activeTasks = useMemo(
     () => activeFollowupTasks(influencer.followup_mode, tasks),
     [influencer.followup_mode, tasks]
@@ -482,8 +487,8 @@ export function InfluDetailClient({
             <CheckCircle2 size={12} /> จบงานแล้ว
           </Badge>
         )}
-        {/* follow-up ที่เหลือ (เฉพาะ stage 6) */}
-        {influencer.stage === 6 &&
+        {/* follow-up ที่เหลือ (เฉพาะขั้นตามงาน) */}
+        {influencer.stage === INFLU_STAGE.followup &&
           !influencer.completed &&
           followupTotal > 0 &&
           (followupLeft > 0 ? (
@@ -556,7 +561,7 @@ export function InfluDetailClient({
           );
         })}
         {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข ต้องกลับไปยื่นเอกสารใหม่ */}
-        {canEdit && influencer.stage > 1 && (
+        {canEdit && influencer.stage > INFLU_STAGE.contact && (
           <button
             type="button"
             onClick={() => setRollbackOpen(true)}
@@ -616,17 +621,19 @@ export function InfluDetailClient({
             fileEditable={canEdit}
           />
         )}
-        {view === 4 && (
-          <ContractStage
-            influencer={influencer}
-            signatures={signatures}
-            readOnly={readOnly}
-          />
+        {view === INFLU_STAGE.contractService && (
+          // ขั้นรวม: เซนสัญญา + วันเข้ารับบริการ เป็นงานวันเดียวกัน (ผู้ใช้ 2026-08-07)
+          // — สัญญาอยู่บน, หัตถการหน้างาน + ปุ่มไปขั้นตามงานอยู่ล่าง
+          <div className="space-y-6">
+            <ContractStage
+              influencer={influencer}
+              signatures={signatures}
+              readOnly={readOnly}
+            />
+            <ServiceDayStage influencer={influencer} readOnly={readOnly} />
+          </div>
         )}
-        {view === 5 && (
-          <ServiceDayStage influencer={influencer} readOnly={readOnly} />
-        )}
-        {view === 6 && (
+        {view === INFLU_STAGE.followup && (
           <FollowupStage
             influencer={influencer}
             tasks={tasks}
@@ -655,21 +662,20 @@ export function InfluDetailClient({
             ขอเปลี่ยนโปรแกรมที่รับ แล้วต้องแก้ข้อมูล/ยื่นเอกสารขออนุมัติรอบใหม่
             <br />
             ข้อมูลและไฟล์ที่กรอกไว้แล้วไม่ถูกลบ — กลับมาแก้แล้วเดินหน้าต่อได้เลย
-            {influencer.stage === 5 && (
+            {influencer.stage === INFLU_STAGE.contractService && (
               <>
                 <br />
                 <span className="text-amber-700">
-                  วันเริ่มสัญญาจะถูกล้าง
-                  และตั้งใหม่เมื่อยืนยันเซนสัญญาครบอีกครั้ง
+                  วันเริ่มสัญญาจะถูกล้าง และตั้งใหม่เมื่ออัพไฟล์สัญญาอีกครั้ง
                 </span>
               </>
             )}
-            {influencer.stage === 6 && (
+            {influencer.stage === INFLU_STAGE.followup && (
               <>
                 <br />
                 <span className="text-amber-700">
                   ต้นทุนของเคสนี้จะกลับไปนับเป็น &quot;กำลังจะมา&quot;
-                  (ยังไม่ผ่าน Stage 5)
+                  (ยังไม่ผ่านขั้นรับบริการ)
                 </span>
               </>
             )}
@@ -758,7 +764,7 @@ function OverviewPanel({
     influencer.contract_start && influencer.contract_months
       ? contractEndDate(influencer.contract_start, influencer.contract_months)
       : null;
-  const maxStage = influencer.completed ? 6 : influencer.stage;
+  const maxStage = influencer.completed ? INFLU_STAGE_LAST : influencer.stage;
 
   return (
     <div className="space-y-5">
@@ -1207,7 +1213,7 @@ function ContactStage({
     setError(null);
     const { error: e } = await supabase
       .from("influencers")
-      .update({ stage: 2 })
+      .update({ stage: INFLU_STAGE.caseDetail })
       .eq("id", influencer.id);
     setJoining(false);
     if (e) {
@@ -1434,7 +1440,7 @@ function CaseDetailStage({
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
         tier,
-        ...(thenNext ? { stage: 3 } : {}),
+        ...(thenNext ? { stage: INFLU_STAGE.memo } : {}),
       })
       .eq("id", influencer.id);
     setBusy(false);
@@ -1586,9 +1592,9 @@ function CaseDetailStage({
       )}
 
       {!readOnly &&
-        (influencer.stage > 2 ? (
+        (influencer.stage > INFLU_STAGE.caseDetail ? (
           // เลย Stage 2 มาแล้ว: แก้ข้อมูลได้แต่ห้ามมีปุ่ม "ไป Stage 3" — save(true) ตั้ง stage=3
-          // จะดึงเคสที่อยู่ stage 4-6 ถอยหลัง
+          // จะดึงเคสที่อยู่ขั้นสัญญา/ตามงาน ถอยหลัง
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-stone-500">
               แก้ไขได้แม้เลยขั้นตอนนี้มาแล้ว — ข้อความ Memo ใน Stage 3
@@ -1623,7 +1629,8 @@ function CaseDetailStage({
   );
 }
 
-/* ============ Stage 5: วันเข้ารับบริการ — แก้หัตถการหน้างานได้ ============ */
+/* ============ ครึ่งล่างของขั้นรวม (สัญญา + วันรับบริการ): วันเข้ารับบริการ —
+   แก้หัตถการหน้างานได้ + เป็นทางออกเดียวไปขั้น Follow up ============ */
 
 function ServiceDayStage({
   influencer,
@@ -1642,6 +1649,8 @@ function ServiceDayStage({
   const [error, setError] = useState<string | null>(null);
 
   const history = influencer.procedure_history ?? [];
+  /** ขั้นนี้รวมสัญญาไว้ด้วย — ปิดขั้นไปตามงานได้ต่อเมื่อมีไฟล์สัญญาที่เซนแล้ว */
+  const contractUploaded = !!influencer.contract_file_path;
 
   const saveChange = async (signatureData: string) => {
     // กันกดบันทึกลายเซนซ้ำ — ไม่งั้น history โดนต่อท้ายรายการเดิม 2 รอบ
@@ -1687,9 +1696,10 @@ function ServiceDayStage({
   const [goingNext, setGoingNext] = useState(false);
   const goNext = async () => {
     if (goingNext) return;
+    if (!contractUploaded) return;
     setGoingNext(true);
     setError(null);
-    // สร้างงาน follow up 10 step ก่อน — ถ้าล้ม อย่าเพิ่งข้าม stage (ไม่งั้นค้าง stage 6 แบบไม่มีงาน)
+    // สร้างงาน follow up ก่อน — ถ้าล้ม อย่าเพิ่งข้าม stage (ไม่งั้นค้างขั้นตามงานแบบไม่มีงาน)
     const genErr = await generateFollowupTasks(supabase, influencer);
     if (genErr) {
       setGoingNext(false);
@@ -1698,7 +1708,13 @@ function ServiceDayStage({
     }
     const { error: e } = await supabase
       .from("influencers")
-      .update({ stage: 6 })
+      .update({
+        stage: INFLU_STAGE.followup,
+        // กันเคสที่ไฟล์สัญญาถูกอัพไว้ก่อนระบบรวมขั้น (ยังไม่มีวันเริ่มสัญญา)
+        ...(influencer.contract_start
+          ? {}
+          : { contract_start: contractStartFor(influencer) }),
+      })
       .eq("id", influencer.id);
     setGoingNext(false);
     if (e) {
@@ -1772,9 +1788,18 @@ function ServiceDayStage({
               <PenLine size={15} />
               แก้ไขหัตถการ (ต้องลงนามหัวหน้างาน)
             </Button>
-            <Button loading={goingNext} onClick={() => void goNext()}>
+            <Button
+              loading={goingNext}
+              disabled={!contractUploaded}
+              title={
+                contractUploaded
+                  ? undefined
+                  : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน (ส่วนสัญญาด้านบน)"
+              }
+              onClick={() => void goNext()}
+            >
               <ArrowRight size={16} />
-              เรียบร้อย — ไป Stage 6 (Follow up งาน)
+              เรียบร้อย — ไปขั้น Follow up งาน
             </Button>
           </div>
         )}
@@ -1845,7 +1870,7 @@ function ServiceDayStage({
   );
 }
 
-/* ============ Stage 6: ติดตามงาน — 2 โหมด (มาตรฐาน / แพ็คเกจเฉพาะ) ============ */
+/* ============ ขั้นสุดท้าย: ติดตามงาน — 2 โหมด (มาตรฐาน / แพ็คเกจเฉพาะ) ============ */
 
 function FollowupStage({
   influencer,
@@ -1917,7 +1942,7 @@ function FollowupStage({
       daysLeft(t.due_date) <= 7
   ).length;
   // โหมดแพ็คเกจเฉพาะที่ยังไม่ได้เพิ่มข้อไหนเลย (เช่น ตกลงกันเป็น note ล้วน) ต้องปิดงานได้
-  // — ไม่งั้นเคสค้างที่ stage 6 ตลอดไป; โหมดมาตรฐานยังต้องมีข้อครบเหมือนเดิม
+  // — ไม่งั้นเคสค้างที่ขั้นตามงานตลอดไป; โหมดมาตรฐานยังต้องมีข้อครบเหมือนเดิม
   const allDone =
     mode === "custom"
       ? doneCount === tasks.length
@@ -2005,7 +2030,7 @@ function FollowupStage({
     router.refresh();
   };
 
-  /* self-heal: แถวเก่าที่หลุดมา stage 6 โดยไม่มีงาน (เช่น insert ล้มกลางทาง) สร้างใหม่ได้ */
+  /* self-heal: แถวเก่าที่หลุดมาขั้นตามงานโดยไม่มีงาน (เช่น insert ล้มกลางทาง) สร้างใหม่ได้ */
   const regenerate = async () => {
     if (generating) return;
     setGenerating(true);

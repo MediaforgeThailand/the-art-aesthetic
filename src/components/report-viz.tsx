@@ -2,13 +2,13 @@
 
 /**
  * ชุด component สำหรับรายงาน/แดชบอร์ดระดับนำเสนอผู้บริหาร
- * ใช้ร่วมกันทั้ง /dashboard, /reports/staff, /reports/admin เพื่อให้ภาษาภาพตรงกันทุกหน้า
+ * ใช้ร่วมกันทั้ง /dashboard, /influ-dashboard, /influ-cost เพื่อให้ภาษาภาพตรงกันทุกหน้า
  */
 
 import { ArrowDownRight, ArrowUpRight, Minus, type LucideIcon } from "lucide-react";
 import { DemoBadge } from "@/components/demo-badge";
 import { Card } from "@/components/ui";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { achievementTone } from "@/lib/report-utils";
 
 /* ---------- ชิปเทียบช่วงก่อนหน้า (เขียวขึ้น / แดงลง) ---------- */
@@ -264,9 +264,4 @@ export function MiniStat({
       {sub && <p className="text-[11px] text-stone-400">{sub}</p>}
     </div>
   );
-}
-
-/** ยอดเงิน + จำนวนบิลในวงเล็บ เช่น "฿1,234,500 (321 บิล)" */
-export function bahtWithBills(amount: number, bills: number): string {
-  return `${formatCurrency(amount)} (${formatNumber(bills)} บิล)`;
 }

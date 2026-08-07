@@ -44,6 +44,7 @@ import {
   contractEndDate,
   INFLU_SIZE_GROUP_ORDER,
   INFLU_SIZE_GROUPS,
+  INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
   sizeGroupFromFollowers,
@@ -97,7 +98,7 @@ export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
     ? "declined"
     : i.completed
       ? "done"
-      : i.stage >= 2
+      : i.stage >= INFLU_STAGE.caseDetail
         ? "accepted"
         : "waiting";
 
@@ -105,14 +106,14 @@ export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
    คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
    influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
    ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
-   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ Stage 2) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
-   ตัดที่ stage ≤ 5 เพราะขึ้น stage 6 = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
+   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
+   ตัดที่ขั้น "สัญญา + รับบริการ" เพราะขึ้นขั้นตามงาน = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
 export const needsDoctorBooking = (
   i: InfluencerListRow,
   bookedIds: ReadonlySet<string>
 ): boolean =>
-  i.stage >= 3 &&
-  i.stage <= 5 &&
+  i.stage >= INFLU_STAGE.memo &&
+  i.stage <= INFLU_STAGE.contractService &&
   !i.completed &&
   i.declined_at === null &&
   !bookedIds.has(i.id);
@@ -276,10 +277,10 @@ export function InfluCardContent({
   onToggleDeclined?: (influ: InfluencerListRow) => void;
 }) {
   const declined = i.declined_at !== null;
-  const accepted = i.completed || i.stage >= 2;
+  const accepted = i.completed || i.stage >= INFLU_STAGE.caseDetail;
   const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
   const nextDueDays =
-    !i.completed && i.stage === 6 && stats?.nextDue
+    !i.completed && i.stage === INFLU_STAGE.followup && stats?.nextDue
       ? dayDiff(stats.nextDue, today)
       : null;
   const daysSinceDone =
@@ -288,7 +289,7 @@ export function InfluCardContent({
       : null;
   const showFollowedChip =
     !i.completed &&
-    i.stage === 6 &&
+    i.stage === INFLU_STAGE.followup &&
     (nextDueDays === null || nextDueDays > 14) &&
     daysSinceDone !== null;
   const movedManually =

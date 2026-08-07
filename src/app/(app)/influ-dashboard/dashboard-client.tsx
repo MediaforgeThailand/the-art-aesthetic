@@ -44,6 +44,7 @@ import {
 import {
   contractEndDate,
   costUsageOf,
+  INFLU_STAGE,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   itemEffectiveCost,
@@ -126,9 +127,11 @@ export function DashboardClient({
     const active = influencers.filter((i) => i.declined_at === null);
 
     // ---- pipeline ----
-    const waiting = active.filter((i) => !i.completed && i.stage === 1).length;
+    const waiting = active.filter(
+      (i) => !i.completed && i.stage === INFLU_STAGE.contact
+    ).length;
     const inProgress = active.filter(
-      (i) => !i.completed && i.stage >= 2
+      (i) => !i.completed && i.stage >= INFLU_STAGE.caseDetail
     ).length;
     const done = active.filter((i) => i.completed).length;
     const declined = influencers.length - active.length;
@@ -177,7 +180,7 @@ export function DashboardClient({
       taskLeft.set(t.influencer_id, (taskLeft.get(t.influencer_id) ?? 0) + 1);
     }
     const followupPending = active
-      .filter((i) => !i.completed && i.stage === 6)
+      .filter((i) => !i.completed && i.stage === INFLU_STAGE.followup)
       .map((i) => ({ influ: i, left: taskLeft.get(i.id) ?? 0 }))
       .filter((f) => f.left > 0)
       .sort((a, b) => b.left - a.left)
@@ -261,7 +264,7 @@ export function DashboardClient({
           iconClass="bg-amber-50 text-amber-600"
           label="ติดต่ออยู่ · รอตอบรับ"
           value={formatNumber(stats.waiting)}
-          sub="Stage 1"
+          sub="ขั้นติดต่อ"
           delay={40}
         />
         <HeroCard
@@ -269,7 +272,7 @@ export function DashboardClient({
           iconClass="bg-sky-50 text-sky-600"
           label="กำลังดำเนินการ"
           value={formatNumber(stats.inProgress)}
-          sub="Stage 2-6 ยังไม่ปิดงาน"
+          sub="ตอบรับแล้ว ยังไม่ปิดงาน"
           delay={80}
         />
         <HeroCard
@@ -301,7 +304,7 @@ export function DashboardClient({
           iconClass="bg-emerald-50 text-emerald-600"
           label="ใช้บริการแล้ว"
           value={formatCurrency(stats.cost.used)}
-          sub="เคสที่ผ่าน Stage 5 แล้ว"
+          sub="เคสที่ผ่านขั้นรับบริการแล้ว"
           delay={40}
         />
         <HeroCard
@@ -434,7 +437,7 @@ export function DashboardClient({
           <div className="mb-3 flex items-center gap-2">
             <ListChecks size={16} className="text-brand-600" />
             <h2 className="text-sm font-semibold text-stone-900">
-              Follow-up ค้าง (Stage 6)
+              Follow-up ค้าง (ขั้นตามงาน)
             </h2>
             <span className="text-xs text-stone-400">
               {stats.followupPending.length} เคส

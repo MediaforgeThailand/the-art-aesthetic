@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart3,
   CalendarDays,
   ClipboardList,
   Gauge,
@@ -58,8 +57,8 @@ const MOBILE_NAV_ORDER = [
 const MOBILE_NAV_MAX = 4;
 
 const navItems: NavItem[] = [
+  // แดชบอร์ด = รายงานทุก section ในหน้าเดียว (เมนู "รายงาน" /reports ถูกถอดออก 2026-08-07 เพราะซ้ำกับหน้านี้)
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
-  { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data", rail: "รายงาน" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
   { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ", short: "Influ", rail: "Influ" },
   { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ", short: "ปฏิทิน", rail: "ปฏิทิน" },

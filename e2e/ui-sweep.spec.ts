@@ -13,10 +13,6 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
 const PAGES: { path: string; name: string }[] = [
   { path: "/dashboard", name: "dashboard" },
-  { path: "/reports", name: "reports" },
-  { path: "/reports/admin", name: "reports-admin" },
-  { path: "/reports/staff", name: "reports-staff" },
-  { path: "/reports/targets", name: "reports-targets" },
   { path: "/pricing", name: "pricing" },
   { path: "/influencers", name: "influencers" },
   { path: "/influ-gallery", name: "influ-gallery" },

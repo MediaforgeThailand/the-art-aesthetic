@@ -115,7 +115,7 @@ export function ContractsClient({
           <EmptyState
             icon={<FileSignature size={40} strokeWidth={1.5} />}
             title="ยังไม่มี Influencer ที่เซนสัญญา"
-            description="เมื่อเดินงานถึง Stage 4 และเซนสัญญาครบ ระบบจะเริ่มนับสัญญา 6 เดือนและแสดงที่นี่"
+            description="เมื่ออัพโหลดไฟล์สัญญาที่เซนแล้วในขั้น 'เซนสัญญา + วันรับบริการ' ระบบจะเริ่มนับสัญญา 6 เดือนและแสดงที่นี่"
           />
         </Card>
       ) : (

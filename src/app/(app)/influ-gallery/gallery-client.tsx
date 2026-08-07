@@ -14,7 +14,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
-import { contractEndDate, INFLU_STAGES, INFLU_TIERS } from "@/lib/influ-constants";
+import {
+  contractEndDate,
+  INFLU_STAGE,
+  INFLU_STAGES,
+  INFLU_TIERS,
+} from "@/lib/influ-constants";
 import {
   type InfluLinkLite,
   SourceLinkQuickButton,
@@ -331,7 +336,7 @@ function InfluCard({
             <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
               <Sparkles size={11} /> คอนเทนต์ {formatNumber(contentTasks)} งาน
             </Badge>
-            {i.stage === 6 &&
+            {i.stage === INFLU_STAGE.followup &&
               !i.completed &&
               (followupLeft > 0 ? (
                 <Badge className="border border-amber-200 bg-amber-50 text-amber-700">

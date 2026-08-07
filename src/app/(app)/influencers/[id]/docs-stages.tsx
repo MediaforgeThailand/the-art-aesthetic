@@ -24,10 +24,11 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
-  todayISO,
 } from "@/lib/format";
 import {
+  contractStartFor,
   INFLU_CONTRACT_TEMPLATES,
+  INFLU_STAGE,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   MEMO_COMPANY,
@@ -344,6 +345,11 @@ function MemoCopyStage({
         memo_file_path: path,
         memo_file_name: file.name,
         memo_uploaded_at: new Date().toISOString(),
+        // มีไฟล์ Memo ที่อนุมัติแล้ว = ผ่านขั้น Memo ทันที ไปขั้นสัญญาเลย (ผู้ใช้ 2026-08-07)
+        // — เคสที่เลยขั้นนี้ไปแล้วแค่มาเปลี่ยนไฟล์ ต้องไม่ถูกดึง stage ถอยหลัง
+        ...(influencer.stage === INFLU_STAGE.memo && !influencer.completed
+          ? { stage: INFLU_STAGE.contractService }
+          : {}),
       })
       .eq("id", influencer.id);
     setUploading(false);
@@ -364,23 +370,6 @@ function MemoCopyStage({
       } catch {
         // เพิกเฉย
       }
-    }
-    router.refresh();
-  };
-
-  const goNext = async () => {
-    if (!memoUploaded) return;
-    if (
-      !window.confirm("ยืนยันว่า Memo ได้รับอนุมัติแล้ว และไป Stage 4 (สัญญา)?")
-    )
-      return;
-    const { error: e } = await supabase
-      .from("influencers")
-      .update({ stage: 4 })
-      .eq("id", influencer.id);
-    if (e) {
-      setError(`ไป stage ถัดไปไม่สำเร็จ: ${e.message}`);
-      return;
     }
     router.refresh();
   };
@@ -406,7 +395,7 @@ function MemoCopyStage({
         <ClipboardList size={14} className="shrink-0" />
         คัดลอกข้อความแต่ละส่วนด้านล่างไปสร้างเอกสาร Memo ตามฟอร์มของบริษัท —
         เมื่อ Memo ได้รับอนุมัติแล้ว ให้อัพโหลดไฟล์กลับเข้ามาเก็บไว้ที่นี่
-        จึงจะไป Stage ถัดไปได้
+        แล้วเคสจะไปขั้น &quot;เซนสัญญา + วันรับบริการ&quot; ให้อัตโนมัติ
       </p>
 
       {/* ติ๊กว่าข้อมูลครบ พร้อมให้ influ manager ลงมือทำ Memo — รายที่ติ๊กจะไปรวมกันใน
@@ -644,18 +633,20 @@ function MemoCopyStage({
         </p>
       )}
 
+      {/* ไม่มีปุ่มเดิน stage ที่ขั้นนี้แล้ว — อัพไฟล์ Memo ที่อนุมัติแล้ว = ข้ามไปขั้นสัญญาให้เอง */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-stone-500">
-            {memoUploaded
-              ? "อัพโหลดไฟล์ Memo แล้ว — ไป Stage ถัดไปได้เลย"
-              : "ต้องอัพโหลดไฟล์ Memo ที่อนุมัติแล้วก่อน จึงจะไป Stage ถัดไปได้"}
-          </p>
-          <Button onClick={() => void goNext()} disabled={!memoUploaded}>
-            <CheckCircle2 size={16} />
-            Memo อนุมัติแล้ว — ไป Stage 4 (สัญญา)
-          </Button>
-        </div>
+        <p
+          className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs ${
+            memoUploaded
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-stone-50 text-stone-500"
+          }`}
+        >
+          <CheckCircle2 size={14} className="shrink-0" />
+          {memoUploaded
+            ? "มีไฟล์ Memo ที่อนุมัติแล้ว — เคสไปขั้นสัญญาเรียบร้อย"
+            : "อัพโหลดไฟล์ Memo ที่อนุมัติแล้ว ระบบจะพาไปขั้นสัญญาให้อัตโนมัติ (ไม่ต้องกดปุ่มเพิ่ม)"}
+        </p>
       )}
     </div>
   );
@@ -734,7 +725,7 @@ export function MemoFormStage({
     if (!allSigned) return;
     await supabase
       .from("influencers")
-      .update({ stage: 4 })
+      .update({ stage: INFLU_STAGE.contractService })
       .eq("id", influencer.id);
     router.refresh();
   };
@@ -964,7 +955,7 @@ export function MemoFormStage({
           </p>
           <Button onClick={() => void goNext()} disabled={!allSigned}>
             <CheckCircle2 size={16} />
-            Memo อนุมัติครบ — ไป Stage 4 (สัญญา)
+            Memo อนุมัติครบ — ไปขั้นสัญญา + วันรับบริการ
           </Button>
         </div>
       )}
@@ -991,7 +982,7 @@ export function MemoFormStage({
   );
 }
 
-/* ---------- Stage 4: สัญญา ----------
+/* ---------- ครึ่งบนของขั้นรวม: สัญญา ----------
    โหมดหลัก = ดาวน์โหลดแม่แบบสัญญา PDF → พิมพ์/เซน → อัพโหลดไฟล์ที่เซนแล้ว (เหมือน Memo)
    โหมดเซนในระบบ (ContractSignStage) เก็บโค้ดไว้ ยังไม่เปิดใช้ (Coming soon) */
 
@@ -1132,6 +1123,11 @@ function ContractUploadStage({
         contract_file_path: path,
         contract_file_name: file.name,
         contract_uploaded_at: new Date().toISOString(),
+        // มีไฟล์สัญญาที่เซนแล้ว = เริ่มนับสัญญา 6 เดือน (ขั้นนี้รวมวันรับบริการไว้แล้ว
+        // จึงไม่มีปุ่มยืนยันแยกอีกต่อไป) — อัพซ้ำเพื่อเปลี่ยนไฟล์ต้องไม่รีเซ็ตวันเริ่ม
+        ...(influencer.contract_start
+          ? {}
+          : { contract_start: contractStartFor(influencer) }),
       })
       .eq("id", influencer.id);
     setUploading(false);
@@ -1154,36 +1150,13 @@ function ContractUploadStage({
     router.refresh();
   };
 
-  const goNext = async () => {
-    if (!contractUploaded) return;
-    if (
-      !window.confirm(
-        "ยืนยันว่าเซนสัญญาครบและอัพโหลดไฟล์แล้ว — เริ่มนับสัญญา 6 เดือน และไป Stage 5?"
-      )
-    )
-      return;
-    const { error: e } = await supabase
-      .from("influencers")
-      .update({
-        stage: 5,
-        // เริ่มนับสัญญา 6 เดือน = วันที่ยืนยันเซนสัญญาครบ (วันนี้ตามเวลาไทย — ไม่อิงนาฬิกาเครื่องผู้ใช้)
-        contract_start: todayISO(),
-      })
-      .eq("id", influencer.id);
-    if (e) {
-      setError(`ไป stage ถัดไปไม่สำเร็จ: ${e.message}`);
-      return;
-    }
-    router.refresh();
-  };
-
   return (
     <div className="space-y-4">
       <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
         <FileSignature size={14} className="shrink-0" />
-        ดาวน์โหลดไฟล์แม่แบบสัญญาไปพิมพ์ให้ Influencer เซน แล้วอัพโหลดไฟล์ที่เซนแล้ว
-        (สแกน/ถ่ายรูป) กลับเข้ามาเก็บไว้ที่นี่ — อัพโหลดครบจึงจะไป Stage ถัดไปได้
-        (เริ่มนับสัญญา 6 เดือนทันทีที่ยืนยัน)
+        ดาวน์โหลดไฟล์แม่แบบสัญญาไปพิมพ์ให้ Influencer เซนในวันที่เข้ามารับบริการ
+        แล้วอัพโหลดไฟล์ที่เซนแล้ว (สแกน/ถ่ายรูป) กลับเข้ามาเก็บไว้ที่นี่ —
+        เริ่มนับสัญญา 6 เดือนจากวันรับบริการทันทีที่อัพไฟล์
       </p>
 
       {/* แม่แบบสัญญา PDF — 2 ฉบับ (สัญญาหลัก + เอกสารแนบท้าย) */}
@@ -1294,18 +1267,24 @@ function ContractUploadStage({
         </p>
       )}
 
+      {/* ปุ่มเดินไปขั้นถัดไปอยู่ที่ท้ายส่วน "วันเข้ารับบริการ" ของขั้นเดียวกันนี้แล้ว */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-stone-500">
-            {contractUploaded
-              ? "อัพโหลดไฟล์สัญญาแล้ว — ไป Stage ถัดไปได้เลย"
-              : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน จึงจะไป Stage ถัดไปได้"}
-          </p>
-          <Button onClick={() => void goNext()} disabled={!contractUploaded}>
-            <CheckCircle2 size={16} />
-            เซนสัญญาครบแล้ว — เริ่มสัญญา 6 เดือน + ไป Stage 5
-          </Button>
-        </div>
+        <p
+          className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs ${
+            contractUploaded
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-stone-50 text-stone-500"
+          }`}
+        >
+          <CheckCircle2 size={14} className="shrink-0" />
+          {contractUploaded
+            ? `อัพโหลดไฟล์สัญญาแล้ว${
+                influencer.contract_start
+                  ? ` — เริ่มนับสัญญา ${formatDate(influencer.contract_start)}`
+                  : ""
+              }`
+            : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน จึงจะปิดขั้นนี้ไปตามงานได้"}
+        </p>
       )}
     </div>
   );
@@ -1374,15 +1353,13 @@ function ContractSignStage({
     router.refresh();
   };
 
-  const goNext = async () => {
-    if (!allSigned) return;
+  /** เซนครบ = เริ่มนับสัญญา (ไม่เดิน stage — ขั้นนี้รวมวันรับบริการไว้แล้ว
+      ปุ่มไปขั้นตามงานอยู่ท้ายส่วน "วันเข้ารับบริการ") */
+  const confirmSigned = async () => {
+    if (!allSigned || influencer.contract_start) return;
     await supabase
       .from("influencers")
-      .update({
-        stage: 5,
-        // วันเริ่มสัญญา 6 เดือน = วันที่เซนสัญญาครบ (วันนี้ตามเวลาไทย — ไม่อิงนาฬิกาเครื่องผู้ใช้)
-        contract_start: todayISO(),
-      })
+      .update({ contract_start: contractStartFor(influencer) })
       .eq("id", influencer.id);
     router.refresh();
   };
@@ -1450,9 +1427,12 @@ function ContractSignStage({
             เซนแล้ว {CONTRACTS.filter((c) => sigFor(c.doc)).length}/
             {CONTRACTS.length} ฉบับ
           </p>
-          <Button onClick={() => void goNext()} disabled={!allSigned}>
+          <Button
+            onClick={() => void confirmSigned()}
+            disabled={!allSigned || !!influencer.contract_start}
+          >
             <PenLine size={16} />
-            เซนครบแล้ว — เริ่มสัญญา 6 เดือน + ไป Stage 5
+            เซนครบแล้ว — เริ่มนับสัญญา 6 เดือน
           </Button>
         </div>
       )}

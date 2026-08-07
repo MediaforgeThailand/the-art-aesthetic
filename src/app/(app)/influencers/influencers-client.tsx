@@ -36,6 +36,7 @@ import {
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
+  INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
   sizeGroupFromFollowers,
@@ -655,7 +656,7 @@ export function InfluencersClient({
           (i) =>
             i.memo_ready_at !== null &&
             i.memo_file_path === null &&
-            i.stage === 3 &&
+            i.stage === INFLU_STAGE.memo &&
             !i.completed &&
             i.declined_at === null
         )

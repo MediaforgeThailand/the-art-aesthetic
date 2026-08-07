@@ -171,7 +171,7 @@ export default async function DashboardPage({
   const tasksDemo = (demoTask ?? []).length > 0;
   // เป้าขาย/เป้า KPI รายคนยังเป็นข้อมูลตัวอย่างอยู่ทั้งชุด — ต้องนับเข้าการตรวจจับ demo ด้วย
   // ไม่งั้นวันที่ admin_records เปลี่ยนเป็นข้อมูลจริง แบนเนอร์จะหายทั้งที่กราฟ "ยอดจริงเทียบเป้า"
-  // ยังเทียบกับเป้าปลอมอยู่ (หน้า /reports/targets เช็คแบบนี้อยู่แล้ว)
+  // ยังเทียบกับเป้าปลอมอยู่
   const targetsDemo =
     ((targetsResult.data ?? []) as SalesTargetRow[]).some(
       (t) => t.note === "demo"

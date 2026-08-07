@@ -274,11 +274,11 @@ export type InfluTier = "nano" | "micro" | "mid" | "macro" | "celebrity";
 /** กลุ่มขนาดบนบอร์ด Influ Management — s เล็ก (<100K) / m กลาง (100K–1M) / l ใหญ่ (1M+) */
 export type InfluSizeGroup = "s" | "m" | "l";
 
-/** โหมด checklist ของ stage 6 — standard = เทมเพลต 5 หมวดตามเอกสารแนบท้ายสัญญา,
+/** โหมด checklist ของขั้นตามงาน — standard = เทมเพลต 5 หมวดตามเอกสารแนบท้ายสัญญา,
     custom = แพ็คเกจเฉพาะ (เคสดารา/จ่ายค่าตัว) กรอกเงื่อนไขเอง */
 export type InfluFollowupMode = "standard" | "custom";
 
-/** รายการแก้ไขหัตถการหน้างาน (stage 5) — เก็บใน influencers.procedure_history */
+/** รายการแก้ไขหัตถการหน้างาน (ขั้นสัญญา + วันรับบริการ) — เก็บใน influencers.procedure_history */
 export type ProcedureChange = {
   old: string;
   next: string;
@@ -312,7 +312,7 @@ export type InfluencerRow = {
   memo_ready_at: string | null;
   /** เวลาที่ติ๊กว่า "ส่งเอกสารแล้ว" ในคิวรอทำ Memo (null = ยังไม่ส่ง) — กันทีมทำงานซ้ำ */
   docs_sent_at: string | null;
-  /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดใน Stage 4) */
+  /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดในขั้น "เซนสัญญา + วันรับบริการ") */
   contract_file_path: string | null;
   contract_file_name: string | null;
   contract_uploaded_at: string | null;
@@ -322,7 +322,7 @@ export type InfluencerRow = {
   contract_start: string | null;
   contract_months: number;
   note: string | null;
-  /** โหมด checklist ของ stage 6 — สลับได้ในหน้า stage 6 (ข้อของอีกโหมดถูกซ่อน ไม่ถูกลบ) */
+  /** โหมด checklist ของขั้นตามงาน — สลับได้ในหน้านั้น (ข้อของอีกโหมดถูกซ่อน ไม่ถูกลบ) */
   followup_mode: InfluFollowupMode;
   /** ขอบเขตงานตามแพ็คเกจเฉพาะ (โหมด custom) — สิ่งที่ตกลงว่าเขาต้องทำ */
   package_note: string | null;
