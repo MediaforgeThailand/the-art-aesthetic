@@ -38,6 +38,9 @@ type NavItem = {
   perm: AppPermission | AppPermission[] | "admin" | null;
   /** ป้ายสั้นสำหรับแถบเมนูล่างบนมือถือ (ช่องกว้าง ~70px) — ไม่ใส่ = ไม่ขึ้นแถบล่าง */
   short?: string;
+  /** ป้ายใต้ไอคอนบนแถบเมนูจอใหญ่ (กว้าง 68px) — ทุกเมนูต้องมี ไม่งั้นตกไปใช้ label เต็มแล้วล้น
+      แยกจาก `short` เพราะ short คุมด้วยว่าเมนูนั้นขึ้นแถบล่างมือถือหรือไม่ */
+  rail: string;
 };
 
 /** ลำดับความสำคัญของแถบเมนูล่างบนมือถือ — หยิบ 4 อันแรกที่ผู้ใช้คนนั้นมีสิทธิ์
@@ -55,27 +58,30 @@ const MOBILE_NAV_ORDER = [
 const MOBILE_NAV_MAX = 4;
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด" },
-  { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data" },
-  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา" },
-  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ", short: "Influ" },
-  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ", short: "ปฏิทิน" },
-  { href: "/influ-dashboard", label: "Influ Dashboard", icon: Gauge, perm: "influ" },
-  { href: "/influ-cost", label: "Influencer Cost", icon: Wallet, perm: "influ" },
+  { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
+  { href: "/reports", label: "รายงาน", icon: BarChart3, perm: "data", rail: "รายงาน" },
+  { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
+  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ", short: "Influ", rail: "Influ" },
+  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ", short: "ปฏิทิน", rail: "ปฏิทิน" },
+  { href: "/influ-dashboard", label: "Influ Dashboard", icon: Gauge, perm: "influ", rail: "Influ Dash" },
+  { href: "/influ-cost", label: "Influencer Cost", icon: Wallet, perm: "influ", rail: "ต้นทุน" },
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์" },
-  { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน" },
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์", rail: "โปรไฟล์" },
+  { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
   // ลิสต์ส่วนตัว — perm: null เพราะเป็นพื้นที่ของแต่ละบัญชีเอง ไม่ใช่ข้อมูลของแผนก
   // (RLS ที่ list_tasks ยึด owner_id — เปิดเมนูให้ทุกคนก็ไม่มีทางเห็นลิสต์ของคนอื่น)
-  { href: "/my-tasks", label: "งานของฉัน", icon: ListTodo, perm: null, short: "ของฉัน" },
-  { href: "/workload", label: "Team Workload", icon: Users, perm: "team" },
-  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team", short: "ไฟล์" },
-  { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin" },
+  { href: "/my-tasks", label: "งานของฉัน", icon: ListTodo, perm: null, short: "ของฉัน", rail: "ของฉัน" },
+  { href: "/workload", label: "Team Workload", icon: Users, perm: "team", rail: "ทีม" },
+  { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team", short: "ไฟล์", rail: "ไฟล์" },
+  { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin", rail: "บัญชี" },
 ];
 
 /**
- * เมนูหลักของแอป — จอใหญ่ (≥lg) เป็น sidebar ซ้ายแบบเดิม
- * มือถือ/จอแคบ เป็น topbar (ปุ่มเมนู + โลโก้ + กระดิ่ง) + drawer เลื่อนเข้าจากซ้าย
+ * เมนูหลักของแอป
+ * - จอใหญ่ (≥lg): **แถบไอคอนแคบ 84px** (ไอคอนบน + ป้ายสั้นใต้ไอคอน) — คืนพื้นที่แนวนอน
+ *   ให้เนื้อหาของทุกหน้า; ชื่อเมนูเต็มอยู่ใน `title` ของแต่ละปุ่ม
+ * - มือถือ/จอแคบ: topbar (ปุ่มเมนู + โลโก้ + กระดิ่ง) + drawer เลื่อนเข้าจากซ้าย + แถบเมนูล่าง
+ *   (drawer ยังใช้เมนูแบบ "ไอคอน + ชื่อเต็ม" เพราะกว้างพอและอ่านง่ายกว่าบนจอเล็ก)
  */
 export function Sidebar({
   userName,
@@ -191,7 +197,92 @@ export function Sidebar({
     router.refresh();
   }
 
-  /** ลิสต์เมนู — ใช้ร่วมทั้ง sidebar จอใหญ่และ drawer มือถือ (คลิกแล้วปิด drawer) */
+  /** รูปโปรไฟล์ (หรือตัวอักษรแรก) — ใช้ทั้งแถบไอคอนจอใหญ่และแถบโปรไฟล์ใน drawer */
+  const renderAvatar = (className: string) =>
+    avatarPath && avatarUrl ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt={displayName || "รูปโปรไฟล์"}
+        className={`shrink-0 rounded-full object-cover shadow-sm ${className}`}
+      />
+    ) : (
+      <span
+        className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-xs font-semibold text-brand-800 ${className}`}
+      >
+        {(displayName || userEmail || "?").charAt(0).toUpperCase()}
+      </span>
+    );
+
+  /** เมนูแบบแถบไอคอนของจอใหญ่ — ป้ายสั้นใต้ไอคอน, ชื่อเต็มอยู่ใน tooltip */
+  const renderRail = () => (
+    <nav
+      aria-label="เมนูหลัก"
+      className="flex w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-1.5"
+    >
+      {visibleNav.map(({ href, label, icon: Icon, rail }) => {
+        const active = pathname.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            title={label}
+            aria-current={active ? "page" : undefined}
+            className={`group relative flex w-[68px] shrink-0 flex-col items-center gap-0.5 rounded-[10px] px-1 py-2 text-center transition-all duration-200 active:scale-[0.97] ${
+              active
+                ? "bg-white/85 text-brand-700 shadow-sm"
+                : "text-stone-600 hover:bg-white/70 hover:text-brand-800"
+            }`}
+          >
+            <span
+              className={`absolute -left-2 top-1/2 h-[22px] w-[3px] -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-brand-600 transition-opacity duration-300 ${
+                active ? "opacity-100" : "opacity-0"
+              }`}
+            />
+            <Icon
+              size={20}
+              className={`transition-colors duration-200 ${
+                active ? "text-brand-600" : "group-hover:text-brand-500"
+              }`}
+            />
+            <span
+              className={`w-full truncate text-[10px] leading-tight ${
+                active ? "font-semibold" : "font-medium"
+              }`}
+            >
+              {rail}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  /** ท้ายแถบไอคอน — กระดิ่ง · รูปโปรไฟล์ (เปิดตั้งค่า) · ออกจากระบบ */
+  const renderRailFooter = () => (
+    <div className="flex w-full flex-col items-center gap-1.5 border-t border-white/60 px-2 py-3">
+      {userId && isDesktop && <NotificationBell userId={userId} />}
+      <button
+        type="button"
+        onClick={() => setProfileOpen(true)}
+        title={`${displayName || "ผู้ใช้งาน"} — ตั้งค่าโปรไฟล์`}
+        aria-label="ตั้งค่าโปรไฟล์"
+        className="cursor-pointer rounded-full transition-transform duration-200 hover:scale-105 active:scale-95"
+      >
+        {renderAvatar("h-9 w-9")}
+      </button>
+      <button
+        onClick={handleLogout}
+        title="ออกจากระบบ"
+        aria-label="ออกจากระบบ"
+        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-all duration-200 hover:bg-brand-50 hover:text-brand-700 active:scale-90"
+      >
+        <LogOut size={17} />
+      </button>
+    </div>
+  );
+
+  /** ลิสต์เมนู — ใช้ใน drawer มือถือ (คลิกแล้วปิด drawer) */
   const renderNav = (onNavigate?: () => void) => (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {visibleNav.map(({ href, label, icon: Icon }) => {
@@ -240,18 +331,7 @@ export function Sidebar({
           title="ตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ/รูป)"
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors duration-200 hover:bg-white/60 active:scale-[0.98]"
         >
-          {avatarPath && avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt={displayName || "รูปโปรไฟล์"}
-              className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm"
-            />
-          ) : (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-xs font-semibold text-brand-800">
-              {(displayName || userEmail || "?").charAt(0).toUpperCase()}
-            </span>
-          )}
+          {renderAvatar("h-9 w-9")}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-stone-800">
               {displayName || "ผู้ใช้งาน"}
@@ -279,19 +359,13 @@ export function Sidebar({
 
   return (
     <>
-      {/* ---------- จอใหญ่: sidebar ซ้ายแบบเดิม ---------- */}
-      <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-white/60 bg-white/55 backdrop-blur-xl lg:flex">
-        <div className="flex items-center gap-3 border-b border-white/60 px-5 py-5">
-          <LogoMark className="h-14 w-14" />
-          <LogoWordmark />
-          {userId && isDesktop && (
-            <span className="ml-auto">
-              <NotificationBell userId={userId} />
-            </span>
-          )}
+      {/* ---------- จอใหญ่: แถบไอคอนแคบ 84px ---------- */}
+      <aside className="hidden h-dvh w-[5.25rem] shrink-0 flex-col items-center border-r border-white/60 bg-white/55 backdrop-blur-xl lg:flex">
+        <div className="shrink-0 px-2 pb-2.5 pt-3.5">
+          <LogoMark className="h-10 w-10" />
         </div>
-        {renderNav()}
-        {renderFooter()}
+        {renderRail()}
+        {renderRailFooter()}
       </aside>
 
       {/* ---------- มือถือ: topbar (เมนู + โลโก้ + กระดิ่ง) ----------

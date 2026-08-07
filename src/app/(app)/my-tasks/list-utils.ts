@@ -3,8 +3,21 @@
  * แยกออกมาจาก client เพราะทั้งลิสต์และแผงรายละเอียดใช้ร่วมกัน
  */
 
+import {
+  LIST_PRIORITY,
+  LIST_PRIORITY_ORDER,
+  LIST_STATUS,
+  LIST_STATUS_ORDER,
+  type ListStatus,
+  listTagColor,
+} from "@/lib/constants";
 import { formatDate, todayISO } from "@/lib/format";
-import type { ListTaskWithTags, TaskPriority } from "@/lib/types";
+import type {
+  ListTagRow,
+  ListTaskRow,
+  ListTaskWithTags,
+  TaskPriority,
+} from "@/lib/types";
 
 export type MyTask = ListTaskWithTags;
 
@@ -92,6 +105,18 @@ export function dueInfo(due: string | null, done: boolean): DueInfo | null {
   };
 }
 
+/** วันที่แบบสั้นไม่มีปี เช่น "7 ส.ค." — ใช้ในแถบสรุปท้ายกลุ่มที่พื้นที่แคบ
+    ตรึงเวลาไทยเหมือน format.ts (due_date เป็น date ล้วน ต้อง parse เป็น UTC ก่อน) */
+export function shortDate(due: string): string {
+  const d = new Date(`${due}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return due;
+  return d.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 /** งานที่เลยกำหนดและยังไม่เสร็จ (ใช้ทั้งการ์ดสรุปและชิปตัวกรอง) */
 export function isOverdue(t: MyTask): boolean {
   return !t.done && !!t.due_date && t.due_date < todayISO();
@@ -126,6 +151,210 @@ export function sortTasks(items: MyTask[], sort: ListSort): MyTask[] {
         return byCreatedDesc(a, b);
     }
   });
+}
+
+/* ---------- สถานะ (คำนวณจาก done + due_date — ไม่มีคอลัมน์นี้ใน DB) ---------- */
+
+/**
+ * สถานะที่แสดงในคอลัมน์ "สถานะ" ของตาราง
+ * อยู่ระดับโมดูลเพราะอ่านวันนี้ผ่าน todayISO (กฎ react-hooks/purity เหมือน dueInfo)
+ */
+export function statusOf(t: MyTask): ListStatus {
+  if (t.done) return "done";
+  if (!t.due_date) return "open";
+  const today = todayISO();
+  if (t.due_date < today) return "overdue";
+  const days = Math.round((Date.parse(t.due_date) - Date.parse(today)) / DAY_MS);
+  // วันนี้/พรุ่งนี้ = ใกล้ครบกำหนด (ตรงกับป้าย "วันนี้"/"พรุ่งนี้" ของ dueInfo)
+  return days <= 1 ? "soon" : "open";
+}
+
+/* ---------- จัดกลุ่มแบบบอร์ด Monday ----------
+   หมายเหตุสำคัญ: **กลุ่มในหน้านี้คำนวณจากข้อมูลที่มีอยู่ ไม่ใช่กลุ่มที่ผู้ใช้สร้างเอง**
+   (list_tasks ไม่มีคอลัมน์ group_id) — เปลี่ยนเกณฑ์จัดกลุ่มได้จากปุ่ม "จัดกลุ่ม" บนแถบเครื่องมือ
+   ถ้าวันหนึ่งอยากได้กลุ่มที่ตั้งชื่อเองแบบ Monday ต้องเพิ่มตาราง list_groups + migration ก่อน */
+
+export type GroupBy = "status" | "priority" | "tag" | "due" | "none";
+
+export const LIST_GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "status", label: "สถานะ" },
+  { value: "priority", label: "ความสำคัญ" },
+  { value: "tag", label: "แท็ก" },
+  { value: "due", label: "กำหนดส่ง" },
+  { value: "none", label: "ไม่จัดกลุ่ม" },
+];
+
+export type ListGroup = {
+  key: string;
+  name: string;
+  /** คลาสพื้นสีของแถบซ้ายกลุ่ม (ต้องเป็นคลาสเต็ม — Tailwind v4 ไม่เห็นคลาสที่ต่อสตริงเอง) */
+  bar: string;
+  /** คลาสสีของชื่อกลุ่ม */
+  text: string;
+  tasks: MyTask[];
+  /** ค่าตั้งต้นของงานที่พิมพ์เพิ่มในกลุ่มนี้ (null = กลุ่มนี้ไม่มีช่อง "+ เพิ่มงาน"
+   *  เพราะเงื่อนไขของกลุ่มไม่ใช่สิ่งที่ตั้งให้งานใหม่ได้ เช่น "เลยกำหนด") */
+  add: { patch: Partial<ListTaskRow>; tagId: string | null } | null;
+  /** ลากงานจากกลุ่มอื่นมาวาง = แก้ฟิลด์นี้ (null = ไม่รับงานข้ามกลุ่ม) */
+  drop: Partial<ListTaskRow> | null;
+  /** แท็กประจำกลุ่ม (เฉพาะโหมดจัดกลุ่มตามแท็ก) — ใช้ตอนลากข้ามกลุ่ม */
+  tagId: string | null;
+  /** กลุ่มที่ต้องโชว์แม้ไม่มีงาน — ที่ทางของงานใหม่/เป้าหมายที่ลากไปวางได้ */
+  keepEmpty: boolean;
+};
+
+const emptyGroup = (
+  g: Pick<ListGroup, "key" | "name" | "bar" | "text"> &
+    Partial<Omit<ListGroup, "key" | "name" | "bar" | "text">>
+): ListGroup => ({
+  tasks: [],
+  add: null,
+  drop: null,
+  tagId: null,
+  keepEmpty: false,
+  ...g,
+});
+
+/**
+ * แบ่งงานเป็นกลุ่มตามเกณฑ์ที่เลือก — ลำดับงานภายในกลุ่มคือลำดับที่ส่งเข้ามา (เรียงมาแล้ว)
+ * โหมด "แท็ก" งานที่ติดหลายแท็กจะโผล่ในทุกกลุ่มที่ติดไว้ (เหมือนกลุ่มหัตถการของ Price List)
+ */
+export function buildGroups(
+  items: MyTask[],
+  groupBy: GroupBy,
+  tags: ListTagRow[]
+): ListGroup[] {
+  if (groupBy === "none") {
+    return [
+      emptyGroup({
+        key: "all",
+        name: "งานทั้งหมด",
+        bar: "bg-brand-500",
+        text: "text-brand-800",
+        tasks: items,
+        add: { patch: {}, tagId: null },
+        keepEmpty: true,
+      }),
+    ];
+  }
+
+  if (groupBy === "priority") {
+    const groups = LIST_PRIORITY_ORDER.map((p) =>
+      emptyGroup({
+        key: p,
+        name: LIST_PRIORITY[p].label,
+        bar: LIST_PRIORITY[p].bar,
+        text: LIST_PRIORITY[p].text,
+        // ทั้ง 4 กลุ่มโชว์เสมอ — เป็นเป้าหมายให้ลากงานมาเปลี่ยนความสำคัญได้
+        keepEmpty: true,
+        add: { patch: { priority: p }, tagId: null },
+        drop: { priority: p },
+      })
+    );
+    const byKey = new Map(groups.map((g) => [g.key, g]));
+    for (const t of items) byKey.get(t.priority)?.tasks.push(t);
+    return groups;
+  }
+
+  if (groupBy === "tag") {
+    const groups = tags.map((tag) => {
+      const color = listTagColor(tag.color);
+      return emptyGroup({
+        key: `tag:${tag.id}`,
+        name: tag.name,
+        bar: color.dot,
+        text: color.text,
+        tagId: tag.id,
+        add: { patch: {}, tagId: tag.id },
+      });
+    });
+    const none = emptyGroup({
+      key: "tag:none",
+      name: "ไม่มีแท็ก",
+      bar: "bg-stone-300",
+      text: "text-stone-500",
+      add: { patch: {}, tagId: null },
+      keepEmpty: true,
+    });
+    const byId = new Map(groups.map((g) => [g.tagId, g]));
+    for (const t of items) {
+      if (t.tagIds.length === 0) {
+        none.tasks.push(t);
+        continue;
+      }
+      for (const id of t.tagIds) byId.get(id)?.tasks.push(t);
+    }
+    return [...groups, none];
+  }
+
+  if (groupBy === "due") {
+    const today = todayISO();
+    const past = emptyGroup({
+      key: "due:past",
+      name: "ก่อนวันนี้",
+      bar: "bg-rose-500",
+      text: "text-rose-600",
+    });
+    const todayG = emptyGroup({
+      key: "due:today",
+      name: "วันนี้",
+      bar: "bg-amber-400",
+      text: "text-amber-600",
+      add: { patch: { due_date: today }, tagId: null },
+    });
+    const week = emptyGroup({
+      key: "due:week",
+      name: "ใน 7 วัน",
+      bar: "bg-brand-500",
+      text: "text-brand-700",
+    });
+    const later = emptyGroup({
+      key: "due:later",
+      name: "หลังจากนั้น",
+      bar: "bg-sky-400",
+      text: "text-sky-600",
+    });
+    const none = emptyGroup({
+      key: "due:none",
+      name: "ไม่มีกำหนด",
+      bar: "bg-stone-300",
+      text: "text-stone-500",
+      add: { patch: {}, tagId: null },
+      keepEmpty: true,
+    });
+    for (const t of items) {
+      if (!t.due_date) {
+        none.tasks.push(t);
+        continue;
+      }
+      if (t.due_date < today) past.tasks.push(t);
+      else if (t.due_date === today) todayG.tasks.push(t);
+      else if (
+        Math.round((Date.parse(t.due_date) - Date.parse(today)) / DAY_MS) <= 7
+      )
+        week.tasks.push(t);
+      else later.tasks.push(t);
+    }
+    return [past, todayG, week, later, none];
+  }
+
+  // สถานะ (ค่าเริ่มต้น)
+  const groups = LIST_STATUS_ORDER.map((s) =>
+    emptyGroup({
+      key: s,
+      name: LIST_STATUS[s].label,
+      bar: LIST_STATUS[s].bar,
+      text: LIST_STATUS[s].text,
+      // เลยกำหนด/ใกล้ครบกำหนด ตั้งให้งานใหม่ตรงๆ ไม่ได้ (มาจากวันที่) — ไม่มีช่องเพิ่ม
+      add: s === "open" ? { patch: {}, tagId: null } : null,
+      // ลากเข้า "เสร็จแล้ว" = ติ๊กเสร็จ, ลากออกมากลุ่มอื่น = เอาติ๊กออก
+      drop: s === "done" ? { done: true } : { done: false },
+      keepEmpty: s === "open",
+    })
+  );
+  const byKey = new Map(groups.map((g) => [g.key, g]));
+  for (const t of items) byKey.get(statusOf(t))?.tasks.push(t);
+  return groups;
 }
 
 /**

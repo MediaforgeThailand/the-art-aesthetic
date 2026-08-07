@@ -7,8 +7,8 @@
  * — ห้ามเขียน listener resize/scroll เอง ไม่งั้นคีย์บอร์ดมือถือเด้งแล้วเมนูหุบก่อนเลือกได้
  */
 
-import { Check, Plus, Tag as TagIcon, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { Check, ChevronDown, Plus, Tag as TagIcon, X } from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import {
@@ -23,6 +23,112 @@ import type { ListTagRow, TaskPriority } from "@/lib/types";
 function autoFocusSearch(el: HTMLInputElement | null) {
   if (!el) return;
   if (window.matchMedia("(pointer: fine)").matches) el.focus();
+}
+
+/* ---------- ปุ่มตัวกรองบนแถบเครื่องมือ (ไร้กรอบแบบ Monday) ---------- */
+
+export type ToolbarOption = {
+  key: string;
+  label: string;
+  selected: boolean;
+  /** จุดสี/ช่องสีนำหน้าตัวเลือก (คลาสเต็มของ Tailwind) */
+  dot?: string;
+  onPick: () => void;
+};
+
+/**
+ * ปุ่มบนแถบเครื่องมือที่กดแล้วกางเมนูตัวเลือก — ไม่มีกรอบ/พื้นจนกว่าจะถูกใช้งาน
+ * (ตัวกรองที่ "ทำงานอยู่" ถึงจะมีพื้นสีแบรนด์ให้เห็นว่ายังกรองค้างอยู่)
+ */
+export function ToolbarMenu({
+  icon,
+  text,
+  active,
+  ariaLabel,
+  options,
+  width = 224,
+}: {
+  icon: ReactNode;
+  text: string;
+  active: boolean;
+  ariaLabel: string;
+  options: ToolbarOption[];
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuBox | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const place = (btn: HTMLElement) => menuBox(btn, { width, maxHeight: 340 });
+
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => {
+          if (!open && btnRef.current) setPos(place(btnRef.current));
+          setOpen((o) => !o);
+        }}
+        className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 ${
+          active
+            ? "bg-brand-100/90 text-brand-800"
+            : "text-stone-600 hover:bg-white/70 hover:text-stone-900"
+        }`}
+      >
+        {icon}
+        {text}
+        <ChevronDown size={13} className="opacity-50" />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={{ left: pos.x, top: pos.y, width: pos.width, maxHeight: pos.height }}
+            className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
+          >
+            {options.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                role="option"
+                aria-selected={o.selected}
+                onClick={() => {
+                  o.onPick();
+                  setOpen(false);
+                }}
+                className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-brand-50 max-sm:min-h-11 ${
+                  o.selected ? "bg-brand-50/80 text-brand-800" : "text-stone-700"
+                }`}
+              >
+                {o.dot && (
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${o.dot}`} />
+                )}
+                <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                {o.selected && (
+                  <Check size={14} className="shrink-0 text-brand-600" />
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
+  );
 }
 
 /* ---------- ชิปแท็ก ---------- */
@@ -70,8 +176,8 @@ export function PriorityPicker({
 }: {
   value: TaskPriority;
   onChange: (p: TaskPriority) => void;
-  /** chip = ชิปสีบนแถวลิสต์ · field = ปุ่มเต็มความกว้างในแผงรายละเอียด */
-  variant?: "chip" | "field";
+  /** chip = ชิปสีบนแถวลิสต์ · cell = ช่องสีทึบเต็มเซลล์ในตาราง · field = ปุ่มเต็มความกว้างในแผงรายละเอียด */
+  variant?: "chip" | "cell" | "field";
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -109,7 +215,9 @@ export function PriorityPicker({
         className={
           variant === "chip"
             ? `inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-transform active:scale-95 disabled:cursor-not-allowed max-sm:min-h-8 max-sm:px-3 sm:py-1 ${meta.chip}`
-            : "flex w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-left text-sm text-stone-900 transition-colors hover:border-brand-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11"
+            : variant === "cell"
+              ? `flex h-full w-full cursor-pointer items-center justify-center px-2 text-xs font-medium transition-[filter] hover:brightness-95 disabled:cursor-not-allowed ${meta.cell}`
+              : "flex w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-left text-sm text-stone-900 transition-colors hover:border-brand-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11"
         }
       >
         {variant === "field" && (

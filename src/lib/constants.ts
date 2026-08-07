@@ -71,31 +71,54 @@ export function taskCategoryChipClass(category: string): string {
  *  row = คลาสที่ใส่คู่กับ border-l-4 บนแถว (ต้องเป็นคลาสเต็มเสมอ — Tailwind v4 ไม่เห็นคลาสที่ต่อสตริงเอง) */
 export const LIST_PRIORITY: Record<
   TaskPriority,
-  { label: string; chip: string; dot: string; row: string }
+  {
+    label: string;
+    chip: string;
+    dot: string;
+    row: string;
+    /** ช่องสีทึบเต็มเซลล์ในตารางแบบ Monday (คอลัมน์ "ความสำคัญ") */
+    cell: string;
+    /** แถบสีของกลุ่ม/แถบสรุปท้ายกลุ่ม (พื้นทึบล้วน ไม่มีสีตัวอักษร) */
+    bar: string;
+    /** สีตัวอักษรหัวกลุ่มตอนจัดกลุ่มตามความสำคัญ */
+    text: string;
+  }
 > = {
   urgent: {
     label: "ด่วน",
     chip: "bg-rose-100 text-rose-700",
     dot: "bg-rose-500",
     row: "border-l-rose-400 bg-rose-50/70",
+    cell: "bg-rose-500 text-white",
+    bar: "bg-rose-500",
+    text: "text-rose-600",
   },
   high: {
     label: "สูง",
     chip: "bg-orange-100 text-orange-700",
     dot: "bg-orange-500",
     row: "border-l-orange-300 bg-orange-50/60",
+    cell: "bg-orange-500 text-white",
+    bar: "bg-orange-500",
+    text: "text-orange-600",
   },
   medium: {
     label: "ปานกลาง",
     chip: "bg-amber-100 text-amber-700",
     dot: "bg-amber-400",
     row: "border-l-amber-300 bg-amber-50/50",
+    cell: "bg-amber-400 text-amber-950",
+    bar: "bg-amber-400",
+    text: "text-amber-600",
   },
   low: {
     label: "ต่ำ",
     chip: "bg-stone-100 text-stone-600",
     dot: "bg-stone-300",
     row: "border-l-stone-200 bg-white/70",
+    cell: "bg-stone-300 text-stone-700",
+    bar: "bg-stone-300",
+    text: "text-stone-500",
   },
 };
 
@@ -107,35 +130,98 @@ export const LIST_PRIORITY_ORDER: TaskPriority[] = [
   "low",
 ];
 
+/** สถานะของงานใน My List — **คำนวณจากข้อมูลจริง ไม่ใช่คอลัมน์ใน DB**
+ *  (list_tasks มีแค่ done + due_date; ที่เหลือคือการอ่านสองค่านี้ให้เป็นภาษาคน)
+ *  ใช้กับคอลัมน์ "สถานะ" ของตารางแบบ Monday และแถบสรุปท้ายกลุ่ม
+ *  กดที่ช่องสถานะ = สลับ done เท่านั้น (ไม่มีสถานะกลางให้เลือกเอง) */
+export type ListStatus = "done" | "overdue" | "soon" | "open";
+
+export const LIST_STATUS: Record<
+  ListStatus,
+  { label: string; cell: string; bar: string; text: string }
+> = {
+  done: {
+    label: "เสร็จแล้ว",
+    cell: "bg-emerald-500 text-white",
+    bar: "bg-emerald-500",
+    text: "text-emerald-600",
+  },
+  overdue: {
+    label: "เลยกำหนด",
+    cell: "bg-rose-500 text-white",
+    bar: "bg-rose-500",
+    text: "text-rose-600",
+  },
+  soon: {
+    label: "ใกล้ครบกำหนด",
+    cell: "bg-amber-400 text-amber-950",
+    bar: "bg-amber-400",
+    text: "text-amber-600",
+  },
+  open: {
+    label: "ยังไม่เสร็จ",
+    cell: "bg-stone-300 text-stone-700",
+    bar: "bg-stone-300",
+    text: "text-stone-500",
+  },
+};
+
+/** ลำดับที่ใช้ในแถบสรุป (ซ้าย→ขวา) */
+export const LIST_STATUS_ORDER: ListStatus[] = [
+  "overdue",
+  "soon",
+  "open",
+  "done",
+];
+
 /** ชุดสีของแท็กที่ผู้ใช้เลือกเองได้ — key เก็บใน list_tags.color
  *  DB ไม่มี check constraint (เพิ่มสีใหม่ได้โดยไม่ต้อง migrate) — สีที่ไม่รู้จัก fallback เป็น brand */
 export const LIST_TAG_COLORS: Record<
   string,
-  { label: string; chip: string; dot: string }
+  { label: string; chip: string; dot: string; text: string }
 > = {
   brand: {
     label: "โรสโกลด์",
     chip: "bg-brand-100 text-brand-800",
     dot: "bg-brand-400",
+    text: "text-brand-700",
   },
-  rose: { label: "แดง", chip: "bg-rose-100 text-rose-700", dot: "bg-rose-400" },
+  rose: {
+    label: "แดง",
+    chip: "bg-rose-100 text-rose-700",
+    dot: "bg-rose-400",
+    text: "text-rose-600",
+  },
   amber: {
     label: "เหลือง",
     chip: "bg-amber-100 text-amber-700",
     dot: "bg-amber-400",
+    text: "text-amber-600",
   },
   emerald: {
     label: "เขียว",
     chip: "bg-emerald-100 text-emerald-700",
     dot: "bg-emerald-400",
+    text: "text-emerald-600",
   },
-  sky: { label: "ฟ้า", chip: "bg-sky-100 text-sky-700", dot: "bg-sky-400" },
+  sky: {
+    label: "ฟ้า",
+    chip: "bg-sky-100 text-sky-700",
+    dot: "bg-sky-400",
+    text: "text-sky-600",
+  },
   violet: {
     label: "ม่วง",
     chip: "bg-violet-100 text-violet-700",
     dot: "bg-violet-400",
+    text: "text-violet-600",
   },
-  stone: { label: "เทา", chip: "bg-stone-100 text-stone-600", dot: "bg-stone-400" },
+  stone: {
+    label: "เทา",
+    chip: "bg-stone-100 text-stone-600",
+    dot: "bg-stone-400",
+    text: "text-stone-500",
+  },
 };
 
 export const LIST_TAG_COLOR_ORDER = Object.keys(LIST_TAG_COLORS);
@@ -145,6 +231,7 @@ export function listTagColor(key: string): {
   label: string;
   chip: string;
   dot: string;
+  text: string;
 } {
   return LIST_TAG_COLORS[key] ?? LIST_TAG_COLORS.brand;
 }
