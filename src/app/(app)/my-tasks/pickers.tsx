@@ -349,10 +349,20 @@ export function TagPicker({
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && q.trim() && !exact) {
-                    e.preventDefault();
-                    void create();
+                  if (e.key !== "Enter" || !q.trim()) return;
+                  e.preventDefault();
+                  // ชื่อตรงกับแท็กที่มีอยู่ = ติดแท็กนั้นให้เลย (เดิมกด Enter แล้วเงียบ)
+                  const existing = tags.find(
+                    (t) => t.name.trim().toLowerCase() === keyword
+                  );
+                  if (existing) {
+                    if (!selected.includes(existing.id))
+                      onToggle(existing.id, true);
+                    setQ("");
+                    setOpen(false);
+                    return;
                   }
+                  void create();
                 }}
                 placeholder="ค้นหา / พิมพ์ชื่อแท็กใหม่"
                 /* text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS จะซูมหน้าเข้าเองและไม่ซูมกลับ */
