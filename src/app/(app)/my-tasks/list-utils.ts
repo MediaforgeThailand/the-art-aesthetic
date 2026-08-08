@@ -266,6 +266,9 @@ export function buildGroups(
         text: color.text,
         tagId: tag.id,
         add: { patch: {}, tagId: tag.id },
+        // แท็กที่ยังไม่มีงานต้องโชว์กลุ่มว่างไว้ — ไม่งั้นแท็กใหม่หายจากบอร์ด
+        // ทั้งที่ตั้งใจสร้างมาเพื่อลาก/เพิ่มงานเข้า
+        keepEmpty: true,
       });
     });
     const none = emptyGroup({
@@ -301,6 +304,8 @@ export function buildGroups(
       bar: "bg-amber-400",
       text: "text-amber-600",
       add: { patch: { due_date: today }, tagId: null },
+      // ต้องโชว์แม้ว่าง — เป็นกลุ่มเดียวในโหมดนี้ที่เพิ่มงาน "ครบกำหนดวันนี้" ได้
+      keepEmpty: true,
     });
     const week = emptyGroup({
       key: "due:week",
@@ -347,8 +352,10 @@ export function buildGroups(
       text: LIST_STATUS[s].text,
       // เลยกำหนด/ใกล้ครบกำหนด ตั้งให้งานใหม่ตรงๆ ไม่ได้ (มาจากวันที่) — ไม่มีช่องเพิ่ม
       add: s === "open" ? { patch: {}, tagId: null } : null,
-      // ลากเข้า "เสร็จแล้ว" = ติ๊กเสร็จ, ลากออกมากลุ่มอื่น = เอาติ๊กออก
-      drop: s === "done" ? { done: true } : { done: false },
+      // ลากเข้า "เสร็จแล้ว" = ติ๊กเสร็จ, ลากเข้า "ยังไม่เสร็จ" = เอาติ๊กออก
+      // ส่วน เลยกำหนด/ใกล้ครบกำหนด มาจากวันที่ ลากเข้าไปตั้งอะไรให้ไม่ได้ = ไม่รับ drop
+      // (เดิมตั้ง {done:false} ให้ทุกกลุ่ม — ลากงานค้างไปวาง "เลยกำหนด" แล้วเด้งกลับเฉยๆ ดูเหมือนบัค)
+      drop: s === "done" ? { done: true } : s === "open" ? { done: false } : null,
       keepEmpty: s === "open",
     })
   );

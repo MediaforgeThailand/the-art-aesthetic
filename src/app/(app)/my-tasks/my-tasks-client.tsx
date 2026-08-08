@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, ConfirmDialog, EmptyState } from "@/components/ui";
+import { Button, ConfirmDialog } from "@/components/ui";
 import {
   LIST_PRIORITY,
   LIST_PRIORITY_ORDER,
@@ -362,7 +362,12 @@ export function MyTasksClient({
     setTags((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
     const { error } = await supabase.from("list_tags").update(patch).eq("id", id);
     if (error) {
-      setErr(error.message);
+      // 23505 = ชนดัชนี unique (owner_id, lower(name)) — แปลเป็นภาษาคนแทน error ดิบ
+      setErr(
+        error.code === "23505"
+          ? `มีแท็กชื่อ “${patch.name ?? ""}” อยู่แล้ว — ใช้ชื่ออื่น หรือลบแท็กเดิมก่อน`
+          : error.message
+      );
       setTags(before);
       return;
     }
@@ -448,6 +453,15 @@ export function MyTasksClient({
   const pendingDelete = confirmDelete
     ? items.find((t) => t.id === confirmDelete) ?? null
     : null;
+
+  /** ตัวกรอง/คำค้นซ่อนงานจนหมด — เปิดดูทุกอย่าง (คงโหมดจัดกลุ่ม/เรียงไว้)
+      อย่ารีเซ็ตเป็น DEFAULT_FILTERS: ค่า default เองก็ซ่อนงานที่เสร็จแล้ว
+      เคยทำให้กด "ล้างตัวกรอง" แล้วบอร์ดยังว่างเหมือนเดิม (งานเดียวที่มีถูกติ๊กเสร็จไปแล้ว) */
+  const showEverything = () => {
+    setQ("");
+    setSearchOpen(false);
+    setFilters((f) => ({ ...f, status: "all", priority: "all", tagId: "all" }));
+  };
 
   /** ปุ่ม "งานใหม่" — กางกลุ่มแรกที่พิมพ์เพิ่มได้ แล้วโฟกัสช่องของกลุ่มนั้น */
   const focusNewTask = () => {
@@ -604,22 +618,36 @@ export function MyTasksClient({
       <div className="mb-4 animate-fade-in-up">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-xl font-semibold text-stone-900">งานของฉัน</h1>
+          {/* ชิปกดได้ = ทางลัดสลับตัวกรองสถานะ — ตอบคำถาม "งานที่ติ๊กเสร็จหายไปไหน"
+              ได้ในคลิกเดียว (default ซ่อนงานเสร็จ ทำให้งานหายจากบอร์ดทันทีที่ติ๊ก) */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <StatChip dot="bg-stone-400" label="ทั้งหมด" value={stats.total} />
+            <StatChip
+              dot="bg-stone-400"
+              label="ทั้งหมด"
+              value={stats.total}
+              active={filters.status === "all"}
+              onClick={() => setFilter("status", "all")}
+            />
             <StatChip
               dot={LIST_STATUS.open.bar}
               label="ยังไม่เสร็จ"
               value={stats.open}
+              active={filters.status === "open"}
+              onClick={() => setFilter("status", "open")}
             />
             <StatChip
               dot={LIST_STATUS.overdue.bar}
               label="เลยกำหนด"
               value={stats.overdue}
+              active={filters.status === "overdue"}
+              onClick={() => setFilter("status", "overdue")}
             />
             <StatChip
               dot={LIST_STATUS.done.bar}
               label="เสร็จแล้ว"
               value={stats.done}
+              active={filters.status === "done"}
+              onClick={() => setFilter("status", "done")}
             />
           </div>
           <div className="ml-auto">
@@ -750,36 +778,33 @@ export function MyTasksClient({
         />
       </div>
 
-      {hiddenCount > 0 && (
+      {hiddenCount > 0 && ordered.length > 0 && (
         <p className="mt-2 text-xs text-stone-400">
           แสดง {filtered.length} จาก {items.length} รายการ · ตัวกรองซ่อนอยู่{" "}
           {hiddenCount} รายการ
         </p>
       )}
 
-      {/* ---------- กลุ่ม + ตาราง ---------- */}
-      {ordered.length === 0 && items.length > 0 ? (
-        <Card className="mt-4 p-2 sm:p-3">
-          <EmptyState
-            icon={<Search size={40} />}
-            title="ไม่พบงานที่ตรงกับตัวกรอง"
-            description="ลองล้างคำค้นหรือเปลี่ยนตัวกรองด้านบน"
-            action={
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setQ("");
-                  setSearchOpen(false);
-                  setFilters(DEFAULT_FILTERS);
-                }}
-              >
-                ล้างตัวกรอง
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <DndContext
+      {/* ตัวกรอง/คำค้นซ่อนงานจนหมดบอร์ด — บอร์ดด้านล่างยังอยู่ครบ (ช่องเพิ่มงานใช้ได้ปกติ)
+          ห้ามกลับไปแทนที่บอร์ดด้วย EmptyState ทั้งแผง: เคยทำให้ติ๊กงานสุดท้ายเสร็จแล้ว
+          ช่องเพิ่มงานหายทั้งหน้า + ปุ่ม "งานใหม่" กดแล้วไม่เกิดอะไร = เข้าทางตัน */}
+      {ordered.length === 0 && items.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 animate-fade-in">
+          <Search size={15} className="shrink-0" />
+          <span className="min-w-0 flex-1">
+            {q.trim()
+              ? "ไม่มีงานที่ตรงกับคำค้น/ตัวกรองตอนนี้"
+              : "ตัวกรองซ่อนงานทั้งหมดอยู่"}{" "}
+            — งานทั้ง {items.length} รายการยังอยู่ครบ ไม่ได้หายไปไหน
+          </span>
+          <Button variant="secondary" onClick={showEverything} className="shrink-0">
+            แสดงทั้งหมด
+          </Button>
+        </div>
+      )}
+
+      {/* ---------- กลุ่ม + ตาราง (แสดงเสมอ — กลุ่ม keepEmpty ทำให้มีช่องเพิ่มงานตลอด) ---------- */}
+      <DndContext
           id="my-tasks-dnd"
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -813,7 +838,6 @@ export function MyTasksClient({
             ))}
           </div>
         </DndContext>
-      )}
 
       {openTask && (
         <TaskDetailPanel
@@ -862,16 +886,35 @@ function StatChip({
   dot,
   label,
   value,
+  active,
+  onClick,
 }: {
   dot: string;
   label: string;
   value: number;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/75 bg-white/70 px-2.5 py-1 text-xs text-stone-600">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={`กรอง: ${label}`}
+      /* เป้านิ้วบนจอเล็กใช้ 36px ไม่ใช่ 44px — ชิปสรุปเป็นทางลัดรอง (ตัวกรองหลักอยู่บน
+         แถบเครื่องมือที่สูง 44px เต็ม) และแถวหัวหน้าไม่ควรบวมจนดันเนื้อหา */
+      className={`inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs transition-colors active:scale-95 max-sm:min-h-9 ${
+        active
+          ? "border-brand-300 bg-brand-100/90 text-brand-800"
+          : "border-white/75 bg-white/70 text-stone-600 hover:bg-white"
+      }`}
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {label} <b className="font-semibold text-stone-800">{value}</b>
-    </span>
+      {label}{" "}
+      <b className={`font-semibold ${active ? "text-brand-900" : "text-stone-800"}`}>
+        {value}
+      </b>
+    </button>
   );
 }
 
@@ -1013,9 +1056,15 @@ function GroupSection({
                       }}
                       className="w-full border-none bg-transparent py-2 text-base text-stone-900 placeholder:text-stone-400 focus:outline-none sm:text-sm"
                     />
-                  ) : (
+                  ) : group.drop || group.tagId ? (
+                    // ชวนให้ลากเฉพาะกลุ่มที่รับ drop ได้จริง — กลุ่มที่เงื่อนไขมาจากวันที่
+                    // (เลยกำหนด/ใกล้ครบกำหนด/ช่วงกำหนดส่ง) ลากเข้าไปตั้งค่าอะไรให้ไม่ได้
                     <span className="truncate text-xs text-stone-300">
                       ลากงานมาวางที่นี่เพื่อย้ายเข้ากลุ่มนี้
+                    </span>
+                  ) : (
+                    <span className="truncate text-xs text-stone-200">
+                      กลุ่มนี้จัดตามวันที่ของงานโดยอัตโนมัติ
                     </span>
                   )}
                 </div>
@@ -1200,9 +1249,11 @@ function TaskRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      /* พื้นแถวติดสีอ่อนตามความสำคัญ (prio.row) — คำใบ้ในแผงสัญญาไว้ว่า
+         "สีของแถวในลิสต์เปลี่ยนตามค่านี้"; งานที่เสร็จแล้วไม่ย้อมสี ให้ลิสต์ส่วนที่จบดูสงบ */
       className={`group border-b border-brand-100/50 transition-colors last:border-b-0 hover:bg-white/70 ${
-        isDragging ? "opacity-40" : ""
-      }`}
+        task.done ? "" : prio.row
+      } ${isDragging ? "opacity-40" : ""}`}
     >
       {/* ---- จอ ≥sm: แถวตารางเต็มคอลัมน์ ---- */}
       <div
