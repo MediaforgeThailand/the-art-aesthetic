@@ -87,7 +87,7 @@ import {
 import { TagManagerModal } from "./tag-manager";
 import { TaskDetailPanel } from "./task-detail-panel";
 
-type StatusFilter = "all" | "open" | "done" | "overdue";
+type StatusFilter = "all" | "open" | "overdue" | "soon" | "done";
 
 type Filters = {
   status: StatusFilter;
@@ -111,6 +111,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
   { value: "all", label: "ทุกสถานะ" },
   { value: "open", label: "ยังไม่เสร็จ", dot: LIST_STATUS.open.bar },
   { value: "overdue", label: "เลยกำหนด", dot: LIST_STATUS.overdue.bar },
+  { value: "soon", label: "ใกล้ครบกำหนด", dot: LIST_STATUS.soon.bar },
   { value: "done", label: "เสร็จแล้ว", dot: LIST_STATUS.done.bar },
 ];
 
@@ -142,10 +143,30 @@ export function MyTasksClient({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
+  /**
+   * นับ mutation ที่ยังทำงานอยู่ — ระหว่างนั้น "ห้าม" sync props ทับ state
+   * เหตุผล: กดติ๊กหลายช่องเร็วๆ payload จาก router.refresh() ของ mutation แรก
+   * อาจถ่ายภาพ DB ก่อน mutation ถัดไป commit → sync ทับแล้วติ๊กที่เพิ่งกดเด้งกลับชั่วขณะ
+   * (mutation ตัวท้ายสุดจะ refresh ของตัวเองเสมอ payload สุดท้ายจึงสดครบแน่นอน)
+   */
+  const pendingMuts = useRef(0);
+  const mutate = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    pendingMuts.current += 1;
+    try {
+      return await fn();
+    } finally {
+      pendingMuts.current -= 1;
+    }
+  };
+
   const [items, setItems] = useState<MyTask[]>(tasks);
-  useEffect(() => setItems(tasks), [tasks]);
+  useEffect(() => {
+    if (pendingMuts.current === 0) setItems(tasks);
+  }, [tasks]);
   const [tags, setTags] = useState<ListTagRow[]>(initialTags);
-  useEffect(() => setTags(initialTags), [initialTags]);
+  useEffect(() => {
+    if (pendingMuts.current === 0) setTags(initialTags);
+  }, [initialTags]);
 
   const [err, setErr] = useState<string | null>(loadError);
   const [q, setQ] = useState("");
@@ -203,7 +224,7 @@ export function MyTasksClient({
   };
 
   /** เพิ่มงานจากช่องท้ายกลุ่ม — ค่าตั้งต้นมาจากเกณฑ์ของกลุ่มนั้น (ความสำคัญ/แท็ก/กำหนดส่ง) */
-  const addTask = async (rawTitle: string, group: ListGroup) => {
+  const addTask = (rawTitle: string, group: ListGroup) => mutate(async () => {
     const title = rawTitle.trim();
     if (!title || !group.add) return;
     const last = group.tasks.length ? group.tasks[group.tasks.length - 1] : null;
@@ -235,9 +256,9 @@ export function MyTasksClient({
     }
     setItems((prev) => [...prev, row]);
     router.refresh();
-  };
+  });
 
-  const patchTask = async (id: string, patch: Partial<ListTaskRow>) => {
+  const patchTask = (id: string, patch: Partial<ListTaskRow>) => mutate(async () => {
     const before = items;
     setItems((prev) =>
       prev.map((t) =>
@@ -262,9 +283,9 @@ export function MyTasksClient({
     }
     setErr(null);
     router.refresh();
-  };
+  });
 
-  const deleteTask = async (id: string) => {
+  const deleteTask = (id: string) => mutate(async () => {
     const before = items;
     setItems((prev) => prev.filter((t) => t.id !== id));
     if (openId === id) setOpenId(null);
@@ -276,9 +297,9 @@ export function MyTasksClient({
     }
     setErr(null);
     router.refresh();
-  };
+  });
 
-  const toggleTag = async (taskId: string, tagId: string, on: boolean) => {
+  const toggleTag = (taskId: string, tagId: string, on: boolean) => mutate(async () => {
     const before = items;
     setItems((prev) =>
       prev.map((t) =>
@@ -308,10 +329,10 @@ export function MyTasksClient({
     }
     setErr(null);
     router.refresh();
-  };
+  });
 
   /** สร้างแท็กใหม่ — ชื่อซ้ำ (unique owner_id + lower(name)) ให้ใช้ตัวที่มีอยู่แทน */
-  const createTag = async (name: string): Promise<string | null> => {
+  const createTag = (name: string): Promise<string | null> => mutate(async () => {
     const clean = name.trim();
     if (!clean) return null;
     const existing = tags.find(
@@ -348,7 +369,7 @@ export function MyTasksClient({
     setTags((prev) => [...prev, data as ListTagRow]);
     router.refresh();
     return (data as ListTagRow).id;
-  };
+  });
 
   /** สร้างแท็กแล้วติดให้รายการนั้นเลย (ใช้จาก TagPicker ในแผงรายละเอียด) */
   const createTagFor = async (taskId: string, name: string) => {
@@ -357,7 +378,7 @@ export function MyTasksClient({
     return id;
   };
 
-  const patchTag = async (id: string, patch: Partial<ListTagRow>) => {
+  const patchTag = (id: string, patch: Partial<ListTagRow>) => mutate(async () => {
     const before = tags;
     setTags((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
     const { error } = await supabase.from("list_tags").update(patch).eq("id", id);
@@ -373,9 +394,9 @@ export function MyTasksClient({
     }
     setErr(null);
     router.refresh();
-  };
+  });
 
-  const deleteTag = async (id: string) => {
+  const deleteTag = (id: string) => mutate(async () => {
     const beforeTags = tags;
     const beforeItems = items;
     setTags((prev) => prev.filter((t) => t.id !== id));
@@ -390,9 +411,11 @@ export function MyTasksClient({
       setItems(beforeItems);
       return;
     }
+    // ตัวกรองที่ชี้แท็กนี้อยู่จะกรองทุกงานทิ้งอย่างถาวร (แท็กหายจากเมนูแล้ว แก้คืนไม่ได้) — ปลดให้เอง
+    setFilters((f) => (f.tagId === id ? { ...f, tagId: "all" } : f));
     setErr(null);
     router.refresh();
-  };
+  });
 
   /* ---------- กรอง + เรียง + จัดกลุ่ม ---------- */
 
@@ -402,6 +425,7 @@ export function MyTasksClient({
       if (filters.status === "open" && t.done) return false;
       if (filters.status === "done" && !t.done) return false;
       if (filters.status === "overdue" && !isOverdue(t)) return false;
+      if (filters.status === "soon" && statusOf(t) !== "soon") return false;
       if (filters.priority !== "all" && t.priority !== filters.priority)
         return false;
       if (filters.tagId !== "all" && !t.tagIds.includes(filters.tagId))
