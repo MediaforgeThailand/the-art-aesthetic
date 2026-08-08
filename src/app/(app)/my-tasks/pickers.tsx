@@ -14,6 +14,8 @@ import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-me
 import {
   LIST_PRIORITY,
   LIST_PRIORITY_ORDER,
+  LIST_STATUS,
+  type ListStatus,
   LIST_TAG_COLOR_ORDER,
   listTagColor,
 } from "@/lib/constants";
@@ -258,6 +260,113 @@ export function PriorityPicker({
                 </button>
               );
             })}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
+/* ---------- เลือกสถานะ (ช่องสีทึบในตาราง) ---------- */
+
+/**
+ * ช่อง "สถานะ" ในตาราง — เดิมกดทีเดียวสลับ done ทันที ผู้ใช้เผลอกดแล้วงานหาย
+ * (ตัวกรอง default ซ่อนงานเสร็จ) จึงเปลี่ยนเป็น dropdown ให้เลือกจงใจ
+ * เลือกได้เฉพาะ ยังไม่เสร็จ/เสร็จแล้ว เพราะ DB มีแค่ done —
+ * "เลยกำหนด/ใกล้ครบกำหนด" คำนวณจากกำหนดส่งเอง เลือกตรงๆ ไม่ได้
+ */
+export function StatusPicker({
+  status,
+  done,
+  hasDue,
+  onSetDone,
+}: {
+  /** สถานะที่คำนวณแล้ว (โชว์บนช่อง) */
+  status: ListStatus;
+  done: boolean;
+  /** งานมีกำหนดส่ง — โชว์คำอธิบายว่าสถานะวันที่มาจากกำหนดส่งอัตโนมัติ */
+  hasDue: boolean;
+  onSetDone: (done: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuBox | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const place = (btn: HTMLElement) => menuBox(btn, { width: 210, maxHeight: 220 });
+
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(place(b)),
+  });
+
+  const meta = LIST_STATUS[status];
+  const choices: { done: boolean; s: ListStatus }[] = [
+    { done: false, s: "open" },
+    { done: true, s: "done" },
+  ];
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`สถานะ: ${meta.label} — กดเพื่อเลือกสถานะ`}
+        title="เลือกสถานะ"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!open && btnRef.current) setPos(place(btnRef.current));
+          setOpen((o) => !o);
+        }}
+        className={`flex h-full w-full cursor-pointer items-center justify-center gap-1 px-2 text-xs font-medium transition-[filter] hover:brightness-95 ${meta.cell}`}
+      >
+        <span className="truncate">{meta.label}</span>
+        <ChevronDown size={12} className="shrink-0 opacity-60" />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={{ left: pos.x, top: pos.y, width: pos.width, maxHeight: pos.height }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
+          >
+            {choices.map((c) => {
+              const m = LIST_STATUS[c.s];
+              const selected = done === c.done;
+              return (
+                <button
+                  key={c.s}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    if (!selected) onSetDone(c.done);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-brand-50 max-sm:min-h-11 ${
+                    selected ? "bg-brand-50/80 text-brand-800" : "text-stone-700"
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${m.bar}`} />
+                  <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                  {selected && <Check size={14} className="shrink-0 text-brand-600" />}
+                </button>
+              );
+            })}
+            {hasDue && !done && (
+              <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-4 text-stone-400">
+                “เลยกำหนด / ใกล้ครบกำหนด” เปลี่ยนตามวันกำหนดส่งอัตโนมัติ
+              </p>
+            )}
           </div>,
           document.body
         )}
