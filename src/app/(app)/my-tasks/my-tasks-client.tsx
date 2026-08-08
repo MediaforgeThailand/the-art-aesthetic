@@ -80,6 +80,7 @@ import {
 import {
   nextTagColor,
   PriorityPicker,
+  StatusPicker,
   TagChip,
   ToolbarMenu,
   type ToolbarOption,
@@ -856,6 +857,7 @@ export function MyTasksClient({
                 onAdd={(title) => void addTask(title, g)}
                 onOpen={setOpenId}
                 onToggleDone={(t) => void patchTask(t.id, { done: !t.done })}
+                onSetDone={(t, d) => void patchTask(t.id, { done: d })}
                 onPriority={(id, p) => void patchTask(id, { priority: p })}
                 onDelete={setConfirmDelete}
               />
@@ -955,6 +957,7 @@ function GroupSection({
   onAdd,
   onOpen,
   onToggleDone,
+  onSetDone,
   onPriority,
   onDelete,
 }: {
@@ -969,6 +972,7 @@ function GroupSection({
   onAdd: (title: string) => void;
   onOpen: (id: string) => void;
   onToggleDone: (t: MyTask) => void;
+  onSetDone: (t: MyTask, done: boolean) => void;
   onPriority: (id: string, p: TaskPriority) => void;
   onDelete: (id: string) => void;
 }) {
@@ -1046,6 +1050,7 @@ function GroupSection({
                     dragDisabled={dragDisabled}
                     onOpen={() => onOpen(t.id)}
                     onToggleDone={() => onToggleDone(t)}
+                    onSetDone={(d) => onSetDone(t, d)}
                     onPriority={(p) => onPriority(t.id, p)}
                     onDelete={() => onDelete(t.id)}
                   />
@@ -1212,6 +1217,7 @@ function TaskRow({
   dragDisabled,
   onOpen,
   onToggleDone,
+  onSetDone,
   onPriority,
   onDelete,
 }: {
@@ -1221,6 +1227,7 @@ function TaskRow({
   dragDisabled: boolean;
   onOpen: () => void;
   onToggleDone: () => void;
+  onSetDone: (done: boolean) => void;
   onPriority: (p: TaskPriority) => void;
   onDelete: () => void;
 }) {
@@ -1307,16 +1314,13 @@ function TaskRow({
         </div>
 
         <div className="border-l border-brand-100/70">
-          <button
-            type="button"
-            onClick={onToggleDone}
-            title={
-              task.done ? "กดเพื่อกลับมาทำต่อ" : "กดเพื่อทำเครื่องหมายว่าเสร็จ"
-            }
-            className={`flex h-full w-full cursor-pointer items-center justify-center text-xs font-medium transition-[filter] hover:brightness-95 ${statusMeta.cell}`}
-          >
-            {statusMeta.label}
-          </button>
+          {/* dropdown เลือกจงใจ ไม่สลับทันทีตอนกด — เดิมคลิกเดียว done เลย ผู้ใช้เผลอกดบ่อย */}
+          <StatusPicker
+            status={status}
+            done={task.done}
+            hasDue={!!task.due_date}
+            onSetDone={onSetDone}
+          />
         </div>
 
         <div className="flex items-center justify-center gap-1 border-l border-brand-100/70 px-2">
