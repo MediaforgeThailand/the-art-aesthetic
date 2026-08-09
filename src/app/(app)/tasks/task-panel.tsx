@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   ArrowUpRight,
   CheckCheck,
   CheckCircle2,
@@ -964,6 +965,19 @@ export function TaskPanel({
       // มือถือ: overlay เต็มจอทับบอร์ด / จอใหญ่ (≥lg): แผงข้างขวาแบบเดิม
       className="fixed inset-0 z-50 flex w-full flex-col bg-white/95 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right lg:static lg:z-auto lg:h-full lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-white/60 lg:bg-white/80"
     >
+      {/* มือถือ: แถบ "กลับ" เต็มความกว้างบนสุด — ปุ่ม X เดิมเล็กเกินไปและมักถูกปุ่มตรวจงานที่ wrap หลายบรรทัดดันหลุดสายตา */}
+      <div className="shrink-0 border-b border-stone-200/60 bg-white/70 px-2 pt-safe lg:hidden">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="กลับไปที่รายการงาน"
+          className="flex min-h-11 w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-brand-700 transition-colors active:bg-brand-50"
+        >
+          <ArrowLeft size={20} />
+          กลับ
+        </button>
+      </div>
+
       {/* header — เซคชัน brief: ปุ่ม "รับงาน" / งานปกติ: ส่งตรวจ → รอตรวจ → อนุมัติ */}
       <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/60 px-4 py-3">
         {isBrief ? (
@@ -1097,16 +1111,17 @@ export function TaskPanel({
             onClick={() => onDelete(task)}
             title="ลบงาน"
             aria-label="ลบงาน"
-            className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors duration-200 hover:bg-rose-50 hover:text-rose-600 active:scale-90"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors duration-200 hover:bg-rose-50 hover:text-rose-600 active:scale-90 sm:h-7 sm:w-7"
           >
             <Trash2 size={16} />
           </button>
+          {/* จอเล็กใช้แถบ "กลับ" ด้านบนแทน (X เล็กเกินไปสำหรับนิ้ว) */}
           <button
             type="button"
             onClick={onClose}
             title="ปิด (Esc)"
             aria-label="ปิดแผงรายละเอียด"
-            className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors duration-200 hover:bg-brand-50 hover:text-brand-700 active:scale-90"
+            className="hidden cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors duration-200 hover:bg-brand-50 hover:text-brand-700 active:scale-90 lg:block"
           >
             <X size={17} />
           </button>
