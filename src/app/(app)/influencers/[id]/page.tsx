@@ -9,6 +9,7 @@ import type {
   InfluencerRow,
   InfluFollowupRow,
   InfluLinkRow,
+  InfluPostLinkRow,
   InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
@@ -45,6 +46,7 @@ export default async function InfluencerDetailPage({
     { data: procedureItems },
     { data: priceCatalog },
     { data: sourceLinks },
+    { data: postLinks },
     { data: profile },
     { data: doctors },
   ] = await Promise.all([
@@ -90,6 +92,13 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
+    // ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน)
+    supabase
+      .from("influ_post_links")
+      .select("*")
+      .eq("influencer_id", id)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
     userId
       ? supabase
           .from("profiles")
@@ -119,6 +128,7 @@ export default async function InfluencerDetailPage({
         procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
+        postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
         canManage={hasPermission(access, "influ")}

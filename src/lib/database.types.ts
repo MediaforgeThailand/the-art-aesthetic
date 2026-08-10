@@ -453,6 +453,23 @@ export type InfluLinkRow = {
   created_at: string;
 };
 
+/** ชนิดของลิงก์ผลงานที่ influencer ลงจริง — โพส/คลิป หรือคอมเมนต์รีวิว */
+export type InfluPostKind = "post" | "comment";
+
+/** ลิงก์โพส/คอมเมนต์ที่ influencer ลงจริง (ขั้นตามงาน — migration 0066)
+    แปะได้หลายลิงก์ต่อคน: โพสหลัก/โพสเสริม และคอมเมนต์รีวิว + โน้ตกำกับ */
+export type InfluPostLinkRow = {
+  id: string;
+  influencer_id: string;
+  kind: InfluPostKind;
+  url: string;
+  /** โน้ตกำกับ เช่น "คลิปรีวิวหลัก TikTok" — null = ไม่มี */
+  note: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** หมวดของผลวิเคราะห์ที่แชร์ในแท็บ "ผลวิเคราะห์" หน้า Task (migration 0065) */
 export type AnalysisCategory = "content" | "ads" | "artwork" | "other";
 
@@ -828,6 +845,15 @@ export interface Database {
           url: string;
         };
         Update: Partial<InfluLinkRow>;
+        Relationships: [];
+      };
+      influ_post_links: {
+        Row: InfluPostLinkRow;
+        Insert: Partial<InfluPostLinkRow> & {
+          influencer_id: string;
+          url: string;
+        };
+        Update: Partial<InfluPostLinkRow>;
         Relationships: [];
       };
       analysis_links: {

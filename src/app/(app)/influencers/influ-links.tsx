@@ -32,8 +32,9 @@ export function linkLabel(l: Pick<InfluLinkLite, "title" | "url">): string {
   }
 }
 
-/** เติม https:// ให้ลิงก์ที่วางมาแบบไม่มี scheme แล้วเช็คว่าเป็น URL จริง — คืน null ถ้าใช้ไม่ได้ */
-function normalizeUrl(raw: string): string | null {
+/** เติม https:// ให้ลิงก์ที่วางมาแบบไม่มี scheme แล้วเช็คว่าเป็น URL จริง — คืน null ถ้าใช้ไม่ได้
+    (ใช้ร่วมกับการ์ดลิงก์โพสในขั้นตามงาน — post-links.tsx) */
+export function normalizeUrl(raw: string): string | null {
   const s = raw.trim();
   if (!s) return null;
   const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;

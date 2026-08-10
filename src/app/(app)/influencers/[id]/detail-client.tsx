@@ -64,6 +64,7 @@ import type {
   InfluFollowupMode,
   InfluFollowupRow,
   InfluLinkRow,
+  InfluPostLinkRow,
   InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
@@ -79,6 +80,7 @@ import {
 import { useSignedUrl } from "../use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 import { PackageStage } from "./package-stage";
+import { PostLinksCard } from "./post-links";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -365,6 +367,7 @@ export function InfluDetailClient({
   procedureItems,
   priceCatalog,
   sourceLinks,
+  postLinks,
   userName,
   doctors,
   canManage,
@@ -380,6 +383,8 @@ export function InfluDetailClient({
   priceCatalog: PriceCatalogEntry[];
   /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
   sourceLinks: InfluLinkRow[];
+  /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน) */
+  postLinks: InfluPostLinkRow[];
   userName: string;
   doctors: DoctorRow[];
   /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
@@ -638,6 +643,9 @@ export function InfluDetailClient({
             influencer={influencer}
             tasks={tasks}
             readOnly={!canEdit}
+            postLinks={postLinks}
+            // ลิงก์โพสแก้ได้เสมอแม้เคสปิดงาน (คลังผลงานอ้างอิง) — team ดูอย่างเดียว
+            postLinksReadOnly={!canManage}
           />
         )}
       </div>
@@ -1876,11 +1884,17 @@ function FollowupStage({
   influencer,
   tasks: allTasks,
   readOnly,
+  postLinks,
+  postLinksReadOnly,
 }: {
   influencer: InfluencerRow;
   /** ข้อของทั้ง 2 โหมด — โหมดที่ไม่ได้ใช้ถูกซ่อน (ไม่ถูกลบ) */
   tasks: InfluTaskRow[];
   readOnly: boolean;
+  /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง — การ์ดบนสุดของขั้นนี้ */
+  postLinks: InfluPostLinkRow[];
+  /** แยกจาก readOnly เพราะลิงก์โพสยังแก้ได้แม้เคสปิดงานแล้ว (team ดูอย่างเดียว) */
+  postLinksReadOnly: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -2077,6 +2091,13 @@ function FollowupStage({
 
   return (
     <div className="space-y-4">
+      {/* ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง — อยู่บนสุดตามที่ผู้ใช้กำหนด (2026-08-10) */}
+      <PostLinksCard
+        influencerId={influencer.id}
+        initialLinks={postLinks}
+        readOnly={postLinksReadOnly}
+      />
+
       {/* เลือกโหมด — เคสดารา/จ่ายค่าตัว เงื่อนไขไม่เหมือนเคสแลกหัตถการ */}
       <Card className="p-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
