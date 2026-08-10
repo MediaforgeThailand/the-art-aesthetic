@@ -2,6 +2,7 @@ import { todayISO } from "./format";
 import type {
   InfluCalendarKind,
   InfluFollowupMode,
+  InfluPostKind,
   InfluSizeGroup,
   InfluTier,
 } from "./types";
@@ -295,6 +296,26 @@ export const INFLU_CONTRACT_TEMPLATES: {
     label: "เอกสารแนบท้ายสัญญา (เงื่อนไขการทำเคส)",
   },
 ];
+
+/* ---------- ขั้น Follow up: ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (ตาราง influ_post_links) ---------- */
+
+export const INFLU_POST_KINDS: Record<
+  InfluPostKind,
+  { label: string; chip: string; hint: string }
+> = {
+  post: {
+    label: "โพส",
+    chip: "bg-sky-100 text-sky-700 border-sky-200",
+    hint: "คลิปรีวิว / โพสหลัก / โพสเสริม",
+  },
+  comment: {
+    label: "คอมเมนต์",
+    chip: "bg-amber-100 text-amber-700 border-amber-200",
+    hint: "คอมเมนต์รีวิว เช่น ในกลุ่มปิด / ใต้โพสของแบรนด์",
+  },
+};
+
+export const INFLU_POST_KIND_ORDER: InfluPostKind[] = ["post", "comment"];
 
 /* ---------- ขั้น Follow up: checklist ติดตามงาน Influencer (ตามเอกสารแนบท้ายสัญญาของโรงพยาบาล) ----------
    แบ่ง 5 หมวด เรียงตามเอกสารจริง

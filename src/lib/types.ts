@@ -45,6 +45,8 @@ export type {
   InfluCalendarEventRow,
   InfluProcedureItemRow,
   InfluLinkRow,
+  InfluPostKind,
+  InfluPostLinkRow,
   AnalysisCategory,
   AnalysisPeriod,
   AnalysisLinkRow,
