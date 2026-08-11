@@ -3,7 +3,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { ListTagRow, ListTaskRow } from "@/lib/types";
+import type { ListGroupRow, ListTagRow, ListTaskRow } from "@/lib/types";
 import type { MyTask } from "./list-utils";
 import { MyTasksClient } from "./my-tasks-client";
 
@@ -22,7 +22,7 @@ export default async function MyTasksPage() {
   const supabase = await createClient();
 
   // ยิงขนานทั้งหมดรวม getAccess (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มี uid)
-  const [access, tasksRes, tagsRes, linkRes] = await Promise.all([
+  const [access, tasksRes, tagsRes, linkRes, groupsRes] = await Promise.all([
     getAccess(),
     supabase
       .from("list_tasks")
@@ -31,6 +31,11 @@ export default async function MyTasksPage() {
       .order("created_at", { ascending: false }),
     supabase.from("list_tags").select("*").order("name", { ascending: true }),
     supabase.from("list_task_tags").select("task_id, tag_id"),
+    supabase
+      .from("list_groups")
+      .select("*")
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
   ]);
 
   // proxy เด้งคนที่ยังไม่ล็อกอินไป /login อยู่แล้ว — เช็คซ้ำเพื่อให้ TS มั่นใจว่ามีเจ้าของลิสต์
@@ -54,10 +59,12 @@ export default async function MyTasksPage() {
         uid={access.uid}
         tasks={tasks}
         tags={(tagsRes.data ?? []) as ListTagRow[]}
+        groups={(groupsRes.data ?? []) as ListGroupRow[]}
         loadError={
           tasksRes.error?.message ??
           tagsRes.error?.message ??
           linkRes.error?.message ??
+          groupsRes.error?.message ??
           null
         }
       />

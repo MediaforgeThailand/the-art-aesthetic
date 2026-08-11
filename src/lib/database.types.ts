@@ -607,9 +607,24 @@ export type ListTaskRow = {
   done_at: string | null;
   /** ลำดับในลิสต์ (ลากเรียงเอง) — float กึ่งกลางเพื่อนบ้านเหมือนบอร์ด Task/Influ */
   position: number;
+  /** หมวดหมู่ (list_groups) ที่งานอยู่ — null = ยังไม่จัดหมวด (ลบหมวดแล้ว DB SET NULL ให้เอง) */
+  group_id: string | null;
   visibility: ListVisibility;
   created_at: string;
   updated_at: string;
+};
+
+/** หมวดหมู่ของ My List — หัวข้อใหญ่บนบอร์ดที่ผู้ใช้ตั้งเองรายคนแบบกลุ่มของ Monday
+    (migration 0067; ชื่อซ้ำได้โดยตั้งใจ ต่างจากแท็กที่ unique เพราะใช้ค้น/กรอง) */
+export type ListGroupRow = {
+  id: string;
+  owner_id: string;
+  name: string;
+  /** key ของชุดสีใน LIST_TAG_COLORS — ค่าที่ไม่รู้จัก fallback เป็น brand (DB ไม่มี check) */
+  color: string;
+  /** ลำดับหมวดบนบอร์ด — float กึ่งกลางเพื่อนบ้านเหมือน position ของงาน */
+  position: number;
+  created_at: string;
 };
 
 /** แท็กของ My List — เป็นของรายคน (unique ที่ owner_id + ชื่อ ไม่สนตัวพิมพ์) */
@@ -894,6 +909,12 @@ export interface Database {
         Row: ListTaskRow;
         Insert: Partial<ListTaskRow> & { owner_id: string; title: string };
         Update: Partial<ListTaskRow>;
+        Relationships: [];
+      };
+      list_groups: {
+        Row: ListGroupRow;
+        Insert: Partial<ListGroupRow> & { owner_id: string; name: string };
+        Update: Partial<ListGroupRow>;
         Relationships: [];
       };
       list_tags: {

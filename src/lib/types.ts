@@ -55,6 +55,7 @@ export type {
   FileLinkWithCreator,
   ListVisibility,
   ListTaskRow,
+  ListGroupRow,
   ListTagRow,
   ListTaskTagRow,
   ListTaskShareRow,

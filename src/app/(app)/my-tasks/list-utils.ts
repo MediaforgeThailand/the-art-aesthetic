@@ -13,6 +13,7 @@ import {
 } from "@/lib/constants";
 import { formatDate, todayISO } from "@/lib/format";
 import type {
+  ListGroupRow,
   ListTagRow,
   ListTaskRow,
   ListTaskWithTags,
@@ -170,19 +171,30 @@ export function statusOf(t: MyTask): ListStatus {
 }
 
 /* ---------- จัดกลุ่มแบบบอร์ด Monday ----------
-   หมายเหตุสำคัญ: **กลุ่มในหน้านี้คำนวณจากข้อมูลที่มีอยู่ ไม่ใช่กลุ่มที่ผู้ใช้สร้างเอง**
-   (list_tasks ไม่มีคอลัมน์ group_id) — เปลี่ยนเกณฑ์จัดกลุ่มได้จากปุ่ม "จัดกลุ่ม" บนแถบเครื่องมือ
-   ถ้าวันหนึ่งอยากได้กลุ่มที่ตั้งชื่อเองแบบ Monday ต้องเพิ่มตาราง list_groups + migration ก่อน */
+   โหมดเริ่มต้นคือ "หมวดหมู่" = หัวข้อใหญ่ที่ผู้ใช้ตั้งเอง (ตาราง list_groups + คอลัมน์
+   list_tasks.group_id — migration 0067) เพิ่ม/เปลี่ยนชื่อ/เปลี่ยนสี/เรียง/ลบได้แบบ Monday
+   ส่วนโหมดที่เหลือเป็น "กลุ่มคำนวณจากข้อมูลที่มีอยู่" (สถานะ/ความสำคัญ/แท็ก/กำหนดส่ง)
+   — เปลี่ยนเกณฑ์จัดกลุ่มได้จากปุ่ม "จัดกลุ่ม" บนแถบเครื่องมือ */
 
-export type GroupBy = "status" | "priority" | "tag" | "due" | "none";
+export type GroupBy = "category" | "status" | "priority" | "tag" | "due" | "none";
 
 export const LIST_GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "category", label: "หมวดหมู่" },
   { value: "status", label: "สถานะ" },
   { value: "priority", label: "ความสำคัญ" },
   { value: "tag", label: "แท็ก" },
   { value: "due", label: "กำหนดส่ง" },
   { value: "none", label: "ไม่จัดกลุ่ม" },
 ];
+
+/** เรียงหมวดตาม position (ชนกันให้หมวดเก่ากว่าขึ้นก่อน) — ใช้ทั้งบอร์ดและโมดัลจัดการหมวด */
+export function sortListGroups(groups: ListGroupRow[]): ListGroupRow[] {
+  return [...groups].sort(
+    (a, b) =>
+      a.position - b.position ||
+      Date.parse(a.created_at) - Date.parse(b.created_at)
+  );
+}
 
 export type ListGroup = {
   key: string;
@@ -199,6 +211,8 @@ export type ListGroup = {
   drop: Partial<ListTaskRow> | null;
   /** แท็กประจำกลุ่ม (เฉพาะโหมดจัดกลุ่มตามแท็ก) — ใช้ตอนลากข้ามกลุ่ม */
   tagId: string | null;
+  /** id ของหมวดหมู่ (เฉพาะโหมดจัดกลุ่มตามหมวดหมู่) — กลุ่มที่มีค่านี้เปลี่ยนชื่อ inline ที่หัวกลุ่มได้ */
+  catId: string | null;
   /** กลุ่มที่ต้องโชว์แม้ไม่มีงาน — ที่ทางของงานใหม่/เป้าหมายที่ลากไปวางได้ */
   keepEmpty: boolean;
 };
@@ -211,6 +225,7 @@ const emptyGroup = (
   add: null,
   drop: null,
   tagId: null,
+  catId: null,
   keepEmpty: false,
   ...g,
 });
@@ -222,8 +237,44 @@ const emptyGroup = (
 export function buildGroups(
   items: MyTask[],
   groupBy: GroupBy,
-  tags: ListTagRow[]
+  tags: ListTagRow[],
+  cats: ListGroupRow[]
 ): ListGroup[] {
+  if (groupBy === "category") {
+    const groups = sortListGroups(cats).map((c) => {
+      const color = listTagColor(c.color);
+      return emptyGroup({
+        key: `cat:${c.id}`,
+        name: c.name,
+        bar: color.dot,
+        text: color.text,
+        catId: c.id,
+        add: { patch: { group_id: c.id }, tagId: null },
+        drop: { group_id: c.id },
+        // หมวดที่เพิ่งสร้าง/ยังว่างต้องโชว์เสมอ — เป็นเป้าให้ลาก/เพิ่มงานเข้า
+        keepEmpty: true,
+      });
+    });
+    const none = emptyGroup({
+      key: "cat:none",
+      name: "ยังไม่จัดหมวดหมู่",
+      bar: "bg-stone-300",
+      text: "text-stone-500",
+      add: { patch: {}, tagId: null },
+      drop: { group_id: null },
+      // ยังไม่มีหมวดเลย = กลุ่มสำรองคือช่องเพิ่มงานเดียวของบอร์ด ต้องโชว์แม้ว่าง
+      // (มีหมวดจริงแล้วค่อยซ่อนตอนว่าง — ทุกหมวดมีช่องเพิ่มงานของตัวเอง ไม่เกิดทางตัน)
+      keepEmpty: groups.length === 0,
+    });
+    const byId = new Map(groups.map((g) => [g.catId, g]));
+    for (const t of items) {
+      const g = t.group_id ? byId.get(t.group_id) : undefined;
+      // group_id ชี้หมวดที่เพิ่งถูกลบ (แถวยังไม่ทัน SET NULL ใน payload เก่า) = ถือว่าไม่มีหมวด
+      (g ?? none).tasks.push(t);
+    }
+    return [...groups, none];
+  }
+
   if (groupBy === "none") {
     return [
       emptyGroup({
