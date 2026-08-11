@@ -173,7 +173,9 @@ export function TasksClient({
     if (e) {
       setCategories((cur) => cur.filter((c) => c !== trimmed));
       showError(`เพิ่มหมวดหมู่ไม่สำเร็จ: ${e.message}`);
+      return;
     }
+    markServerStale();
   };
 
   // state ฝั่งจอเป็นแหล่งความจริงระหว่างใช้งาน — ทุกการแก้ไข optimistic ทันที
@@ -301,7 +303,11 @@ export function TasksClient({
         return n;
       });
       showError(`เพิ่มผู้ตรวจไม่สำเร็จ: ${e.message}`);
+      return;
     }
+    // ไม่ mark stale = refresh จาก mutation อื่น (หรือกลับเข้าหน้าใน 30 วิ) จะ re-seed
+    // reviewerSet จาก payload ก่อนเพิ่ม → คนที่เพิ่งเพิ่มหายจากตัวเลือกผู้ตรวจทั้งที่ DB บันทึกแล้ว
+    markServerStale();
   };
 
   /** เอาคนออกจาก roster ผู้ตรวจ (งานเดิมที่คนนี้ตรวจอยู่ไม่ถูกแตะ) */
@@ -318,7 +324,9 @@ export function TasksClient({
     if (e) {
       setReviewerSet((cur) => new Set(cur).add(profileId));
       showError(`เอาผู้ตรวจออกไม่สำเร็จ: ${e.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /** ตั้งผู้ตรวจเริ่มต้นของทั้งทีม (admin) — บันทึกลง app_settings, ใช้กับทุกคน */
@@ -334,7 +342,9 @@ export function TasksClient({
     if (e) {
       setGlobalReviewerId(prev);
       showError(`บันทึกผู้ตรวจเริ่มต้นไม่สำเร็จ: ${e.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /** ตั้งผู้ตรวจลำดับ 2 ของทีม (admin) — งานที่ส่งตรวจหลังจากนี้จะไหลเป็นทอด 1 → 2 */
@@ -350,7 +360,9 @@ export function TasksClient({
     if (e) {
       setReviewer2Override(prev);
       showError(`บันทึกผู้ตรวจลำดับ 2 ไม่สำเร็จ: ${e.message}`);
+      return;
     }
+    markServerStale();
   };
 
   /* ---------- filters (จำค่าไว้ใน localStorage, เริ่มต้น = งานของฉัน) ---------- */
