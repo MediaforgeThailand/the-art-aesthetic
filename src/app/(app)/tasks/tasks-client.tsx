@@ -52,7 +52,7 @@ import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
 import {
   AssigneeAvatar,
-  currentReviewerId,
+  currentReviewerIds,
   isTempId,
   profileName,
   reviewWaitStart,
@@ -77,7 +77,7 @@ function bangkokDay(iso: string): string {
 
 /** select ของ task พร้อม join (assignee/reviewer/creator/poster/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;
@@ -106,6 +106,7 @@ export function TasksClient({
   influencers,
   reviewerIds,
   defaultReviewerId,
+  defaultReviewer1bId,
   defaultReviewer2Id,
   categories: initialCategories,
   analysisLinks,
@@ -120,6 +121,8 @@ export function TasksClient({
   reviewerIds: string[];
   /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน (= ผู้ตรวจลำดับ 1) */
   defaultReviewerId: string | null;
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (app_settings) — ผู้ตรวจร่วมทอดแรก ใครว่างคนนั้นอนุมัติ */
+  defaultReviewer1bId: string | null;
   /** ผู้ตรวจลำดับ 2 ของทีม (app_settings) — ถ้าตั้งไว้ งานที่ส่งตรวจจะไหลเป็นทอด 1 → 2 */
   defaultReviewer2Id: string | null;
   /** หมวดหมู่งานที่จัดการได้ (task_categories) */
@@ -211,6 +214,8 @@ export function TasksClient({
   );
   useEffect(() => setReviewerSet(new Set(reviewerIds)), [reviewerIds]);
   const [reviewerModalOpen, setReviewerModalOpen] = useState(false);
+  /** โชว์ช่องเลือก "ผู้ตรวจลำดับ 1 คนที่ 2" ในโมดัล — เปิดค้างเมื่อมีค่าตั้งไว้แล้ว */
+  const [show1bPicker, setShow1bPicker] = useState(false);
 
   /* ---------- ตีกลับงาน (reject) — เปิดกล่องระบุเหตุผลก่อนยืนยัน ---------- */
   const [rejectTarget, setRejectTarget] = useState<TaskWithAssignee | null>(
@@ -240,6 +245,14 @@ export function TasksClient({
   );
   useEffect(() => setGlobalReviewerId(defaultReviewerId), [defaultReviewerId]);
 
+  // ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (ผู้ตรวจร่วม) — งานใหม่ได้ 2 คน ใครว่างคนนั้นอนุมัติทอดแรก
+  // (override เหนือค่า server เฉพาะหลังกดบันทึกในหน้านี้: undefined = ใช้ค่าจาก server)
+  const [reviewer1bOverride, setReviewer1bOverride] = useState<
+    string | null | undefined
+  >(undefined);
+  const globalReviewer1bId =
+    reviewer1bOverride === undefined ? defaultReviewer1bId : reviewer1bOverride;
+
   // ผู้ตรวจลำดับ 2 ของทีม — ถ้าตั้งไว้ การส่งตรวจจะเป็นทอด: ลำดับ 1 อนุมัติ → ลำดับ 2 อนุมัติ = เสร็จ
   // (override เหนือค่า server เฉพาะหลังกดบันทึกในหน้านี้: undefined = ใช้ค่าจาก server)
   const [reviewer2Override, setReviewer2Override] = useState<
@@ -256,7 +269,7 @@ export function TasksClient({
         : activeItems.filter(
             (t) =>
               t.review_status === "pending" &&
-              currentReviewerId(t) === userId
+              currentReviewerIds(t).includes(userId)
           ),
     [activeItems, userId]
   );
@@ -269,7 +282,7 @@ export function TasksClient({
         .filter(
           (t) =>
             t.review_status === "pending" &&
-            (userId === null || currentReviewerId(t) !== userId)
+            (userId === null || !currentReviewerIds(t).includes(userId))
         )
         .sort((a, b) => {
           const wa = reviewWaitStart(a);
@@ -342,6 +355,28 @@ export function TasksClient({
     if (e) {
       setGlobalReviewerId(prev);
       showError(`บันทึกผู้ตรวจเริ่มต้นไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    markServerStale();
+    // เลือกคนหลักซ้ำกับผู้ตรวจร่วม — ล้างช่องร่วมให้ ไม่งั้นคนเดียวกันติดสองช่อง
+    if (id !== null && id === globalReviewer1bId) {
+      void saveDefaultReviewer1b(null);
+    }
+  };
+
+  /** ตั้งผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (admin) — งานใหม่จะมีผู้ตรวจทอดแรก 2 คน ใครว่างคนนั้นอนุมัติ */
+  const saveDefaultReviewer1b = async (id: string | null) => {
+    const prev = globalReviewer1bId;
+    setReviewer1bOverride(id);
+    const { error: e } = await supabase
+      .from("app_settings")
+      .upsert(
+        { key: "default_reviewer1b_id", value: id, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    if (e) {
+      setReviewer1bOverride(prev);
+      showError(`บันทึกผู้ตรวจคนที่ 2 ไม่สำเร็จ: ${e.message}`);
       return;
     }
     markServerStale();
@@ -963,11 +998,12 @@ export function TasksClient({
       showError("เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้");
       return;
     }
-    // ลำดับ 2 ต้องยังอยู่ใน roster และไม่ใช่คนเดียวกับลำดับ 1 (ไม่งั้นตรวจชั้นเดียว)
+    // ลำดับ 2 ต้องยังอยู่ใน roster และไม่ซ้ำกับผู้ตรวจลำดับ 1 ทั้งสองคน (ไม่งั้นตรวจชั้นเดียว)
     const reviewer2Id =
       globalReviewer2Id !== null &&
       reviewerSet.has(globalReviewer2Id) &&
-      globalReviewer2Id !== task.reviewer_id
+      globalReviewer2Id !== task.reviewer_id &&
+      globalReviewer2Id !== task.reviewer1b_id
         ? globalReviewer2Id
         : null;
     const reviewer2Person = reviewer2Id
@@ -984,7 +1020,11 @@ export function TasksClient({
       },
       local: { reviewer2: reviewer2Person },
     });
-    notify(task, [{ recipient: task.reviewer_id, type: "review_request" }]);
+    // ทอดแรกมีผู้ตรวจร่วมได้ 2 คน — แจ้งทั้งคู่ ใครว่างคนนั้นเข้ามาตรวจ
+    notify(task, [
+      { recipient: task.reviewer_id, type: "review_request" },
+      { recipient: task.reviewer1b_id, type: "review_request" },
+    ]);
   };
 
   /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) — ล้างทอดการตรวจ ให้ส่งใหม่เริ่มทอด 1 เสมอ */
@@ -1000,24 +1040,51 @@ export function TasksClient({
     });
   };
 
+  /** ทอดแรกที่มีผู้ตรวจร่วม (2 คน) — ตอนอนุมัติให้บันทึกเฉพาะคนที่ตรวจจริงไว้เป็นผู้ตรวจลำดับ 1
+      แล้วล้างช่องร่วมออก: แท็บ "ตรวจแล้ว"/ประวัติงานจะได้ชื่อคนที่อนุมัติจริง ไม่ใช่คนที่ไม่ได้ตรวจ */
+  const collapseCoReviewer = (task: TaskWithAssignee) => {
+    if (task.reviewer1b_id === null) return { db: {}, local: {} };
+    const approverIsB = userId !== null && userId === task.reviewer1b_id;
+    return {
+      db: {
+        reviewer_id: approverIsB ? task.reviewer1b_id : task.reviewer_id,
+        reviewer1b_id: null,
+      },
+      local: {
+        reviewer: approverIsB ? (task.reviewer1b ?? null) : (task.reviewer ?? null),
+        reviewer1b: null,
+      },
+    };
+  };
+
   /** ผู้ตรวจกด approve — งานตรวจ 2 ทอด: ลำดับ 1 อนุมัติ = ส่งต่อให้ลำดับ 2,
       ลำดับ 2 (หรืองานตรวจชั้นเดียว) อนุมัติ = เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "งานเสร็จ") */
   const approveTask = (task: TaskWithAssignee) => {
     const step = task.review_step ?? 1;
     if (step < 2 && task.reviewer2_id !== null) {
+      const collapse = collapseCoReviewer(task);
       patchTask(task.id, {
-        db: { review_step: 2, review1_approved_at: new Date().toISOString() },
+        db: {
+          review_step: 2,
+          review1_approved_at: new Date().toISOString(),
+          ...collapse.db,
+        },
+        local: collapse.local,
       });
       // ส่งไม้ต่อให้ผู้ตรวจลำดับ 2 มาตรวจขั้นสุดท้าย
       notify(task, [{ recipient: task.reviewer2_id, type: "review_request" }]);
       return;
     }
+    // ทอด 2 ไม่มีผู้ตรวจร่วมแล้ว (ถูกเก็บตอนผ่านทอดแรก) — collapse มีผลเฉพาะงานตรวจชั้นเดียว
+    const collapse = step < 2 ? collapseCoReviewer(task) : { db: {}, local: {} };
     patchTask(task.id, {
       db: {
         review_status: "approved",
         completed: true,
         approved_at: new Date().toISOString(),
+        ...collapse.db,
       },
+      local: collapse.local,
     });
     // บอกทั้งผู้รับผิดชอบและผู้สร้างการ์ด (เช่น content ที่สั่ง brief) ว่างานผ่านแล้ว
     notify(task, [
@@ -1029,6 +1096,8 @@ export function TasksClient({
   /** ผู้ตรวจลำดับ 1 กด "อนุมัติจบทันที" — bypass ข้ามลำดับ 2 ให้งานเสร็จสมบูรณ์เลย
       ล้าง reviewer2 ออกจากงาน: ไม่บันทึกว่าลำดับ 2 เป็นผู้อนุมัติทั้งที่ไม่ได้ตรวจ */
   const approveTaskBypass = (task: TaskWithAssignee) => {
+    // bypass เกิดที่ทอดแรกเสมอ — เก็บผู้ตรวจร่วมด้วยกติกาเดียวกับ approve ปกติ
+    const collapse = collapseCoReviewer(task);
     patchTask(task.id, {
       db: {
         review_status: "approved",
@@ -1037,8 +1106,9 @@ export function TasksClient({
         reviewer2_id: null,
         review_step: 1,
         review1_approved_at: null,
+        ...collapse.db,
       },
-      local: { reviewer2: null },
+      local: { reviewer2: null, ...collapse.local },
     });
     notify(task, [
       { recipient: task.assignee_id, type: "approved" },
@@ -1153,13 +1223,42 @@ export function TasksClient({
     });
   };
 
-  /** เปลี่ยนผู้ตรวจงาน */
+  /** เปลี่ยนผู้ตรวจงาน (ลำดับ 1 คนหลัก) */
   const setReviewer = (task: TaskWithAssignee, profileId: string | null) => {
     if (task.reviewer_id === profileId) return;
+    // ล้างคนหลักทั้งที่มีผู้ตรวจร่วมอยู่ — เลื่อนคนที่ 2 ขึ้นเป็นคนหลักแทน
+    // (ช่องหลักต้องมีคนเสมอก่อนส่งตรวจ: ปุ่มส่งตรวจเช็ค reviewer_id)
+    if (profileId === null && task.reviewer1b_id !== null) {
+      patchTask(task.id, {
+        db: { reviewer_id: task.reviewer1b_id, reviewer1b_id: null },
+        local: { reviewer: task.reviewer1b ?? null, reviewer1b: null },
+      });
+      return;
+    }
+    const person = profiles.find((p) => p.id === profileId) ?? null;
+    // เลือกคนเดียวกับผู้ตรวจร่วม = คนนั้นขึ้นเป็นคนหลัก แล้วล้างช่องร่วม (กันชื่อซ้ำสองช่อง)
+    const dupWithB = profileId !== null && profileId === task.reviewer1b_id;
+    patchTask(task.id, {
+      db: {
+        reviewer_id: profileId,
+        ...(dupWithB ? { reviewer1b_id: null } : {}),
+      },
+      local: {
+        reviewer: person,
+        ...(dupWithB ? { reviewer1b: null } : {}),
+      },
+    });
+  };
+
+  /** เปลี่ยน/เอาออก ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) ของงาน */
+  const setReviewer1b = (task: TaskWithAssignee, profileId: string | null) => {
+    if (task.reviewer1b_id === profileId) return;
+    // ห้ามซ้ำกับคนหลัก (ตัวเลือกใน UI ตัดออกแล้ว — กันไว้อีกชั้น)
+    if (profileId !== null && profileId === task.reviewer_id) return;
     const person = profiles.find((p) => p.id === profileId) ?? null;
     patchTask(task.id, {
-      db: { reviewer_id: profileId },
-      local: { reviewer: person },
+      db: { reviewer1b_id: profileId },
+      local: { reviewer1b: person },
     });
   };
 
@@ -1203,14 +1302,29 @@ export function TasksClient({
           : Math.max(...inSection.map((t) => t.position)) + 1;
 
     // เซคชัน brief: ผู้ตรวจ = ผู้สร้าง (auto) และยังไม่ระบุผู้รับ (รอกำหนด "ส่งมอบให้")
-    // เซคชัน work: ผู้รับผิดชอบ = ตัวเอง, ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (ถ้ายังอยู่ใน roster)
-    const reviewerId = isBrief
+    // เซคชัน work: ผู้รับผิดชอบ = ตัวเอง, ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม 2 คน (ถ้ายังอยู่ใน roster)
+    let reviewerId = isBrief
       ? userId
       : globalReviewerId !== null && reviewerSet.has(globalReviewerId)
         ? globalReviewerId
         : null;
+    let reviewer1bId = isBrief
+      ? null
+      : globalReviewer1bId !== null &&
+          reviewerSet.has(globalReviewer1bId) &&
+          globalReviewer1bId !== reviewerId
+        ? globalReviewer1bId
+        : null;
+    // คนหลักใช้ไม่ได้ (ว่าง/หลุด roster) แต่คนที่ 2 ยังอยู่ — เลื่อนขึ้นเป็นคนหลัก
+    if (reviewerId === null && reviewer1bId !== null) {
+      reviewerId = reviewer1bId;
+      reviewer1bId = null;
+    }
     const reviewerPerson = reviewerId
       ? (profiles.find((p) => p.id === reviewerId) ?? null)
+      : null;
+    const reviewer1bPerson = reviewer1bId
+      ? (profiles.find((p) => p.id === reviewer1bId) ?? null)
       : null;
     const assigneeId = isBrief ? null : userId;
     const assigneePerson = assigneeId
@@ -1236,6 +1350,7 @@ export function TasksClient({
       deliverable_url: null,
       deliverable_file_path: null,
       reviewer_id: reviewerId,
+      reviewer1b_id: reviewer1bId,
       review_status: "none",
       reviewer2_id: null,
       review_step: 1,
@@ -1254,6 +1369,7 @@ export function TasksClient({
       updated_at: new Date().toISOString(),
       assignee: assigneePerson,
       reviewer: reviewerPerson,
+      reviewer1b: reviewer1bPerson,
       reviewer2: null,
       creator: creatorPerson,
       poster: null,
@@ -1270,6 +1386,7 @@ export function TasksClient({
         position,
         assignee_id: assigneeId,
         reviewer_id: reviewerId,
+        reviewer1b_id: reviewer1bId,
         created_by: userId,
       })
       .select(TASK_SELECT)
@@ -1334,12 +1451,26 @@ export function TasksClient({
       (task.created_by
         ? (profiles.find((p) => p.id === task.created_by) ?? null)
         : null);
-    const reviewerId =
+    let reviewerId =
       globalReviewerId !== null && reviewerSet.has(globalReviewerId)
         ? globalReviewerId
         : null;
+    let reviewer1bId =
+      globalReviewer1bId !== null &&
+      reviewerSet.has(globalReviewer1bId) &&
+      globalReviewer1bId !== reviewerId
+        ? globalReviewer1bId
+        : null;
+    // คนหลักใช้ไม่ได้ (ว่าง/หลุด roster) แต่คนที่ 2 ยังอยู่ — เลื่อนขึ้นเป็นคนหลัก
+    if (reviewerId === null && reviewer1bId !== null) {
+      reviewerId = reviewer1bId;
+      reviewer1bId = null;
+    }
     const reviewerPerson = reviewerId
       ? (profiles.find((p) => p.id === reviewerId) ?? null)
+      : null;
+    const reviewer1bPerson = reviewer1bId
+      ? (profiles.find((p) => p.id === reviewer1bId) ?? null)
       : null;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: TaskWithAssignee = {
@@ -1357,6 +1488,7 @@ export function TasksClient({
       deliverable_url: null,
       deliverable_file_path: null,
       reviewer_id: reviewerId,
+      reviewer1b_id: reviewer1bId,
       review_status: "none",
       reviewer2_id: null,
       review_step: 1,
@@ -1375,6 +1507,7 @@ export function TasksClient({
       updated_at: new Date().toISOString(),
       assignee: task.assignee ?? null,
       reviewer: reviewerPerson,
+      reviewer1b: reviewer1bPerson,
       reviewer2: null,
       creator: briefCreatorPerson,
       poster: null,
@@ -1392,6 +1525,7 @@ export function TasksClient({
         position,
         assignee_id: task.assignee_id,
         reviewer_id: reviewerId,
+        reviewer1b_id: reviewer1bId,
         influencer_id: task.influencer_id,
         category: task.category,
         brief_content_type: task.brief_content_type,
@@ -1883,7 +2017,10 @@ export function TasksClient({
           {isAdmin && (
             <button
               type="button"
-              onClick={() => setReviewerModalOpen(true)}
+              onClick={() => {
+                setShow1bPicker(false);
+                setReviewerModalOpen(true);
+              }}
               title="เพิ่ม/ลบผู้ตรวจ และตั้งผู้ตรวจเริ่มต้นของทีม"
               className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700"
             >
@@ -2258,6 +2395,7 @@ export function TasksClient({
           onReject={requestReject}
           onReopen={reopenTask}
           onSetReviewer={setReviewer}
+          onSetReviewer1b={setReviewer1b}
           onSetInfluencer={setInfluencer}
           onAcceptBrief={acceptBrief}
           onSetBriefContentType={setBriefContentType}
@@ -2332,6 +2470,8 @@ export function TasksClient({
             </label>
             <p className="mb-2 mt-0.5 text-xs text-stone-400">
               เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
+              — ตั้งได้ 2 คน (กด &quot;+ เพิ่มอีกคน&quot; ด้านล่าง)
+              ใครว่างคนนั้นกดอนุมัติได้เลย
               (ตั้งได้เฉพาะ admin — เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
             </p>
             <PersonSelect
@@ -2340,7 +2480,9 @@ export function TasksClient({
               onChange={(v) => void saveDefaultReviewer(v === "" ? null : v)}
               options={[
                 { value: "", label: "ไม่ตั้งอัตโนมัติ (เลือกเองทุกครั้ง)" },
-                ...reviewerProfiles.map((p) => ({ value: p.id, profile: p })),
+                ...reviewerProfiles
+                  .filter((p) => p.id !== globalReviewer1bId)
+                  .map((p) => ({ value: p.id, profile: p })),
               ]}
             />
             {globalReviewerId !== null &&
@@ -2350,6 +2492,49 @@ export function TasksClient({
                   ระบบจะไม่เลือกให้จนกว่าจะตั้งใหม่
                 </p>
               )}
+
+            {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ใครว่างคนนั้นอนุมัติทอดแรกได้ */}
+            {globalReviewer1bId !== null || show1bPicker ? (
+              <div className="mt-3">
+                <label
+                  htmlFor="default-reviewer1b"
+                  className="text-xs font-medium text-stone-600"
+                >
+                  คนที่ 2 (ช่วยกันตรวจ — ใครว่างคนนั้นอนุมัติ)
+                </label>
+                <div className="mt-1">
+                  <PersonSelect
+                    id="default-reviewer1b"
+                    value={globalReviewer1bId ?? ""}
+                    onChange={(v) => {
+                      if (v === "") setShow1bPicker(false);
+                      void saveDefaultReviewer1b(v === "" ? null : v);
+                    }}
+                    options={[
+                      { value: "", label: "ไม่ใช้ (ตรวจคนเดียว)" },
+                      ...reviewerProfiles
+                        .filter((p) => p.id !== globalReviewerId)
+                        .map((p) => ({ value: p.id, profile: p })),
+                    ]}
+                  />
+                </div>
+                {globalReviewer1bId !== null &&
+                  !reviewerSet.has(globalReviewer1bId) && (
+                    <p className="mt-1.5 text-xs text-amber-600">
+                      ผู้ตรวจคนที่ 2 ที่ตั้งไว้ถูกเอาออกจากรายชื่อผู้ตรวจแล้ว —
+                      งานใหม่จะไม่ใส่ให้จนกว่าจะตั้งใหม่
+                    </p>
+                  )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShow1bPicker(true)}
+                className="mt-2 cursor-pointer text-xs font-medium text-brand-700 hover:underline"
+              >
+                + เพิ่มผู้ตรวจลำดับ 1 อีกคน (ช่วยกันตรวจ)
+              </button>
+            )}
           </div>
 
           <div className="border-t border-stone-100 pt-4">

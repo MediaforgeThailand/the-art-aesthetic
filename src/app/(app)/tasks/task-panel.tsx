@@ -58,7 +58,7 @@ import { PersonSelect } from "./person-select";
 import {
   AssigneeAvatar,
   CompleteToggle,
-  currentReviewerId,
+  currentReviewerIds,
   isImagePath,
   isVideoPath,
   type ProfileOption,
@@ -155,6 +155,7 @@ export function TaskPanel({
   onReject,
   onReopen,
   onSetReviewer,
+  onSetReviewer1b,
   onSetInfluencer,
   onAcceptBrief,
   onSetBriefContentType,
@@ -194,6 +195,8 @@ export function TaskPanel({
   onReject: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
   onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
+  /** เปลี่ยน/เอาออก ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ใครว่างคนนั้นอนุมัติ) */
+  onSetReviewer1b: (task: TaskWithAssignee, profileId: string | null) => void;
   onSetInfluencer: (
     task: TaskWithAssignee,
     influencerId: string | null
@@ -207,9 +210,9 @@ export function TaskPanel({
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
-  // ผู้ตรวจของทอดปัจจุบัน — งานตรวจ 2 ทอด: ทอด 1 = reviewer_id, ทอด 2 = reviewer2_id
-  const stepReviewerId = currentReviewerId(task);
-  const isReviewer = stepReviewerId !== null && stepReviewerId === userId;
+  // ผู้ตรวจของทอดปัจจุบัน — ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม ใครว่างคนนั้นอนุมัติ), ทอด 2 = reviewer2_id
+  const stepReviewerIds = currentReviewerIds(task);
+  const isReviewer = userId !== null && stepReviewerIds.includes(userId);
   // งานนี้ตรวจเป็นทอด (มีผู้ตรวจลำดับ 2 ติดอยู่กับงาน)
   const hasChain = task.reviewer2_id !== null;
   const reviewStep = task.review_step ?? 1;
@@ -218,7 +221,8 @@ export function TaskPanel({
     hasChain ||
     (task.review_status === "none" &&
       teamReviewer2 !== null &&
-      teamReviewer2.id !== task.reviewer_id);
+      teamReviewer2.id !== task.reviewer_id &&
+      teamReviewer2.id !== task.reviewer1b_id);
   // เซคชัน brief (สั่งงาน): การ์ดมีปุ่มรับงาน + ช่อง "ส่งมอบให้" + เลือกชนิดงาน
   const isBrief = section?.type === "brief";
   const isAccepted = task.brief_accepted_at !== null;
@@ -235,13 +239,28 @@ export function TaskPanel({
     !isFromBrief || task.created_by === null || task.created_by === userId;
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
-  const reviewerOptions =
+  const reviewerOptionsBase =
     task.reviewer && !reviewerProfiles.some((p) => p.id === task.reviewer!.id)
       ? [...reviewerProfiles, task.reviewer]
       : reviewerProfiles;
+  // สองช่องห้ามชื่อซ้ำกัน — ช่องหลักตัดคนที่เป็นผู้ตรวจร่วมออก และกลับกัน
+  const reviewerOptions = reviewerOptionsBase.filter(
+    (p) => p.id !== task.reviewer1b_id
+  );
+  const reviewer1bOptionsBase =
+    task.reviewer1b &&
+    !reviewerProfiles.some((p) => p.id === task.reviewer1b!.id)
+      ? [...reviewerProfiles, task.reviewer1b]
+      : reviewerProfiles;
+  const reviewer1bOptions = reviewer1bOptionsBase.filter(
+    (p) => p.id !== task.reviewer_id
+  );
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
+  /** โชว์ช่องเลือก "ผู้ตรวจคนที่ 2" ทั้งที่งานยังไม่มี — หลังกดปุ่ม "+ เพิ่มผู้ตรวจอีกคน"
+      (แผง mount ด้วย key={task.id} จึงรีเซ็ตเองเมื่อสลับงาน) */
+  const [show1bPicker, setShow1bPicker] = useState(false);
   const [panelError, setPanelError] = useState<string | null>(null);
   const showError = useCallback((msg: string) => {
     setPanelError(msg);
@@ -1261,33 +1280,72 @@ export function TaskPanel({
             label={chainVisible ? "ผู้ตรวจลำดับ 1" : "ผู้ตรวจงาน"}
             htmlFor="task-reviewer"
           >
-            <div className="flex items-center gap-1.5 px-1.5">
-              <div className="min-w-0 flex-1">
-                <PersonSelect
-                  id="task-reviewer"
-                  size="sm"
-                  ariaLabel="เลือกผู้ตรวจงาน"
-                  value={task.reviewer_id ?? ""}
-                  disabled={task.review_status !== "none"}
-                  onChange={(v) => onSetReviewer(task, v === "" ? null : v)}
-                  options={[
-                    { value: "", label: "เลือกผู้ตรวจ", profile: null },
-                    ...reviewerOptions.map((p) => ({ value: p.id, profile: p })),
-                  ]}
-                />
-                {reviewerOptions.length === 0 && (
-                  <p className="mt-0.5 text-xs text-amber-600">
-                    ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
-                    &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
-                  </p>
-                )}
+            <div className="px-1.5">
+              <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <PersonSelect
+                    id="task-reviewer"
+                    size="sm"
+                    ariaLabel="เลือกผู้ตรวจงาน"
+                    value={task.reviewer_id ?? ""}
+                    disabled={task.review_status !== "none"}
+                    onChange={(v) => onSetReviewer(task, v === "" ? null : v)}
+                    options={[
+                      { value: "", label: "เลือกผู้ตรวจ", profile: null },
+                      ...reviewerOptions.map((p) => ({ value: p.id, profile: p })),
+                    ]}
+                  />
+                  {reviewerOptions.length === 0 && (
+                    <p className="mt-0.5 text-xs text-amber-600">
+                      ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
+                      &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
+                    </p>
+                  )}
+                </div>
+                {hasChain &&
+                  (reviewStep >= 2 || task.review_status === "approved") && (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                      ✓ อนุมัติแล้ว
+                    </span>
+                  )}
               </div>
-              {hasChain &&
-                (reviewStep >= 2 || task.review_status === "approved") && (
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                    ✓ อนุมัติแล้ว
-                  </span>
-                )}
+              {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ใครว่างคนนั้นกดอนุมัติได้
+                  เลือกได้เฉพาะก่อนส่งตรวจ (กติกาเดียวกับช่องหลัก) */}
+              {task.reviewer1b_id !== null || show1bPicker ? (
+                <div className="mt-1">
+                  <PersonSelect
+                    id="task-reviewer1b"
+                    size="sm"
+                    ariaLabel="เลือกผู้ตรวจคนที่ 2 (ช่วยกันตรวจ)"
+                    value={task.reviewer1b_id ?? ""}
+                    disabled={task.review_status !== "none"}
+                    onChange={(v) => {
+                      if (v === "") setShow1bPicker(false);
+                      onSetReviewer1b(task, v === "" ? null : v);
+                    }}
+                    options={[
+                      { value: "", label: "ไม่ใช้ (ตรวจคนเดียว)", profile: null },
+                      ...reviewer1bOptions.map((p) => ({
+                        value: p.id,
+                        profile: p,
+                      })),
+                    ]}
+                  />
+                  <p className="mt-0.5 px-1.5 text-[11px] text-stone-400">
+                    ผู้ตรวจร่วม — ใครว่างคนนั้นกดอนุมัติได้
+                  </p>
+                </div>
+              ) : task.review_status === "none" &&
+                task.reviewer_id !== null &&
+                reviewer1bOptions.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShow1bPicker(true)}
+                  className="mt-0.5 cursor-pointer px-1.5 text-[11px] font-medium text-brand-600 hover:underline"
+                >
+                  + เพิ่มผู้ตรวจอีกคน (ช่วยกันตรวจ)
+                </button>
+              ) : null}
             </div>
           </FieldRow>
           )}

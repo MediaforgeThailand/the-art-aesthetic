@@ -25,7 +25,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })
@@ -74,7 +74,11 @@ export default async function TasksPage() {
     supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["default_reviewer_id", "default_reviewer2_id"]),
+      .in("key", [
+        "default_reviewer_id",
+        "default_reviewer1b_id",
+        "default_reviewer2_id",
+      ]),
     // แท็บ "ผลวิเคราะห์" — เรียง/จัดกลุ่มจริงทำฝั่ง client (ข้อมูลโตช้า สัปดาห์ละไม่กี่ลิงก์)
     supabase
       .from("analysis_links")
@@ -94,6 +98,8 @@ export default async function TasksPage() {
   const settingRows = settingsResult.data ?? [];
   const defaultReviewerId =
     settingRows.find((r) => r.key === "default_reviewer_id")?.value ?? null;
+  const defaultReviewer1bId =
+    settingRows.find((r) => r.key === "default_reviewer1b_id")?.value ?? null;
   const defaultReviewer2Id =
     settingRows.find((r) => r.key === "default_reviewer2_id")?.value ?? null;
   const analysisLinks = (analysisResult.data ?? []) as AnalysisLinkRow[];
@@ -115,6 +121,7 @@ export default async function TasksPage() {
       influencers={influencers}
       reviewerIds={reviewerIds}
       defaultReviewerId={defaultReviewerId}
+      defaultReviewer1bId={defaultReviewer1bId}
       defaultReviewer2Id={defaultReviewer2Id}
       categories={categories}
       analysisLinks={analysisLinks}

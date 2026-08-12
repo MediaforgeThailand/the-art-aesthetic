@@ -57,6 +57,9 @@ export type TaskRow = {
   deliverable_file_path: string | null;
   /** ผู้ตรวจงานที่ระบุ (ลำดับ 1) — คนที่จะกด approve ทอดแรก */
   reviewer_id: string | null;
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ไม่บังคับ): ใครว่างคนนั้นอนุมัติทอดแรกได้
+      เมื่อทอดแรกถูกอนุมัติ ระบบเก็บเฉพาะคนที่ตรวจจริงไว้ที่ reviewer_id แล้วล้างช่องนี้ */
+  reviewer1b_id: string | null;
   /** สถานะการตรวจ: none = ยังไม่ส่ง, pending = รอตรวจ, approved = ผ่าน (completed=true) */
   review_status: "none" | "pending" | "approved";
   /** ผู้ตรวจลำดับ 2 (อนุมัติขั้นสุดท้าย) — snapshot จาก app_settings ตอนส่งตรวจ; null = ตรวจชั้นเดียว */
@@ -964,6 +967,8 @@ export type InfluencerLite = Pick<
 export type TaskWithAssignee = TaskRow & {
   assignee: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   reviewer?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 (join จาก reviewer1b_id) — ผู้ตรวจร่วมทอดแรก ใครว่างคนนั้นอนุมัติ */
+  reviewer1b?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   /** ผู้ตรวจลำดับ 2 (join จาก reviewer2_id) — อนุมัติขั้นสุดท้ายเมื่อมีตรวจ 2 ทอด */
   reviewer2?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   /** ผู้สร้างการ์ด (join จาก created_by) — การ์ด creative ที่มาจาก brief = ผู้สั่ง brief */

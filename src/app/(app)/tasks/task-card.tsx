@@ -232,22 +232,29 @@ export function AssigneePicker({
   );
 }
 
-/** ผู้ตรวจของทอดปัจจุบัน — ทอด 2 ใช้ผู้ตรวจลำดับ 2 (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้) */
-export function currentReviewerId(task: TaskWithAssignee): string | null {
+/** ผู้ตรวจของทอดปัจจุบัน — ทอด 2 ใช้ผู้ตรวจลำดับ 2 (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้)
+    ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม reviewer1b) — ใครว่างคนนั้นกดอนุมัติได้ */
+export function currentReviewerIds(task: TaskWithAssignee): string[] {
   if ((task.review_step ?? 1) >= 2) {
-    return task.reviewer2_id ?? task.reviewer_id;
+    const id = task.reviewer2_id ?? task.reviewer_id;
+    return id == null ? [] : [id];
   }
-  return task.reviewer_id;
+  return [task.reviewer_id, task.reviewer1b_id].filter(
+    (id): id is string => typeof id === "string"
+  );
 }
 
-/** โปรไฟล์ของผู้ตรวจทอดปัจจุบัน (คนที่งาน "ค้างอยู่") — คู่กับ currentReviewerId */
-export function currentReviewerPerson(
+/** โปรไฟล์ผู้ตรวจของทอดปัจจุบัน (คนที่งาน "ค้างอยู่") — คู่กับ currentReviewerIds */
+export function currentReviewerPersons(
   task: TaskWithAssignee
-): NonNullable<TaskWithAssignee["reviewer"]> | null {
+): NonNullable<TaskWithAssignee["reviewer"]>[] {
   if ((task.review_step ?? 1) >= 2) {
-    return task.reviewer2 ?? task.reviewer ?? null;
+    const p = task.reviewer2 ?? task.reviewer ?? null;
+    return p == null ? [] : [p];
   }
-  return task.reviewer ?? null;
+  return [task.reviewer, task.reviewer1b].filter(
+    (p): p is NonNullable<TaskWithAssignee["reviewer"]> => p != null
+  );
 }
 
 /** เวลาเริ่มรอของทอดปัจจุบัน — ทอด 2 นับจากตอนลำดับ 1 อนุมัติ, ทอด 1 นับจากตอนส่งตรวจ */
@@ -519,9 +526,9 @@ export function TaskCardContent({
     ? (influ.nickname ??
       [influ.first_name, influ.last_name].filter(Boolean).join(" "))
     : null;
-  // งานรอตรวจ — บอกบนการ์ดเลยว่า "ค้างอยู่ที่ใคร" (ผู้ตรวจของทอดปัจจุบัน) + รอมานานเท่าไร
-  const pendingReviewer =
-    task.review_status === "pending" ? currentReviewerPerson(task) : null;
+  // งานรอตรวจ — บอกบนการ์ดเลยว่า "ค้างอยู่ที่ใคร" (ผู้ตรวจของทอดปัจจุบัน อาจมี 2 คน) + รอมานานเท่าไร
+  const pendingReviewers =
+    task.review_status === "pending" ? currentReviewerPersons(task) : [];
   const pendingWaitLabel =
     task.review_status === "pending"
       ? waitDurationLabel(reviewWaitStart(task))
@@ -611,19 +618,23 @@ export function TaskCardContent({
             {task.review_status === "pending" && (
               <span
                 title={`ค้างอยู่ที่ ${
-                  pendingReviewer ? profileName(pendingReviewer) : "ผู้ตรวจ"
+                  pendingReviewers.length > 0
+                    ? pendingReviewers.map(profileName).join(" หรือ ")
+                    : "ผู้ตรวจ"
                 }${pendingWaitLabel ? ` · ${pendingWaitLabel}` : ""}`}
                 className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
               >
                 {task.reviewer2_id
                   ? `รอตรวจ ${task.review_step ?? 1}/2`
                   : "รอตรวจ"}
-                {pendingReviewer && (
-                  <span className="inline-flex max-w-24 items-center gap-1">
+                {pendingReviewers.length > 0 && (
+                  <span className="inline-flex max-w-32 items-center gap-1">
                     <span className="opacity-60">·</span>
-                    <AssigneeAvatar assignee={pendingReviewer} size={5} />
+                    {pendingReviewers.map((p) => (
+                      <AssigneeAvatar key={p.id} assignee={p} size={5} />
+                    ))}
                     <span className="truncate">
-                      {profileName(pendingReviewer)}
+                      {pendingReviewers.map(profileName).join(" / ")}
                     </span>
                   </span>
                 )}

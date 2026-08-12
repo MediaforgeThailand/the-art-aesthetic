@@ -16,7 +16,7 @@ import { formatDate } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import {
   AssigneeAvatar,
-  currentReviewerPerson,
+  currentReviewerPersons,
   profileName,
   reviewWaitStart,
   waitDurationLabel,
@@ -257,7 +257,8 @@ export function ReviewList({
               const sec = sectionName(task.section_id);
               const hasChain = task.reviewer2_id !== null;
               const step = task.review_step ?? 1;
-              const stuckWith = currentReviewerPerson(task);
+              // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์ทั้งคู่ ใครว่างคนนั้นตรวจ
+              const stuckWith = currentReviewerPersons(task);
               const wait = waitDurationLabel(reviewWaitStart(task));
               const mine =
                 userId !== null &&
@@ -319,10 +320,23 @@ export function ReviewList({
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50/80 px-2.5 py-1 text-xs font-medium text-amber-800">
                       ค้างอยู่ที่
-                      <AssigneeAvatar assignee={stuckWith} size={5} />
-                      <span className="max-w-28 truncate">
-                        {stuckWith ? profileName(stuckWith) : "ยังไม่ระบุผู้ตรวจ"}
-                      </span>
+                      {stuckWith.length === 0 ? (
+                        <>
+                          <AssigneeAvatar assignee={null} size={5} />
+                          <span className="max-w-28 truncate">
+                            ยังไม่ระบุผู้ตรวจ
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          {stuckWith.map((p) => (
+                            <AssigneeAvatar key={p.id} assignee={p} size={5} />
+                          ))}
+                          <span className="max-w-40 truncate">
+                            {stuckWith.map((p) => profileName(p)).join(" หรือ ")}
+                          </span>
+                        </>
+                      )}
                       {hasChain && (
                         <span className="text-[10px] font-semibold text-amber-600">
                           (ลำดับ {step})
