@@ -110,7 +110,9 @@ export function PersonSelect({
             }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
+            /* z-[90] เพราะถูกใช้ในโมดัล (จัดการผู้ตรวจ z-[80]) — เมนูที่ z-[60] เดิม
+               ถูกโมดัลบังทั้งอัน กดเปิดแล้วมองไม่เห็น/เลือกไม่ได้ */
+            className="fixed z-[90] overflow-y-auto overscroll-contain rounded-lg border border-white/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl animate-scale-in"
           >
             {options.map((o) => (
               <button

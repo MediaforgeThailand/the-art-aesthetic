@@ -181,7 +181,9 @@ export function DoctorSelect({
             }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="fixed z-[60] flex flex-col rounded-lg border border-white/70 bg-white/95 shadow-xl backdrop-blur-xl animate-scale-in"
+            /* z-[90] เพราะถูกใช้ในโมดัล (CaseInfoEditModal z-[80]) — เมนูที่ z-[60] เดิม
+               ถูกโมดัลบังทั้งอัน กดเปิดแล้วมองไม่เห็น/เลือกไม่ได้ */
+            className="fixed z-[90] flex flex-col rounded-lg border border-white/70 bg-white/95 shadow-xl backdrop-blur-xl animate-scale-in"
           >
             {/* ช่องกรอง — ทะเบียนมีได้หลายสิบชื่อ พิมพ์บางส่วนแล้วเลือกเร็วกว่าไล่หา
                 โฟกัสอัตโนมัติเฉพาะเมาส์: บนมือถือคีย์บอร์ดจะเด้งมาบังลิสต์ทันที
