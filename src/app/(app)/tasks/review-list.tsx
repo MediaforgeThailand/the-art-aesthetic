@@ -106,9 +106,12 @@ export function ReviewList({
               const hasChain = task.reviewer2_id !== null;
               const step = task.review_step ?? 1;
               // ทอดแรกยังมีผู้ตรวจร่วมคนอื่นที่ยังไม่อนุมัติ — กดอนุมัติของฉันแล้วงานยังรอเขา
+              // (ช่องที่ผู้ตรวจเป็นเจ้าของงานเองผ่านอัตโนมัติ ไม่นับว่ารอ)
               const pendingOthers =
                 step < 2
-                  ? currentReviewerIds(task).filter((id) => id !== userId)
+                  ? currentReviewerIds(task).filter(
+                      (id) => id !== userId && id !== task.assignee_id
+                    )
                   : [];
               const isFinalStep =
                 (!hasChain || step >= 2) && pendingOthers.length === 0;

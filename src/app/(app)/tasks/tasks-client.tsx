@@ -999,40 +999,96 @@ export function TasksClient({
   /* ---------- review workflow ---------- */
 
   /** ส่งตรวจงาน → รอตรวจ (ต้องระบุผู้ตรวจก่อน)
-      ถ้าทีมตั้ง "ผู้ตรวจลำดับ 2" ไว้ → snapshot ใส่งาน แล้วการตรวจไหลเป็นทอด 1 → 2 */
+      ถ้าทีมตั้ง "ผู้ตรวจลำดับ 2" ไว้ → snapshot ใส่งาน แล้วการตรวจไหลเป็นทอด 1 → 2
+
+      **งานของผู้ตรวจเอง = ลำดับนั้นถือว่าอนุมัติแล้วตั้งแต่ตอนส่งตรวจ** (ผู้ใช้ 2026-08-12):
+      ไม่มีใครต้องมากดอนุมัติงานที่ตัวเองเป็นคนทำ — ช่องของคนนั้นถูกจดเวลาไว้เลย
+      งานจึงไหลไปหาผู้ตรวจร่วมที่เหลือ / ลำดับ 2 / หรือเสร็จสมบูรณ์ทันทีถ้าไม่เหลือใคร */
   const submitForReview = (task: TaskWithAssignee) => {
     if (!task.reviewer_id) {
       showError("เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้");
       return;
     }
-    // ลำดับ 2 ต้องยังอยู่ใน roster และไม่ซ้ำกับผู้ตรวจลำดับ 1 ทั้งสองคน (ไม่งั้นตรวจชั้นเดียว)
+    const now = new Date().toISOString();
+    // "งานของตัวเอง" ยึดผู้รับผิดชอบ (คนที่ทำงานใบนี้) ไม่ใช่คนกดส่งตรวจ —
+    // การ์ดจาก brief ผู้สั่งเป็นคนกดส่ง แต่คนทำคือ assignee
+    const owner = task.assignee_id;
+    const selfPrimary = owner !== null && owner === task.reviewer_id;
+    const selfCo = owner !== null && owner === task.reviewer1b_id;
+    // ลำดับ 2 ต้องยังอยู่ใน roster, ไม่ซ้ำกับผู้ตรวจลำดับ 1 ทั้งสองคน และไม่ใช่เจ้าของงานเอง
+    // (ซ้ำ/เป็นเจ้าของงาน = ไม่ chain — ลำดับนั้นผ่านอยู่แล้วโดยกติกาข้างบน)
     const reviewer2Id =
       globalReviewer2Id !== null &&
       reviewerSet.has(globalReviewer2Id) &&
       globalReviewer2Id !== task.reviewer_id &&
-      globalReviewer2Id !== task.reviewer1b_id
+      globalReviewer2Id !== task.reviewer1b_id &&
+      globalReviewer2Id !== owner
         ? globalReviewer2Id
         : null;
     const reviewer2Person = reviewer2Id
       ? (profiles.find((p) => p.id === reviewer2Id) ?? null)
       : null;
+    const base: TaskPatch["db"] = {
+      reviewer2_id: reviewer2Id,
+      review_submitted_at: now,
+      reviewer1_approved_at: selfPrimary ? now : null,
+      reviewer1b_approved_at: selfCo ? now : null,
+    };
+    const local: NonNullable<TaskPatch["local"]> = { reviewer2: reviewer2Person };
+    // ทอดแรกเหลือใครที่ต้องตรวจจริงๆ บ้าง (คนที่ไม่ใช่เจ้าของงาน)
+    const stage1Pending: (string | null)[] = [];
+    if (!selfPrimary) stage1Pending.push(task.reviewer_id);
+    if (task.reviewer1b_id !== null && !selfCo)
+      stage1Pending.push(task.reviewer1b_id);
+
+    if (stage1Pending.length > 0) {
+      patchTask(task.id, {
+        db: {
+          ...base,
+          review_status: "pending",
+          completed: false,
+          review_step: 1,
+          review1_approved_at: null,
+        },
+        local,
+      });
+      // แจ้งเฉพาะคนที่ยังต้องตรวจ (ช่องที่ผ่านอัตโนมัติไม่ต้องเตือนใคร)
+      notify(
+        task,
+        stage1Pending.map((id) => ({ recipient: id, type: "review_request" as const }))
+      );
+      return;
+    }
+    // ทอดแรกผ่านครบตั้งแต่ส่ง (ผู้ตรวจลำดับ 1 ทุกคนคือเจ้าของงานเอง)
+    if (reviewer2Id !== null) {
+      patchTask(task.id, {
+        db: {
+          ...base,
+          review_status: "pending",
+          completed: false,
+          review_step: 2,
+          review1_approved_at: now,
+        },
+        local,
+      });
+      notify(task, [{ recipient: reviewer2Id, type: "review_request" }]);
+      return;
+    }
+    // ไม่เหลือใครต้องตรวจเลย — งานเสร็จสมบูรณ์ทันที
     patchTask(task.id, {
       db: {
-        review_status: "pending",
-        completed: false,
+        ...base,
+        review_status: "approved",
+        completed: true,
+        approved_at: now,
         review_step: 1,
-        reviewer2_id: reviewer2Id,
         review1_approved_at: null,
-        reviewer1_approved_at: null,
-        reviewer1b_approved_at: null,
-        review_submitted_at: new Date().toISOString(),
       },
-      local: { reviewer2: reviewer2Person },
+      local,
     });
-    // ทอดแรกมีผู้ตรวจร่วมได้ 2 คน — แจ้งทั้งคู่ ต้องอนุมัติครบทุกคนงานถึงไปต่อ
     notify(task, [
-      { recipient: task.reviewer_id, type: "review_request" },
-      { recipient: task.reviewer1b_id, type: "review_request" },
+      { recipient: task.assignee_id, type: "approved" },
+      { recipient: task.created_by, type: "approved" },
     ]);
   };
 
@@ -1061,14 +1117,29 @@ export function TasksClient({
       const isPrimary = userId !== null && userId === task.reviewer_id;
       const isCo = userId !== null && userId === task.reviewer1b_id;
       if (!isPrimary && !isCo) return; // ไม่ใช่ผู้ตรวจทอดนี้ (UI ค้าง/กดแทนกันไม่ได้)
+      // ช่องที่ผู้ตรวจคือเจ้าของงานเอง = ผ่านอัตโนมัติ (ปกติถูกจดตั้งแต่ตอนส่งตรวจแล้ว —
+      // เช็คซ้ำที่นี่เพื่อครอบงานเก่าที่ส่งตรวจไว้ก่อนมีกติกานี้ ไม่ให้ค้างรอคนอนุมัติงานตัวเอง)
+      const owner = task.assignee_id;
+      const selfPrimary = owner !== null && owner === task.reviewer_id;
+      const selfCo = owner !== null && owner === task.reviewer1b_id;
       const slotDb: TaskPatch["db"] = {};
       if (isPrimary) slotDb.reviewer1_approved_at = now;
       else if (isCo) slotDb.reviewer1b_approved_at = now;
+      if (selfPrimary && task.reviewer1_approved_at === null)
+        slotDb.reviewer1_approved_at = now;
+      if (selfCo && task.reviewer1b_approved_at === null)
+        slotDb.reviewer1b_approved_at = now;
       // นับรวมการกดครั้งนี้แล้ว ครบทุกช่องที่มีคนหรือยัง
       const primaryDone =
-        task.reviewer_id === null || task.reviewer1_approved_at !== null || isPrimary;
+        task.reviewer_id === null ||
+        task.reviewer1_approved_at !== null ||
+        isPrimary ||
+        selfPrimary;
       const coDone =
-        task.reviewer1b_id === null || task.reviewer1b_approved_at !== null || isCo;
+        task.reviewer1b_id === null ||
+        task.reviewer1b_approved_at !== null ||
+        isCo ||
+        selfCo;
       if (!(primaryDone && coDone)) {
         // ยังไม่ครบ — จดว่าฉันอนุมัติแล้ว งานคงสถานะรอตรวจทอด 1 รออีกคน
         patchTask(task.id, { db: slotDb });

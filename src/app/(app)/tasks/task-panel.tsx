@@ -218,8 +218,13 @@ export function TaskPanel({
   const hasChain = task.reviewer2_id !== null;
   const reviewStep = task.review_step ?? 1;
   // ทอดแรกยังมีคนอื่นที่ยังไม่อนุมัติอีกไหม (นอกจากฉัน) — ถ้ามี การกดอนุมัติของฉันยังไม่ผ่านทอด 1
+  // ไม่นับช่องที่ผู้ตรวจเป็นเจ้าของงานเอง (ผ่านอัตโนมัติ — งานเก่าที่ยังไม่ถูก stamp ก็ไม่ต้องรอ)
   const pendingOthers =
-    reviewStep < 2 ? stepReviewerIds.filter((id) => id !== userId) : [];
+    reviewStep < 2
+      ? stepReviewerIds.filter(
+          (id) => id !== userId && id !== task.assignee_id
+        )
+      : [];
   // ชิป "✓ อนุมัติแล้ว" รายช่องของทอดแรก (งาน approved = ผ่านครบทุกคนแล้วเสมอ)
   const primary1Approved =
     task.review_status === "approved" ||
@@ -229,6 +234,13 @@ export function TaskPanel({
     task.review_status === "approved" ||
     (task.review_status === "pending" &&
       (reviewStep >= 2 || task.reviewer1b_approved_at !== null));
+  // ผู้ตรวจที่เป็นเจ้าของงานเอง — ลำดับของเขาผ่านอัตโนมัติตั้งแต่กดส่งตรวจ
+  // (ไม่มีใครต้องมากดอนุมัติงานที่ตัวเองทำ — กติกาผู้ใช้ 2026-08-12)
+  const selfPrimary =
+    task.assignee_id !== null && task.assignee_id === task.reviewer_id;
+  const selfCo =
+    task.assignee_id !== null && task.assignee_id === task.reviewer1b_id;
+  const autoLabel = "✓ ผ่านอัตโนมัติ (งานของตัวเอง)";
   // ทอดแรกอนุมัติไปแล้ว 1 จาก 2 คน — บอกในป้าย "รอตรวจ" ว่าค้างอีกคน
   const partial1 =
     task.review_status === "pending" &&
@@ -242,7 +254,9 @@ export function TaskPanel({
     (task.review_status === "none" &&
       teamReviewer2 !== null &&
       teamReviewer2.id !== task.reviewer_id &&
-      teamReviewer2.id !== task.reviewer1b_id);
+      teamReviewer2.id !== task.reviewer1b_id &&
+      // เจ้าของงานเป็นผู้ตรวจลำดับ 2 เอง = ตอนส่งตรวจจะไม่ chain (ลำดับนั้นผ่านอัตโนมัติ)
+      teamReviewer2.id !== task.assignee_id);
   // เซคชัน brief (สั่งงาน): การ์ดมีปุ่มรับงาน + ช่อง "ส่งมอบให้" + เลือกชนิดงาน
   const isBrief = section?.type === "brief";
   const isAccepted = task.brief_accepted_at !== null;
@@ -1332,11 +1346,12 @@ export function TaskPanel({
                     </p>
                   )}
                 </div>
-                {(hasChain || task.reviewer1b_id !== null) && primary1Approved && (
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                    ✓ อนุมัติแล้ว
-                  </span>
-                )}
+                {(hasChain || task.reviewer1b_id !== null || selfPrimary) &&
+                  primary1Approved && (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                      {selfPrimary ? autoLabel : "✓ อนุมัติแล้ว"}
+                    </span>
+                  )}
               </div>
               {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ต้องอนุมัติครบทั้งคู่ งานจึงผ่านทอดแรก
                   เลือกได้เฉพาะก่อนส่งตรวจ (กติกาเดียวกับช่องหลัก) */}
@@ -1365,7 +1380,7 @@ export function TaskPanel({
                     </div>
                     {task.reviewer1b_id !== null && co1Approved && (
                       <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                        ✓ อนุมัติแล้ว
+                        {selfCo ? autoLabel : "✓ อนุมัติแล้ว"}
                       </span>
                     )}
                   </div>
@@ -1384,6 +1399,17 @@ export function TaskPanel({
                   + เพิ่มผู้ตรวจอีกคน (ตรวจร่วมกัน — ต้องผ่านครบทุกคน)
                 </button>
               ) : null}
+              {/* บอกล่วงหน้าก่อนกดส่งตรวจ ว่าช่องไหนจะผ่านเองเพราะเป็นงานของผู้ตรวจคนนั้น */}
+              {task.review_status === "none" && (selfPrimary || selfCo) && (
+                <p className="mt-1 px-1.5 text-[11px] text-emerald-600">
+                  {selfPrimary && selfCo
+                    ? "ผู้ตรวจลำดับ 1 เป็นเจ้าของงานนี้เอง"
+                    : selfPrimary
+                      ? "ผู้ตรวจลำดับ 1 คือเจ้าของงานนี้เอง"
+                      : "ผู้ตรวจร่วมคือเจ้าของงานนี้เอง"}{" "}
+                  — ส่งตรวจแล้วช่องนั้นจะผ่านอัตโนมัติ ไม่ต้องกดอนุมัติงานตัวเอง
+                </p>
+              )}
             </div>
           </FieldRow>
           )}
