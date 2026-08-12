@@ -16,8 +16,10 @@ import { formatDate } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import {
   AssigneeAvatar,
+  currentReviewerIds,
   currentReviewerPersons,
   profileName,
+  reviewer1PartialApproved,
   reviewWaitStart,
   waitDurationLabel,
 } from "./task-card";
@@ -56,7 +58,7 @@ export function ReviewList({
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
-  /** อนุมัติจบทันที (bypass) — ข้ามผู้ตรวจลำดับ 2 ให้งานเสร็จสมบูรณ์เลย (มี confirm) */
+  /** อนุมัติจบทันที (bypass) — ข้ามทุกคนที่ยังไม่ได้ตรวจ (ผู้ตรวจร่วม/ลำดับ 2) ให้งานเสร็จเลย (มี confirm) */
   onApproveBypass: (task: TaskWithAssignee) => void;
   /** ตีกลับให้แก้ไข — บันทึกจำนวนรอบแก้ไขไว้เป็นสถิติของผู้รับผิดชอบ */
   onReject: (task: TaskWithAssignee) => void;
@@ -103,7 +105,14 @@ export function ReviewList({
               // งานตรวจ 2 ทอด — บอกว่าใบนี้อยู่ทอดไหน และอนุมัติแล้วจะเกิดอะไรต่อ
               const hasChain = task.reviewer2_id !== null;
               const step = task.review_step ?? 1;
-              const isFinalStep = !hasChain || step >= 2;
+              // ทอดแรกยังมีผู้ตรวจร่วมคนอื่นที่ยังไม่อนุมัติ — กดอนุมัติของฉันแล้วงานยังรอเขา
+              const pendingOthers =
+                step < 2
+                  ? currentReviewerIds(task).filter((id) => id !== userId)
+                  : [];
+              const isFinalStep =
+                (!hasChain || step >= 2) && pendingOthers.length === 0;
+              const partial1 = reviewer1PartialApproved(task);
               const wait = waitDurationLabel(reviewWaitStart(task));
               return (
                 <div
@@ -129,6 +138,11 @@ export function ReviewList({
                       {hasChain && step >= 2 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
                           ลำดับ 1 อนุมัติแล้ว
+                        </span>
+                      )}
+                      {partial1 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                          ผู้ตรวจร่วมอนุมัติแล้ว — เหลือคุณ
                         </span>
                       )}
                       {wait && (
@@ -203,16 +217,22 @@ export function ReviewList({
                         onApprove(task);
                       }}
                       title={
-                        isFinalStep
-                          ? undefined
-                          : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
+                        pendingOthers.length > 0
+                          ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนก่อนไปต่อ"
+                          : isFinalStep
+                            ? undefined
+                            : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
                       }
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
                     >
                       <CheckCircle2 size={15} />
-                      {isFinalStep ? "อนุมัติ" : "อนุมัติ → ส่งต่อลำดับ 2"}
+                      {pendingOthers.length > 0
+                        ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
+                        : isFinalStep
+                          ? "อนุมัติ"
+                          : "อนุมัติ → ส่งต่อลำดับ 2"}
                     </button>
-                    {/* bypass — มีเฉพาะงานตรวจ 2 ทอดที่ยังอยู่ทอด 1: ปิดงานเลยไม่ส่งต่อลำดับ 2 */}
+                    {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ: ปิดงานเลย ข้ามคนที่ยังไม่ได้ตรวจ */}
                     {!isFinalStep && (
                       <button
                         type="button"
@@ -220,7 +240,7 @@ export function ReviewList({
                           e.stopPropagation();
                           onApproveBypass(task);
                         }}
-                        title="อนุมัติจบทันทีโดยไม่ส่งต่อผู้ตรวจลำดับ 2 (มีกล่องยืนยันก่อน)"
+                        title="อนุมัติจบทันทีโดยไม่ต้องรอคนที่ยังไม่ได้ตรวจ (มีกล่องยืนยันก่อน)"
                         className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3.5 py-2 text-sm font-medium text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95"
                       >
                         <CheckCheck size={15} />
@@ -257,8 +277,9 @@ export function ReviewList({
               const sec = sectionName(task.section_id);
               const hasChain = task.reviewer2_id !== null;
               const step = task.review_step ?? 1;
-              // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์ทั้งคู่ ใครว่างคนนั้นตรวจ
+              // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์เฉพาะคนที่ยังไม่อนุมัติ (งานค้างอยู่ที่เขา)
               const stuckWith = currentReviewerPersons(task);
+              const partial1 = reviewer1PartialApproved(task);
               const wait = waitDurationLabel(reviewWaitStart(task));
               const mine =
                 userId !== null &&
@@ -289,6 +310,11 @@ export function ReviewList({
                       {hasChain && step >= 2 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
                           ลำดับ 1 อนุมัติแล้ว
+                        </span>
+                      )}
+                      {partial1 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                          ลำดับ 1 อนุมัติแล้ว 1/2 คน
                         </span>
                       )}
                       {mine && (
@@ -333,7 +359,7 @@ export function ReviewList({
                             <AssigneeAvatar key={p.id} assignee={p} size={5} />
                           ))}
                           <span className="max-w-40 truncate">
-                            {stuckWith.map((p) => profileName(p)).join(" หรือ ")}
+                            {stuckWith.map((p) => profileName(p)).join(" และ ")}
                           </span>
                         </>
                       )}

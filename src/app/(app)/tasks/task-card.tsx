@@ -233,15 +233,19 @@ export function AssigneePicker({
 }
 
 /** ผู้ตรวจของทอดปัจจุบัน — ทอด 2 ใช้ผู้ตรวจลำดับ 2 (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้)
-    ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม reviewer1b) — ใครว่างคนนั้นกดอนุมัติได้ */
+    ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม reviewer1b) — ต้องอนุมัติครบทุกคนก่อนไปต่อ
+    จึงคืนเฉพาะคนที่ "ยังไม่อนุมัติ" (ดูจาก reviewer1_approved_at/reviewer1b_approved_at) */
 export function currentReviewerIds(task: TaskWithAssignee): string[] {
   if ((task.review_step ?? 1) >= 2) {
     const id = task.reviewer2_id ?? task.reviewer_id;
     return id == null ? [] : [id];
   }
-  return [task.reviewer_id, task.reviewer1b_id].filter(
-    (id): id is string => typeof id === "string"
-  );
+  const out: string[] = [];
+  if (task.reviewer_id !== null && task.reviewer1_approved_at === null)
+    out.push(task.reviewer_id);
+  if (task.reviewer1b_id !== null && task.reviewer1b_approved_at === null)
+    out.push(task.reviewer1b_id);
+  return out;
 }
 
 /** โปรไฟล์ผู้ตรวจของทอดปัจจุบัน (คนที่งาน "ค้างอยู่") — คู่กับ currentReviewerIds */
@@ -252,8 +256,21 @@ export function currentReviewerPersons(
     const p = task.reviewer2 ?? task.reviewer ?? null;
     return p == null ? [] : [p];
   }
-  return [task.reviewer, task.reviewer1b].filter(
-    (p): p is NonNullable<TaskWithAssignee["reviewer"]> => p != null
+  const out: NonNullable<TaskWithAssignee["reviewer"]>[] = [];
+  if (task.reviewer != null && task.reviewer1_approved_at === null)
+    out.push(task.reviewer);
+  if (task.reviewer1b != null && task.reviewer1b_approved_at === null)
+    out.push(task.reviewer1b);
+  return out;
+}
+
+/** ทอดแรกอนุมัติไปแล้วบางคน (1 จาก 2) — ใช้ขึ้นชิป "อนุมัติแล้ว 1/2" ให้รู้ว่าเหลือใคร */
+export function reviewer1PartialApproved(task: TaskWithAssignee): boolean {
+  if ((task.review_step ?? 1) >= 2 || task.review_status !== "pending") return false;
+  if (task.reviewer1b_id === null) return false;
+  return (
+    (task.reviewer1_approved_at !== null) !==
+    (task.reviewer1b_approved_at !== null)
   );
 }
 
@@ -526,7 +543,7 @@ export function TaskCardContent({
     ? (influ.nickname ??
       [influ.first_name, influ.last_name].filter(Boolean).join(" "))
     : null;
-  // งานรอตรวจ — บอกบนการ์ดเลยว่า "ค้างอยู่ที่ใคร" (ผู้ตรวจของทอดปัจจุบัน อาจมี 2 คน) + รอมานานเท่าไร
+  // งานรอตรวจ — บอกบนการ์ดเลยว่า "ค้างอยู่ที่ใคร" (เฉพาะผู้ตรวจที่ยังไม่อนุมัติ) + รอมานานเท่าไร
   const pendingReviewers =
     task.review_status === "pending" ? currentReviewerPersons(task) : [];
   const pendingWaitLabel =
@@ -619,7 +636,7 @@ export function TaskCardContent({
               <span
                 title={`ค้างอยู่ที่ ${
                   pendingReviewers.length > 0
-                    ? pendingReviewers.map(profileName).join(" หรือ ")
+                    ? pendingReviewers.map(profileName).join(" และ ")
                     : "ผู้ตรวจ"
                 }${pendingWaitLabel ? ` · ${pendingWaitLabel}` : ""}`}
                 className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"

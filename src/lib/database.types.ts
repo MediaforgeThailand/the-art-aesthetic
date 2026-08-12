@@ -57,9 +57,14 @@ export type TaskRow = {
   deliverable_file_path: string | null;
   /** ผู้ตรวจงานที่ระบุ (ลำดับ 1) — คนที่จะกด approve ทอดแรก */
   reviewer_id: string | null;
-  /** ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ไม่บังคับ): ใครว่างคนนั้นอนุมัติทอดแรกได้
-      เมื่อทอดแรกถูกอนุมัติ ระบบเก็บเฉพาะคนที่ตรวจจริงไว้ที่ reviewer_id แล้วล้างช่องนี้ */
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ไม่บังคับ): ทอดแรกต้องอนุมัติครบทั้งสองคน
+      ก่อนส่งต่อลำดับ 2 (หรือปิดงาน ถ้าไม่มีลำดับ 2) — คนที่อนุมัติแล้วดูจาก *_approved_at รายช่อง */
   reviewer1b_id: string | null;
+  /** เวลาที่ผู้ตรวจช่องหลัก (reviewer_id) อนุมัติทอดแรก — null = ยังไม่อนุมัติ
+      (ล้างตอนยกเลิก/ตีกลับ/เปิดงานใหม่/ส่งตรวจรอบใหม่ พร้อม review1_approved_at) */
+  reviewer1_approved_at: string | null;
+  /** เวลาที่ผู้ตรวจร่วม (reviewer1b_id) อนุมัติทอดแรก — null = ยังไม่อนุมัติ */
+  reviewer1b_approved_at: string | null;
   /** สถานะการตรวจ: none = ยังไม่ส่ง, pending = รอตรวจ, approved = ผ่าน (completed=true) */
   review_status: "none" | "pending" | "approved";
   /** ผู้ตรวจลำดับ 2 (อนุมัติขั้นสุดท้าย) — snapshot จาก app_settings ตอนส่งตรวจ; null = ตรวจชั้นเดียว */
@@ -988,7 +993,7 @@ export type InfluencerLite = Pick<
 export type TaskWithAssignee = TaskRow & {
   assignee: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   reviewer?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
-  /** ผู้ตรวจลำดับ 1 คนที่ 2 (join จาก reviewer1b_id) — ผู้ตรวจร่วมทอดแรก ใครว่างคนนั้นอนุมัติ */
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 (join จาก reviewer1b_id) — ผู้ตรวจร่วมทอดแรก ต้องอนุมัติครบทุกคน */
   reviewer1b?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   /** ผู้ตรวจลำดับ 2 (join จาก reviewer2_id) — อนุมัติขั้นสุดท้ายเมื่อมีตรวจ 2 ทอด */
   reviewer2?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;

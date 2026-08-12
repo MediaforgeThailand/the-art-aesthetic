@@ -189,13 +189,13 @@ export function TaskPanel({
   onSubmitReview: (task: TaskWithAssignee) => void;
   onCancelReview: (task: TaskWithAssignee) => void;
   onApprove: (task: TaskWithAssignee) => void;
-  /** อนุมัติจบทันที (bypass) — ข้ามผู้ตรวจลำดับ 2 ให้งานเสร็จสมบูรณ์เลย (มี confirm) */
+  /** อนุมัติจบทันที (bypass) — ข้ามทุกคนที่ยังไม่ได้ตรวจ (ผู้ตรวจร่วม/ลำดับ 2) ให้งานเสร็จเลย (มี confirm) */
   onApproveBypass: (task: TaskWithAssignee) => void;
   /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล + นับเป็นการแก้ไข 1 ครั้งของผู้รับผิดชอบ */
   onReject: (task: TaskWithAssignee) => void;
   onReopen: (task: TaskWithAssignee) => void;
   onSetReviewer: (task: TaskWithAssignee, profileId: string | null) => void;
-  /** เปลี่ยน/เอาออก ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ใครว่างคนนั้นอนุมัติ) */
+  /** เปลี่ยน/เอาออก ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม — ต้องอนุมัติครบทุกคน) */
   onSetReviewer1b: (task: TaskWithAssignee, profileId: string | null) => void;
   onSetInfluencer: (
     task: TaskWithAssignee,
@@ -210,12 +210,32 @@ export function TaskPanel({
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
   const me = profiles.find((p) => p.id === userId) ?? null;
-  // ผู้ตรวจของทอดปัจจุบัน — ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม ใครว่างคนนั้นอนุมัติ), ทอด 2 = reviewer2_id
+  // ผู้ตรวจของทอดปัจจุบันที่ "ยังไม่อนุมัติ" — ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม)
+  // ต้องอนุมัติครบทุกคนก่อนงานจึงผ่านทอด 1; ทอด 2 = reviewer2_id
   const stepReviewerIds = currentReviewerIds(task);
   const isReviewer = userId !== null && stepReviewerIds.includes(userId);
   // งานนี้ตรวจเป็นทอด (มีผู้ตรวจลำดับ 2 ติดอยู่กับงาน)
   const hasChain = task.reviewer2_id !== null;
   const reviewStep = task.review_step ?? 1;
+  // ทอดแรกยังมีคนอื่นที่ยังไม่อนุมัติอีกไหม (นอกจากฉัน) — ถ้ามี การกดอนุมัติของฉันยังไม่ผ่านทอด 1
+  const pendingOthers =
+    reviewStep < 2 ? stepReviewerIds.filter((id) => id !== userId) : [];
+  // ชิป "✓ อนุมัติแล้ว" รายช่องของทอดแรก (งาน approved = ผ่านครบทุกคนแล้วเสมอ)
+  const primary1Approved =
+    task.review_status === "approved" ||
+    (task.review_status === "pending" &&
+      (reviewStep >= 2 || task.reviewer1_approved_at !== null));
+  const co1Approved =
+    task.review_status === "approved" ||
+    (task.review_status === "pending" &&
+      (reviewStep >= 2 || task.reviewer1b_approved_at !== null));
+  // ทอดแรกอนุมัติไปแล้ว 1 จาก 2 คน — บอกในป้าย "รอตรวจ" ว่าค้างอีกคน
+  const partial1 =
+    task.review_status === "pending" &&
+    reviewStep < 2 &&
+    task.reviewer1b_id !== null &&
+    (task.reviewer1_approved_at !== null) !==
+      (task.reviewer1b_approved_at !== null);
   // โชว์แถว "ผู้ตรวจลำดับ 2" — งานที่ติดทอดแล้ว หรือ preview ก่อนส่งตรวจตามการตั้งค่าทีม
   const chainVisible =
     hasChain ||
@@ -1033,27 +1053,32 @@ export function TaskPanel({
                 type="button"
                 onClick={() => onApprove(task)}
                 title={
-                  hasChain && reviewStep < 2
-                    ? `อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 (${
-                        task.reviewer2 ? profileName(task.reviewer2) : "-"
-                      }) ตรวจขั้นสุดท้าย`
-                    : undefined
+                  pendingOthers.length > 0
+                    ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนอนุมัติก่อนไปต่อ"
+                    : hasChain && reviewStep < 2
+                      ? `อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 (${
+                          task.reviewer2 ? profileName(task.reviewer2) : "-"
+                        }) ตรวจขั้นสุดท้าย`
+                      : undefined
                 }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.97]"
               >
                 <CheckCircle2 size={15} />
-                {hasChain
-                  ? reviewStep < 2
-                    ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
-                    : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
-                  : "อนุมัติ"}
+                {pendingOthers.length > 0
+                  ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
+                  : hasChain
+                    ? reviewStep < 2
+                      ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
+                      : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
+                    : "อนุมัติ"}
               </button>
-              {/* bypass — มีเฉพาะงานตรวจ 2 ทอดที่ยังอยู่ทอด 1: ปิดงานเลยไม่ส่งต่อลำดับ 2 */}
-              {hasChain && reviewStep < 2 && (
+              {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ (ผู้ตรวจร่วมยังไม่อนุมัติ และ/หรือ มีลำดับ 2):
+                  ปิดงานเลย ข้ามทุกคนที่ยังไม่ได้ตรวจ */}
+              {reviewStep < 2 && (hasChain || pendingOthers.length > 0) && (
                 <button
                   type="button"
                   onClick={() => onApproveBypass(task)}
-                  title="อนุมัติจบทันทีโดยไม่ส่งต่อผู้ตรวจลำดับ 2 (มีกล่องยืนยันก่อน)"
+                  title="อนุมัติจบทันทีโดยไม่ต้องรอคนที่ยังไม่ได้ตรวจ (มีกล่องยืนยันก่อน)"
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3 py-1.5 text-sm font-medium text-emerald-600 transition-all duration-200 hover:bg-emerald-50 active:scale-[0.97]"
                 >
                   <CheckCheck size={15} />
@@ -1074,6 +1099,11 @@ export function TaskPanel({
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
               {hasChain ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2` : "รอตรวจ"}
+              {partial1 && (
+                <span className="text-xs font-normal opacity-75">
+                  · ลำดับ 1 อนุมัติแล้ว 1/2 คน
+                </span>
+              )}
               {waitDurationLabel(reviewWaitStart(task)) && (
                 <span className="text-xs font-normal opacity-75">
                   · {waitDurationLabel(reviewWaitStart(task))}
@@ -1302,37 +1332,45 @@ export function TaskPanel({
                     </p>
                   )}
                 </div>
-                {hasChain &&
-                  (reviewStep >= 2 || task.review_status === "approved") && (
-                    <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                      ✓ อนุมัติแล้ว
-                    </span>
-                  )}
+                {(hasChain || task.reviewer1b_id !== null) && primary1Approved && (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ✓ อนุมัติแล้ว
+                  </span>
+                )}
               </div>
-              {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ใครว่างคนนั้นกดอนุมัติได้
+              {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ต้องอนุมัติครบทั้งคู่ งานจึงผ่านทอดแรก
                   เลือกได้เฉพาะก่อนส่งตรวจ (กติกาเดียวกับช่องหลัก) */}
               {task.reviewer1b_id !== null || show1bPicker ? (
                 <div className="mt-1">
-                  <PersonSelect
-                    id="task-reviewer1b"
-                    size="sm"
-                    ariaLabel="เลือกผู้ตรวจคนที่ 2 (ช่วยกันตรวจ)"
-                    value={task.reviewer1b_id ?? ""}
-                    disabled={task.review_status !== "none"}
-                    onChange={(v) => {
-                      if (v === "") setShow1bPicker(false);
-                      onSetReviewer1b(task, v === "" ? null : v);
-                    }}
-                    options={[
-                      { value: "", label: "ไม่ใช้ (ตรวจคนเดียว)", profile: null },
-                      ...reviewer1bOptions.map((p) => ({
-                        value: p.id,
-                        profile: p,
-                      })),
-                    ]}
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <PersonSelect
+                        id="task-reviewer1b"
+                        size="sm"
+                        ariaLabel="เลือกผู้ตรวจคนที่ 2 (ตรวจร่วมกัน)"
+                        value={task.reviewer1b_id ?? ""}
+                        disabled={task.review_status !== "none"}
+                        onChange={(v) => {
+                          if (v === "") setShow1bPicker(false);
+                          onSetReviewer1b(task, v === "" ? null : v);
+                        }}
+                        options={[
+                          { value: "", label: "ไม่ใช้ (ตรวจคนเดียว)", profile: null },
+                          ...reviewer1bOptions.map((p) => ({
+                            value: p.id,
+                            profile: p,
+                          })),
+                        ]}
+                      />
+                    </div>
+                    {task.reviewer1b_id !== null && co1Approved && (
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                        ✓ อนุมัติแล้ว
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 px-1.5 text-[11px] text-stone-400">
-                    ผู้ตรวจร่วม — ใครว่างคนนั้นกดอนุมัติได้
+                    ผู้ตรวจร่วม — ต้องอนุมัติครบทุกคน งานจึงผ่านลำดับ 1
                   </p>
                 </div>
               ) : task.review_status === "none" &&
@@ -1343,7 +1381,7 @@ export function TaskPanel({
                   onClick={() => setShow1bPicker(true)}
                   className="mt-0.5 cursor-pointer px-1.5 text-[11px] font-medium text-brand-600 hover:underline"
                 >
-                  + เพิ่มผู้ตรวจอีกคน (ช่วยกันตรวจ)
+                  + เพิ่มผู้ตรวจอีกคน (ตรวจร่วมกัน — ต้องผ่านครบทุกคน)
                 </button>
               ) : null}
             </div>
@@ -1381,7 +1419,7 @@ export function TaskPanel({
                   </span>
                 ) : (
                   <span className="shrink-0 text-[11px] text-stone-400">
-                    รอลำดับ 1 อนุมัติก่อน
+                    รอลำดับ 1 อนุมัติครบทุกคนก่อน
                   </span>
                 )}
               </div>

@@ -53,6 +53,7 @@ import { ReviewList } from "./review-list";
 import {
   AssigneeAvatar,
   currentReviewerIds,
+  currentReviewerPersons,
   isTempId,
   profileName,
   reviewWaitStart,
@@ -121,7 +122,7 @@ export function TasksClient({
   reviewerIds: string[];
   /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน (= ผู้ตรวจลำดับ 1) */
   defaultReviewerId: string | null;
-  /** ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (app_settings) — ผู้ตรวจร่วมทอดแรก ใครว่างคนนั้นอนุมัติ */
+  /** ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (app_settings) — ผู้ตรวจร่วมทอดแรก ต้องอนุมัติครบทุกคน */
   defaultReviewer1bId: string | null;
   /** ผู้ตรวจลำดับ 2 ของทีม (app_settings) — ถ้าตั้งไว้ งานที่ส่งตรวจจะไหลเป็นทอด 1 → 2 */
   defaultReviewer2Id: string | null;
@@ -245,7 +246,7 @@ export function TasksClient({
   );
   useEffect(() => setGlobalReviewerId(defaultReviewerId), [defaultReviewerId]);
 
-  // ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (ผู้ตรวจร่วม) — งานใหม่ได้ 2 คน ใครว่างคนนั้นอนุมัติทอดแรก
+  // ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (ผู้ตรวจร่วม) — งานใหม่ได้ 2 คน ทอดแรกต้องอนุมัติครบทั้งคู่
   // (override เหนือค่า server เฉพาะหลังกดบันทึกในหน้านี้: undefined = ใช้ค่าจาก server)
   const [reviewer1bOverride, setReviewer1bOverride] = useState<
     string | null | undefined
@@ -364,7 +365,7 @@ export function TasksClient({
     }
   };
 
-  /** ตั้งผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (admin) — งานใหม่จะมีผู้ตรวจทอดแรก 2 คน ใครว่างคนนั้นอนุมัติ */
+  /** ตั้งผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (admin) — งานใหม่จะมีผู้ตรวจทอดแรก 2 คน ต้องอนุมัติครบทั้งคู่ */
   const saveDefaultReviewer1b = async (id: string | null) => {
     const prev = globalReviewer1bId;
     setReviewer1bOverride(id);
@@ -823,16 +824,19 @@ export function TasksClient({
         } else if (apAssignee !== "all" && t.assignee_id !== apAssignee) {
           return false;
         }
-        // ผู้ตรวจ = ลำดับ 1 หรือลำดับ 2 ก็นับว่าเกี่ยวข้องกับงานนั้น
+        // ผู้ตรวจ = ลำดับ 1 (ทั้งคนหลักและผู้ตรวจร่วม) หรือลำดับ 2 ก็นับว่าเกี่ยวข้องกับงานนั้น
         if (apReviewer === "me") {
           if (
             userId === null ||
-            (t.reviewer_id !== userId && t.reviewer2_id !== userId)
+            (t.reviewer_id !== userId &&
+              t.reviewer1b_id !== userId &&
+              t.reviewer2_id !== userId)
           )
             return false;
         } else if (
           apReviewer !== "all" &&
           t.reviewer_id !== apReviewer &&
+          t.reviewer1b_id !== apReviewer &&
           t.reviewer2_id !== apReviewer
         ) {
           return false;
@@ -867,6 +871,9 @@ export function TasksClient({
     for (const t of approvedAll) {
       if (t.reviewer && !seen.has(t.reviewer.id)) {
         seen.set(t.reviewer.id, t.reviewer);
+      }
+      if (t.reviewer1b && !seen.has(t.reviewer1b.id)) {
+        seen.set(t.reviewer1b.id, t.reviewer1b);
       }
       if (t.reviewer2 && !seen.has(t.reviewer2.id)) {
         seen.set(t.reviewer2.id, t.reviewer2);
@@ -1016,11 +1023,13 @@ export function TasksClient({
         review_step: 1,
         reviewer2_id: reviewer2Id,
         review1_approved_at: null,
+        reviewer1_approved_at: null,
+        reviewer1b_approved_at: null,
         review_submitted_at: new Date().toISOString(),
       },
       local: { reviewer2: reviewer2Person },
     });
-    // ทอดแรกมีผู้ตรวจร่วมได้ 2 คน — แจ้งทั้งคู่ ใครว่างคนนั้นเข้ามาตรวจ
+    // ทอดแรกมีผู้ตรวจร่วมได้ 2 คน — แจ้งทั้งคู่ ต้องอนุมัติครบทุกคนงานถึงไปต่อ
     notify(task, [
       { recipient: task.reviewer_id, type: "review_request" },
       { recipient: task.reviewer1b_id, type: "review_request" },
@@ -1035,56 +1044,64 @@ export function TasksClient({
         completed: false,
         review_step: 1,
         review1_approved_at: null,
+        reviewer1_approved_at: null,
+        reviewer1b_approved_at: null,
         review_submitted_at: null,
       },
     });
   };
 
-  /** ทอดแรกที่มีผู้ตรวจร่วม (2 คน) — ตอนอนุมัติให้บันทึกเฉพาะคนที่ตรวจจริงไว้เป็นผู้ตรวจลำดับ 1
-      แล้วล้างช่องร่วมออก: แท็บ "ตรวจแล้ว"/ประวัติงานจะได้ชื่อคนที่อนุมัติจริง ไม่ใช่คนที่ไม่ได้ตรวจ */
-  const collapseCoReviewer = (task: TaskWithAssignee) => {
-    if (task.reviewer1b_id === null) return { db: {}, local: {} };
-    const approverIsB = userId !== null && userId === task.reviewer1b_id;
-    return {
-      db: {
-        reviewer_id: approverIsB ? task.reviewer1b_id : task.reviewer_id,
-        reviewer1b_id: null,
-      },
-      local: {
-        reviewer: approverIsB ? (task.reviewer1b ?? null) : (task.reviewer ?? null),
-        reviewer1b: null,
-      },
-    };
-  };
-
-  /** ผู้ตรวจกด approve — งานตรวจ 2 ทอด: ลำดับ 1 อนุมัติ = ส่งต่อให้ลำดับ 2,
-      ลำดับ 2 (หรืองานตรวจชั้นเดียว) อนุมัติ = เสร็จสมบูรณ์ (จดเวลาไว้ใช้ในแท็บ "งานเสร็จ") */
+  /** ผู้ตรวจกด approve — ทอดแรกต้อง "อนุมัติครบทุกคน" (คนหลัก + ผู้ตรวจร่วมถ้ามี) ก่อน:
+      คนแรกที่กด = จดเวลาลงช่องของตัวเอง งานยังค้างรออีกคน; คนสุดท้ายที่กด = ผ่านทอด 1
+      → ส่งต่อให้ลำดับ 2 (ถ้ามี) หรือเสร็จสมบูรณ์เลย (งานตรวจชั้นเดียว) */
   const approveTask = (task: TaskWithAssignee) => {
     const step = task.review_step ?? 1;
-    if (step < 2 && task.reviewer2_id !== null) {
-      const collapse = collapseCoReviewer(task);
+    const now = new Date().toISOString();
+    if (step < 2) {
+      const isPrimary = userId !== null && userId === task.reviewer_id;
+      const isCo = userId !== null && userId === task.reviewer1b_id;
+      if (!isPrimary && !isCo) return; // ไม่ใช่ผู้ตรวจทอดนี้ (UI ค้าง/กดแทนกันไม่ได้)
+      const slotDb: TaskPatch["db"] = {};
+      if (isPrimary) slotDb.reviewer1_approved_at = now;
+      else if (isCo) slotDb.reviewer1b_approved_at = now;
+      // นับรวมการกดครั้งนี้แล้ว ครบทุกช่องที่มีคนหรือยัง
+      const primaryDone =
+        task.reviewer_id === null || task.reviewer1_approved_at !== null || isPrimary;
+      const coDone =
+        task.reviewer1b_id === null || task.reviewer1b_approved_at !== null || isCo;
+      if (!(primaryDone && coDone)) {
+        // ยังไม่ครบ — จดว่าฉันอนุมัติแล้ว งานคงสถานะรอตรวจทอด 1 รออีกคน
+        patchTask(task.id, { db: slotDb });
+        const other = isPrimary ? task.reviewer1b_id : task.reviewer_id;
+        notify(task, [
+          {
+            recipient: other,
+            type: "review_request",
+            preview: "ผู้ตรวจร่วมอนุมัติแล้ว — เหลือคุณอีกคน งานจึงจะผ่านลำดับ 1",
+          },
+        ]);
+        return;
+      }
+      if (task.reviewer2_id !== null) {
+        patchTask(task.id, {
+          db: { ...slotDb, review_step: 2, review1_approved_at: now },
+        });
+        // ทอดแรกครบทุกคนแล้ว — ส่งไม้ต่อให้ผู้ตรวจลำดับ 2 มาตรวจขั้นสุดท้าย
+        notify(task, [{ recipient: task.reviewer2_id, type: "review_request" }]);
+        return;
+      }
       patchTask(task.id, {
-        db: {
-          review_step: 2,
-          review1_approved_at: new Date().toISOString(),
-          ...collapse.db,
-        },
-        local: collapse.local,
+        db: { ...slotDb, review_status: "approved", completed: true, approved_at: now },
       });
-      // ส่งไม้ต่อให้ผู้ตรวจลำดับ 2 มาตรวจขั้นสุดท้าย
-      notify(task, [{ recipient: task.reviewer2_id, type: "review_request" }]);
+      notify(task, [
+        { recipient: task.assignee_id, type: "approved" },
+        { recipient: task.created_by, type: "approved" },
+      ]);
       return;
     }
-    // ทอด 2 ไม่มีผู้ตรวจร่วมแล้ว (ถูกเก็บตอนผ่านทอดแรก) — collapse มีผลเฉพาะงานตรวจชั้นเดียว
-    const collapse = step < 2 ? collapseCoReviewer(task) : { db: {}, local: {} };
+    // ทอด 2 — ผู้ตรวจลำดับ 2 อนุมัติขั้นสุดท้าย
     patchTask(task.id, {
-      db: {
-        review_status: "approved",
-        completed: true,
-        approved_at: new Date().toISOString(),
-        ...collapse.db,
-      },
-      local: collapse.local,
+      db: { review_status: "approved", completed: true, approved_at: now },
     });
     // บอกทั้งผู้รับผิดชอบและผู้สร้างการ์ด (เช่น content ที่สั่ง brief) ว่างานผ่านแล้ว
     notify(task, [
@@ -1093,36 +1110,62 @@ export function TasksClient({
     ]);
   };
 
-  /** ผู้ตรวจลำดับ 1 กด "อนุมัติจบทันที" — bypass ข้ามลำดับ 2 ให้งานเสร็จสมบูรณ์เลย
-      ล้าง reviewer2 ออกจากงาน: ไม่บันทึกว่าลำดับ 2 เป็นผู้อนุมัติทั้งที่ไม่ได้ตรวจ */
+  /** ผู้ตรวจทอดแรกกด "อนุมัติจบทันที" — ปิดงานเป็นเสร็จสมบูรณ์เลย ข้ามทุกคนที่ยังไม่ได้ตรวจ
+      (ผู้ตรวจร่วมที่ยังไม่อนุมัติ + ผู้ตรวจลำดับ 2) และถอดชื่อคนที่ไม่ได้ตรวจออกจากงาน
+      เพื่อไม่บันทึกว่าเขาเป็นผู้อนุมัติทั้งที่ไม่ได้ตรวจ */
   const approveTaskBypass = (task: TaskWithAssignee) => {
-    // bypass เกิดที่ทอดแรกเสมอ — เก็บผู้ตรวจร่วมด้วยกติกาเดียวกับ approve ปกติ
-    const collapse = collapseCoReviewer(task);
-    patchTask(task.id, {
-      db: {
-        review_status: "approved",
-        completed: true,
-        approved_at: new Date().toISOString(),
-        reviewer2_id: null,
-        review_step: 1,
-        review1_approved_at: null,
-        ...collapse.db,
-      },
-      local: { reviewer2: null, ...collapse.local },
-    });
+    const now = new Date().toISOString();
+    const isPrimary = userId !== null && userId === task.reviewer_id;
+    const isCo = userId !== null && userId === task.reviewer1b_id;
+    const primaryApproved = task.reviewer1_approved_at !== null || isPrimary;
+    const coApproved = task.reviewer1b_approved_at !== null || isCo;
+    const db: TaskPatch["db"] = {
+      review_status: "approved",
+      completed: true,
+      approved_at: now,
+      reviewer2_id: null,
+      review_step: 1,
+      review1_approved_at: null,
+    };
+    const local: NonNullable<TaskPatch["local"]> = { reviewer2: null };
+    if (isPrimary) db.reviewer1_approved_at = now;
+    if (isCo) db.reviewer1b_approved_at = now;
+    if (task.reviewer1b_id !== null && !coApproved) {
+      // ผู้ตรวจร่วมยังไม่ได้ตรวจ — ถอดออก
+      db.reviewer1b_id = null;
+      db.reviewer1b_approved_at = null;
+      local.reviewer1b = null;
+    } else if (task.reviewer1b_id !== null && coApproved && !primaryApproved) {
+      // คนหลักไม่ได้ตรวจเลย แต่ผู้ตรวจร่วมเป็นคนปิดงาน — เลื่อนผู้ตรวจร่วมขึ้นช่องหลัก
+      db.reviewer_id = task.reviewer1b_id;
+      db.reviewer1_approved_at = db.reviewer1b_approved_at ?? task.reviewer1b_approved_at;
+      db.reviewer1b_id = null;
+      db.reviewer1b_approved_at = null;
+      local.reviewer = task.reviewer1b ?? null;
+      local.reviewer1b = null;
+    }
+    patchTask(task.id, { db, local });
     notify(task, [
       { recipient: task.assignee_id, type: "approved" },
       { recipient: task.created_by, type: "approved" },
     ]);
   };
 
-  /** ปุ่ม bypass ต้องยืนยันก่อน — เป็นการข้ามชั้นตรวจสุดท้ายของทีม ให้กดพลาดยาก */
+  /** ปุ่ม bypass ต้องยืนยันก่อน — เป็นการข้ามคนที่ยังไม่ได้ตรวจทั้งหมด ให้กดพลาดยาก */
   const requestApproveBypass = (task: TaskWithAssignee) => {
     if (isTempId(task.id)) return;
-    const r2 = task.reviewer2 ? profileName(task.reviewer2) : "ผู้ตรวจลำดับ 2";
+    // รายชื่อคนที่จะถูกข้าม: ผู้ตรวจร่วมทอดแรกที่ยังไม่อนุมัติ (ไม่ใช่ตัวฉัน) + ผู้ตรวจลำดับ 2
+    const skipped: string[] = [];
+    for (const p of currentReviewerPersons(task)) {
+      if (p.id !== userId) skipped.push(profileName(p));
+    }
+    if (task.reviewer2_id !== null) {
+      skipped.push(task.reviewer2 ? profileName(task.reviewer2) : "ผู้ตรวจลำดับ 2");
+    }
+    const who = skipped.length > 0 ? skipped.join(" และ ") : "คนที่เหลือ";
     setConfirm({
-      title: "อนุมัติจบทันที (ข้ามลำดับ 2)",
-      message: `งาน "${task.title}" จะเสร็จสมบูรณ์ทันทีโดยไม่ส่งต่อให้ ${r2} ตรวจขั้นสุดท้าย ใช่หรือไม่?`,
+      title: "อนุมัติจบทันที (ข้ามคนที่ยังไม่ได้ตรวจ)",
+      message: `งาน "${task.title}" จะเสร็จสมบูรณ์ทันทีโดยไม่ต้องให้ ${who} ตรวจ ใช่หรือไม่?`,
       confirmLabel: "อนุมัติจบทันที",
       confirmVariant: "primary",
       onConfirm: () => approveTaskBypass(task),
@@ -1181,6 +1224,8 @@ export function TasksClient({
         approved_at: null,
         review_step: 1,
         review1_approved_at: null,
+        reviewer1_approved_at: null,
+        reviewer1b_approved_at: null,
         review_submitted_at: null,
       },
     });
@@ -1205,6 +1250,8 @@ export function TasksClient({
         approved_at: null,
         review_step: 1,
         review1_approved_at: null,
+        reviewer1_approved_at: null,
+        reviewer1b_approved_at: null,
         review_submitted_at: null,
       },
     });
@@ -1355,6 +1402,8 @@ export function TasksClient({
       reviewer2_id: null,
       review_step: 1,
       review1_approved_at: null,
+      reviewer1_approved_at: null,
+      reviewer1b_approved_at: null,
       review_submitted_at: null,
       influencer_id: null,
       approved_at: null,
@@ -1493,6 +1542,8 @@ export function TasksClient({
       reviewer2_id: null,
       review_step: 1,
       review1_approved_at: null,
+      reviewer1_approved_at: null,
+      reviewer1b_approved_at: null,
       review_submitted_at: null,
       influencer_id: task.influencer_id,
       approved_at: null,
@@ -2471,7 +2522,7 @@ export function TasksClient({
             <p className="mb-2 mt-0.5 text-xs text-stone-400">
               เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
               — ตั้งได้ 2 คน (กด &quot;+ เพิ่มอีกคน&quot; ด้านล่าง)
-              ใครว่างคนนั้นกดอนุมัติได้เลย
+              งานต้องผ่านการอนุมัติครบทั้งสองคน จึงถือว่าผ่านลำดับ 1
               (ตั้งได้เฉพาะ admin — เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
             </p>
             <PersonSelect
@@ -2493,14 +2544,14 @@ export function TasksClient({
                 </p>
               )}
 
-            {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ใครว่างคนนั้นอนุมัติทอดแรกได้ */}
+            {/* ผู้ตรวจลำดับ 1 คนที่ 2 (ผู้ตรวจร่วม) — ทอดแรกต้องอนุมัติครบทั้งสองคน */}
             {globalReviewer1bId !== null || show1bPicker ? (
               <div className="mt-3">
                 <label
                   htmlFor="default-reviewer1b"
                   className="text-xs font-medium text-stone-600"
                 >
-                  คนที่ 2 (ช่วยกันตรวจ — ใครว่างคนนั้นอนุมัติ)
+                  คนที่ 2 (ต้องอนุมัติครบทั้งคู่ งานจึงผ่านลำดับ 1)
                 </label>
                 <div className="mt-1">
                   <PersonSelect
@@ -2545,9 +2596,9 @@ export function TasksClient({
               ผู้ตรวจลำดับ 2 — อนุมัติขั้นสุดท้าย (ไม่บังคับ)
             </label>
             <p className="mb-2 mt-0.5 text-xs text-stone-400">
-              ถ้าตั้งไว้ การตรวจจะเป็นทอด: ผู้ตรวจลำดับ 1 อนุมัติแล้ว
-              งานจะถูกส่งต่อให้คนนี้ตรวจอีกชั้น — อนุมัติครบ 2 คน
-              งานจึงเสร็จสมบูรณ์ (เว้นว่าง = ตรวจชั้นเดียวแบบเดิม)
+              ถ้าตั้งไว้ การตรวจจะเป็นทอด: ผู้ตรวจลำดับ 1 อนุมัติครบทุกคนแล้ว
+              งานจะถูกส่งต่อให้คนนี้ตรวจอีกชั้นเป็นขั้นสุดท้าย
+              (เว้นว่าง = ตรวจชั้นเดียวแบบเดิม)
             </p>
             <PersonSelect
               id="default-reviewer2"

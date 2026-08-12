@@ -290,6 +290,16 @@ function ApprovedCard({
             {profileName(task.reviewer)}
           </span>
         )}
+        {/* ทอดแรกตรวจร่วมกัน 2 คน (ต้องอนุมัติครบทั้งคู่) — โชว์ผู้ตรวจร่วมด้วย */}
+        {task.reviewer1b && (
+          <span
+            className="inline-flex items-center gap-1 text-emerald-700"
+            title="ผู้ตรวจลำดับ 1 (ผู้ตรวจร่วม)"
+          >
+            <BadgeCheck size={12} />
+            {profileName(task.reviewer1b)}
+          </span>
+        )}
         {/* งานที่ผ่านการตรวจ 2 ทอด — โชว์ผู้อนุมัติขั้นสุดท้ายต่อท้าย */}
         {task.reviewer2 && (
           <span
