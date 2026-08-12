@@ -9,7 +9,9 @@
  *
  * เลย์เอาต์: แถบเครื่องมือไร้กรอบ (งานใหม่ · ค้นหา · ตัวกรอง · จัดกลุ่ม · เรียง) แล้วตามด้วย
  * "กลุ่ม" ที่มีแถบสีซ้าย + ตารางคอลัมน์ (งาน · สถานะ · กำหนดส่ง · ความสำคัญ · แท็ก · โน้ต)
- * — **กลุ่มคำนวณจากข้อมูลที่มีอยู่ ไม่ใช่กลุ่มที่ผู้ใช้ตั้งชื่อเอง** (ดู buildGroups ใน list-utils)
+ * — โหมดเริ่มต้นจัดกลุ่มตาม **หมวดหมู่ที่ผู้ใช้ตั้งเอง** (list_groups — เพิ่ม/เปลี่ยนชื่อ/
+ * เปลี่ยนสี/เรียง/ลบได้แบบ Monday; เปลี่ยนชื่อ inline ที่หัวกลุ่มได้เลย) ส่วนโหมดอื่นเป็น
+ * กลุ่มคำนวณจากข้อมูลที่มีอยู่ (ดู buildGroups ใน list-utils)
  * จอเล็กกว่า sm ตารางเปลี่ยนเป็นแถวย่อ (ชื่อ + ชิป) — ไม่บังคับให้เลื่อนแนวนอนอ่านงานตัวเอง
  *
  * mutation ทุกตัวอัปเดต state ทันที (optimistic) แล้วค่อยยิง DB + router.refresh()
@@ -46,6 +48,7 @@ import {
   Group as GroupIcon,
   NotebookPen,
   Plus,
+  Rows3,
   Search,
   Tags as TagsIcon,
   Trash2,
@@ -61,7 +64,13 @@ import {
   LIST_STATUS_ORDER,
 } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
-import type { ListTagRow, ListTaskRow, TaskPriority } from "@/lib/types";
+import type {
+  ListGroupRow,
+  ListTagRow,
+  ListTaskRow,
+  TaskPriority,
+} from "@/lib/types";
+import { GroupManagerModal } from "./group-manager";
 import {
   buildGroups,
   dueInfo,
@@ -74,6 +83,7 @@ import {
   midPosition,
   type MyTask,
   shortDate,
+  sortListGroups,
   sortTasks,
   statusOf,
 } from "./list-utils";
@@ -105,7 +115,8 @@ const DEFAULT_FILTERS: Filters = {
   priority: "all",
   tagId: "all",
   sort: "manual",
-  groupBy: "status",
+  // หัวข้อใหญ่ = หมวดหมู่ที่ผู้ใช้ตั้งเอง (สถานะเป็นค่าประจำงานในคอลัมน์ "สถานะ" อยู่แล้ว)
+  groupBy: "category",
 };
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
@@ -121,7 +132,9 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
 const GRID_COLS =
   "34px minmax(220px,1.5fr) 132px 120px 116px minmax(130px,0.8fr) minmax(150px,1fr) 36px";
 
-const filtersKey = (uid: string) => `my-tasks-filters-v1:${uid}`;
+// v2: bump ตอนเปลี่ยน default groupBy เป็น "หมวดหมู่" (0067) — บังคับ default ใหม่กับทุกคน
+// (ค่า v1 เดิมจำ groupBy: "status" ไว้ ถ้าไม่ bump ผู้ใช้เก่าจะไม่เห็นหมวดหมู่ที่เพิ่งทำ)
+const filtersKey = (uid: string) => `my-tasks-filters-v2:${uid}`;
 
 /** id ของ sortable แต่ละแถว — งานหนึ่งตัวโผล่ได้หลายกลุ่ม (โหมดจัดกลุ่มตามแท็ก) จึงต้องมี key กลุ่มนำหน้า */
 const rowId = (groupKey: string, taskId: string) => `${groupKey}::${taskId}`;
@@ -134,11 +147,13 @@ export function MyTasksClient({
   uid,
   tasks,
   tags: initialTags,
+  groups: initialGroups,
   loadError,
 }: {
   uid: string;
   tasks: MyTask[];
   tags: ListTagRow[];
+  groups: ListGroupRow[];
   loadError: string | null;
 }) {
   const router = useRouter();
@@ -168,6 +183,11 @@ export function MyTasksClient({
   useEffect(() => {
     if (pendingMuts.current === 0) setTags(initialTags);
   }, [initialTags]);
+  // "cats" = หมวดหมู่ที่ผู้ใช้ตั้งเอง (list_groups) — เลี่ยงชื่อ groups ที่ชนกับผลของ buildGroups
+  const [cats, setCats] = useState<ListGroupRow[]>(initialGroups);
+  useEffect(() => {
+    if (pendingMuts.current === 0) setCats(initialGroups);
+  }, [initialGroups]);
 
   const [err, setErr] = useState<string | null>(loadError);
   const [q, setQ] = useState("");
@@ -177,6 +197,7 @@ export function MyTasksClient({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openId, setOpenId] = useState<string | null>(null);
   const [tagModal, setTagModal] = useState(false);
+  const [catModal, setCatModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // ช่อง "+ เพิ่มงาน" ของแต่ละกลุ่ม — ปุ่ม "งานใหม่" บนแถบเครื่องมือแค่พาโฟกัสมาที่ช่องแรก
@@ -418,6 +439,80 @@ export function MyTasksClient({
     router.refresh();
   });
 
+  /* ---------- หมวดหมู่ (หัวข้อใหญ่ที่ผู้ใช้ตั้งเอง — list_groups) ---------- */
+
+  const sortedCats = useMemo(() => sortListGroups(cats), [cats]);
+
+  /** สร้างหมวดใหม่ต่อท้ายบอร์ด — คืน id (null = ล้มเหลว) ให้ฟอร์ม inline รู้ว่าปิดตัวเองได้ไหม */
+  const createGroup = (name: string): Promise<string | null> => mutate(async () => {
+    const clean = name.trim();
+    if (!clean) return null;
+    const { data, error } = await supabase
+      .from("list_groups")
+      .insert({
+        owner_id: uid,
+        name: clean,
+        color: nextTagColor(cats.length),
+        position: cats.reduce((m, c) => Math.max(m, c.position), 0) + 1,
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      setErr(error?.message ?? "เพิ่มหมวดหมู่ไม่สำเร็จ");
+      return null;
+    }
+    setErr(null);
+    setCats((prev) => [...prev, data as ListGroupRow]);
+    router.refresh();
+    return (data as ListGroupRow).id;
+  });
+
+  const patchGroup = (id: string, patch: Partial<ListGroupRow>) => mutate(async () => {
+    const before = cats;
+    setCats((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    const { error } = await supabase.from("list_groups").update(patch).eq("id", id);
+    if (error) {
+      setErr(error.message);
+      setCats(before);
+      return;
+    }
+    setErr(null);
+    router.refresh();
+  });
+
+  const deleteGroup = (id: string) => mutate(async () => {
+    const beforeCats = cats;
+    const beforeItems = items;
+    setCats((prev) => prev.filter((c) => c.id !== id));
+    // งานในหมวดไม่ถูกลบ — ตกกลับกลุ่ม "ยังไม่จัดหมวดหมู่" (DB SET NULL ให้เอง, sync state ให้ตรง)
+    setItems((prev) =>
+      prev.map((t) => (t.group_id === id ? { ...t, group_id: null } : t))
+    );
+    const { error } = await supabase.from("list_groups").delete().eq("id", id);
+    if (error) {
+      setErr(error.message);
+      setCats(beforeCats);
+      setItems(beforeItems);
+      return;
+    }
+    setErr(null);
+    router.refresh();
+  });
+
+  /** ย้ายหมวดขึ้น/ลงหนึ่งขั้น (ปุ่มลูกศรในโมดัลจัดการหมวด) — ตำแหน่งกึ่งกลางเพื่อนบ้านแบบเดียวกับลากงาน */
+  const moveGroup = (id: string, dir: -1 | 1) => {
+    const idx = sortedCats.findIndex((c) => c.id === id);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= sortedCats.length) return;
+    const rest = sortedCats.filter((c) => c.id !== id);
+    void patchGroup(id, {
+      position: midPosition(
+        target > 0 ? rest[target - 1].position : null,
+        target < rest.length ? rest[target].position : null
+      ),
+    });
+  };
+
   /* ---------- กรอง + เรียง + จัดกลุ่ม ---------- */
 
   const filtered = useMemo(() => {
@@ -448,10 +543,10 @@ export function MyTasksClient({
 
   const groups = useMemo(
     () =>
-      buildGroups(ordered, filters.groupBy, tags).filter(
+      buildGroups(ordered, filters.groupBy, tags, sortedCats).filter(
         (g) => g.tasks.length > 0 || g.keepEmpty
       ),
-    [ordered, filters.groupBy, tags]
+    [ordered, filters.groupBy, tags, sortedCats]
   );
 
   const stats = useMemo(() => {
@@ -470,6 +565,14 @@ export function MyTasksClient({
     const m = new Map<string, number>();
     for (const t of items)
       for (const id of t.tagIds) m.set(id, (m.get(id) ?? 0) + 1);
+    return m;
+  }, [items]);
+
+  /** จำนวนงานในแต่ละหมวด (เตือนก่อนลบในโมดัลจัดการหมวด) */
+  const catUsage = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of items)
+      if (t.group_id) m.set(t.group_id, (m.get(t.group_id) ?? 0) + 1);
     return m;
   }, [items]);
 
@@ -675,7 +778,11 @@ export function MyTasksClient({
               onClick={() => setFilter("status", "done")}
             />
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-0.5">
+            <Button variant="ghost" onClick={() => setCatModal(true)}>
+              <Rows3 size={16} />
+              จัดการหมวดหมู่
+            </Button>
             <Button variant="ghost" onClick={() => setTagModal(true)}>
               <TagsIcon size={16} />
               จัดการแท็ก
@@ -860,8 +967,17 @@ export function MyTasksClient({
                 onSetDone={(t, d) => void patchTask(t.id, { done: d })}
                 onPriority={(id, p) => void patchTask(id, { priority: p })}
                 onDelete={setConfirmDelete}
+                onRename={
+                  g.catId
+                    ? (name) => void patchGroup(g.catId as string, { name })
+                    : undefined
+                }
               />
             ))}
+            {/* เพิ่มหมวดใหม่ต่อท้ายบอร์ดได้เลยแบบ Monday (เฉพาะโหมดหมวดหมู่) */}
+            {filters.groupBy === "category" && (
+              <AddCategoryInline onCreate={createGroup} />
+            )}
           </div>
         </DndContext>
 
@@ -870,6 +986,7 @@ export function MyTasksClient({
           key={openTask.id}
           task={openTask}
           tags={tags}
+          groups={sortedCats}
           onClose={() => setOpenId(null)}
           onPatch={(patch) => void patchTask(openTask.id, patch)}
           onToggleTag={(tagId, on) => void toggleTag(openTask.id, tagId, on)}
@@ -887,6 +1004,18 @@ export function MyTasksClient({
         onRename={(id, name) => void patchTag(id, { name })}
         onRecolor={(id, color) => void patchTag(id, { color })}
         onDelete={(id) => void deleteTag(id)}
+      />
+
+      <GroupManagerModal
+        open={catModal}
+        onClose={() => setCatModal(false)}
+        groups={sortedCats}
+        usage={catUsage}
+        onCreate={createGroup}
+        onRename={(id, name) => void patchGroup(id, { name })}
+        onRecolor={(id, color) => void patchGroup(id, { color })}
+        onMove={moveGroup}
+        onDelete={(id) => void deleteGroup(id)}
       />
 
       <ConfirmDialog
@@ -944,6 +1073,83 @@ function StatChip({
   );
 }
 
+/* ---------- ปุ่ม/ฟอร์ม "เพิ่มหมวดหมู่" ท้ายบอร์ด (เฉพาะโหมดจัดกลุ่มตามหมวดหมู่) ---------- */
+
+function AddCategoryInline({
+  onCreate,
+}: {
+  /** คืน id ของหมวดใหม่ (null = ล้มเหลว — คงฟอร์มไว้ให้แก้/ลองใหม่) */
+  onCreate: (name: string) => Promise<string | null>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    const v = name.trim();
+    if (!v || saving) return;
+    setSaving(true);
+    const id = await onCreate(v);
+    setSaving(false);
+    if (id) {
+      setName("");
+      setOpen(false);
+    }
+  };
+
+  if (!open)
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm font-medium text-stone-500 transition-colors hover:border-brand-300 hover:bg-brand-50/60 hover:text-brand-700 active:scale-[0.97] max-sm:min-h-11"
+      >
+        <Plus size={15} strokeWidth={2.5} />
+        เพิ่มหมวดหมู่
+      </button>
+    );
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        /* เปิดจากการกดปุ่มเสมอ — โฟกัสให้เลยทุกเครื่อง (คีย์บอร์ดคือสิ่งที่ผู้ใช้ต้องการ)
+           text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS ซูมหน้าเข้าเองและไม่ซูมกลับ */
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={60}
+        placeholder="ชื่อหมวดหมู่ เช่น งานประจำวัน, โปรเจกต์"
+        aria-label="ชื่อหมวดหมู่ใหม่"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          }
+          if (e.key === "Escape") {
+            setName("");
+            setOpen(false);
+          }
+        }}
+        className="w-64 max-w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+      />
+      <Button onClick={() => void submit()} loading={saving} className="shrink-0">
+        <Plus size={16} />
+        เพิ่ม
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          setName("");
+          setOpen(false);
+        }}
+        className="shrink-0"
+      >
+        ยกเลิก
+      </Button>
+    </div>
+  );
+}
+
 /* ---------- กลุ่มหนึ่งกลุ่ม (หัวกลุ่ม + ตาราง) ---------- */
 
 function GroupSection({
@@ -960,6 +1166,7 @@ function GroupSection({
   onSetDone,
   onPriority,
   onDelete,
+  onRename,
 }: {
   group: ListGroup;
   tags: ListTagRow[];
@@ -975,12 +1182,21 @@ function GroupSection({
   onSetDone: (t: MyTask, done: boolean) => void;
   onPriority: (id: string, p: TaskPriority) => void;
   onDelete: (id: string) => void;
+  /** เปลี่ยนชื่อกลุ่ม inline แบบ Monday (มีเฉพาะกลุ่มหมวดหมู่ — กลุ่มคำนวณเปลี่ยนชื่อไม่ได้) */
+  onRename?: (name: string) => void;
 }) {
   // แถบท้ายกลุ่มเป็นเป้ารับงานที่ลากข้ามกลุ่มมา (กลุ่มว่างก็ยังรับได้)
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop:${group.key}`,
   });
   const rowIds = group.tasks.map((t) => rowId(group.key, t.id));
+  const [editing, setEditing] = useState(false);
+
+  const commitRename = (v: string) => {
+    setEditing(false);
+    const next = v.trim();
+    if (next && next !== group.name && onRename) onRename(next);
+  };
 
   return (
     <section className="animate-fade-in">
@@ -1000,14 +1216,37 @@ function GroupSection({
             }`}
           />
         </button>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className={`cursor-pointer text-base font-bold max-sm:min-h-11 sm:text-[17px] ${group.text}`}
-        >
-          {group.name}
-        </button>
-        <span className="ml-1.5 text-xs text-stone-400">
+        {editing && onRename ? (
+          <input
+            /* เปิดจากการกดชื่อกลุ่มเสมอ — โฟกัส+คีย์บอร์ดคือสิ่งที่ผู้ใช้ตั้งใจ (ต่างจากเมนูลอย)
+               text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS ซูมหน้าเข้าเองและไม่ซูมกลับ */
+            autoFocus
+            defaultValue={group.name}
+            maxLength={60}
+            aria-label={`เปลี่ยนชื่อหมวด ${group.name}`}
+            onBlur={(e) => commitRename(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key === "Escape") {
+                e.currentTarget.value = group.name;
+                setEditing(false);
+              }
+            }}
+            className={`min-w-0 max-w-[16rem] border-b-2 border-brand-400 bg-transparent py-0.5 text-base font-bold focus:outline-none sm:text-[17px] ${group.text}`}
+          />
+        ) : (
+          <button
+            type="button"
+            /* กลุ่มหมวดหมู่: กดชื่อ = เปลี่ยนชื่อ (ยุบ/กางใช้ปุ่มลูกศรซ้ายมือ) แบบ Monday
+               กลุ่มคำนวณ (สถานะ/แท็ก/ฯลฯ): กดชื่อ = ยุบ/กาง เหมือนเดิม */
+            onClick={onRename ? () => setEditing(true) : onToggleCollapse}
+            title={onRename ? "กดเพื่อเปลี่ยนชื่อหมวด" : undefined}
+            className={`cursor-pointer truncate text-base font-bold max-sm:min-h-11 sm:text-[17px] ${group.text}`}
+          >
+            {group.name}
+          </button>
+        )}
+        <span className="ml-1.5 shrink-0 text-xs text-stone-400">
           {group.tasks.length} งาน
         </span>
       </div>

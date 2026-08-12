@@ -14,16 +14,22 @@
 import { CalendarDays, Check, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button, Input, Label, Textarea } from "@/components/ui";
+import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { LIST_PRIORITY } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
-import type { ListTagRow, ListTaskRow, TaskPriority } from "@/lib/types";
+import type {
+  ListGroupRow,
+  ListTagRow,
+  ListTaskRow,
+  TaskPriority,
+} from "@/lib/types";
 import { dueInfo, type MyTask } from "./list-utils";
 import { PriorityPicker, TagChip, TagPicker } from "./pickers";
 
 export function TaskDetailPanel({
   task,
   tags,
+  groups,
   onClose,
   onPatch,
   onToggleTag,
@@ -32,6 +38,8 @@ export function TaskDetailPanel({
 }: {
   task: MyTask;
   tags: ListTagRow[];
+  /** หมวดหมู่ทั้งหมดของฉัน (เรียงตามบอร์ดแล้ว) — ไว้ย้ายงานเข้าหมวดจากแผงโดยไม่ต้องลาก */
+  groups: ListGroupRow[];
   onClose: () => void;
   onPatch: (patch: Partial<ListTaskRow>) => void;
   onToggleTag: (tagId: string, on: boolean) => void;
@@ -187,6 +195,25 @@ export function TaskDetailPanel({
               </p>
             </div>
           </div>
+
+          {groups.length > 0 && (
+            <div>
+              <Label htmlFor="mytask-group">หมวดหมู่</Label>
+              <Select
+                id="mytask-group"
+                /* group_id ที่ชี้หมวดที่เพิ่งถูกลบ (state ยังไม่ทัน sync) fallback เป็น "" ได้เอง */
+                value={task.group_id ?? ""}
+                onChange={(e) => onPatch({ group_id: e.target.value || null })}
+              >
+                <option value="">ยังไม่จัดหมวดหมู่</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           <div>
             <Label>แท็ก</Label>
