@@ -47,6 +47,7 @@ import {
   GripVertical,
   Group as GroupIcon,
   NotebookPen,
+  Pencil,
   Plus,
   Rows3,
   Search,
@@ -474,6 +475,52 @@ export function MyTasksClient({
     if (error) {
       setErr(error.message);
       setCats(before);
+      return;
+    }
+    setErr(null);
+    router.refresh();
+  });
+
+  /**
+   * ตั้งชื่อให้กลุ่มสำรอง "ยังไม่จัดหมวดหมู่" = สร้างหมวดใหม่ชื่อนั้น แล้วย้ายงานที่ยังไม่มีหมวด
+   * เข้าไปทั้งหมด — กดชื่อหัวกลุ่มแล้วพิมพ์ทับได้เลยแบบ Monday โดยไม่ต้องสร้างหมวดแล้วลากงานทีละใบ
+   * ย้าย "ทุกงานที่ยังไม่มีหมวด" ไม่ใช่เฉพาะที่ตัวกรองแสดงอยู่ — หัวกลุ่มนี้แทนงานทั้งกองตามชื่อของมัน
+   */
+  const nameUncategorized = (name: string) => mutate(async () => {
+    const clean = name.trim();
+    if (!clean) return;
+    const beforeCats = cats;
+    const beforeItems = items;
+    const { data, error } = await supabase
+      .from("list_groups")
+      .insert({
+        owner_id: uid,
+        name: clean,
+        color: nextTagColor(cats.length),
+        position: cats.reduce((m, c) => Math.max(m, c.position), 0) + 1,
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      setErr(error?.message ?? "ตั้งชื่อหมวดหมู่ไม่สำเร็จ");
+      return;
+    }
+    const cat = data as ListGroupRow;
+    setCats((prev) => [...prev, cat]);
+    setItems((prev) =>
+      prev.map((t) => (t.group_id === null ? { ...t, group_id: cat.id } : t))
+    );
+    const { error: moveErr } = await supabase
+      .from("list_tasks")
+      .update({ group_id: cat.id })
+      .eq("owner_id", uid)
+      .is("group_id", null);
+    if (moveErr) {
+      // ย้ายงานไม่ผ่าน — คืนสภาพเดิมทั้งคู่แล้วลบหมวดที่เพิ่งสร้าง จะได้ไม่เหลือหมวดว่างงอกมา
+      setErr(moveErr.message);
+      setCats(beforeCats);
+      setItems(beforeItems);
+      await supabase.from("list_groups").delete().eq("id", cat.id);
       return;
     }
     setErr(null);
@@ -967,10 +1014,15 @@ export function MyTasksClient({
                 onSetDone={(t, d) => void patchTask(t.id, { done: d })}
                 onPriority={(id, p) => void patchTask(id, { priority: p })}
                 onDelete={setConfirmDelete}
+                /* กดชื่อหัวกลุ่ม = เปลี่ยนชื่อได้เลย ทั้งหมวดจริงและกลุ่มสำรอง
+                   (กลุ่มสำรองยังไม่มีแถวใน list_groups — ตั้งชื่อ = สร้างหมวดแล้วย้ายงานเข้า)
+                   โหมดจัดกลุ่มอื่นเป็นกลุ่มคำนวณจากข้อมูล เปลี่ยนชื่อไม่ได้ */
                 onRename={
                   g.catId
                     ? (name) => void patchGroup(g.catId as string, { name })
-                    : undefined
+                    : filters.groupBy === "category"
+                      ? (name) => void nameUncategorized(name)
+                      : undefined
                 }
               />
             ))}
@@ -1182,7 +1234,8 @@ function GroupSection({
   onSetDone: (t: MyTask, done: boolean) => void;
   onPriority: (id: string, p: TaskPriority) => void;
   onDelete: (id: string) => void;
-  /** เปลี่ยนชื่อกลุ่ม inline แบบ Monday (มีเฉพาะกลุ่มหมวดหมู่ — กลุ่มคำนวณเปลี่ยนชื่อไม่ได้) */
+  /** เปลี่ยนชื่อกลุ่ม inline แบบ Monday — มีเฉพาะโหมดจัดกลุ่มตามหมวดหมู่ (รวมกลุ่มสำรอง
+   *  "ยังไม่จัดหมวดหมู่" ที่การตั้งชื่อ = สร้างหมวดใหม่); กลุ่มคำนวณเปลี่ยนชื่อไม่ได้ */
   onRename?: (name: string) => void;
 }) {
   // แถบท้ายกลุ่มเป็นเป้ารับงานที่ลากข้ามกลุ่มมา (กลุ่มว่างก็ยังรับได้)
@@ -1191,6 +1244,11 @@ function GroupSection({
   });
   const rowIds = group.tasks.map((t) => rowId(group.key, t.id));
   const [editing, setEditing] = useState(false);
+
+  // หมวดจริง = พิมพ์ทับชื่อเดิม; กลุ่มสำรอง "ยังไม่จัดหมวดหมู่" = ชื่อนี้เป็นแค่ป้ายกำกับ
+  // เริ่มจากช่องว่าง (โชว์ชื่อเดิมเป็น placeholder) จะได้ไม่ต้องลบทิ้งก่อนตั้งชื่อจริง
+  const isCategory = group.catId !== null;
+  const renameSeed = isCategory ? group.name : "";
 
   const commitRename = (v: string) => {
     setEditing(false);
@@ -1219,31 +1277,52 @@ function GroupSection({
         {editing && onRename ? (
           <input
             /* เปิดจากการกดชื่อกลุ่มเสมอ — โฟกัส+คีย์บอร์ดคือสิ่งที่ผู้ใช้ตั้งใจ (ต่างจากเมนูลอย)
+               เลือกข้อความทั้งหมดตอนโฟกัส: กดแล้วพิมพ์ทับได้เลย ไม่ต้องลบชื่อเดิมทีละตัว
                text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS ซูมหน้าเข้าเองและไม่ซูมกลับ */
             autoFocus
-            defaultValue={group.name}
+            defaultValue={renameSeed}
+            placeholder={isCategory ? group.name : "ตั้งชื่อหมวดหมู่"}
             maxLength={60}
-            aria-label={`เปลี่ยนชื่อหมวด ${group.name}`}
+            aria-label={
+              isCategory ? `เปลี่ยนชื่อหมวด ${group.name}` : "ตั้งชื่อหมวดหมู่"
+            }
+            onFocus={(e) => e.currentTarget.select()}
             onBlur={(e) => commitRename(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
               if (e.key === "Escape") {
-                e.currentTarget.value = group.name;
+                e.currentTarget.value = renameSeed;
                 setEditing(false);
               }
             }}
-            className={`min-w-0 max-w-[16rem] border-b-2 border-brand-400 bg-transparent py-0.5 text-base font-bold focus:outline-none sm:text-[17px] ${group.text}`}
+            className={`min-w-0 max-w-[16rem] border-b-2 border-brand-400 bg-transparent py-0.5 text-base font-bold placeholder:font-normal placeholder:text-stone-400 focus:outline-none sm:text-[17px] ${group.text}`}
           />
         ) : (
           <button
             type="button"
-            /* กลุ่มหมวดหมู่: กดชื่อ = เปลี่ยนชื่อ (ยุบ/กางใช้ปุ่มลูกศรซ้ายมือ) แบบ Monday
+            /* โหมดหมวดหมู่: กดชื่อ = เปลี่ยนชื่อทันที (ยุบ/กางใช้ปุ่มลูกศรซ้ายมือ) แบบ Monday
                กลุ่มคำนวณ (สถานะ/แท็ก/ฯลฯ): กดชื่อ = ยุบ/กาง เหมือนเดิม */
             onClick={onRename ? () => setEditing(true) : onToggleCollapse}
-            title={onRename ? "กดเพื่อเปลี่ยนชื่อหมวด" : undefined}
-            className={`cursor-pointer truncate text-base font-bold max-sm:min-h-11 sm:text-[17px] ${group.text}`}
+            title={
+              onRename
+                ? isCategory
+                  ? "กดเพื่อเปลี่ยนชื่อหมวด"
+                  : "กดเพื่อตั้งชื่อหมวด — งานที่ยังไม่จัดหมวดหมู่ทั้งหมดจะย้ายเข้าหมวดใหม่นี้"
+                : undefined
+            }
+            className={`group/name flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-0.5 text-base font-bold transition-colors max-sm:min-h-11 sm:text-[17px] ${
+              onRename ? "px-1 hover:bg-white/70" : ""
+            } ${group.text}`}
           >
-            {group.name}
+            <span className="truncate">{group.name}</span>
+            {/* ดินสอบอกว่าชื่อนี้กดเปลี่ยนได้ — reveal-on-hover ให้โผล่ตลอดบนจอสัมผัสที่ไม่มี hover */}
+            {onRename && (
+              <Pencil
+                size={13}
+                aria-hidden
+                className="reveal-on-hover shrink-0 opacity-0 transition-opacity group-hover/name:opacity-70"
+              />
+            )}
           </button>
         )}
         <span className="ml-1.5 shrink-0 text-xs text-stone-400">
