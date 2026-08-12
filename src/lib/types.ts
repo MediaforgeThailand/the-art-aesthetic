@@ -58,6 +58,7 @@ export type {
   ListGroupRow,
   ListTagRow,
   ListTaskTagRow,
+  ListTaskFileRow,
   ListTaskShareRow,
   ListTaskWithTags,
 } from "./database.types";

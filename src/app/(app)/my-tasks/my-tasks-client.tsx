@@ -63,14 +63,18 @@ import {
   LIST_PRIORITY_ORDER,
   LIST_STATUS,
   LIST_STATUS_ORDER,
+  STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
   ListGroupRow,
   ListTagRow,
+  ListTaskFileRow,
   ListTaskRow,
   TaskPriority,
 } from "@/lib/types";
+import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
+import { compressImages } from "@/lib/upload-prepare";
 import { GroupManagerModal } from "./group-manager";
 import {
   buildGroups,
@@ -98,6 +102,12 @@ import {
 } from "./pickers";
 import { TagManagerModal } from "./tag-manager";
 import { TaskDetailPanel } from "./task-detail-panel";
+import {
+  FilesCell,
+  FilesChip,
+  PickFilesButton,
+  type UploadProgress,
+} from "./task-files";
 
 type StatusFilter = "all" | "open" | "overdue" | "soon" | "done";
 
@@ -129,9 +139,15 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
 ];
 
 /** คอลัมน์ของตาราง (จอ ≥sm) — ใช้ร่วมกันทั้งหัวตาราง แถวงาน และแถบสรุปท้ายกลุ่ม
-    ผลรวมค่าต่ำสุด = 940px ตรงกับ min-w ของกล่อง (เกินกว่านั้นเลื่อนแนวนอนในกล่องเอง) */
+    ผลรวมค่าต่ำสุด = 1070px ตรงกับ min-w ของกล่อง (เกินกว่านั้นเลื่อนแนวนอนในกล่องเอง) */
 const GRID_COLS =
-  "34px minmax(220px,1.5fr) 132px 120px 116px minmax(130px,0.8fr) minmax(150px,1fr) 36px";
+  "34px minmax(220px,1.5fr) 132px 120px 116px minmax(130px,0.8fr) 130px minmax(150px,1fr) 36px";
+
+/** ชื่อไฟล์ที่ปลอดภัยกับ path ของ storage (ไทย/ช่องว่าง/อักขระพิเศษถูกแทนด้วย _)
+    — ชื่อจริงเก็บไว้ในคอลัมน์ file_name แล้ว ตรงนี้แค่กัน path พัง */
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
 
 // v2: bump ตอนเปลี่ยน default groupBy เป็น "หมวดหมู่" (0067) — บังคับ default ใหม่กับทุกคน
 // (ค่า v1 เดิมจำ groupBy: "status" ไว้ ถ้าไม่ bump ผู้ใช้เก่าจะไม่เห็นหมวดหมู่ที่เพิ่งทำ)
@@ -265,7 +281,7 @@ export function MyTasksClient({
       setErr(error?.message ?? "เพิ่มงานไม่สำเร็จ");
       return;
     }
-    const row: MyTask = { ...(data as ListTaskRow), tagIds: [] };
+    const row: MyTask = { ...(data as ListTaskRow), tagIds: [], files: [] };
     const tagId = group.add.tagId;
     if (tagId) {
       const { error: tagErr } = await supabase
@@ -310,6 +326,9 @@ export function MyTasksClient({
 
   const deleteTask = (id: string) => mutate(async () => {
     const before = items;
+    const paths = (items.find((t) => t.id === id)?.files ?? []).map(
+      (f) => f.file_path
+    );
     setItems((prev) => prev.filter((t) => t.id !== id));
     if (openId === id) setOpenId(null);
     const { error } = await supabase.from("list_tasks").delete().eq("id", id);
@@ -318,6 +337,112 @@ export function MyTasksClient({
       setItems(before);
       return;
     }
+    // แถว list_task_files ถูก CASCADE ตามไปแล้ว แต่ไฟล์ใน storage ต้องเก็บกวาดเอง
+    // (best effort — ลบไม่ผ่านก็แค่เหลือไฟล์กำพร้า ไม่ควรทำให้การลบงานล้มเหลว)
+    if (paths.length > 0) {
+      await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .remove(paths)
+        .catch(() => undefined);
+    }
+    setErr(null);
+    router.refresh();
+  });
+
+  /* ---------- ไฟล์แนบ (วิดีโอ/รูป/ไอเดียของงาน) ---------- */
+
+  // งานที่กำลังอัพโหลดอยู่ + ความคืบหน้าไฟล์ปัจจุบัน (แถวในตารางและแผงอ่านค่าเดียวกัน)
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
+    null
+  );
+
+  const uploadFiles = (taskId: string, fileList: FileList) => mutate(async () => {
+    // ย่อรูปก่อนแล้วค่อยเช็คเพดาน — รูปจากมือถือที่เกินเพดานมักผ่านได้หลังย่อ (วิดีโอไม่ถูกแตะ)
+    const picked = await compressImages(Array.from(fileList));
+    if (picked.length === 0) return;
+    const tooLarge = tooLargeSummary(picked);
+    if (tooLarge) {
+      setErr(tooLarge);
+      return;
+    }
+    setUploadingId(taskId);
+    setUploadProgress({ index: 0, total: picked.length, pct: 0 });
+    const rows: { task_id: string; file_path: string; file_name: string }[] = [];
+    // try/finally: ปุ่มต้องกลับมากดได้เสมอแม้ระหว่างทางมี exception
+    try {
+      for (const [i, file] of picked.entries()) {
+        const path = `my-tasks/${taskId}/${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 6)}_${sanitizeFileName(file.name)}`;
+        setUploadProgress({ index: i, total: picked.length, pct: 0 });
+        const { error } = await uploadWithProgress(
+          STORAGE_BUCKET_DOCUMENTS,
+          path,
+          file,
+          (pct) => setUploadProgress({ index: i, total: picked.length, pct })
+        );
+        if (error) {
+          // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ — ยังไม่มีแถวใน DB อ้างถึง
+          if (rows.length > 0) {
+            await supabase.storage
+              .from(STORAGE_BUCKET_DOCUMENTS)
+              .remove(rows.map((r) => r.file_path))
+              .catch(() => undefined);
+          }
+          setErr(`อัพโหลดไฟล์ไม่สำเร็จ: ${error.message}`);
+          return;
+        }
+        rows.push({ task_id: taskId, file_path: path, file_name: file.name });
+      }
+      const { data, error: insErr } = await supabase
+        .from("list_task_files")
+        .insert(rows)
+        .select("*");
+      if (insErr || !data) {
+        await supabase.storage
+          .from(STORAGE_BUCKET_DOCUMENTS)
+          .remove(rows.map((r) => r.file_path))
+          .catch(() => undefined);
+        setErr(`บันทึกไฟล์ไม่สำเร็จ: ${insErr?.message ?? "ไม่ทราบสาเหตุ"}`);
+        return;
+      }
+      const added = data as ListTaskFileRow[];
+      setItems((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, files: [...t.files, ...added] } : t
+        )
+      );
+      setErr(null);
+      router.refresh();
+    } finally {
+      setUploadingId(null);
+      setUploadProgress(null);
+    }
+  });
+
+  const removeFile = (taskId: string, file: ListTaskFileRow) => mutate(async () => {
+    const before = items;
+    setItems((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, files: t.files.filter((f) => f.id !== file.id) }
+          : t
+      )
+    );
+    const { error } = await supabase
+      .from("list_task_files")
+      .delete()
+      .eq("id", file.id);
+    if (error) {
+      setErr(error.message);
+      setItems(before);
+      return;
+    }
+    await supabase.storage
+      .from(STORAGE_BUCKET_DOCUMENTS)
+      .remove([file.file_path])
+      .catch(() => undefined);
     setErr(null);
     router.refresh();
   });
@@ -998,6 +1123,8 @@ export function MyTasksClient({
                 collapsed={!!collapsed[g.key]}
                 dragDisabled={dragDisabled}
                 emptyHint={items.length === 0}
+                uploadingId={uploadingId}
+                onUploadFiles={(taskId, files) => void uploadFiles(taskId, files)}
                 onToggleCollapse={() =>
                   setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))
                 }
@@ -1039,11 +1166,15 @@ export function MyTasksClient({
           task={openTask}
           tags={tags}
           groups={sortedCats}
+          uploading={uploadingId === openTask.id}
+          uploadProgress={uploadingId === openTask.id ? uploadProgress : null}
           onClose={() => setOpenId(null)}
           onPatch={(patch) => void patchTask(openTask.id, patch)}
           onToggleTag={(tagId, on) => void toggleTag(openTask.id, tagId, on)}
           onCreateTag={(name) => createTagFor(openTask.id, name)}
           onDelete={() => setConfirmDelete(openTask.id)}
+          onUploadFiles={(files) => void uploadFiles(openTask.id, files)}
+          onRemoveFile={(file) => void removeFile(openTask.id, file)}
         />
       )}
 
@@ -1210,6 +1341,7 @@ function GroupSection({
   collapsed,
   dragDisabled,
   emptyHint,
+  uploadingId,
   onToggleCollapse,
   addRef,
   onAdd,
@@ -1219,11 +1351,14 @@ function GroupSection({
   onPriority,
   onDelete,
   onRename,
+  onUploadFiles,
 }: {
   group: ListGroup;
   tags: ListTagRow[];
   collapsed: boolean;
   dragDisabled: boolean;
+  /** id ของงานที่กำลังอัพโหลดไฟล์อยู่ (null = ไม่มี) */
+  uploadingId: string | null;
   /** ลิสต์ยังว่างทั้งหน้า — โชว์คำแนะนำในกลุ่มแทนตารางเปล่า */
   emptyHint: boolean;
   onToggleCollapse: () => void;
@@ -1237,6 +1372,7 @@ function GroupSection({
   /** เปลี่ยนชื่อกลุ่ม inline แบบ Monday — มีเฉพาะโหมดจัดกลุ่มตามหมวดหมู่ (รวมกลุ่มสำรอง
    *  "ยังไม่จัดหมวดหมู่" ที่การตั้งชื่อ = สร้างหมวดใหม่); กลุ่มคำนวณเปลี่ยนชื่อไม่ได้ */
   onRename?: (name: string) => void;
+  onUploadFiles: (taskId: string, files: FileList) => void;
 }) {
   // แถบท้ายกลุ่มเป็นเป้ารับงานที่ลากข้ามกลุ่มมา (กลุ่มว่างก็ยังรับได้)
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -1351,6 +1487,7 @@ function GroupSection({
                 <HeadCell center>กำหนดส่ง</HeadCell>
                 <HeadCell center>ความสำคัญ</HeadCell>
                 <HeadCell>แท็ก</HeadCell>
+                <HeadCell>ไฟล์</HeadCell>
                 <HeadCell>โน้ต</HeadCell>
                 <div className="border-l border-brand-100/70" />
               </div>
@@ -1366,11 +1503,13 @@ function GroupSection({
                     task={t}
                     tags={tags}
                     dragDisabled={dragDisabled}
+                    uploading={uploadingId === t.id}
                     onOpen={() => onOpen(t.id)}
                     onToggleDone={() => onToggleDone(t)}
                     onSetDone={(d) => onSetDone(t, d)}
                     onPriority={(p) => onPriority(t.id, p)}
                     onDelete={() => onDelete(t.id)}
+                    onPickFiles={(files) => onUploadFiles(t.id, files)}
                   />
                 ))}
               </SortableContext>
@@ -1475,6 +1614,7 @@ function GroupSummary({ tasks }: { tasks: MyTask[] }) {
       n: tasks.filter((t) => t.priority === p).length,
     }))
   );
+  const fileCount = tasks.reduce((m, t) => m + t.files.length, 0);
   const dues = tasks
     .map((t) => t.due_date)
     .filter((d): d is string => !!d)
@@ -1505,6 +1645,13 @@ function GroupSummary({ tasks }: { tasks: MyTask[] }) {
         <SegmentBar parts={prioSeg} />
       </div>
       <div />
+      <div className="flex items-center justify-center px-2">
+        {fileCount > 0 && (
+          <span className="truncate text-[11px] text-stone-400">
+            {fileCount} ไฟล์
+          </span>
+        )}
+      </div>
       <div />
       <div />
     </div>
@@ -1533,21 +1680,26 @@ function TaskRow({
   task,
   tags,
   dragDisabled,
+  uploading,
   onOpen,
   onToggleDone,
   onSetDone,
   onPriority,
   onDelete,
+  onPickFiles,
 }: {
   id: string;
   task: MyTask;
   tags: ListTagRow[];
   dragDisabled: boolean;
+  /** งานนี้กำลังอัพโหลดไฟล์อยู่ — ล็อกปุ่มแนบไฟล์ของแถวไว้ก่อน */
+  uploading: boolean;
   onOpen: () => void;
   onToggleDone: () => void;
   onSetDone: (done: boolean) => void;
   onPriority: (p: TaskPriority) => void;
   onDelete: () => void;
+  onPickFiles: (files: FileList) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id, disabled: dragDisabled });
@@ -1678,6 +1830,13 @@ function TaskRow({
           )}
         </div>
 
+        <FilesCell
+          taskTitle={task.title}
+          files={task.files}
+          uploading={uploading}
+          onPick={onPickFiles}
+        />
+
         <button
           type="button"
           onClick={onOpen}
@@ -1712,6 +1871,9 @@ function TaskRow({
         <button
           type="button"
           onClick={onOpen}
+          /* ชื่อปุ่มบนแถวย่อรวมชิปสถานะ/ความสำคัญ/ไฟล์ไปด้วย — ตั้ง aria-label กำกับ
+             ไม่งั้น screen reader อ่านเป็นก้อนยาวที่ไม่บอกว่ากดแล้วเกิดอะไร */
+          aria-label={`เปิดรายละเอียด: ${task.title}`}
           className="min-w-0 flex-1 cursor-pointer py-1.5 text-left"
         >
           <span className="flex items-center gap-1.5">
@@ -1757,8 +1919,15 @@ function TaskRow({
                 +{taskTags.length - 2}
               </span>
             )}
+            <FilesChip count={task.files.length} />
           </span>
         </button>
+        {/* จอเล็กไม่มีคอลัมน์ไฟล์ — ปุ่มแนบอยู่ท้ายแถวย่อแทน (เป้านิ้ว 44px) */}
+        <PickFilesButton
+          taskTitle={task.title}
+          uploading={uploading}
+          onPick={onPickFiles}
+        />
       </div>
     </div>
   );

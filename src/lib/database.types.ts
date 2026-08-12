@@ -650,6 +650,18 @@ export type ListTaskTagRow = {
   tag_id: string;
 };
 
+/** ไฟล์แนบของงานใน My List — วิดีโอ/รูป/ไอเดียของเจ้าของลิสต์ (migration 0070)
+    ไฟล์จริงอยู่ใน bucket documents path `my-tasks/{task_id}/` — คนละชุดกับ task_files
+    ของบอร์ดทีม (ไฟล์ส่วนตัวจึงไม่เข้าคลังรวม All Media) */
+export type ListTaskFileRow = {
+  id: string;
+  task_id: string;
+  file_path: string;
+  /** ชื่อไฟล์เดิมตอนอัพ — path จริงมี timestamp นำหน้ากันชนกัน */
+  file_name: string;
+  created_at: string;
+};
+
 /** การแชร์รายการให้คนอื่น — เตรียมโครงไว้ ยังไม่มี UI สร้างแถว
     (policy วันนี้ให้สิทธิ์อ่านอย่างเดียว; can_edit จะมีผลเมื่อเปิด UI แชร์) */
 export type ListTaskShareRow = {
@@ -935,6 +947,16 @@ export interface Database {
         Row: ListTaskTagRow;
         Insert: ListTaskTagRow;
         Update: Partial<ListTaskTagRow>;
+        Relationships: [];
+      };
+      list_task_files: {
+        Row: ListTaskFileRow;
+        Insert: Partial<ListTaskFileRow> & {
+          task_id: string;
+          file_path: string;
+          file_name: string;
+        };
+        Update: Partial<ListTaskFileRow>;
         Relationships: [];
       };
       list_task_shares: {

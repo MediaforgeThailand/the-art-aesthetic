@@ -3,7 +3,12 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { ListGroupRow, ListTagRow, ListTaskRow } from "@/lib/types";
+import type {
+  ListGroupRow,
+  ListTagRow,
+  ListTaskFileRow,
+  ListTaskRow,
+} from "@/lib/types";
 import type { MyTask } from "./list-utils";
 import { MyTasksClient } from "./my-tasks-client";
 
@@ -22,21 +27,27 @@ export default async function MyTasksPage() {
   const supabase = await createClient();
 
   // ยิงขนานทั้งหมดรวม getAccess (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มี uid)
-  const [access, tasksRes, tagsRes, linkRes, groupsRes] = await Promise.all([
-    getAccess(),
-    supabase
-      .from("list_tasks")
-      .select("*")
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: false }),
-    supabase.from("list_tags").select("*").order("name", { ascending: true }),
-    supabase.from("list_task_tags").select("task_id, tag_id"),
-    supabase
-      .from("list_groups")
-      .select("*")
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true }),
-  ]);
+  const [access, tasksRes, tagsRes, linkRes, groupsRes, filesRes] =
+    await Promise.all([
+      getAccess(),
+      supabase
+        .from("list_tasks")
+        .select("*")
+        .order("position", { ascending: true })
+        .order("created_at", { ascending: false }),
+      supabase.from("list_tags").select("*").order("name", { ascending: true }),
+      supabase.from("list_task_tags").select("task_id, tag_id"),
+      supabase
+        .from("list_groups")
+        .select("*")
+        .order("position", { ascending: true })
+        .order("created_at", { ascending: true }),
+      // ไฟล์แนบของทุกงาน (RLS กรองให้เหลือเฉพาะงานของเรา) — เก่าก่อนใหม่ตามลำดับที่อัพ
+      supabase
+        .from("list_task_files")
+        .select("*")
+        .order("created_at", { ascending: true }),
+    ]);
 
   // proxy เด้งคนที่ยังไม่ล็อกอินไป /login อยู่แล้ว — เช็คซ้ำเพื่อให้ TS มั่นใจว่ามีเจ้าของลิสต์
   if (!access.uid) return <AccessNotice />;
@@ -48,9 +59,17 @@ export default async function MyTasksPage() {
     else tagIdsByTask.set(l.task_id, [l.tag_id]);
   }
 
+  const filesByTask = new Map<string, ListTaskFileRow[]>();
+  for (const f of (filesRes.data ?? []) as ListTaskFileRow[]) {
+    const arr = filesByTask.get(f.task_id);
+    if (arr) arr.push(f);
+    else filesByTask.set(f.task_id, [f]);
+  }
+
   const tasks: MyTask[] = ((tasksRes.data ?? []) as ListTaskRow[]).map((t) => ({
     ...t,
     tagIds: tagIdsByTask.get(t.id) ?? [],
+    files: filesByTask.get(t.id) ?? [],
   }));
 
   return (
@@ -65,6 +84,7 @@ export default async function MyTasksPage() {
           tagsRes.error?.message ??
           linkRes.error?.message ??
           groupsRes.error?.message ??
+          filesRes.error?.message ??
           null
         }
       />

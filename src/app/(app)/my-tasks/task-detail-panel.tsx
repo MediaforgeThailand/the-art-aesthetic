@@ -20,31 +20,42 @@ import { formatDateTime } from "@/lib/format";
 import type {
   ListGroupRow,
   ListTagRow,
+  ListTaskFileRow,
   ListTaskRow,
   TaskPriority,
 } from "@/lib/types";
 import { dueInfo, type MyTask } from "./list-utils";
 import { PriorityPicker, TagChip, TagPicker } from "./pickers";
+import { FilesSection, type UploadProgress } from "./task-files";
 
 export function TaskDetailPanel({
   task,
   tags,
   groups,
+  uploading,
+  uploadProgress,
   onClose,
   onPatch,
   onToggleTag,
   onCreateTag,
   onDelete,
+  onUploadFiles,
+  onRemoveFile,
 }: {
   task: MyTask;
   tags: ListTagRow[];
   /** หมวดหมู่ทั้งหมดของฉัน (เรียงตามบอร์ดแล้ว) — ไว้ย้ายงานเข้าหมวดจากแผงโดยไม่ต้องลาก */
   groups: ListGroupRow[];
+  /** งานนี้กำลังอัพโหลดไฟล์อยู่ (state อยู่ที่หน้าแม่ — แถวในตารางกับแผงจึงตรงกันเสมอ) */
+  uploading: boolean;
+  uploadProgress: UploadProgress | null;
   onClose: () => void;
   onPatch: (patch: Partial<ListTaskRow>) => void;
   onToggleTag: (tagId: string, on: boolean) => void;
   onCreateTag: (name: string) => Promise<string | null>;
   onDelete: () => void;
+  onUploadFiles: (files: FileList) => void;
+  onRemoveFile: (file: ListTaskFileRow) => void;
 }) {
   const [title, setTitle] = useState(task.title);
   const [note, setNote] = useState(task.note ?? "");
@@ -230,6 +241,14 @@ export function TaskDetailPanel({
               />
             </div>
           </div>
+
+          <FilesSection
+            files={task.files}
+            uploading={uploading}
+            progress={uploadProgress}
+            onPick={onUploadFiles}
+            onRemove={onRemoveFile}
+          />
 
           <div>
             <Label htmlFor="mytask-note">โน้ต / รายละเอียด</Label>

@@ -15,12 +15,15 @@ import { formatDate, todayISO } from "@/lib/format";
 import type {
   ListGroupRow,
   ListTagRow,
+  ListTaskFileRow,
   ListTaskRow,
   ListTaskWithTags,
   TaskPriority,
 } from "@/lib/types";
 
-export type MyTask = ListTaskWithTags;
+/** งานหนึ่งรายการพร้อมของที่ผูกอยู่ — แท็ก (list_task_tags) + ไฟล์แนบ (list_task_files)
+ *  ประกอบฝั่ง server ใน page.tsx แล้วส่งมาเป็นก้อนเดียว */
+export type MyTask = ListTaskWithTags & { files: ListTaskFileRow[] };
 
 /** ตัวเลือกการเรียงลิสต์ */
 export type ListSort = "manual" | "due" | "priority" | "created";
