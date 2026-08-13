@@ -1,10 +1,11 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   ChevronRight,
   Clock3,
-  Gift,
+  Package,
   Search,
   Sparkles,
   X,
@@ -12,66 +13,313 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo";
 import {
+  comparePromoCategories,
   PRICE_GROUP_ORDER,
   PRICE_GROUPS,
+  PROMO_ENDING_SOON_DAYS,
   sortPriceGroups,
 } from "@/lib/constants";
-import { formatDate, formatDateBangkok, todayISO } from "@/lib/format";
+import {
+  formatDate,
+  formatDateBangkok,
+  formatNumber,
+  todayISO,
+} from "@/lib/format";
 import { MEMO_COMPANY } from "@/lib/influ-constants";
-import type { PriceGroup, PriceItemRow, PriceOffer } from "@/lib/types";
+import type { PriceGroup, PromoPackageWithItems } from "@/lib/types";
 
-/* สถานะข้อเสนอ ณ วันนี้ — ใช้กติกาเดียวกับหลังบ้าน (ใกล้หมดเขต = เหลือ ≤ 14 วัน) */
-type OfferState = "upcoming" | "active" | "ending" | "expired";
+type Pkg = PromoPackageWithItems;
 
-function offerState(o: PriceOffer, today: string): OfferState {
-  if (o.start && today < o.start) return "upcoming";
-  if (!o.end) return "active"; // ไม่ระบุวันหมดเขต = เปิดตลอด ไม่ใช่หมดเขต
-  if (today > o.end) return "expired";
-  const daysLeft = Math.round(
-    (new Date(o.end).getTime() - new Date(today).getTime()) / 86400000
-  );
-  return daysLeft <= 14 ? "ending" : "active";
-}
+/* ---------- สถานะช่วงเวลาของโปร ----------
+   ไม่มีวันหมดเขต = ขายต่อเนื่อง (active) — คนละความหมายกับหมดเขตแล้ว */
+type PromoState = "upcoming" | "active" | "ending" | "expired";
 
-/** โปร "ที่ใช้ได้ตอนนี้" = state active/ending และไม่ใช่โปรแถม (1 แถม 1)
- *  — กติกาเดียวกันทั้งราคาที่โชว์ในแถวลิสต์ (PriceRow) และแถวที่เน้นเด่นในตาราง popup */
-function isCurrentPromo(o: {
-  label: string;
-  state: OfferState | null;
-}): boolean {
-  return (
-    (o.state === "active" || o.state === "ending") && !o.label.includes("แถม")
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (new Date(to).getTime() - new Date(from).getTime()) / 86400000
   );
 }
 
-/** วันที่แบบสั้นสำหรับป้ายโปร เช่น "31 มี.ค. 69" */
+function promoState(p: Pkg, today: string): PromoState {
+  if (p.starts_on && today < p.starts_on) return "upcoming";
+  if (!p.ends_on) return "active";
+  if (today > p.ends_on) return "expired";
+  return daysBetween(today, p.ends_on) <= PROMO_ENDING_SOON_DAYS
+    ? "ending"
+    : "active";
+}
+
+/** ส่วนลดเทียบราคาเต็ม — null = คิดไม่ได้ (ไม่มีราคาเต็ม) หรือไม่ได้ลดจริง
+    ข้อมูลจาก POS มีบางแพ็กเกจที่ราคาขายสูงกว่าผลรวมราคาเต็ม (3 รายการ) — กรณีนั้นไม่โชว์ป้ายลด */
+function discountPct(p: Pkg): number | null {
+  if (!p.full_price || p.full_price <= 0) return null;
+  const pct = Math.round((1 - p.sale_price / p.full_price) * 100);
+  return pct >= 1 ? pct : null;
+}
+
+/** ราคาแบบในเมนู เช่น "12,500.-" */
+function baht(n: number | null | undefined): string {
+  return n === null || n === undefined ? "-" : `${formatNumber(n)}.-`;
+}
+
+/** วันที่แบบสั้นสำหรับป้าย เช่น "31 ธ.ค. 69" */
 function shortThaiDate(iso: string): string {
   return formatDate(iso).replace(/ (\d{4})$/, (_, y) => ` ${y.slice(2)}`);
 }
 
-/** แสดงราคา: เติม ".-" เฉพาะส่วนที่เป็นตัวเลขล้วน — คงข้อความ/หน่วยไว้ตามไฟล์
- *  เช่น "3,745 / เส้น" → "3,745.- / เส้น", "3,900 / 6,900 / 6,900" → "3,900.- / 6,900.- / 6,900.-" */
-function fmtPrice(price: string): string {
-  return price
-    .split("/")
-    .map((seg) => {
-      const t = seg.trim();
-      return /^[\d,]+$/.test(t) ? `${t}.-` : t;
-    })
-    .join(" / ");
+/** จำนวนหน่วยแบบอ่านง่าย เช่น "5 ครั้ง", "300 ช็อต" */
+function qtyLabel(p: Pkg): string {
+  if (p.base_qty === null) return "";
+  return `${formatNumber(p.base_qty)} ${p.base_unit ?? ""}`.trim();
 }
 
+/** สรุปว่าแพ็กเกจนี้ได้อะไรบ้าง — ใช้เป็นบรรทัดรองบนแถวแพ็กเกจรวม */
+function contentSummary(p: Pkg): string {
+  return [...p.items]
+    .sort((a, b) => a.position - b.position)
+    .map((i) => `${formatNumber(i.qty)}× ${i.item_name}`)
+    .join(" + ");
+}
+
+/* ---------- แถวบนหน้าเว็บ ----------
+   หัตถการที่ขายเป็น "ครั้ง" → รวมทุกแพ็กเกจของหัตถการนั้นเป็นแถวเดียว
+   แล้วกาง 1 ครั้ง / คอร์ส 5 / คอร์ส 10 เป็นคอลัมน์แบบเมนู PDF
+   ที่เหลือ (ยูนิต/ซีซี/ช็อต/แพ็กเกจรวมหลายหัตถการ) → 1 แพ็กเกจ = 1 แถว */
+type Row = {
+  key: string;
+  name: string;
+  /** บรรทัดรองใต้ชื่อ — ประกอบด้วยอะไรบ้าง (แพ็กเกจรวม) หรือหน่วยของหัตถการ */
+  sub: string | null;
+  category: string;
+  groups: PriceGroup[];
+  /** ราคาปกติที่โชว์คอลัมน์แรก (ต่อครั้งสำหรับแถวคอร์ส / ราคาเต็มสำหรับแถวแพ็กเกจ) */
+  fullPrice: number | null;
+  /** true = แถวหัตถการที่ขายเป็นครั้ง → ราคาปกติเป็น "ต่อครั้ง" ไม่ใช่ราคาเหมาทั้งแพ็กเกจ */
+  perSession: boolean;
+  /** ราคาโปรหลัก = 1 ครั้ง (แถวคอร์ส) หรือแพ็กเกจนั้นเอง */
+  main: Pkg | null;
+  course5: Pkg | null;
+  course10: Pkg | null;
+  /** ตัวเลือกอื่นที่ไม่เข้าคอลัมน์ เช่น 1 แถม 1, คอร์ส 8/12 ครั้ง */
+  extras: Pkg[];
+  /** ทุกแพ็กเกจในแถวนี้ — ใช้ในโมดัลรายละเอียด */
+  all: Pkg[];
+  sort: number;
+  search: string;
+  bestPct: number | null;
+  hasPromoKind: boolean;
+  endingSoon: boolean;
+  hasExpired: boolean;
+};
+
+function cheapest(list: Pkg[]): Pkg | null {
+  return list.length === 0
+    ? null
+    : list.reduce((a, b) => (b.sale_price < a.sale_price ? b : a));
+}
+
+function buildRows(packages: Pkg[], today: string): Row[] {
+  // หัตถการเดียว + ขายเป็นครั้ง = จับกลุ่มได้ (1/5/10 ครั้งของหัตถการเดียวกัน)
+  const sessions = new Map<string, Pkg[]>();
+  const standalone: Pkg[] = [];
+  for (const p of packages) {
+    if (p.base_item_sku && p.base_unit === "ครั้ง") {
+      const list = sessions.get(p.base_item_sku);
+      if (list) list.push(p);
+      else sessions.set(p.base_item_sku, [p]);
+    } else {
+      standalone.push(p);
+    }
+  }
+
+  const finish = (r: Omit<Row, "bestPct" | "hasPromoKind" | "endingSoon" | "hasExpired">): Row => {
+    const states = r.all.map((p) => promoState(p, today));
+    const live = r.all.filter((_, i) => states[i] !== "expired");
+    const pcts = live.map(discountPct).filter((n): n is number => n !== null);
+    return {
+      ...r,
+      bestPct: pcts.length ? Math.max(...pcts) : null,
+      hasPromoKind: r.all.some((p) => p.kind === "promo"),
+      endingSoon: states.some((s) => s === "ending"),
+      hasExpired: states.some((s) => s === "expired"),
+    };
+  };
+
+  const rows: Row[] = [];
+
+  for (const [sku, list] of sessions) {
+    // ระบบ POS มีหลาย SKU ที่เป็นข้อเสนอเดียวกันเป๊ะ (เช่น "Aura White 5 ครั้ง" กับ
+    // "Promotion IV Drip - Aura White 5 ครั้ง" ราคา 4,500 เท่ากัน) — ลูกค้าเห็นเป็นตัวเลือกซ้ำ
+    // จึงยุบเหลืออันเดียวต่อ (จำนวนครั้ง, ราคา) โดยเลือกอันที่หมดเขตช้าสุดไว้
+    const seen = new Map<string, Pkg>();
+    for (const p of list) {
+      const key = `${p.base_qty}|${p.sale_price}`;
+      const cur = seen.get(key);
+      if (!cur || (p.ends_on ?? "9999") > (cur.ends_on ?? "9999")) seen.set(key, p);
+    }
+    const sorted = [...seen.values()].sort(
+      (a, b) => (a.base_qty ?? 0) - (b.base_qty ?? 0)
+    );
+    const single = cheapest(sorted.filter((p) => p.base_qty === 1));
+    const c5 = cheapest(sorted.filter((p) => p.base_qty === 5));
+    const c10 = cheapest(sorted.filter((p) => p.base_qty === 10));
+    const used = new Set([single?.id, c5?.id, c10?.id]);
+    const first = sorted[0];
+    rows.push(
+      finish({
+        key: `item:${sku}`,
+        name: first.base_item_name ?? first.name,
+        sub: null,
+        // หมวดของแถว = หมวดที่พบบ่อยสุดในกลุ่ม (ปกติเหมือนกันหมดอยู่แล้ว)
+        category: first.category,
+        groups: sortPriceGroups([
+          ...new Set(sorted.flatMap((p) => p.groups)),
+        ] as PriceGroup[]),
+        fullPrice: first.base_unit_price,
+        perSession: true,
+        main: single,
+        course5: c5,
+        course10: c10,
+        extras: sorted.filter((p) => !used.has(p.id)),
+        all: sorted,
+        sort: Math.min(...sorted.map((p) => p.sort)),
+        // ค้นหาจากชื่อ "ทุก" SKU รวมอันที่ยุบทิ้ง — ทีมขายจำชื่อในระบบ POS ได้ ต้องค้นเจอ
+        search: [
+          first.base_item_name ?? "",
+          first.category,
+          ...list.map((p) => p.name),
+          ...list.flatMap((p) => p.items.map((i) => i.item_name)),
+        ]
+          .join(" ")
+          .toLowerCase(),
+      })
+    );
+  }
+
+  for (const p of standalone) {
+    const multi = p.items.length > 1;
+    rows.push(
+      finish({
+        key: `pkg:${p.id}`,
+        name: p.name,
+        sub: multi
+          ? contentSummary(p)
+          : p.base_qty && p.base_unit
+            ? `${qtyLabel(p)}`
+            : null,
+        category: p.category,
+        groups: sortPriceGroups(p.groups),
+        fullPrice: p.full_price,
+        perSession: false,
+        main: p,
+        course5: null,
+        course10: null,
+        extras: [],
+        all: [p],
+        sort: p.sort,
+        search: [p.name, p.category, ...p.items.map((i) => i.item_name)]
+          .join(" ")
+          .toLowerCase(),
+      })
+    );
+  }
+
+  return rows.sort((a, b) => a.sort - b.sort);
+}
+
+/* ---------- ชิ้นส่วนเล็ก ---------- */
+
+function DiscountBadge({ pct, big = false }: { pct: number; big?: boolean }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 font-bold text-cream shadow-sm ${
+        big ? "px-2.5 py-1 text-[13px]" : "px-1.5 py-0.5 text-[11px]"
+      }`}
+    >
+      -{pct}%
+    </span>
+  );
+}
+
+function StateChip({ state, end }: { state: PromoState; end: string | null }) {
+  if (state === "expired")
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+        <AlertTriangle size={11} />
+        หมดเขตแล้ว {end && shortThaiDate(end)}
+      </span>
+    );
+  if (state === "ending")
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+        <Clock3 size={11} />
+        ใกล้หมดเขต {end && shortThaiDate(end)}
+      </span>
+    );
+  if (state === "upcoming")
+    return (
+      <span className="inline-flex whitespace-nowrap rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+        ยังไม่เริ่ม
+      </span>
+    );
+  return end ? (
+    <span className="whitespace-nowrap text-[11px] text-stone-400">
+      ถึง {shortThaiDate(end)}
+    </span>
+  ) : null;
+}
+
+/** ช่องราคาในตาราง — ราคาโปรตัวใหญ่ + ป้าย % + วันหมดเขต */
+function PriceCell({
+  pkg,
+  today,
+  emphasise = false,
+}: {
+  pkg: Pkg | null;
+  today: string;
+  emphasise?: boolean;
+}) {
+  if (!pkg)
+    return <span className="text-base font-medium text-stone-300">-</span>;
+  const state = promoState(pkg, today);
+  const pct = state === "expired" ? null : discountPct(pkg);
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <div className="flex items-center gap-1.5">
+        {pct !== null && <DiscountBadge pct={pct} />}
+        <span
+          className={`tabular-nums font-bold ${
+            state === "expired"
+              ? "text-stone-400 line-through"
+              : emphasise
+                ? "text-lg text-brand-600"
+                : "text-[15px] text-stone-900"
+          }`}
+        >
+          {baht(pkg.sale_price)}
+        </span>
+      </div>
+      <StateChip state={state} end={pkg.ends_on} />
+    </div>
+  );
+}
+
+/* ---------- หน้าเว็บ ---------- */
+
+type SpecialFilter = "promo" | "ending" | "deal" | "expired";
+
 export function PriceListClient({
-  items,
+  packages,
   loadError,
 }: {
-  items: PriceItemRow[];
+  packages: Pkg[];
   loadError: string | null;
 }) {
   const today = todayISO();
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState<PriceGroup | "all">("all");
-  const [selected, setSelected] = useState<PriceItemRow | null>(null);
+  const [special, setSpecial] = useState<SpecialFilter | null>(null);
+  const [selected, setSelected] = useState<Row | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const listRef = useRef<HTMLElement | null>(null);
 
@@ -92,93 +340,75 @@ export function PriceListClient({
 
   const updatedAt = useMemo(() => {
     let max = "";
-    for (const i of items) if (i.updated_at > max) max = i.updated_at;
+    for (const p of packages) if (p.updated_at > max) max = p.updated_at;
     // updated_at เป็น timestamptz — ต้องตรึงโซนไทย ไม่งั้น SSR/CSR แสดงคนละวัน (hydration mismatch)
     return max ? formatDateBangkok(max) : "-";
-  }, [items]);
+  }, [packages]);
 
-  // รายการโปรล้วน (ไม่มีราคาปกติ) ที่โปร/คอร์สหมดเขตครบทุกอัน — ซ่อนทั้งแถว
-  // ไม่งั้นจะค้างเป็นราคา "-" บนหน้าสาธารณะหลังโปรจบ
-  const visible = useMemo(
-    () =>
-      items.filter(
-        (i) =>
-          i.price_normal != null ||
-          i.promos.some((o) => offerState(o, today) !== "expired") ||
-          i.courses.some((o) => offerState(o, today) !== "expired")
-      ),
-    [items, today]
+  const rows = useMemo(() => buildRows(packages, today), [packages, today]);
+
+  const stats = useMemo(
+    () => ({
+      promos: packages.length,
+      ending: rows.filter((r) => r.endingSoon).length,
+      expired: rows.filter((r) => r.hasExpired).length,
+      best: rows.reduce((m, r) => Math.max(m, r.bestPct ?? 0), 0),
+    }),
+    [packages, rows]
   );
 
   const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (q === "") return visible;
-    return visible.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q) ||
-        (i.benefits ?? "").toLowerCase().includes(q) ||
-        // คำเรียกปากเปล่า (search_aliases) — เช่น "โบเกาหลี" ต้องเจอ Botox Hutox
-        (i.search_aliases ?? "").toLowerCase().includes(q)
-    );
-  }, [visible, search]);
+    return q === "" ? rows : rows.filter((r) => r.search.includes(q));
+  }, [rows, search]);
 
-  // จำนวนบนแท็บ — นับหลังค้นหา เพื่อบอกว่าผลค้นหาไปอยู่กลุ่มไหนบ้าง
-  // (แพ็กเกจที่ติดหลายกลุ่มถูกนับในทุกกลุ่มที่ติดไว้ ผลรวมจึงเกินจำนวนรายการจริงได้)
+  // จำนวนบนแท็บ — นับหลังค้นหา (แพ็กเกจที่ติดหลายกลุ่มถูกนับทุกกลุ่ม ผลรวมจึงเกินจำนวนแถวจริงได้)
   const groupCounts = useMemo(() => {
     const c = { injection: 0, treatment: 0, device: 0 } as Record<
       PriceGroup,
       number
     >;
-    for (const i of searched) {
-      for (const g of PRICE_GROUP_ORDER) if (i.groups.includes(g)) c[g]++;
-    }
+    for (const r of searched)
+      for (const g of PRICE_GROUP_ORDER) if (r.groups.includes(g)) c[g]++;
     return c;
   }, [searched]);
 
-  const filtered = useMemo(
-    () =>
-      group === "all"
-        ? searched
-        : searched.filter((i) => i.groups.includes(group)),
-    [searched, group]
-  );
+  const filtered = useMemo(() => {
+    let list = group === "all" ? searched : searched.filter((r) => r.groups.includes(group));
+    if (special === "promo") list = list.filter((r) => r.hasPromoKind);
+    if (special === "ending") list = list.filter((r) => r.endingSoon);
+    if (special === "deal") list = list.filter((r) => (r.bestPct ?? 0) >= 50);
+    if (special === "expired") list = list.filter((r) => r.hasExpired);
+    return list;
+  }, [searched, group, special]);
 
-  // สลับแท็บ = ลิสต์เปลี่ยนทั้งชุด — ถ้าเลื่อนลงมาลึกแล้วค้างที่เดิมจะงงว่าอยู่ตรงไหน
-  const selectGroup = (next: PriceGroup | "all") => {
-    setGroup(next);
+  const categories = useMemo(() => {
+    const seen = new Map<string, Row[]>();
+    for (const r of filtered) {
+      const list = seen.get(r.category);
+      if (list) list.push(r);
+      else seen.set(r.category, [r]);
+    }
+    return [...seen.entries()].sort((a, b) =>
+      comparePromoCategories(a[0], b[0])
+    );
+  }, [filtered]);
+
+  // สลับแท็บ/ตัวกรอง = ลิสต์เปลี่ยนทั้งชุด — เลื่อนกลับไปหัวลิสต์ให้ไม่งงว่าอยู่ตรงไหน
+  const scrollToList = () => {
     const el = listRef.current;
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - 150;
     if (window.scrollY > top) window.scrollTo({ top, behavior: "smooth" });
   };
-
-  const categories = useMemo(() => {
-    const seen = new Map<string, PriceItemRow[]>();
-    for (const i of filtered) {
-      if (!seen.has(i.category)) seen.set(i.category, []);
-      seen.get(i.category)!.push(i);
-    }
-    return [...seen.entries()];
-  }, [filtered]);
-
-  /** ป้ายบนชิปหมวด — ปกติตัดส่วนหลัง ":" ออกให้สั้น แต่ถ้าตัดแล้วไปชนกับหมวดอื่น
-      (เช่น "IV Drip : ดูแลผิวพรรณ…" กับ "IV Drip : ลดบวม" เหลือ "IV Drip" เหมือนกัน)
-      ให้ใช้ชื่อเต็มแทน ไม่งั้นผู้ใช้เห็นชิปซ้ำสองอันแล้วแยกไม่ออกว่าอันไหนคืออะไร */
-  const chipLabels = useMemo(() => {
-    const short = (c: string) => c.split(":")[0].trim();
-    const count = new Map<string, number>();
-    for (const [cat] of categories) {
-      const s = short(cat);
-      count.set(s, (count.get(s) ?? 0) + 1);
-    }
-    return new Map(
-      categories.map(([cat]) => {
-        const s = short(cat);
-        return [cat, (count.get(s) ?? 0) > 1 ? cat.replace(/\s*:\s*/, " · ") : s];
-      })
-    );
-  }, [categories]);
+  const selectGroup = (next: PriceGroup | "all") => {
+    setGroup(next);
+    scrollToList();
+  };
+  const toggleSpecial = (next: SpecialFilter) => {
+    setSpecial((cur) => (cur === next ? null : next));
+    scrollToList();
+  };
 
   const scrollTo = (cat: string) =>
     sectionRefs.current[cat]?.scrollIntoView({
@@ -190,7 +420,7 @@ export function PriceListClient({
     <div className="min-h-screen pb-16">
       {/* หัวแบรนด์ */}
       <header className="bg-gradient-to-b from-brand-600 via-brand-500 to-brand-400 px-4 pb-14 pt-8 text-center text-cream">
-        <div className="mx-auto flex max-w-5xl flex-col items-center gap-3">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-3">
           <LogoMark className="h-14 w-14 shadow-lg" />
           <div>
             <h1 className="font-display text-3xl font-bold tracking-wide sm:text-4xl">
@@ -203,30 +433,42 @@ export function PriceListClient({
           <p className="text-xs opacity-90">
             The ART Aesthetic — Plastic Surgery Hospital
           </p>
-          <p className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] backdrop-blur">
-            <Clock3 size={12} />
-            อัปเดตล่าสุด {updatedAt}
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] backdrop-blur">
+              <Clock3 size={12} />
+              อัปเดตล่าสุด {updatedAt}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] backdrop-blur">
+              <Sparkles size={12} />
+              {/* นับ "ตัวเลือก" = จำนวนแพ็กเกจที่ซื้อได้จริง ซึ่งมากกว่าจำนวนแถวบนหน้า
+                  เพราะ 1 แถวรวมทั้ง 1 ครั้ง / คอร์ส 5 / คอร์ส 10 ของหัตถการเดียวกัน */}
+              โปรที่ขายอยู่ {formatNumber(stats.promos)} ตัวเลือก
+            </span>
+            {stats.best > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold backdrop-blur">
+                ลดสูงสุด {stats.best}%
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* แถบค้นหา + หมวด (sticky) */}
+      {/* แถบค้นหา + ตัวกรอง (sticky) */}
       <div className="sticky top-0 z-20 -mt-7 px-3 sm:px-6">
-        <div className="glass mx-auto max-w-5xl rounded-2xl px-3 py-3 shadow-lg">
+        <div className="glass mx-auto max-w-6xl rounded-2xl px-3 py-3 shadow-lg">
           {/* แท็บ 3 กลุ่มใหญ่ — แพ็กเกจที่มีหลายหัตถการโผล่ในทุกกลุ่มที่ติดไว้ */}
           <div className="mb-2 grid grid-cols-4 gap-1.5">
             {(["all", ...PRICE_GROUP_ORDER] as const).map((key) => {
               const active = group === key;
               const label = key === "all" ? "ทั้งหมด" : PRICE_GROUPS[key].label;
-              const count =
-                key === "all" ? searched.length : groupCounts[key];
+              const count = key === "all" ? searched.length : groupCounts[key];
               return (
                 <button
                   key={key}
                   type="button"
                   onClick={() => selectGroup(key)}
                   aria-pressed={active}
-                  className={`flex cursor-pointer items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-xs font-semibold transition-all active:scale-[0.97] ${
+                  className={`flex cursor-pointer items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-xs font-semibold transition-all active:scale-[0.97] max-sm:min-h-11 ${
                     active
                       ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                       : "border border-stone-200/80 bg-white/70 text-stone-600 hover:bg-brand-50 hover:text-brand-700"
@@ -244,6 +486,7 @@ export function PriceListClient({
               );
             })}
           </div>
+
           <div className="relative">
             <Search
               size={16}
@@ -253,8 +496,8 @@ export function PriceListClient({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาหัตถการ เช่น Botox, Filler, Pico..."
-              className="w-full rounded-xl border border-stone-200/80 bg-white/90 py-2.5 pl-9 pr-9 text-sm text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              placeholder="ค้นหาโปร เช่น Botox, Filler, Pico, Ultraformer..."
+              className="w-full rounded-xl border border-stone-200/80 bg-white/90 py-2.5 pl-9 pr-9 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
             />
             {search !== "" && (
               <button
@@ -267,16 +510,43 @@ export function PriceListClient({
               </button>
             )}
           </div>
+
+          {/* ตัวกรองพิเศษ */}
           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(
+              [
+                ["promo", `โปรช่วงนี้`, "bg-brand-600 text-cream"],
+                ["ending", `ใกล้หมดเขต ${stats.ending}`, "bg-amber-500 text-white"],
+                ["deal", "ลด 50% ขึ้นไป", "bg-emerald-600 text-white"],
+                ...(stats.expired > 0
+                  ? ([["expired", `หมดเขตแล้ว ${stats.expired}`, "bg-rose-600 text-white"]] as const)
+                  : []),
+              ] as [SpecialFilter, string, string][]
+            ).map(([key, label, activeClass]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleSpecial(key)}
+                aria-pressed={special === key}
+                className={`shrink-0 cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors max-sm:min-h-9 ${
+                  special === key
+                    ? activeClass
+                    : "border border-stone-200 bg-white/70 text-stone-600 hover:bg-brand-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="w-px shrink-0 bg-stone-200" />
             {categories.map(([cat, list]) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => scrollTo(cat)}
                 title={cat}
-                className="shrink-0 cursor-pointer rounded-full border border-brand-200 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                className="shrink-0 cursor-pointer rounded-full border border-brand-200 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50 max-sm:min-h-9"
               >
-                {chipLabels.get(cat)}
+                {cat}
                 <span className="ml-1 text-[10px] text-stone-400">
                   {list.length}
                 </span>
@@ -287,62 +557,74 @@ export function PriceListClient({
       </div>
 
       {loadError && (
-        <p className="mx-auto mt-6 max-w-5xl px-4 text-center text-sm text-rose-600">
+        <p className="mx-auto mt-6 max-w-6xl px-4 text-center text-sm text-rose-600">
           โหลดข้อมูลไม่สำเร็จ: {loadError} — ลองรีเฟรชหน้าอีกครั้ง
         </p>
       )}
 
+      {/* เตือนเมื่อมีโปรที่เลยวันหมดเขตแล้วแต่ยังไม่ถูกถอดออกจากระบบ */}
+      {stats.expired > 0 && (
+        <div className="mx-auto mt-5 max-w-6xl px-3 sm:px-6">
+          <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/90 px-3 py-2.5 text-[13px] text-rose-800">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <p>
+              มี {stats.expired} รายการที่<b>เลยวันหมดเขตแล้ว</b> —
+              ราคาที่แสดงอาจไม่ใช่ราคาปัจจุบัน กรุณาสอบถามเจ้าหน้าที่ก่อนใช้บริการ
+            </p>
+          </div>
+        </div>
+      )}
+
       {!loadError && filtered.length === 0 && (
-        <p className="mx-auto mt-10 max-w-5xl px-4 text-center text-sm text-stone-500">
-          {group !== "all" && searched.length > 0
-            ? `ไม่มีรายการในกลุ่ม${PRICE_GROUPS[group].label} — ลองแท็บอื่น`
-            : "ไม่พบรายการที่ค้นหา — ลองคำอื่น เช่น ชื่อหัตถการหรือหมวดหมู่"}
+        <p className="mx-auto mt-10 max-w-6xl px-4 text-center text-sm text-stone-500">
+          ไม่พบโปรที่ตรงกับที่เลือก — ลองล้างตัวกรองหรือค้นด้วยชื่อหัตถการ
         </p>
       )}
 
       {/* รายการตามหมวด */}
       <main
         ref={listRef}
-        className="mx-auto mt-6 max-w-5xl space-y-6 px-3 sm:px-6"
+        className="mx-auto mt-6 max-w-6xl space-y-7 px-3 sm:px-6"
       >
-        {categories.map(([cat, list]) => {
-          const [catTitle, catSub] = cat.split(/:(.+)/);
-          return (
-            <section
-              key={cat}
-              ref={(el) => {
-                sectionRefs.current[cat] = el;
-              }}
-              className="scroll-mt-32"
-            >
-              <div className="mb-2 flex items-baseline gap-2 border-b-2 border-brand-200 px-1 pb-1.5">
-                <h2 className="font-display text-lg font-bold text-brand-800">
-                  {catTitle.trim()}
-                </h2>
-                {catSub && (
-                  <p className="min-w-0 truncate text-xs text-stone-500">
-                    {catSub.trim()}
-                  </p>
-                )}
-              </div>
+        {categories.map(([cat, list]) => (
+          <section
+            key={cat}
+            ref={(el) => {
+              sectionRefs.current[cat] = el;
+            }}
+            className="scroll-mt-40"
+          >
+            <div className="mb-2 flex items-baseline gap-2 border-b-2 border-brand-200 px-1 pb-1.5">
+              <h2 className="font-display text-lg font-bold text-brand-800">
+                {cat}
+              </h2>
+              <p className="text-xs text-stone-500">{list.length} รายการ</p>
+            </div>
 
-              <div className="glass overflow-hidden rounded-xl">
-                {list.map((item, idx) => (
-                  <PriceRow
-                    key={item.id}
-                    item={item}
-                    today={today}
-                    striped={idx % 2 === 1}
-                    onOpen={() => setSelected(item)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+            {/* จอใหญ่: ตารางแบบเมนู PDF — คอลัมน์คอร์สโผล่เฉพาะหมวดที่มีคอร์สจริง
+                (แพ็กเกจรวมหลายหัตถการไม่มีคอร์ส 5/10 เลย ถ้าโชว์จะเป็นช่อง "-" ทั้งแถบ) */}
+            <SectionTable
+              rows={list}
+              today={today}
+              onOpen={(r) => setSelected(r)}
+            />
+
+            {/* มือถือ: การ์ดต่อรายการ */}
+            <div className="space-y-2 md:hidden">
+              {list.map((r) => (
+                <MobileCard
+                  key={r.key}
+                  row={r}
+                  today={today}
+                  onOpen={() => setSelected(r)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
       </main>
 
-      <footer className="mx-auto mt-10 max-w-5xl px-4 text-center text-[11px] leading-5 text-stone-500">
+      <footer className="mx-auto mt-10 max-w-6xl px-4 text-center text-[11px] leading-5 text-stone-500">
         <p>*เงื่อนไขเป็นไปตามที่คลินิกกำหนด ราคาอาจเปลี่ยนแปลงตามช่วงโปรโมชัน</p>
         <p className="mt-1">
           {MEMO_COMPANY.name} · {MEMO_COMPANY.address} · {MEMO_COMPANY.phone}
@@ -350,8 +632,8 @@ export function PriceListClient({
       </footer>
 
       {selected && (
-        <ItemDetailModal
-          item={selected}
+        <DetailModal
+          row={selected}
           today={today}
           onClose={() => setSelected(null)}
         />
@@ -360,102 +642,303 @@ export function PriceListClient({
   );
 }
 
-/* ---------- popup รายละเอียดสินค้า ---------- */
+/* ---------- ตารางของหมวด (จอใหญ่) ---------- */
 
-/** แถวราคาในตาราง popup — เฉพาะข้อเสนอที่ยังไม่หมดเขต (โปรหมดเขตถูกซ่อน ไม่แสดงเลย) */
-type OfferRow = {
-  label: string;
-  start: string | null;
-  end: string | null;
-  price: string;
-  state: OfferState | null; // null = ราคาปกติ (ไม่มีสถานะ)
-  isB1g1: boolean;
-};
-
-function StateChip({ state }: { state: OfferState }) {
-  const style =
-    state === "active"
-      ? "bg-emerald-100 text-emerald-700"
-      : state === "ending"
-        ? "bg-amber-100 text-amber-700"
-        : state === "upcoming"
-          ? "bg-sky-100 text-sky-700"
-          : "bg-stone-200 text-stone-500";
-  const label =
-    state === "active"
-      ? "ใช้ได้ตอนนี้"
-      : state === "ending"
-        ? "ใกล้หมดเขต"
-        : state === "upcoming"
-          ? "ยังไม่เริ่ม"
-          : "หมดเขตแล้ว";
+function SectionTable({
+  rows,
+  today,
+  onOpen,
+}: {
+  rows: Row[];
+  today: string;
+  onOpen: (row: Row) => void;
+}) {
+  const has5 = rows.some((r) => r.course5);
+  const has10 = rows.some((r) => r.course10);
+  const cols = 3 + (has5 ? 1 : 0) + (has10 ? 1 : 0);
   return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${style}`}
-    >
-      {label}
-    </span>
+    <div className="glass hidden overflow-hidden rounded-xl md:block">
+      <div className="overflow-x-auto">
+        <table
+          className={`w-full border-collapse text-sm ${
+            cols >= 5 ? "min-w-[720px]" : "min-w-[560px]"
+          }`}
+        >
+          <thead>
+            <tr className="bg-gradient-to-r from-brand-500 to-brand-400 text-cream">
+              <th className="border-b border-r border-brand-300/50 px-3 py-2.5 text-left text-[13px] font-semibold">
+                รายการ
+              </th>
+              <th className="w-[15%] border-b border-r border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold">
+                ราคาปกติ
+              </th>
+              <th
+                className={`border-b border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold ${
+                  has5 || has10 ? "w-[19%] border-r" : "w-[26%]"
+                }`}
+              >
+                ราคาโปร
+              </th>
+              {has5 && (
+                <th
+                  className={`w-[17%] border-b border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold ${
+                    has10 ? "border-r" : ""
+                  }`}
+                >
+                  คอร์ส 5 ครั้ง
+                </th>
+              )}
+              {has10 && (
+                <th className="w-[17%] border-b border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold">
+                  คอร์ส 10 ครั้ง
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <DeskRow
+                key={r.key}
+                row={r}
+                today={today}
+                striped={i % 2 === 1}
+                showCourse5={has5}
+                showCourse10={has10}
+                onOpen={() => onOpen(r)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
-function ItemDetailModal({
-  item,
+function DeskRow({
+  row,
+  today,
+  striped,
+  showCourse5,
+  showCourse10,
+  onOpen,
+}: {
+  row: Row;
+  today: string;
+  striped: boolean;
+  showCourse5: boolean;
+  showCourse10: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <tr
+      onClick={onOpen}
+      className={`cursor-pointer transition-colors hover:bg-brand-50/60 ${
+        striped ? "bg-cream-soft/40" : "bg-white/70"
+      }`}
+    >
+      <td className="border-b border-r border-stone-200 px-3 py-2.5 align-top">
+        <div className="flex items-start gap-1.5">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium leading-5 text-stone-800">
+              {row.name}
+            </p>
+            {row.sub && (
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-stone-500">
+                {row.sub}
+              </p>
+            )}
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {row.groups.length > 1 &&
+                row.groups.map((g) => (
+                  <span
+                    key={g}
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
+                  >
+                    {PRICE_GROUPS[g].label}
+                  </span>
+                ))}
+              {row.extras.map((p) => {
+                const state = promoState(p, today);
+                if (state === "expired") return null;
+                const pct = discountPct(p);
+                return (
+                  <span
+                    key={p.id}
+                    title={p.name}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700"
+                  >
+                    {qtyLabel(p) || p.name} {baht(p.sale_price)}
+                    {pct !== null && (
+                      <b className="text-brand-600">-{pct}%</b>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+          <ChevronRight size={13} className="ml-auto mt-1 shrink-0 text-stone-300" />
+        </div>
+      </td>
+      <td className="border-b border-r border-stone-200 px-3 py-2.5 text-right align-top">
+        <span
+          className={`tabular-nums text-[13px] ${
+            row.main && discountPct(row.main) !== null
+              ? "text-stone-400 line-through"
+              : "font-semibold text-stone-700"
+          }`}
+        >
+          {baht(row.fullPrice)}
+        </span>
+        {row.perSession && row.fullPrice !== null && (
+          <span className="block text-[10px] text-stone-400">ต่อครั้ง</span>
+        )}
+      </td>
+      <td
+        className={`border-b border-stone-200 px-3 py-2.5 align-top ${
+          showCourse5 || showCourse10 ? "border-r" : ""
+        }`}
+      >
+        <PriceCell pkg={row.main} today={today} emphasise />
+      </td>
+      {showCourse5 && (
+        <td
+          className={`border-b border-stone-200 px-3 py-2.5 align-top ${
+            showCourse10 ? "border-r" : ""
+          }`}
+        >
+          <PriceCell pkg={row.course5} today={today} />
+        </td>
+      )}
+      {showCourse10 && (
+        <td className="border-b border-stone-200 px-3 py-2.5 align-top">
+          <PriceCell pkg={row.course10} today={today} />
+        </td>
+      )}
+    </tr>
+  );
+}
+
+/* ---------- การ์ด (มือถือ) ---------- */
+
+function MobileCard({
+  row,
+  today,
+  onOpen,
+}: {
+  row: Row;
+  today: string;
+  onOpen: () => void;
+}) {
+  const main = row.main;
+  const state = main ? promoState(main, today) : null;
+  const pct = main && state !== "expired" ? discountPct(main) : null;
+  const courses = [row.course5, row.course10, ...row.extras].filter(
+    (p): p is Pkg => p !== null && promoState(p, today) !== "expired"
+  );
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`ดูรายละเอียด ${row.name}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onOpen();
+      }}
+      className="glass cursor-pointer rounded-xl px-3 py-3 transition-colors active:scale-[0.99]"
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold leading-5 text-stone-800">
+            {row.name}
+          </p>
+          {row.sub && (
+            <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-stone-500">
+              {row.sub}
+            </p>
+          )}
+        </div>
+        <ChevronRight size={16} className="mt-0.5 shrink-0 text-stone-300" />
+      </div>
+
+      {/* ราคาโปรตัวใหญ่ + ราคาปกติขีดฆ่า */}
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        {main ? (
+          <>
+            <span
+              className={`tabular-nums text-xl font-extrabold ${
+                state === "expired"
+                  ? "text-stone-400 line-through"
+                  : "text-brand-600"
+              }`}
+            >
+              {baht(main.sale_price)}
+            </span>
+            {pct !== null && (
+              <>
+                <span className="tabular-nums text-xs text-stone-400 line-through">
+                  {baht(row.fullPrice)}
+                </span>
+                <DiscountBadge pct={pct} big />
+              </>
+            )}
+          </>
+        ) : (
+          <span className="text-sm text-stone-500">
+            ราคาปกติ {baht(row.fullPrice)}
+          </span>
+        )}
+      </div>
+
+      {/* คอร์ส/ตัวเลือกอื่น */}
+      {courses.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {courses.map((p) => {
+            const cPct = discountPct(p);
+            return (
+              <span
+                key={p.id}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-800"
+              >
+                {qtyLabel(p) || "แพ็กเกจ"} {baht(p.sale_price)}
+                {cPct !== null && <b className="text-brand-600">-{cPct}%</b>}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {row.groups.map((g) => (
+          <span
+            key={g}
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
+          >
+            {PRICE_GROUPS[g].label}
+          </span>
+        ))}
+        {main && <StateChip state={promoState(main, today)} end={main.ends_on} />}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- โมดัลรายละเอียด: "โปรนี้ได้อะไรบ้าง" ---------- */
+
+function DetailModal({
+  row,
   today,
   onClose,
 }: {
-  item: PriceItemRow;
+  row: Row;
   today: string;
   onClose: () => void;
 }) {
-  // ตารางราคา: ราคาปกติ → โปรโมชัน → 1แถม1 → คอร์ส — เฉพาะช่วงที่ยังไม่หมดเขต
-  // (โปรหมดเขตไม่แสดง — ราคากลับไปเป็นราคาปกติเอง เหมือนกติกาในลิสต์หน้าแรก)
-  const rows: OfferRow[] = [];
-  if (item.price_normal != null) {
-    rows.push({
-      label: "ราคาปกติ (Price List)",
-      // ราคาปกติไม่มีวันหมดเขต — เดิมใส่ 2026-01-01 ถึง 2026-12-31 ตายตัว ทำให้ปีหน้า
-      // ลูกค้าเห็นว่าราคาปกติ "หมดอายุไปแล้ว"; ปล่อยว่างแล้วให้ตารางขึ้น "-" ตามที่รองรับอยู่แล้ว
-      start: null,
-      end: null,
-      price: item.price_normal,
-      state: null,
-      isB1g1: false,
-    });
-  }
-  const promoRows: OfferRow[] = [];
-  for (const o of item.promos) {
-    const state = offerState(o, today);
-    if (state === "expired") continue;
-    const row: OfferRow = {
-      label: o.label,
-      start: o.start,
-      end: o.end,
-      price: o.price,
-      state,
-      isB1g1: o.label.includes("แถม"),
-    };
-    rows.push(row);
-    promoRows.push(row);
-  }
-  for (const c of item.courses) {
-    const state = offerState(c, today);
-    if (state === "expired") continue;
-    rows.push({
-      label: c.label,
-      start: c.start,
-      end: c.end,
-      price: c.price,
-      state,
-      isB1g1: false,
-    });
-  }
-
-  // แถวที่เน้นเด่น = โปรที่ใช้ได้ ณ วันนี้แถวแรก — ใช้ isCurrentPromo กติกาเดียวกับ
-  // ราคาที่โชว์ในแถวลิสต์ (PriceRow) เพื่อให้ popup ไฮไลต์ราคาเดียวกับที่ลิสต์แสดง
-  // ถ้าไม่มีโปรที่ใช้ได้เลย ค่อยไฮไลต์แถวราคาปกติ
-  const currentPromoRow = promoRows.find(isCurrentPromo) ?? null;
-  const isCurrentRow = (r: OfferRow) =>
-    currentPromoRow !== null ? r === currentPromoRow : r.state === null;
+  // เรียงให้ตัวเลือกเล็กสุดอยู่บน (1 ครั้ง → คอร์ส 5 → คอร์ส 10) แพ็กเกจรวมมีตัวเดียวอยู่แล้ว
+  const list = [...row.all].sort(
+    (a, b) => (a.base_qty ?? 0) - (b.base_qty ?? 0) || a.sale_price - b.sale_price
+  );
+  const expired = list.filter((p) => promoState(p, today) === "expired");
 
   return (
     <div
@@ -467,10 +950,9 @@ function ItemDetailModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={item.name}
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl animate-fade-in-up sm:rounded-2xl sm:animate-scale-in"
+        aria-label={row.name}
+        className="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl animate-fade-in-up sm:rounded-2xl sm:animate-scale-in"
       >
-        {/* หัว popup: ปุ่มย้อนกลับ */}
         <div className="flex items-center gap-2 border-b border-stone-100 bg-gradient-to-r from-brand-50 to-cream-soft px-4 py-3">
           <button
             type="button"
@@ -492,12 +974,9 @@ function ItemDetailModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* ชื่อ + หมวด + กลุ่มหัตถการ */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-xs font-medium text-brand-600">
-              {item.category.split(":")[0].trim()}
-            </p>
-            {sortPriceGroups(item.groups).map((g) => (
+            <p className="text-xs font-medium text-brand-600">{row.category}</p>
+            {row.groups.map((g) => (
               <span
                 key={g}
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
@@ -506,141 +985,127 @@ function ItemDetailModal({
               </span>
             ))}
           </div>
-          <h2 className="mt-0.5 whitespace-pre-line font-display text-xl font-bold leading-snug text-stone-900">
-            {item.name}
+          <h2 className="mt-0.5 font-display text-xl font-bold leading-snug text-stone-900">
+            {row.name}
           </h2>
+          {row.fullPrice !== null && (
+            <p className="mt-1 text-[13px] text-stone-500">
+              ราคาปกติ {baht(row.fullPrice)}
+              {row.perSession && " ต่อครั้ง"}
+            </p>
+          )}
 
-          {/* ตารางราคา — โครงเดียวกับไฟล์ Price List (เฉพาะช่วงที่ยังไม่หมดเขต, แถวโปรที่ใช้ได้ถูกเน้นเด่น) */}
-          <div className="mt-4 overflow-x-auto rounded-xl border border-stone-300">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-gradient-to-r from-brand-500 to-brand-400 text-cream">
-                  <th className="border-b border-r border-brand-300/50 px-3 py-2.5 text-left text-[13px] font-semibold">
-                    รายการราคา
-                  </th>
-                  <th className="border-b border-r border-brand-300/50 px-3 py-2.5 text-left text-[13px] font-semibold">
-                    ช่วงเวลา
-                  </th>
-                  <th className="border-b border-brand-300/50 px-3 py-2.5 text-right text-[13px] font-semibold">
-                    ราคา
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => {
-                  const current = isCurrentRow(r);
-                  return (
-                    <tr
-                      key={i}
-                      className={
-                        current
-                          ? "bg-gradient-to-r from-brand-100/90 via-brand-50 to-amber-50/70"
-                          : i % 2 === 1
-                            ? "bg-cream-soft/40"
-                            : "bg-white"
-                      }
-                    >
-                      <td
-                        className={`border-b border-r border-stone-200 px-3 py-2.5 ${
-                          current
-                            ? "font-bold text-brand-800"
-                            : "font-medium text-stone-800"
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          {current && r.state !== null && (
-                            <Sparkles
-                              size={14}
-                              className="shrink-0 text-brand-500"
-                            />
-                          )}
-                          {r.isB1g1 && (
-                            <Gift size={14} className="shrink-0 text-pink-600" />
-                          )}
-                          {r.label}
+          {expired.length > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[13px] text-rose-800">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <p>
+                {expired.length === list.length
+                  ? "โปรนี้หมดเขตแล้ว"
+                  : `มี ${expired.length} ตัวเลือกที่หมดเขตแล้ว`}{" "}
+                — กรุณาสอบถามเจ้าหน้าที่เพื่อยืนยันราคาปัจจุบัน
+              </p>
+            </div>
+          )}
+
+          {/* ตัวเลือกทั้งหมดของรายการนี้ + ได้อะไรบ้าง */}
+          <div className="mt-4 space-y-3">
+            {list.map((p) => {
+              const state = promoState(p, today);
+              const pct = state === "expired" ? null : discountPct(p);
+              return (
+                <div
+                  key={p.id}
+                  className={`overflow-hidden rounded-xl border ${
+                    state === "expired"
+                      ? "border-stone-200 bg-stone-50/70"
+                      : "border-brand-200 bg-gradient-to-b from-brand-50/60 to-white"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-stone-200/80 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold leading-5 text-stone-800">
+                        {p.name}
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] text-stone-500">
+                          {p.starts_on && p.ends_on
+                            ? `${shortThaiDate(p.starts_on)} – ${shortThaiDate(p.ends_on)}`
+                            : p.ends_on
+                              ? `ถึง ${shortThaiDate(p.ends_on)}`
+                              : "ไม่ระบุวันหมดเขต"}
                         </span>
-                      </td>
-                      <td className="border-b border-r border-stone-200 px-3 py-2.5 text-stone-600">
-                        <span className="mr-2 whitespace-nowrap">
-                          {r.start && r.end
-                            ? `${shortThaiDate(r.start)} – ${shortThaiDate(r.end)}`
-                            : "-"}
-                        </span>
-                        {r.state !== null &&
-                          (current ? (
-                            <span
-                              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${
-                                r.state === "ending"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-gradient-to-r from-brand-800 to-brand-700 text-cream"
-                              }`}
-                            >
-                              <Sparkles size={11} />
-                              {r.state === "ending"
-                                ? "โปรตอนนี้ · ใกล้หมดเขต"
-                                : "โปรตอนนี้"}
-                            </span>
-                          ) : (
-                            <StateChip state={r.state} />
-                          ))}
-                        {current && r.state === null && (
-                          <StateChip state="active" />
+                        {/* ช่วงเวลาเต็มพิมพ์ไว้ข้างบนแล้ว — ป้ายซ้ำ "ถึง …" ของสถานะปกติจึงไม่ต้องโชว์ */}
+                        {state !== "active" && (
+                          <StateChip state={state} end={p.ends_on} />
                         )}
-                      </td>
-                      <td
-                        className={`whitespace-nowrap border-b border-stone-200 px-3 py-2.5 text-right tabular-nums ${
-                          current
-                            ? "text-lg font-extrabold text-brand-600"
-                            : "text-base font-bold text-stone-900"
+                      </div>
+                    </div>
+                    {/* จอแคบให้ราคาลงบรรทัดของตัวเอง ไม่งั้นชื่อโปรถูกบีบเหลือ 3-4 บรรทัด */}
+                    <div className="flex basis-full items-center justify-end gap-2 sm:basis-auto">
+                      {pct !== null && (
+                        <>
+                          <span className="tabular-nums text-xs text-stone-400 line-through">
+                            {baht(p.full_price)}
+                          </span>
+                          <DiscountBadge pct={pct} big />
+                        </>
+                      )}
+                      <span
+                        className={`tabular-nums text-lg font-extrabold ${
+                          state === "expired"
+                            ? "text-stone-400 line-through"
+                            : "text-brand-600"
                         }`}
                       >
-                        {fmtPrice(r.price)}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={3}
-                      className="px-3 py-4 text-center text-stone-400"
-                    >
-                      ไม่มีข้อมูลราคา
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                        {baht(p.sale_price)}
+                      </span>
+                    </div>
+                  </div>
 
-          {/* รายละเอียด */}
-          {item.benefits && (
-            <div className="mt-5">
-              <p className="mb-1.5 border-l-4 border-brand-400 pl-2 text-sm font-bold text-brand-700">
-                ประโยชน์
-              </p>
-              <p className="whitespace-pre-line text-[14px] leading-7 text-stone-700">
-                {item.benefits}
-              </p>
-            </div>
-          )}
-          {item.process && (
-            <div className="mt-5">
-              <p className="mb-1.5 border-l-4 border-brand-400 pl-2 text-sm font-bold text-brand-700">
-                ขั้นตอนการทำ
-              </p>
-              <p className="whitespace-pre-line text-[14px] leading-7 text-stone-700">
-                {item.process}
-              </p>
-            </div>
-          )}
+                  <div className="px-3 py-2.5">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-brand-700">
+                      <Package size={13} />
+                      ได้อะไรบ้าง
+                    </p>
+                    <ul className="space-y-1">
+                      {[...p.items]
+                        .sort((a, b) => a.position - b.position)
+                        .map((it) => (
+                          <li
+                            key={it.id}
+                            className="flex items-baseline justify-between gap-3 text-[13px] leading-6"
+                          >
+                            <span className="min-w-0 text-stone-700">
+                              <b className="mr-1 tabular-nums text-brand-700">
+                                {formatNumber(it.qty)}
+                                {it.unit ? ` ${it.unit}` : "×"}
+                              </b>
+                              {it.item_name}
+                            </span>
+                            {it.unit_price ? (
+                              <span className="shrink-0 whitespace-nowrap tabular-nums text-[11px] text-stone-400">
+                                ปกติ {baht(it.unit_price * it.qty)}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      {p.items.length === 0 && (
+                        <li className="text-[13px] text-stone-400">
+                          ไม่มีรายละเอียดในระบบ — สอบถามเจ้าหน้าที่
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
           <p className="mt-5 text-[11px] text-stone-400">
             *เงื่อนไขเป็นไปตามที่คลินิกกำหนด สอบถามเพิ่มเติม {MEMO_COMPANY.phone}
           </p>
         </div>
 
-        {/* ปุ่มย้อนกลับล่าง — กดสะดวกบนมือถือ */}
         <div className="border-t border-stone-100 px-4 py-3 pb-safe-3 sm:pb-3">
           <button
             type="button"
@@ -652,138 +1117,6 @@ function ItemDetailModal({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ---------- แถวรายการ ---------- */
-
-function PriceRow({
-  item,
-  today,
-  striped,
-  onOpen,
-}: {
-  item: PriceItemRow;
-  today: string;
-  striped: boolean;
-  onOpen: () => void;
-}) {
-  // ข้อเสนอที่ยังไม่หมดเขต (ซ่อนอันที่หมดแล้ว — ราคากลับไปเป็นราคาปกติเอง)
-  const promos = item.promos
-    .map((o) => ({ ...o, state: offerState(o, today) }))
-    .filter((o) => o.state !== "expired");
-  const courses = item.courses
-    .map((o) => ({ ...o, state: offerState(o, today) }))
-    .filter((o) => o.state !== "expired");
-
-  // ชิปกลุ่ม: โชว์เฉพาะแพ็กเกจที่รวมหลายหัตถการ (เช่น Ulthera + Botox = เครื่อง+ฉีด)
-  // รายการกลุ่มเดียวไม่ต้องโชว์ — ชื่อหมวดด้านบนบอกอยู่แล้ว และจะรกเปล่าๆ
-  const groups = sortPriceGroups(item.groups);
-  const showGroups = groups.length > 1;
-
-  // โปรที่ใช้ได้ตอนนี้ — กติกาเดียวกับแถวไฮไลต์ใน popup (isCurrentPromo)
-  const activePromo = promos.find((o) => isCurrentPromo(o));
-  const b1g1 = promos.find(
-    (o) => (o.state === "active" || o.state === "ending") && o.label.includes("แถม")
-  );
-  const showNormalStruck =
-    item.price_normal != null &&
-    activePromo != null &&
-    activePromo.price !== item.price_normal;
-
-  return (
-    <div
-      className={`${striped ? "bg-white/45" : "bg-white/70"} border-b border-stone-100/80 last:border-b-0`}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`ดูรายละเอียด ${item.name}`}
-        onClick={onOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onOpen();
-        }}
-        className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors hover:bg-brand-50/40 sm:px-4"
-      >
-        {/* ชื่อ (แพ็กเกจหลายบรรทัด → ย่อเป็นบรรทัดเดียวในลิสต์, กดดูเต็มใน popup) */}
-        <div className="flex min-w-0 flex-1 basis-52 items-center gap-1.5">
-          <p className="line-clamp-2 min-w-0 text-[13px] font-medium leading-5 text-stone-800">
-            {item.name.replace(/\n/g, " ")}
-          </p>
-          <ChevronRight size={13} className="shrink-0 text-stone-300" />
-        </div>
-
-        {/* ราคา */}
-        <div className="flex items-baseline gap-2 whitespace-nowrap">
-          {showNormalStruck && (
-            <span className="text-xs text-stone-400 line-through">
-              {fmtPrice(item.price_normal!)}
-            </span>
-          )}
-          <span
-            className={`text-[15px] font-bold tabular-nums ${
-              activePromo ? "text-brand-600" : "text-stone-800"
-            }`}
-          >
-            {activePromo
-              ? fmtPrice(activePromo.price)
-              : item.price_normal != null
-                ? fmtPrice(item.price_normal)
-                : "-"}
-          </span>
-        </div>
-
-        {/* ป้ายกลุ่ม (แพ็กเกจรวม) + สถานะ + คอร์ส */}
-        <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
-          {showGroups &&
-            groups.map((g) => (
-              <span
-                key={g}
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRICE_GROUPS[g].chip}`}
-              >
-                {PRICE_GROUPS[g].label}
-              </span>
-            ))}
-          {activePromo && (
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                activePromo.state === "ending"
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-emerald-50 text-emerald-700"
-              }`}
-            >
-              <Sparkles size={10} />
-              {activePromo.state === "ending" ? "ใกล้หมดเขต" : "โปรโมชัน"} ถึง{" "}
-              {shortThaiDate(activePromo.end)}
-            </span>
-          )}
-          {b1g1 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-semibold text-pink-700">
-              <Gift size={10} />1 แถม 1 {fmtPrice(b1g1.price)} ถึง{" "}
-              {shortThaiDate(b1g1.end)}
-            </span>
-          )}
-          {courses.map((c, i) => (
-            <span
-              key={i}
-              title={`${c.label} ${fmtPrice(c.price)} (${shortThaiDate(c.start)} - ${shortThaiDate(c.end)})`}
-              className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700"
-            >
-              {c.label} {fmtPrice(c.price)}
-              {c.state === "ending" && (
-                <span className="ml-1 text-amber-600">ใกล้หมดเขต</span>
-              )}
-              {c.state === "upcoming" && (
-                <span className="ml-1 text-stone-400">
-                  เริ่ม {shortThaiDate(c.start)}
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-
     </div>
   );
 }

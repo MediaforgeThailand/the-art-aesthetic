@@ -567,6 +567,61 @@ export type PriceItemRow = {
   updated_at: string;
 };
 
+/** ชนิดของสิ่งที่ขาย: promo = โปรช่วงเวลาที่อนุมัติระหว่างปี (มีวันหมดเขตจริง)
+    / package = แพ็กเกจประจำในระบบ (คอร์ส 5-10 ครั้ง ฯลฯ ยกเข้าระบบทีเดียวทั้งปี) */
+export type PromoPackageKind = "promo" | "package";
+
+/** หัตถการที่ได้รับในแพ็กเกจ 1 บรรทัด — "โปรนี้ได้อะไรบ้าง" (migration 0071) */
+export type PromoPackageItemRow = {
+  id: string;
+  package_id: string;
+  /** รหัสหัตถการในระบบ POS (AES-68xxxxx) — null ได้ถ้าไฟล์ไม่มีรหัส */
+  item_sku: string | null;
+  item_name: string;
+  qty: number;
+  unit: string | null;
+  /** ราคา Price list ต่อหน่วย (ราคาเต็ม — ไม่ใช่ต้นทุน) */
+  unit_price: number | null;
+  position: number;
+  created_at: string;
+};
+
+/** โปร/แพ็กเกจที่ขายจริง — แหล่งข้อมูลของหน้าสาธารณะ /price-list (migration 0071) */
+export type PromoPackageRow = {
+  id: string;
+  /** รหัสแพ็กเกจในระบบ POS เช่น PKAES-6811002 — กุญแจตอน re-import */
+  sku: string;
+  name: string;
+  category: string;
+  /** แท็บ ฉีด/ทรีตเม้น/เครื่อง — ชุดเดียวกับ price_items.groups */
+  groups: PriceGroup[];
+  kind: PromoPackageKind;
+  sale_price: number;
+  /** ราคาเต็ม = Σ (จำนวน × ราคา Price list ต่อหน่วย); null = คิด % ส่วนลดไม่ได้ */
+  full_price: number | null;
+  starts_on: string | null;
+  /** null = ไม่ระบุวันหมดเขต (ขายต่อเนื่อง) — คนละเรื่องกับหมดเขตแล้ว */
+  ends_on: string | null;
+  /** แพ็กเกจหัตถการเดียว: ใช้จับกลุ่มแถวแบบตาราง Price List; null = แพ็กเกจรวม */
+  base_item_sku: string | null;
+  base_item_name: string | null;
+  base_qty: number | null;
+  base_unit: string | null;
+  base_unit_price: number | null;
+  /** เลขที่เอกสารอนุมัติ — ใช้ในหลังบ้าน ไม่แสดงบนหน้าสาธารณะ */
+  memo: string | null;
+  note: string | null;
+  active: boolean;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** แพ็กเกจพร้อมรายการหัตถการที่ได้ (embed จาก promo_package_items) */
+export type PromoPackageWithItems = PromoPackageRow & {
+  items: PromoPackageItemRow[];
+};
+
 export type StaffKpiRow = {
   id: string;
   /** วันแรกของเดือน (YYYY-MM-01) */
@@ -912,6 +967,28 @@ export interface Database {
           groups: PriceGroup[];
         };
         Update: Partial<PriceItemRow>;
+        Relationships: [];
+      };
+      promo_packages: {
+        Row: PromoPackageRow;
+        Insert: Partial<PromoPackageRow> & {
+          sku: string;
+          name: string;
+          category: string;
+          /** DB บังคับอย่างน้อย 1 กลุ่ม (constraint promo_packages_groups_valid) */
+          groups: PriceGroup[];
+          sale_price: number;
+        };
+        Update: Partial<PromoPackageRow>;
+        Relationships: [];
+      };
+      promo_package_items: {
+        Row: PromoPackageItemRow;
+        Insert: Partial<PromoPackageItemRow> & {
+          package_id: string;
+          item_name: string;
+        };
+        Update: Partial<PromoPackageItemRow>;
         Relationships: [];
       };
       price_promotions: {

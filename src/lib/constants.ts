@@ -286,6 +286,42 @@ export function sortPriceGroups(groups: PriceGroup[]): PriceGroup[] {
   return PRICE_GROUP_ORDER.filter((g) => groups.includes(g));
 }
 
+/* ---------- โปร/แพ็กเกจที่ขายจริง (หน้าสาธารณะ /price-list) ---------- */
+
+/** ลำดับหมวดบนหน้า Price List — หมวดที่ไม่อยู่ในลิสต์นี้ไปต่อท้ายตามตัวอักษร
+    (ค่าใน promo_packages.category เป็น text อิสระ เพิ่มหมวดใหม่ได้โดยไม่ต้อง migrate
+     แต่ถ้าอยากคุมลำดับการแสดงผลต้องมาเติมที่นี่) */
+export const PROMO_CATEGORY_ORDER = [
+  "แพ็กเกจรวมหลายหัตถการ",
+  "Botox",
+  "Filler & Skin Booster",
+  "เมโส & ผิวขาว",
+  "IV Drip",
+  "เครื่องยกกระชับ",
+  "เลเซอร์ผิวหน้า",
+  "กำจัดขนถาวร",
+  "โปรแกรมดูแลผิวหน้า",
+  "ดูแลผิวหน้า & สิว",
+  "ฟื้นฟูผิวเฉพาะทาง",
+  "ลดสัดส่วน",
+  "ร้อยไหม",
+  "นวด & ผ่อนคลาย",
+  "ฟื้นฟูสุขภาพ",
+] as const;
+
+/** เรียงหมวดตาม PROMO_CATEGORY_ORDER — หมวดแปลกใหม่ไปอยู่ท้ายสุด ไม่หายไปจากหน้า */
+export function comparePromoCategories(a: string, b: string): number {
+  const ia = PROMO_CATEGORY_ORDER.indexOf(a as (typeof PROMO_CATEGORY_ORDER)[number]);
+  const ib = PROMO_CATEGORY_ORDER.indexOf(b as (typeof PROMO_CATEGORY_ORDER)[number]);
+  if (ia === -1 && ib === -1) return a.localeCompare(b, "th");
+  if (ia === -1) return 1;
+  if (ib === -1) return -1;
+  return ia - ib;
+}
+
+/** เหลือกี่วันถึงนับว่า "ใกล้หมดเขต" — ใช้ทั้งป้ายบนแถวและชิปตัวกรอง */
+export const PROMO_ENDING_SOON_DAYS = 30;
+
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
 /** ประเภทแหล่งไฟล์ — key เก็บลง DB, ระบบเดาอัตโนมัติจาก URL ได้ */

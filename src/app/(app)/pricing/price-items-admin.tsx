@@ -408,10 +408,11 @@ export function PriceItemsAdmin({
         </div>
       </div>
 
-      <p className="mb-3 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
-        หน้า Price List เป็นหน้าสาธารณะ ไม่ต้องล็อกอินก็เปิดดูได้ —
-        เพิ่ม/แก้ไข/ลบรายการที่นี่แล้วหน้าเว็บอัพเดททันที
-        โปรโมชันที่เลยวันหมดเขตจะหายจากหน้าเว็บเองอัตโนมัติ
+      <p className="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-600">
+        <b>รายการชุดนี้ไม่ได้แสดงบนหน้า /price-list แล้ว</b> (หน้าสาธารณะย้ายไปใช้
+        &quot;โปรที่ขึ้นหน้า Price List&quot; ด้านบน) — ชุดนี้ยังใช้เป็น{" "}
+        <b>ราคาอ้างอิงกลาง</b> ของระบบ: ตัวเลือกโปรแกรมใน Influ Management (Stage 2)
+        และการคิดต้นทุนในหน้า /influ-cost ดึงราคาจากที่นี่
       </p>
 
       {loadError && (

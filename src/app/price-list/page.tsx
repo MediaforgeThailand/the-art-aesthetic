@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import type { PriceItemRow } from "@/lib/types";
+import type { PromoPackageWithItems } from "@/lib/types";
 import { PriceListClient } from "./price-list-client";
 
 export const metadata: Metadata = {
   title: "Price List & Promotion",
   description:
-    "The ART Aesthetic — รายการราคาและโปรโมชันหัตถการความงาม อัปเดตล่าสุดจากคลินิก",
+    "The ART Aesthetic — โปรโมชันหัตถการความงามที่เปิดขายอยู่ตอนนี้ พร้อมส่วนลดและวันหมดเขต",
 };
 
 // หน้าสาธารณะ ราคา/โปรอัพเดทจากหลังบ้านต้องสดเสมอ
@@ -16,12 +16,12 @@ export default async function PriceListPage() {
   const supabase = await createClient();
 
   // ดึงทั้งหมดแบบแบ่งหน้า — PostgREST ตัดที่ ~1,000 แถว
-  const items: PriceItemRow[] = [];
+  const items: PromoPackageWithItems[] = [];
   let loadError: string | null = null;
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
-      .from("price_items")
-      .select("*")
+      .from("promo_packages")
+      .select("*, items:promo_package_items(*)")
       .eq("active", true)
       .order("sort", { ascending: true })
       .range(offset, offset + 999);
@@ -29,9 +29,9 @@ export default async function PriceListPage() {
       loadError = error.message;
       break;
     }
-    items.push(...((data ?? []) as PriceItemRow[]));
+    items.push(...((data ?? []) as unknown as PromoPackageWithItems[]));
     if (!data || data.length < 1000) break;
   }
 
-  return <PriceListClient items={items} loadError={loadError} />;
+  return <PriceListClient packages={items} loadError={loadError} />;
 }
