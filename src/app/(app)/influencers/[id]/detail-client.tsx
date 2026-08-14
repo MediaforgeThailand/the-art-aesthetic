@@ -18,11 +18,16 @@ import {
   PhoneCall,
   Send,
   Undo2,
+  UserRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  InfluLogProvider,
+  useInfluLog,
+} from "@/components/influ-log-provider";
 import { SignaturePad } from "@/components/signature-pad";
 import {
   Badge,
@@ -57,6 +62,7 @@ import {
   itemEffectiveCost,
   tierFromFollowers,
 } from "@/lib/influ-constants";
+import { logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
@@ -84,6 +90,15 @@ import { PostLinksCard } from "./post-links";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+/** ชื่อเคสที่จะไปโผล่ในประวัติการใช้งาน (นิยามซ้ำจาก influName ในบอร์ด —
+    ไม่ import จาก influ-board.tsx เพราะไฟล์นั้นดึง dnd-kit มาทั้งก้อน) */
+function logNameOf(
+  i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname">
+): string {
+  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
+  return i.nickname ? `${full} (${i.nickname})` : full;
 }
 
 /** สร้าง checklist ติดตามงานจากเอกสาร 5 หมวด (idempotent) — คืน error message ถ้าล้ม
@@ -182,9 +197,11 @@ function NameEditModal({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [firstName, setFirstName] = useState(influencer.first_name);
   const [lastName, setLastName] = useState(influencer.last_name ?? "");
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
+  const [code, setCode] = useState(influencer.influ_code ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -198,25 +215,50 @@ function NameEditModal({
     }
     setBusy(true);
     setErr(null);
+    const nextCode = code.trim() || null;
     const { error } = await supabase
       .from("influencers")
       .update({
         first_name: first,
         last_name: lastName.trim() || null,
         nickname: nickname.trim() || null,
+        influ_code: nextCode,
       })
       .eq("id", influencer.id);
     setBusy(false);
     if (error) {
-      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
+      // unique index บน lower(influ_code) — บอกเป็นภาษาคนแทน error ดิบของ Postgres
+      setErr(
+        error.code === "23505"
+          ? `รหัส Influ ID "${nextCode}" ถูกใช้กับเคสอื่นแล้ว`
+          : `บันทึกไม่สำเร็จ: ${error.message}`
+      );
       return;
+    }
+    const changed: string[] = [];
+    const nextName = logNameOf({
+      first_name: first,
+      last_name: lastName.trim() || null,
+      nickname: nickname.trim() || null,
+    });
+    if (nextName !== logNameOf(influencer)) changed.push(`ชื่อ → ${nextName}`);
+    if (nextCode !== (influencer.influ_code ?? null))
+      changed.push(`รหัส Influ ID → ${nextCode ?? "(ลบออก)"}`);
+    if (changed.length > 0) {
+      log({
+        action: "update",
+        entityId: influencer.id,
+        influencerId: influencer.id,
+        influencerName: nextName,
+        summary: `แก้ข้อมูลตัวบุคคล: ${changed.join(" · ")}`,
+      });
     }
     onClose();
     router.refresh();
   };
 
   return (
-    <Modal open onClose={onClose} title="แก้ไขชื่อ Influencer">
+    <Modal open onClose={onClose} title="แก้ไขชื่อ / รหัส Influ ID">
       <form onSubmit={save} className="space-y-3">
         <div>
           <Label htmlFor="influ-first">ชื่อ *</Label>
@@ -243,6 +285,18 @@ function NameEditModal({
             onChange={(e) => setNickname(e.target.value)}
             placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
           />
+        </div>
+        <div>
+          <Label htmlFor="influ-code">รหัส Influ ID</Label>
+          <Input
+            id="influ-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="เช่น INF-2569-001"
+          />
+          <p className="mt-1 text-[11px] text-stone-400">
+            รหัสอ้างอิงของทีม — ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่ออกรหัส)
+          </p>
         </div>
         {err && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
@@ -281,6 +335,7 @@ function CaseInfoEditModal({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [serviceDate, setServiceDate] = useState(influencer.service_date ?? "");
   const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
   const [busy, setBusy] = useState(false);
@@ -291,11 +346,13 @@ function CaseInfoEditModal({
     if (busy) return;
     setBusy(true);
     setErr(null);
+    const nextDate = serviceDate === "" ? null : serviceDate;
+    const nextDoctor = doctorName.trim() || null;
     const { error } = await supabase
       .from("influencers")
       .update({
-        service_date: serviceDate === "" ? null : serviceDate,
-        doctor_name: doctorName.trim() || null,
+        service_date: nextDate,
+        doctor_name: nextDoctor,
       })
       .eq("id", influencer.id);
     setBusy(false);
@@ -303,6 +360,15 @@ function CaseInfoEditModal({
       setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
       return;
     }
+    log({
+      action: "update",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `แก้วันรับบริการ/แพทย์: ${
+        nextDate ? formatDate(nextDate) : "ยังไม่กำหนดวัน"
+      } · ${nextDoctor ?? "ยังไม่ระบุแพทย์"}`,
+    });
     onClose();
     router.refresh();
   };
@@ -368,6 +434,8 @@ export function InfluDetailClient({
   priceCatalog,
   sourceLinks,
   postLinks,
+  ownerName,
+  userId,
   userName,
   doctors,
   canManage,
@@ -385,6 +453,10 @@ export function InfluDetailClient({
   sourceLinks: InfluLinkRow[];
   /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน) */
   postLinks: InfluPostLinkRow[];
+  /** ชื่อผู้รับผิดชอบเคส (owner_id — คนที่สร้างการ์ด); null = เคสเก่าที่ยังไม่มีเจ้าของ */
+  ownerName: string | null;
+  /** ผู้ใช้ที่กำลังเปิดหน้านี้ — ใช้เป็น "ผู้ทำ" ของประวัติการใช้งาน (influ_activity_log) */
+  userId: string | null;
   userName: string;
   doctors: DoctorRow[];
   /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
@@ -394,6 +466,7 @@ export function InfluDetailClient({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const actor = useMemo(() => ({ id: userId, name: userName }), [userId, userName]);
   // view = "overview" (หน้าสรุป) หรือเลข stage 1-5 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
   const [view, setView] = useState<"overview" | number>("overview");
   // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
@@ -441,6 +514,15 @@ export function InfluDetailClient({
       setRollbackErr(`ย้อน stage ไม่สำเร็จ: ${error.message}`);
       return;
     }
+    // หน้านี้อยู่นอก InfluLogProvider (เป็นตัวที่ render provider เอง) จึงเรียก logInflu ตรงๆ
+    logInflu(supabase, actor, {
+      action: "stage",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ย้อนขั้นงานจาก ${INFLU_STAGES[influencer.stage - 1]?.title ?? influencer.stage} กลับไป ${INFLU_STAGES[target - 1]?.title ?? target}`,
+      meta: { from: influencer.stage, to: target },
+    });
     // effect ที่เฝ้า influencer.stage จะพา view ไปหน้า stage ใหม่เองหลัง refresh
     router.refresh();
   };
@@ -454,6 +536,8 @@ export function InfluDetailClient({
   const followupTotal = activeTasks.length;
 
   return (
+    // ทุกจุดที่แก้ข้อมูลในหน้านี้เรียก useInfluLog() เอง — ไม่ต้องส่ง actor เป็น prop ทีละชั้น
+    <InfluLogProvider userId={userId} userName={userName}>
     <div>
       {/* header */}
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
@@ -482,6 +566,23 @@ export function InfluDetailClient({
             </button>
           )}
         </h1>
+        {influencer.influ_code && (
+          <span
+            title="รหัส Influ ID"
+            className="rounded-md border border-stone-200 bg-white/70 px-2 py-0.5 font-mono text-xs text-stone-500"
+          >
+            {influencer.influ_code}
+          </span>
+        )}
+        {ownerName && (
+          <span
+            title="ผู้รับผิดชอบเคส (ผู้สร้างการ์ด)"
+            className="inline-flex items-center gap-1 text-xs text-stone-500"
+          >
+            <UserRound size={12} className="text-stone-400" />
+            {ownerName}
+          </span>
+        )}
         {influencer.tier && (
           <Badge className={INFLU_TIERS[influencer.tier].badge}>
             {INFLU_TIERS[influencer.tier].label}
@@ -695,6 +796,7 @@ export function InfluDetailClient({
         onClose={() => setRollbackOpen(false)}
       />
     </div>
+    </InfluLogProvider>
   );
 }
 
@@ -1186,6 +1288,7 @@ function ContactStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1228,6 +1331,14 @@ function ContactStage({
       setError(`บันทึกไม่สำเร็จ: ${e.message}`);
       return;
     }
+    log({
+      action: "stage",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: "influ ตอบรับแล้ว — ไปขั้นรายละเอียดเคส",
+      meta: { from: influencer.stage, to: INFLU_STAGE.caseDetail },
+    });
     router.refresh();
   };
 
@@ -1344,6 +1455,7 @@ function CaseDetailStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
   const [occupation, setOccupation] = useState(
     influencer.occupation ?? "Tiktoker / Influencer"
@@ -1456,6 +1568,15 @@ function CaseDetailStage({
       setError(`บันทึกไม่สำเร็จ: ${e.message}`);
       return;
     }
+    log({
+      action: thenNext ? "stage" : "update",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: thenNext
+        ? "บันทึกรายละเอียดเคส แล้วไปขั้น Memo ขออนุมัติ"
+        : `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)})`,
+    });
     router.refresh();
   };
 
@@ -1649,6 +1770,7 @@ function ServiceDayStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [editOpen, setEditOpen] = useState(false);
   const [newProcedure, setNewProcedure] = useState("");
   const [supervisor, setSupervisor] = useState("");
@@ -1696,6 +1818,13 @@ function ServiceDayStage({
       setEditOpen(true);
       return;
     }
+    log({
+      action: "update",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `แก้หัตถการหน้างาน: "${change.old || "(ว่าง)"}" → "${change.next}" (หัวหน้างานลงนาม: ${change.signed_by || "ไม่ระบุ"})`,
+    });
     setNewProcedure("");
     setSupervisor("");
     router.refresh();
@@ -1729,6 +1858,14 @@ function ServiceDayStage({
       setError(`บันทึกไม่สำเร็จ: ${e.message}`);
       return;
     }
+    log({
+      action: "stage",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: "ปิดขั้นสัญญา + วันรับบริการ — เข้าสู่ขั้นตามงาน",
+      meta: { from: influencer.stage, to: INFLU_STAGE.followup },
+    });
     router.refresh();
   };
 
@@ -1898,6 +2035,7 @@ function FollowupStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const today = todayISO();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -2082,6 +2220,13 @@ function FollowupStage({
       setErr(`ปิดงานไม่สำเร็จ: ${error.message}`);
       return;
     }
+    log({
+      action: "status",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: "ปิดงานเคสนี้ (จบงาน)",
+    });
     router.refresh();
   };
 

@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  CalendarDays,
   ClipboardList,
-  Gauge,
   IdCard,
   Images,
   LayoutDashboard,
@@ -16,7 +14,6 @@ import {
   Tags,
   UserCog,
   Users,
-  Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +33,9 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   perm: AppPermission | AppPermission[] | "admin" | null;
+  /** path เพิ่มเติมที่ให้ถือว่าเมนูนี้ active — ใช้กับเมนูรวม (Influencer System)
+      ที่หน้าลูกอยู่คนละ prefix กับปุ่ม (เช่น /influencers, /influ-calendar) */
+  activePrefixes?: string[];
   /** ป้ายสั้นสำหรับแถบเมนูล่างบนมือถือ (ช่องกว้าง ~70px) — ไม่ใส่ = ไม่ขึ้นแถบล่าง */
   short?: string;
   /** ป้ายใต้ไอคอนบนแถบเมนูจอใหญ่ (กว้าง 68px) — ทุกเมนูต้องมี ไม่งั้นตกไปใช้ label เต็มแล้วล้น
@@ -47,9 +47,8 @@ type NavItem = {
     (เรียงตามที่ทีมเปิดบ่อยจริง ไม่ใช่ตามลำดับใน sidebar) */
 const MOBILE_NAV_ORDER = [
   "/tasks",
-  "/influencers",
+  "/influencer-management",
   "/my-tasks",
-  "/influ-calendar",
   "/dashboard",
   "/influ-gallery",
   "/pricing",
@@ -61,12 +60,24 @@ const navItems: NavItem[] = [
   // แดชบอร์ด = รายงานทุก section ในหน้าเดียว (เมนู "รายงาน" /reports ถูกถอดออก 2026-08-07 เพราะซ้ำกับหน้านี้)
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
-  { href: "/influencers", label: "Influ Management", icon: Sparkles, perm: "influ", short: "Influ", rail: "Influ" },
-  { href: "/influ-calendar", label: "Influ Calendar", icon: CalendarDays, perm: "influ", short: "ปฏิทิน", rail: "ปฏิทิน" },
-  { href: "/influ-dashboard", label: "Influ Dashboard", icon: Gauge, perm: "influ", rail: "Influ Dash" },
-  { href: "/influ-cost", label: "Influencer Cost", icon: Wallet, perm: "influ", rail: "ต้นทุน" },
-  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ"], short: "โปรไฟล์", rail: "โปรไฟล์" },
+  // ระบบ Influencer รวมเป็นปุ่มเดียว → หน้ารวม /influencer-management (บอร์ด/ปฏิทิน/ต้นทุน/
+  // แดชบอร์ด/สัญญา/Log/ถังขยะ อยู่ในนั้นทั้งหมด) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็นระบบของตัวเอง
+  {
+    href: "/influencer-management",
+    label: "Influencer System",
+    icon: Sparkles,
+    perm: ["influ", "influ_hunter", "influ_view"],
+    short: "Influ",
+    rail: "Influ",
+    activePrefixes: [
+      "/influencers",
+      "/influ-calendar",
+      "/influ-dashboard",
+      "/influ-cost",
+    ],
+  },
+  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
+  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ", "influ_hunter", "influ_view"], short: "โปรไฟล์", rail: "โปรไฟล์" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
   // คลังไฟล์รวมของงาน (ดู/ดาวน์โหลดอย่างเดียว — อัพโหลดทำที่การ์ดงาน)
   { href: "/all-media", label: "All Media", icon: Images, perm: "team", rail: "Media" },
@@ -174,6 +185,11 @@ export function Sidebar({
     return permissions.includes(item.perm);
   });
 
+  /** เมนูนี้ active ไหม — เมนูรวมต้องสว่างตอนอยู่หน้าลูกที่คนละ prefix ด้วย (activePrefixes) */
+  const isActive = (item: Pick<NavItem, "href" | "activePrefixes">) =>
+    pathname.startsWith(item.href) ||
+    (item.activePrefixes ?? []).some((p) => pathname.startsWith(p));
+
   /** เมนูของแถบล่างบนมือถือ — 4 อันแรกตาม MOBILE_NAV_ORDER ที่ผู้ใช้คนนี้มีสิทธิ์เห็น
       (ใช้ป้ายสั้น `short` เพราะช่องกว้างแค่ ~70px) */
   const mobileNav = MOBILE_NAV_ORDER.map((href) =>
@@ -222,8 +238,9 @@ export function Sidebar({
       aria-label="เมนูหลัก"
       className="flex w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-1.5"
     >
-      {visibleNav.map(({ href, label, icon: Icon, rail }) => {
-        const active = pathname.startsWith(href);
+      {visibleNav.map((item) => {
+        const { href, label, icon: Icon, rail } = item;
+        const active = isActive(item);
         return (
           <Link
             key={href}
@@ -287,8 +304,9 @@ export function Sidebar({
   /** ลิสต์เมนู — ใช้ใน drawer มือถือ (คลิกแล้วปิด drawer) */
   const renderNav = (onNavigate?: () => void) => (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-      {visibleNav.map(({ href, label, icon: Icon }) => {
-        const active = pathname.startsWith(href);
+      {visibleNav.map((item) => {
+        const { href, label, icon: Icon } = item;
+        const active = isActive(item);
         return (
           <Link
             key={href}
@@ -400,8 +418,9 @@ export function Sidebar({
         aria-label="เมนูหลัก"
         className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-white/60 bg-cream-soft/95 pb-safe backdrop-blur-xl lg:hidden"
       >
-        {mobileNav.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+        {mobileNav.map((item) => {
+          const { href, label, icon: Icon } = item;
+          const active = isActive(item);
           return (
             <Link
               key={href}

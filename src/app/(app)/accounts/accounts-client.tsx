@@ -24,8 +24,37 @@ import {
 } from "@/components/ui";
 import type { AppPermission } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
-import { PERMISSION_META } from "@/lib/permissions";
+import {
+  INFLU_LEVELS,
+  PERMISSION_META,
+  type InfluLevel,
+} from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
+
+/** 3 สิทธิ์ของระบบ Influencer เป็น "ระดับ" เลือกได้อันเดียว ไม่ใช่สวิตช์อิสระ
+    (ผู้ใช้ 2026-08-14: ทีมอื่นเข้ามาใช้ด้วย ติ๊กรวมกันแล้วงงว่าใครทำอะไรได้บ้าง) */
+const INFLU_LEVEL_ORDER: InfluLevel[] = ["none", "view", "hunter", "manager"];
+
+/** ระดับ Influencer ปัจจุบันของชุดสิทธิ์ (สูงสุดชนะ — ข้อมูลเก่าอาจติ๊กไว้หลายอัน) */
+function influLevelOf(set: Set<AppPermission>): InfluLevel {
+  if (set.has("influ")) return "manager";
+  if (set.has("influ_hunter")) return "hunter";
+  if (set.has("influ_view")) return "view";
+  return "none";
+}
+
+/** ตั้งระดับ Influencer — ล้างคีย์ของอีก 2 ระดับออกเสมอ เหลืออันเดียว */
+function withInfluLevel(
+  set: Set<AppPermission>,
+  level: InfluLevel
+): Set<AppPermission> {
+  const next = new Set(set);
+  next.delete("influ");
+  next.delete("influ_hunter");
+  next.delete("influ_view");
+  if (level !== "none") next.add(INFLU_LEVELS[level].key);
+  return next;
+}
 
 type AccountProfile = {
   id: string;
@@ -112,7 +141,9 @@ function PermissionSummary({ profile }: { profile: AccountProfile }) {
           <ShieldCheck size={12} /> ผู้ดูแลระบบ
         </Badge>
       )}
-      {PERMISSION_META.filter((m) => perms.includes(m.key)).map((m) => (
+      {PERMISSION_META.filter(
+        (m) => m.group !== "influ" && perms.includes(m.key)
+      ).map((m) => (
         <Badge
           key={m.key}
           className="border border-stone-200 bg-stone-50 text-stone-600"
@@ -120,6 +151,19 @@ function PermissionSummary({ profile }: { profile: AccountProfile }) {
           {m.label}
         </Badge>
       ))}
+      {/* ระดับ Influencer เป็นชิปเดียว (สูงสุดที่ติ๊กไว้) ไม่ใช่ชิปแยกทุกอัน */}
+      {influLevelOf(new Set(perms)) !== "none" &&
+        (() => {
+          const lv = influLevelOf(new Set(perms)) as Exclude<
+            InfluLevel,
+            "none"
+          >;
+          return (
+            <Badge className={INFLU_LEVELS[lv].badge}>
+              Influ · {INFLU_LEVELS[lv].short}
+            </Badge>
+          );
+        })()}
     </div>
   );
 }
@@ -295,6 +339,14 @@ export function AccountsClient({
     setResetPassword(generatePassword());
     setResetError(null);
     setResetDone(false);
+  }
+
+  function setNewInfluLevel(level: InfluLevel) {
+    setNewPerms((s) => withInfluLevel(s, level));
+  }
+
+  function setPermInfluLevel(level: InfluLevel) {
+    setPermSet((s) => withInfluLevel(s, level));
   }
 
   function toggleNewPerm(key: AppPermission) {
@@ -501,6 +553,7 @@ export function AccountsClient({
             onRoleChange={setNewRole}
             permSet={newPerms}
             onToggle={toggleNewPerm}
+            onInfluLevelChange={setNewInfluLevel}
           />
 
           {createError && (
@@ -535,6 +588,7 @@ export function AccountsClient({
             onRoleChange={setPermRole}
             permSet={permSet}
             onToggle={togglePermSet}
+            onInfluLevelChange={setPermInfluLevel}
           />
           {permError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
@@ -654,12 +708,18 @@ function PermissionEditor({
   onRoleChange,
   permSet,
   onToggle,
+  onInfluLevelChange,
 }: {
   role: "member" | "admin";
   onRoleChange: (role: "member" | "admin") => void;
   permSet: Set<AppPermission>;
   onToggle: (key: AppPermission) => void;
+  /** ระบบ Influencer เลือกได้ระดับเดียว — ไม่ผ่าน onToggle เหมือนสิทธิ์อื่น */
+  onInfluLevelChange: (level: InfluLevel) => void;
 }) {
+  const level = influLevelOf(permSet);
+  const detailOf = (key: AppPermission) =>
+    PERMISSION_META.find((m) => m.key === key)?.detail ?? "";
   return (
     <div className="space-y-2">
       <div>
@@ -688,8 +748,8 @@ function PermissionEditor({
         </span>
       </label>
 
-      {/* สิทธิ์รายส่วน — เปิด/ปิดแยกกันได้อิสระ */}
-      {PERMISSION_META.map((m) => (
+      {/* สิทธิ์รายส่วน — เปิด/ปิดแยกกันได้อิสระ (ยกเว้นกลุ่ม influ ที่เป็นระดับ) */}
+      {PERMISSION_META.filter((m) => m.group !== "influ").map((m) => (
         <label
           key={m.key}
           className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-stone-200 bg-white/60 px-3 py-2.5 transition-colors hover:bg-brand-50/40"
@@ -710,6 +770,46 @@ function PermissionEditor({
           </span>
         </label>
       ))}
+
+      {/* ระบบ Influencer — เลือกได้ระดับเดียว (ไม่มีสิทธิ์ / ดูเฉยๆ / Hunter / ผู้ดูแล) */}
+      <div className="rounded-lg border border-brand-100 bg-brand-50/30 px-3 py-2.5">
+        <p className="text-sm font-medium text-stone-800">
+          ระบบ Influencer (Influencer System)
+        </p>
+        <p className="mb-2 text-xs text-stone-400">
+          เลือกได้ระดับเดียว — ระดับสูงกว่าทำได้ทุกอย่างของระดับต่ำกว่า
+        </p>
+        <div className="space-y-1.5">
+          {INFLU_LEVEL_ORDER.map((lv) => (
+            <label
+              key={lv}
+              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+                level === lv
+                  ? "border-brand-300 bg-white"
+                  : "border-stone-200 bg-white/60 hover:bg-white"
+              }`}
+            >
+              <input
+                type="radio"
+                name="influ-level"
+                checked={level === lv}
+                onChange={() => onInfluLevelChange(lv)}
+                className="mt-0.5 h-4 w-4 accent-brand-600"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-stone-800">
+                  {lv === "none" ? "ไม่มีสิทธิ์" : INFLU_LEVELS[lv].label}
+                </span>
+                <span className="mt-0.5 block text-xs text-stone-400">
+                  {lv === "none"
+                    ? "ไม่เห็นเมนู Influencer System เลย"
+                    : detailOf(INFLU_LEVELS[lv].key)}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -29,9 +29,12 @@ import type { InfluCampaignRow, InfluencerRow } from "@/lib/types";
 export function ContractsClient({
   influencers,
   campaigns,
+  canEdit,
 }: {
   influencers: InfluencerRow[];
   campaigns: InfluCampaignRow[];
+  /** ระดับ "ดูเฉยๆ" = เพิ่ม Sub Campaign ไม่ได้ (ดูอายุสัญญาได้ตามปกติ) */
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -160,12 +163,14 @@ export function ContractsClient({
                 <div className="ml-auto">
                   <Button
                     variant="secondary"
-                    disabled={expired}
+                    disabled={expired || !canEdit}
                     onClick={() => openAdd(i)}
                     title={
                       expired
                         ? "สัญญาหมดอายุแล้ว — เรียกร่วม campaign ไม่ได้"
-                        : "เพิ่ม Sub Campaign"
+                        : canEdit
+                          ? "เพิ่ม Sub Campaign"
+                          : "บัญชีนี้เป็นระดับ 'ดูเฉยๆ' — เพิ่ม campaign ไม่ได้"
                     }
                   >
                     <Plus size={15} />

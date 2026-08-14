@@ -29,8 +29,18 @@ export type ProfileRow = {
   created_at: string;
 };
 
-/** สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ */
-export type AppPermission = "data" | "team" | "influ" | "pricing";
+/** สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้
+    — ระบบ Influencer แยกเป็น 3 ระดับ (ดูนิยามที่ INFLU_LEVELS ใน permissions.ts):
+      'influ_view'   = ดูเฉยๆ (อ่านได้ทุกหน้า แก้/เพิ่ม/ลบไม่ได้เลย)
+      'influ_hunter' = Hunter (สร้างการ์ด + แก้ + ลบเคสของตัวเองได้ แต่ไม่ใช่ผู้ดูแล)
+      'influ'        = ผู้ดูแลระบบ Influ (ทำได้ทุกอย่าง + log/ถังขยะ/ทะเบียนหมอ) */
+export type AppPermission =
+  | "data"
+  | "team"
+  | "influ"
+  | "influ_hunter"
+  | "influ_view"
+  | "pricing";
 
 /** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
 export type TaskReviewerRow = {
@@ -349,9 +359,56 @@ export type InfluencerRow = {
   archived: boolean;
   /** เวลาที่ mark ว่า "ปฏิเสธ" (ไม่ร่วมงาน) — null = ไม่ได้ปฏิเสธ; ตัวกรองยกเว้นซ่อนได้ */
   declined_at: string | null;
+  /** รหัส Influ ID ที่ทีมกำหนดเอง — DB บังคับไม่ให้ซ้ำ (เทียบแบบไม่สนตัวพิมพ์) */
+  influ_code: string | null;
+  /** ผู้รับผิดชอบเคส = คนที่สร้างการ์ด (null = บัญชีถูกลบไปแล้ว) */
+  owner_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** log ทุกการกระทำในระบบ Influencer — insert ได้อย่างเดียว (ไม่มี policy update/delete) */
+export type InfluActivityLogRow = {
+  id: string;
+  actor_id: string | null;
+  /** ชื่อ ณ ตอนที่ทำ — บัญชีถูกลบแล้ว log ต้องยังบอกได้ว่าใครทำ */
+  actor_name: string | null;
+  action: InfluLogAction;
+  entity: string;
+  entity_id: string | null;
+  /** ไม่ผูก FK: เคสถูกลบไปแล้ว log ของเคสนั้นต้องยังอยู่ */
+  influencer_id: string | null;
+  influencer_name: string | null;
+  summary: string;
+  meta: Json;
+  created_at: string;
+};
+
+/** ชนิดการกระทำใน log — ป้าย/สีอยู่ที่ INFLU_LOG_ACTIONS (influ-log.ts)
+    ค่าอื่นที่ไม่รู้จักยังเก็บได้ (DB เป็น text อิสระ) แค่แสดงเป็นป้ายกลาง */
+export type InfluLogAction =
+  | "create"
+  | "update"
+  | "delete"
+  | "restore"
+  | "stage"
+  | "upload"
+  | "status";
+
+/** สำเนาเคสที่ถูกลบ — เก็บ 30 วันแล้วล้างอัตโนมัติ (influ_purge_expired_backups) */
+export type InfluDeletedBackupRow = {
+  id: string;
+  entity: string;
+  entity_id: string;
+  label: string;
+  payload: Json;
+  deleted_by: string | null;
+  deleted_by_name: string | null;
+  deleted_at: string;
+  purge_after: string;
+  restored_at: string | null;
+  restored_by: string | null;
 };
 
 export type InfluFollowupRow = {
@@ -970,6 +1027,26 @@ export interface Database {
         Update: Partial<InfluPostLinkRow>;
         Relationships: [];
       };
+      influ_activity_log: {
+        Row: InfluActivityLogRow;
+        Insert: Partial<InfluActivityLogRow> & {
+          action: InfluLogAction;
+          summary: string;
+        };
+        /** log แก้ไม่ได้ (ไม่มี policy update) — type ปิดไว้ให้ตรงกับ DB */
+        Update: never;
+        Relationships: [];
+      };
+      influ_deleted_backups: {
+        Row: InfluDeletedBackupRow;
+        Insert: Partial<InfluDeletedBackupRow> & {
+          entity_id: string;
+          label: string;
+          payload: Json;
+        };
+        Update: Partial<InfluDeletedBackupRow>;
+        Relationships: [];
+      };
       analysis_links: {
         Row: AnalysisLinkRow;
         /** week บังคับมีเมื่อ period='weekly' (DB constraint — type บังคับให้ไม่ได้) */
@@ -1109,6 +1186,21 @@ export interface Database {
       sales_staff_detail: {
         Args: { p_name: string; p_from: string; p_to: string };
         Returns: Json;
+      };
+      /** ลบเคส Influ = สำรองลง influ_deleted_backups ก่อนเสมอ — คืน id ของสำเนา */
+      influ_delete_with_backup: {
+        Args: { p_id: string };
+        Returns: string;
+      };
+      /** กู้คืนเคสจากสำเนา (พร้อมลูกทุกตาราง) — คืน id ของเคสที่กลับมา */
+      influ_restore_backup: {
+        Args: { p_backup_id: string };
+        Returns: string;
+      };
+      /** ล้างสำเนาที่เกิน 30 วัน — คืนจำนวนที่ล้าง (เรียกตอนเปิดหน้าถังขยะ) */
+      influ_purge_expired_backups: {
+        Args: Record<string, never>;
+        Returns: number;
       };
     };
     Enums: Record<string, never>;

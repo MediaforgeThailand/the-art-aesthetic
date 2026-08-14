@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canEditInflu, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { CostClient, type CostItem } from "./cost-client";
 
@@ -23,12 +23,13 @@ export default async function InfluCostPage() {
       )
       .order("created_at", { ascending: false }),
   ]);
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
     <PageContainer>
       <CostClient
         items={(items ?? []) as unknown as CostItem[]}
+        canEdit={canEditInflu(access)}
         loadError={error?.message ?? null}
       />
     </PageContainer>

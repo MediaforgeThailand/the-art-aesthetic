@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canEditInflu, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { InfluCampaignRow, InfluencerRow } from "@/lib/types";
 import { ContractsClient } from "./contracts-client";
@@ -29,13 +29,14 @@ export default async function InfluContractsPage() {
         .select("*")
         .order("created_at", { ascending: false }),
     ]);
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
     <PageContainer>
       <ContractsClient
         influencers={(influencers ?? []) as InfluencerRow[]}
         campaigns={(campaigns ?? []) as InfluCampaignRow[]}
+        canEdit={canEditInflu(access)}
       />
     </PageContainer>
   );

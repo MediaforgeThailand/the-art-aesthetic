@@ -4,7 +4,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // สิทธิ์การมองเห็นที่ admin เปิดให้รายคนได้ (admin role = เห็นทุกอย่าง)
-const VALID_PERMISSIONS = new Set(["data", "team", "influ", "pricing"]);
+const VALID_PERMISSIONS = new Set([
+  "data",
+  "team",
+  // ระบบ Influencer มี 3 ระดับ (ดู INFLU_LEVELS ใน src/lib/permissions.ts)
+  "influ_view",
+  "influ_hunter",
+  "influ",
+  "pricing",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

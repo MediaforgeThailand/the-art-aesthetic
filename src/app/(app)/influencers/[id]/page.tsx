@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import {
+  canEditInflu,
+  canViewInflu,
+  getAccess,
+  hasPermission,
+} from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
@@ -13,6 +18,7 @@ import type {
   InfluProcedureItemRow,
   InfluSignatureRow,
   InfluTaskRow,
+  ProfileRow,
   TaskWithAssignee,
 } from "@/lib/types";
 import type { PriceCatalogEntry } from "../procedure-items-editor";
@@ -38,7 +44,7 @@ export default async function InfluencerDetailPage({
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
     access,
-    { data: influencer },
+    { data: influencerRaw },
     { data: followups },
     { data: signatures },
     { data: tasks },
@@ -51,7 +57,14 @@ export default async function InfluencerDetailPage({
     { data: doctors },
   ] = await Promise.all([
     getAccess(),
-    supabase.from("influencers").select("*").eq("id", id).single(),
+    // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
+    supabase
+      .from("influencers")
+      .select(
+        "*, owner:profiles!influencers_owner_id_fkey(id, full_name, email)"
+      )
+      .eq("id", id)
+      .single(),
     supabase
       .from("influ_followups")
       .select("*")
@@ -110,17 +123,26 @@ export default async function InfluencerDetailPage({
     supabase.from("doctors").select("*").order("name", { ascending: true }),
   ]);
 
-  // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและ influ manager
-  // (บอร์ด/สัญญาใน Influ Management ยังจำกัดเฉพาะ influ)
-  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
+  // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
+  // (แก้ไขได้เฉพาะ Hunter ขึ้นไป — canManage ด้านล่าง; team/ดูเฉยๆ = อ่านอย่างเดียว)
+  if (!hasPermission(access, "team") && !canViewInflu(access))
     return <AccessNotice />;
 
+  // ชนิดของ embed ต้องประกาศเอง — database.types ไม่ได้ประกาศ Relationships ไว้
+  const influencer = influencerRaw as unknown as
+    | (InfluencerRow & {
+        owner: Pick<ProfileRow, "id" | "full_name" | "email"> | null;
+      })
+    | null;
   if (!influencer) notFound();
 
   return (
     <PageContainer>
       <InfluDetailClient
-        influencer={influencer as InfluencerRow}
+        influencer={influencer}
+        ownerName={
+          influencer.owner?.full_name || influencer.owner?.email || null
+        }
         followups={(followups ?? []) as InfluFollowupRow[]}
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
@@ -129,9 +151,10 @@ export default async function InfluencerDetailPage({
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
         postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
+        userId={userId}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
-        canManage={hasPermission(access, "influ")}
+        canManage={canEditInflu(access)}
       />
     </PageContainer>
   );

@@ -8,6 +8,8 @@ export const PERMISSION_META: {
   key: AppPermission;
   label: string;
   detail: string;
+  /** กลุ่มของสิทธิ์ — 'influ' = 3 ระดับของระบบ Influencer (เลือกได้ระดับเดียว) */
+  group?: "influ";
 }[] = [
   {
     key: "data",
@@ -20,10 +22,25 @@ export const PERMISSION_META: {
     detail: "เข้าหน้า Task, Team Workload, คลังลิงก์ไฟล์ และโปรไฟล์ Influencer",
   },
   {
-    key: "influ",
-    label: "Influ Manager",
+    key: "influ_view",
+    label: "Influencer — ดูเฉยๆ",
     detail:
-      "จัดการ Influencer — บอร์ด Influ Management (pipeline), สัญญา, Influ Calendar, Influ Dashboard และ Influencer Cost · เป็นสิทธิ์เดียวที่เดินงาน/อัปโหลดเอกสารในเคสได้",
+      "เข้าดูทุกหน้าในระบบ Influencer ได้ทั้งหมด (บอร์ด เคส ปฏิทิน ต้นทุน แดชบอร์ด) แต่เพิ่ม/แก้/ลบอะไรไม่ได้เลย",
+    group: "influ",
+  },
+  {
+    key: "influ_hunter",
+    label: "Influencer — Hunter",
+    detail:
+      "สร้างการ์ด Influ (เป็นผู้รับผิดชอบเคสของตัวเอง) เดินงาน แก้ข้อมูล และลบเคสที่ตัวเองสร้างได้ · ไม่เห็นถังขยะ/ประวัติการใช้งาน และแก้ทะเบียนหมอไม่ได้",
+    group: "influ",
+  },
+  {
+    key: "influ",
+    label: "Influencer — ผู้ดูแลระบบ",
+    detail:
+      "ทำได้ทุกอย่างในระบบ Influencer รวมถึงลบเคสของทุกคน · ทะเบียนหมอ · ประวัติการใช้งาน (Log) · ถังขยะ 30 วัน",
+    group: "influ",
   },
   {
     key: "pricing",
@@ -38,6 +55,8 @@ export const ALL_PERMISSIONS: AppPermission[] = PERMISSION_META.map(
 
 export type Access = {
   uid: string | null;
+  /** ชื่อที่ใช้แสดง (full_name → email) — ใช้เป็น "ผู้ทำ" ตอนเขียน log โดยไม่ต้อง query ซ้ำ */
+  name: string | null;
   isAdmin: boolean;
   permissions: AppPermission[];
 };
@@ -46,4 +65,79 @@ export type Access = {
     ไม่ผูกกับ role: การเป็น admin (จัดการบัญชี/ผู้ตรวจ) เป็นสิทธิ์แยก ไม่เหมาเห็นทุกหน้า */
 export function hasPermission(access: Access, perm: AppPermission): boolean {
   return access.permissions.includes(perm);
+}
+
+/* ============================================================
+   ระดับสิทธิ์ของระบบ Influencer (2026-08-14)
+
+   ทีมอื่นเข้ามาใช้ระบบด้วย จึงต้องแยกให้ละเอียดกว่า "มี influ / ไม่มี influ":
+     none    = ไม่เห็นระบบนี้เลย
+     view    = ดูเฉยๆ — อ่านได้ทุกหน้า แต่ไม่มีปุ่มเพิ่ม/แก้/ลบใดๆ
+     hunter  = สร้างการ์ด Influ + เดินงาน + แก้ข้อมูล; ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ
+     manager = ผู้ดูแลระบบ Influ — ทุกอย่าง + ทะเบียนหมอ + log + ถังขยะ
+
+   เป็น "ระดับ" (สูงกว่าครอบต่ำกว่า) ต่างจากสิทธิ์อื่นในระบบที่เป็นสวิตช์อิสระ —
+   เพราะผู้ใช้ต้องการให้เลือกได้ทีละระดับ ไม่ใช่ติ๊กรวมกันแล้วงง
+   ============================================================ */
+
+export type InfluLevel = "none" | "view" | "hunter" | "manager";
+
+export const INFLU_LEVELS: Record<
+  Exclude<InfluLevel, "none">,
+  { key: AppPermission; label: string; short: string; badge: string }
+> = {
+  view: {
+    key: "influ_view",
+    label: "ดูเฉยๆ (อ่านอย่างเดียว)",
+    short: "ดูเฉยๆ",
+    badge: "border border-stone-200 bg-stone-50 text-stone-600",
+  },
+  hunter: {
+    key: "influ_hunter",
+    label: "Hunter (สร้าง/แก้เคสได้)",
+    short: "Hunter",
+    badge: "border border-sky-200 bg-sky-50 text-sky-700",
+  },
+  manager: {
+    key: "influ",
+    label: "ผู้ดูแลระบบ Influencer",
+    short: "ผู้ดูแลระบบ",
+    badge: "border border-brand-200 bg-brand-50 text-brand-700",
+  },
+};
+
+/** ระดับสูงสุดที่บัญชีนี้มี (ติ๊กหลายอันพร้อมกัน = ใช้อันสูงสุด) */
+export function influLevel(access: Access): InfluLevel {
+  if (hasPermission(access, "influ")) return "manager";
+  if (hasPermission(access, "influ_hunter")) return "hunter";
+  if (hasPermission(access, "influ_view")) return "view";
+  return "none";
+}
+
+/** เห็นระบบ Influencer ไหม (guard ของทุกหน้าในระบบนี้) */
+export function canViewInflu(access: Access): boolean {
+  return influLevel(access) !== "none";
+}
+
+/** เพิ่ม/แก้ข้อมูลได้ไหม — Hunter ขึ้นไป (ระดับ "ดูเฉยๆ" ต้องไม่เห็นปุ่มแก้ใดๆ) */
+export function canEditInflu(access: Access): boolean {
+  const lvl = influLevel(access);
+  return lvl === "hunter" || lvl === "manager";
+}
+
+/** งานผู้ดูแลระบบ Influ — ทะเบียนหมอ, ประวัติการใช้งาน, ถังขยะ, ลบเคสของคนอื่น */
+export function canManageInflu(access: Access): boolean {
+  return influLevel(access) === "manager";
+}
+
+/** ลบเคสได้ไหม — ผู้ดูแลลบได้ทุกเคส, Hunter ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ/สร้าง
+    (ownerId ว่าง = เคสเก่าที่ไม่มีเจ้าของ → เฉพาะผู้ดูแลเท่านั้น) */
+export function canDeleteInflu(
+  access: Access,
+  ownerId: string | null | undefined
+): boolean {
+  const lvl = influLevel(access);
+  if (lvl === "manager") return true;
+  if (lvl !== "hunter") return false;
+  return ownerId !== null && ownerId !== undefined && ownerId === access.uid;
 }

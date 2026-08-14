@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   BellRing,
   CalendarClock,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  Eye,
   EyeOff,
   FileSignature,
   LayoutGrid,
@@ -16,6 +18,7 @@ import {
   Search,
   Sparkles,
   Stethoscope,
+  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
@@ -35,16 +38,21 @@ import {
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
+import { logInflu } from "@/lib/influ-log";
 import {
   INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
+  procedureSummaryText,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
+import type { InfluLevel } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
 import type { DoctorRow, InfluSizeGroup } from "@/lib/types";
 import { DoctorManagerModal } from "./doctor-manager";
 import type { InfluLinkLite } from "./influ-links";
+import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
+import type { PriceCatalogEntry } from "./procedure-items-editor";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -231,10 +239,13 @@ function InfluExcludeFilter({
 
 function MemoWaitingList({
   items,
+  canEdit,
   onOpen,
   onToggleDocsSent,
 }: {
   items: InfluencerListRow[];
+  /** ระดับ "ดูเฉยๆ" = ติ๊กไม่ได้ (ยังเห็นคิวและสถานะครบ) */
+  canEdit: boolean;
   onOpen: (id: string) => void;
   /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" — บันทึกลง DB กันทีมส่งซ้ำ */
   onToggleDocsSent: (influ: InfluencerListRow) => void;
@@ -290,9 +301,10 @@ function MemoWaitingList({
                 <input
                   type="checkbox"
                   checked={sent}
+                  disabled={!canEdit}
                   onChange={() => onToggleDocsSent(i)}
                   aria-label={`ส่งเอกสารแล้ว — ${influName(i)}`}
-                  className="h-4 w-4 cursor-pointer accent-[#a96a58]"
+                  className="h-4 w-4 cursor-pointer accent-[#a96a58] disabled:cursor-default disabled:opacity-50"
                 />
               </label>
               <button
@@ -334,12 +346,26 @@ function MemoWaitingList({
   );
 }
 
+/** ผู้ใช้ปัจจุบัน + ระดับสิทธิ์ในระบบ Influencer (คำนวณฝั่ง server ส่งลงมา) */
+export type InfluMe = {
+  id: string | null;
+  name: string;
+  level: InfluLevel;
+  /** hunter ขึ้นไป — เพิ่ม/แก้ข้อมูลได้ */
+  canEdit: boolean;
+  /** ผู้ดูแลระบบ Influ — ทะเบียนหมอ, ลบเคสของคนอื่น, log, ถังขยะ */
+  canManage: boolean;
+};
+
 export function InfluencersClient({
   influencers,
   tasks,
   doctors,
   sourceLinks,
   bookedInfluIds,
+  priceCatalog,
+  people,
+  me,
   loadError,
 }: {
   influencers: InfluencerListRow[];
@@ -349,12 +375,33 @@ export function InfluencersClient({
   sourceLinks: InfluLinkLite[];
   /** influencer ที่มีคิว "เข้ารับบริการ" ในปฏิทินแล้ว = นัดหมอเรียบร้อย */
   bookedInfluIds: string[];
+  /** ตัวเลือกหัตถการจาก Price List — ต้องเลือกอย่างน้อย 1 ตอนสร้างการ์ด */
+  priceCatalog: PriceCatalogEntry[];
+  /** ชื่อของทุกบัญชี — แปลง owner_id เป็นชื่อผู้รับผิดชอบบนการ์ด */
+  people: { id: string; name: string }[];
+  me: InfluMe;
   loadError: string | null;
 }) {
   const [doctorsOpen, setDoctorsOpen] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
+  const actor = useMemo(
+    () => ({ id: me.id, name: me.name || null }),
+    [me.id, me.name]
+  );
+
+  /** ชื่อผู้รับผิดชอบจาก owner_id (เคสเก่าที่ยังไม่มีเจ้าของ = null) */
+  const nameById = useMemo(
+    () => new Map(people.map((p) => [p.id, p.name])),
+    [people]
+  );
+
+  /** ลบได้ไหม — ผู้ดูแลลบได้ทุกเคส, Hunter ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ
+      (กติกาเดียวกับ canDeleteInflu ใน permissions.ts แต่คิดจาก me ที่ส่งลงมา) */
+  const mayDelete = (i: InfluencerListRow) =>
+    me.canManage ||
+    (me.level === "hunter" && i.owner_id !== null && i.owner_id === me.id);
 
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useState<InfluencerListRow[]>(influencers);
@@ -411,6 +458,8 @@ export function InfluencersClient({
   const [stageFilter, setStageFilter] = useState<
     number | "all" | "done" | "declined" | "needbooking"
   >("all");
+  /** ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ — หลายทีมใช้บอร์ดเดียวกัน */
+  const [mineOnly, setMineOnly] = useState(false);
 
   // สถานะที่ถูก "ยกเว้น" ออกจากบอร์ด — จำค่าไว้ใน localStorage (เริ่มต้นซ่อนคนปฏิเสธ)
   const [excluded, setExcluded] = useState<Set<InfluStatusKey>>(
@@ -457,15 +506,20 @@ export function InfluencersClient({
     }
   };
 
+  /** ลบเคส — ผ่าน RPC ที่ **สำรองข้อมูลลงถังขยะ 30 วันก่อนเสมอ** แล้วเขียน log ให้ในตัว
+      (ลูกทุกตาราง cascade ตามไป แต่ payload ถูกเก็บครบก่อนลบ — กู้คืนได้ที่หน้าถังขยะ) */
   const handleDelete = async (target: InfluencerListRow) => {
+    if (!mayDelete(target)) {
+      setActionError("บัญชีนี้ลบเคสของคนอื่นไม่ได้ — ให้ผู้ดูแลระบบเป็นคนลบ");
+      return;
+    }
     setDeletingId(target.id);
     setActionError(null);
     const prev = items;
     setItems((cur) => cur.filter((i) => i.id !== target.id)); // optimistic
-    const { error } = await supabase
-      .from("influencers")
-      .delete()
-      .eq("id", target.id);
+    const { error } = await supabase.rpc("influ_delete_with_backup", {
+      p_id: target.id,
+    });
     if (error) {
       setItems(prev); // คืนค่าถ้าลบไม่สำเร็จ
       setActionError(`ลบไม่สำเร็จ: ${error.message}`);
@@ -545,6 +599,15 @@ export function InfluencersClient({
       setActionError(`บันทึกสถานะปฏิเสธไม่สำเร็จ: ${error.message}`);
       return;
     }
+    logInflu(supabase, actor, {
+      action: "status",
+      entityId: target.id,
+      influencerId: target.id,
+      influencerName: influName(target),
+      summary: next
+        ? `ทำเครื่องหมายว่า ${influName(target)} ปฏิเสธ (ไม่ร่วมงาน)`
+        : `ยกเลิกสถานะปฏิเสธของ ${influName(target)}`,
+    });
     markServerStale();
   };
 
@@ -566,6 +629,15 @@ export function InfluencersClient({
       setActionError(`บันทึกสถานะส่งเอกสารไม่สำเร็จ: ${error.message}`);
       return;
     }
+    logInflu(supabase, actor, {
+      action: "status",
+      entityId: target.id,
+      influencerId: target.id,
+      influencerName: influName(target),
+      summary: next
+        ? `ติ๊กว่าส่งเอกสารให้ ${influName(target)} แล้ว`
+        : `ยกเลิกการติ๊ก "ส่งเอกสารแล้ว" ของ ${influName(target)}`,
+    });
     markServerStale();
   };
 
@@ -637,14 +709,17 @@ export function InfluencersClient({
             return false;
         }
       }
+      // "เคสของฉัน" = ที่ฉันเป็นผู้รับผิดชอบ (owner_id) — หลายทีมใช้บอร์ดร่วมกัน
+      if (mineOnly && i.owner_id !== me.id) return false;
       if (q === "") return true;
       return (
         influName(i).toLowerCase().includes(q) ||
+        (i.influ_code ?? "").toLowerCase().includes(q) ||
         (i.phone ?? "").includes(q) ||
         (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, stageFilter, excluded, bookingAlertIds]);
+  }, [items, search, stageFilter, excluded, bookingAlertIds, mineOnly, me.id]);
 
   /** คิว "รอทำ Memo" — ติ๊กว่าข้อมูลครบแล้ว (Stage 3) แต่ยังไม่ได้อัพโหลดไฟล์ Memo
       = ยังไม่มีใครลงมือทำ; อัพโหลดแล้วหลุดจากคิวเอง — เรียงคนที่รอนานสุดขึ้นก่อน
@@ -664,17 +739,38 @@ export function InfluencersClient({
     [items]
   );
 
-  /* ---- modal เพิ่ม influ (stage 1: ชื่อ นามสกุล เบอร์) ---- */
+  /* ---- modal เพิ่ม influ (stage 1: รหัส Influ ID · ชื่อ · เบอร์ · หัตถการที่รับ) ---- */
   const [addOpen, setAddOpen] = useState(false);
+  const [influCode, setInfluCode] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [nickname, setNickname] = useState("");
   const [phone, setPhone] = useState("");
+  const [procedures, setProcedures] = useState<PickedProcedure[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const resetAddForm = () => {
+    setInfluCode("");
+    setFirstName("");
+    setLastName("");
+    setNickname("");
+    setPhone("");
+    setProcedures([]);
+    setFormError(null);
+  };
+
+  /**
+   * สร้างการ์ดใหม่ — ผู้รับผิดชอบ = คนที่สร้าง (owner_id) เสมอ และต้องเลือกหัตถการอย่างน้อย 1
+   * (ทีมอื่นเข้ามาใช้ระบบด้วย ถ้าไม่ผูกเจ้าของ/หัตถการตั้งแต่ต้นจะไล่หาคนรับผิดชอบไม่ได้)
+   */
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
+    if (procedures.length === 0) {
+      setFormError("เลือกหัตถการที่ influ คนนี้จะรับอย่างน้อย 1 รายการ");
+      return;
+    }
     setSaving(true);
     setFormError(null);
     const { data, error } = await supabase
@@ -682,16 +778,61 @@ export function InfluencersClient({
       .insert({
         first_name: firstName.trim(),
         last_name: lastName.trim() || null,
+        nickname: nickname.trim() || null,
         phone: phone.trim() || null,
+        influ_code: influCode.trim() || null,
+        owner_id: me.id,
+        created_by: me.id,
+        // sync ข้อความสรุปตั้งแต่แรก — Memo/ปฏิทิน/ช่องค้นหาใช้ค่านี้
+        procedure_text: procedureSummaryText(procedures) || null,
       })
       .select("id")
       .single();
-    setSaving(false);
     if (error || !data) {
-      setFormError(`บันทึกไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
+      setSaving(false);
+      // 23505 = ชนกับ unique index ของ influ_code (คนละเคสแต่กรอกรหัสซ้ำ)
+      setFormError(
+        error?.code === "23505"
+          ? `รหัส Influ ID "${influCode.trim()}" ถูกใช้กับเคสอื่นแล้ว — ใช้รหัสอื่น`
+          : `บันทึกไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
+      );
       return;
     }
+
+    // หัตถการที่เลือกไว้ → influ_procedure_items (ราคาจาก Price List = ต้นทุนตั้งต้น)
+    const { error: itemsError } = await supabase
+      .from("influ_procedure_items")
+      .insert(
+        procedures.map((p, idx) => ({
+          influencer_id: data.id,
+          name: p.name,
+          price: p.price,
+          price_item_id: p.priceItemId,
+          position: idx + 1,
+        }))
+      );
+    setSaving(false);
+    if (itemsError) {
+      // เคสถูกสร้างแล้ว — บอกให้ไปเพิ่มรายการต่อใน Stage 2 แทนที่จะกลืนเงียบ
+      setFormError(
+        `สร้างเคสแล้ว แต่บันทึกหัตถการไม่สำเร็จ (${itemsError.message}) — เพิ่มรายการอีกครั้งได้ที่ Stage 2`
+      );
+    }
+
+    const name = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+    logInflu(supabase, actor, {
+      action: "create",
+      entityId: data.id,
+      influencerId: data.id,
+      influencerName: name,
+      summary: `สร้างเคสใหม่ ${name}${
+        influCode.trim() ? ` (รหัส ${influCode.trim()})` : ""
+      } — หัตถการ: ${procedureSummaryText(procedures)}`,
+      meta: { influ_code: influCode.trim() || null, procedures: procedures.length },
+    });
+
     setAddOpen(false);
+    resetAddForm();
     router.push(`/influencers/${data.id}`);
     router.refresh();
   };
@@ -728,14 +869,24 @@ export function InfluencersClient({
         title="Influ Management"
         action={
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setDoctorsOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            <Link
+              href="/influencer-management"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
             >
-              <Stethoscope size={16} />
-              จัดการหมอ
-            </button>
+              <ArrowLeft size={16} />
+              หน้ารวมระบบ
+            </Link>
+            {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
+            {me.canManage && (
+              <button
+                type="button"
+                onClick={() => setDoctorsOpen(true)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+              >
+                <Stethoscope size={16} />
+                จัดการหมอ
+              </button>
+            )}
             <Link
               href="/influ-calendar"
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
@@ -750,13 +901,24 @@ export function InfluencersClient({
               <FileSignature size={16} />
               อายุสัญญา & Campaign
             </Link>
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus size={16} />
-              เพิ่ม Influencer
-            </Button>
+            {me.canEdit && (
+              <Button onClick={() => setAddOpen(true)}>
+                <Plus size={16} />
+                เพิ่ม Influencer
+              </Button>
+            )}
           </div>
         }
       />
+
+      {/* ระดับ "ดูเฉยๆ" — บอกให้ชัดตั้งแต่ต้นว่าทำไมไม่มีปุ่มแก้ */}
+      {!me.canEdit && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-stone-200 bg-white/70 px-4 py-2.5 text-sm text-stone-600 animate-fade-in">
+          <Eye size={16} className="shrink-0 text-stone-400" />
+          บัญชีนี้เป็นระดับ <span className="font-semibold">ดูเฉยๆ</span> —
+          เปิดดูเคสได้ทั้งหมด แต่เพิ่ม/แก้/ลบไม่ได้
+        </div>
+      )}
 
       {/* แท็บ: บอร์ด | รอทำ Memo — แยกคิวให้ influ manager เห็นว่ามีเคสไหนข้อมูลครบรออยู่ */}
       <div className="mb-4 flex gap-1 overflow-x-auto [scrollbar-width:none] animate-fade-in-up">
@@ -839,7 +1001,7 @@ export function InfluencersClient({
           />
           <Input
             type="search"
-            placeholder="ค้นหาชื่อ เบอร์ หรือหัตถการ..."
+            placeholder="ค้นหาชื่อ รหัส Influ ID เบอร์ หรือหัตถการ..."
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -898,17 +1060,42 @@ export function InfluencersClient({
             {bookingAlertIds.size}
           </span>
         </button>
+        {/* เคสของฉัน — ผู้รับผิดชอบ (owner_id) คือคนที่สร้างการ์ดนั้น */}
+        <button
+          type="button"
+          onClick={() => setMineOnly((v) => !v)}
+          title="ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ (คนที่สร้างการ์ด)"
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
+            mineOnly
+              ? "border-brand-400 bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+              : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
+          }`}
+        >
+          <UserRound size={14} />
+          เคสของฉัน
+          <span
+            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+              mineOnly ? "bg-white/25 text-cream" : "bg-stone-100 text-stone-500"
+            }`}
+          >
+            {items.filter((i) => i.owner_id === me.id).length}
+          </span>
+        </button>
         <InfluExcludeFilter
           excluded={excluded}
           onChange={setExcluded}
           countOf={(s) => items.filter((i) => influStatusOf(i) === s).length}
         />
-        {(search !== "" || stageFilter !== "all" || !excludedIsDefault) && (
+        {(search !== "" ||
+          stageFilter !== "all" ||
+          mineOnly ||
+          !excludedIsDefault) && (
           <button
             type="button"
             onClick={() => {
               setSearch("");
               setStageFilter("all");
+              setMineOnly(false);
               setExcluded(new Set(DEFAULT_EXCLUDED));
             }}
             className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
@@ -929,6 +1116,7 @@ export function InfluencersClient({
       {tab === "memo" ? (
         <MemoWaitingList
           items={memoWaiting}
+          canEdit={me.canEdit}
           onOpen={(id) => router.push(`/influencers/${id}`)}
           onToggleDocsSent={(i) => void toggleDocsSent(i)}
         />
@@ -939,10 +1127,12 @@ export function InfluencersClient({
             title="ยังไม่มี Influencer ในระบบ"
             description="เริ่มจากเพิ่มรายชื่อที่กำลังติดต่อ แล้วเดินงานทีละ stage จนจบสัญญา"
             action={
-              <Button onClick={() => setAddOpen(true)}>
-                <Plus size={16} />
-                เพิ่ม Influencer คนแรก
-              </Button>
+              me.canEdit ? (
+                <Button onClick={() => setAddOpen(true)}>
+                  <Plus size={16} />
+                  เพิ่ม Influencer คนแรก
+                </Button>
+              ) : undefined
             }
           />
         </Card>
@@ -968,8 +1158,11 @@ export function InfluencersClient({
           statsByInflu={statsByInflu}
           linksByInflu={linksByInflu}
           bookingAlertIds={bookingAlertIds}
+          ownerNameById={nameById}
           today={today}
           deletingId={deletingId}
+          canEdit={me.canEdit}
+          canDelete={mayDelete}
           onOpen={(i) => router.push(`/influencers/${i.id}`)}
           onDelete={(i) => {
             setActionError(null);
@@ -982,19 +1175,47 @@ export function InfluencersClient({
         />
       )}
 
-      {/* modal เพิ่ม influ — stage 1 เก็บแค่ ชื่อ นามสกุล เบอร์ */}
+      {/* modal เพิ่ม influ — stage 1: รหัส Influ ID · ชื่อ · เบอร์ · หัตถการที่รับ
+          ผู้รับผิดชอบ = คนที่สร้าง (ไม่ให้เลือก — กันเคสไม่มีเจ้าของเวลาหลายทีมใช้ร่วมกัน) */}
       <Modal
         open={addOpen}
         onClose={() => !saving && setAddOpen(false)}
         title="เพิ่ม Influencer (เริ่มติดต่อ)"
       >
         <form onSubmit={(e) => void handleAdd(e)} className="space-y-4">
-          <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
-            <UsersRound size={14} className="shrink-0" />
-            Stage 1: กรอกแค่ชื่อกับเบอร์ติดต่อพอ — รายละเอียดเคสไปกรอกใน stage
-            ถัดไปหลังยืนยันร่วมงาน
+          <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs leading-5 text-brand-700">
+            <UsersRound size={14} className="mt-0.5 shrink-0" />
+            <span>
+              Stage 1: กรอกรหัส ชื่อ เบอร์ และหัตถการที่ตกลงกันไว้ —
+              รายละเอียดที่เหลือไปกรอกใน stage ถัดไปหลังยืนยันร่วมงาน ·
+              ผู้รับผิดชอบเคสนี้คือ{" "}
+              <span className="font-semibold">{me.name || "บัญชีของคุณ"}</span>
+            </span>
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="inf-code">รหัส Influ ID</Label>
+              <Input
+                id="inf-code"
+                disabled={saving}
+                value={influCode}
+                onChange={(e) => setInfluCode(e.target.value)}
+                placeholder="เช่น INF-2569-001"
+              />
+              <p className="mt-1 text-xs text-stone-400">
+                ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่มีรหัส)
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="inf-nick">ชื่อเล่น / ชื่อช่อง</Label>
+              <Input
+                id="inf-nick"
+                disabled={saving}
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="เช่น มีมี่"
+              />
+            </div>
             <div>
               <Label htmlFor="inf-first">ชื่อ *</Label>
               <Input
@@ -1027,6 +1248,15 @@ export function InfluencersClient({
               placeholder="08x-xxx-xxxx"
             />
           </div>
+          <div>
+            <Label>หัตถการที่รับ *</Label>
+            <ProcedurePicker
+              picked={procedures}
+              onChange={setProcedures}
+              catalog={priceCatalog}
+              disabled={saving}
+            />
+          </div>
           {formError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
               {formError}
@@ -1041,14 +1271,18 @@ export function InfluencersClient({
             >
               ยกเลิก
             </Button>
-            <Button type="submit" loading={saving} disabled={!firstName.trim()}>
+            <Button
+              type="submit"
+              loading={saving}
+              disabled={!firstName.trim() || procedures.length === 0}
+            >
               เพิ่มและเปิดหน้าเดินงาน
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* ยืนยันลบ influencer */}
+      {/* ยืนยันลบ influencer — ลบแล้วเข้าถังขยะ 30 วัน (ผู้ดูแลกู้คืนได้) */}
       <ConfirmDialog
         open={deleteTarget !== null}
         title="ลบ Influencer"
@@ -1058,12 +1292,16 @@ export function InfluencersClient({
             <span className="font-medium text-stone-800">
               {deleteTarget ? influName(deleteTarget) : ""}
             </span>{" "}
-            ออกจากระบบถาวร? ข้อมูลทุก stage — follow-up, ลายเซน, สัญญา,
-            แคมเปญ และไฟล์ที่อัปโหลด — จะถูกลบทั้งหมด (กู้คืนไม่ได้)
-            ส่วนงานคอนเทนต์ที่เคยผูกไว้จะยังอยู่ แต่ไม่ผูกกับ influencer คนนี้แล้ว
+            ออกจากบอร์ด? ข้อมูลทุก stage (follow-up, ลายเซน, ต้นทุน, ลิงก์,
+            คิวในปฏิทิน) จะถูก
+            <span className="font-medium"> สำรองไว้ในถังขยะ 30 วัน </span>
+            ให้ผู้ดูแลระบบกู้คืนได้ · ส่วน
+            <span className="font-medium"> ไฟล์ที่อัปโหลด </span>
+            (รูป/Memo/สัญญา) จะถูกลบถาวรทันที และงานคอนเทนต์ที่เคยผูกไว้จะยังอยู่
+            แต่ไม่ผูกกับ influencer คนนี้แล้ว
           </>
         }
-        confirmLabel="ลบถาวร"
+        confirmLabel="ลบและเก็บลงถังขยะ"
         onConfirm={() => {
           if (deleteTarget) void handleDelete(deleteTarget);
         }}

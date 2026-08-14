@@ -39,6 +39,7 @@ import {
   INFLU_CALENDAR_KINDS,
   shortTime,
 } from "@/lib/influ-constants";
+import { logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
@@ -230,6 +231,7 @@ function DaySidebar({
   influencers,
   doctors,
   focusEventId,
+  canEdit,
   saving,
   error,
   onClose,
@@ -244,6 +246,8 @@ function DaySidebar({
   doctors: DoctorRow[];
   /** เปิดแผงมาที่รายละเอียดคิวนี้เลย (กดจากลิสต์ "คิวที่กำลังจะถึง") */
   focusEventId: string | null;
+  /** ระดับ "ดูเฉยๆ" = ไม่มีปุ่มเพิ่ม/แก้/ลบ/ติ๊กเสร็จเลย */
+  canEdit: boolean;
   saving: boolean;
   error: string | null;
   onClose: () => void;
@@ -374,8 +378,12 @@ function DaySidebar({
             {events.length === 0 && services.length === 0 ? (
               <p className="py-8 text-center text-sm text-stone-400">
                 ยังไม่มีคิวในวันนี้
-                <br />
-                <span className="text-xs">กดปุ่มด้านล่างเพื่อเพิ่ม Influ</span>
+                {canEdit && (
+                  <>
+                    <br />
+                    <span className="text-xs">กดปุ่มด้านล่างเพื่อเพิ่ม Influ</span>
+                  </>
+                )}
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -387,22 +395,36 @@ function DaySidebar({
                       key={e.id}
                       className={`flex items-start gap-2 rounded-lg border border-l-4 border-stone-200 bg-white/80 p-2 transition-colors hover:border-brand-200 ${meta.edge}`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => onToggleDone(e)}
-                        title={
-                          e.done
-                            ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
-                            : "ทำเครื่องหมายว่าเสร็จแล้ว"
-                        }
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border transition-colors active:scale-90 ${
-                          e.done
-                            ? "border-emerald-400 bg-emerald-400 text-white"
-                            : "border-stone-300 bg-white hover:border-brand-400"
-                        }`}
-                      >
-                        {e.done && <Check size={12} />}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => onToggleDone(e)}
+                          title={
+                            e.done
+                              ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
+                              : "ทำเครื่องหมายว่าเสร็จแล้ว"
+                          }
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border transition-colors active:scale-90 ${
+                            e.done
+                              ? "border-emerald-400 bg-emerald-400 text-white"
+                              : "border-stone-300 bg-white hover:border-brand-400"
+                          }`}
+                        >
+                          {e.done && <Check size={12} />}
+                        </button>
+                      ) : (
+                        // ดูเฉยๆ — ยังต้องเห็นว่าคิวไหนเสร็จแล้ว แต่กดเปลี่ยนไม่ได้
+                        <span
+                          title={e.done ? "เสร็จแล้ว" : "ยังไม่เสร็จ"}
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                            e.done
+                              ? "border-emerald-300 bg-emerald-100 text-emerald-600"
+                              : "border-stone-200 bg-stone-50"
+                          }`}
+                        >
+                          {e.done && <Check size={12} />}
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => openDetail(e.id)}
@@ -568,34 +590,36 @@ function DaySidebar({
               )}
             </dl>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                className="px-3 py-1.5 text-xs"
-                onClick={() => onToggleDone(activeEvent)}
-              >
-                <Check size={14} />
-                {activeEvent.done ? "ยังไม่เสร็จ" : "เสร็จแล้ว"}
-              </Button>
-              <Button
-                variant="secondary"
-                className="px-3 py-1.5 text-xs"
-                onClick={() => {
-                  setForm(formOf(activeEvent));
-                  setFormError(null);
-                  setMode("form");
-                }}
-              >
-                <Pencil size={14} /> แก้ไข
-              </Button>
-              <Button
-                variant="danger"
-                className="px-3 py-1.5 text-xs"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <Trash2 size={14} /> ลบ
-              </Button>
-            </div>
+            {canEdit && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => onToggleDone(activeEvent)}
+                >
+                  <Check size={14} />
+                  {activeEvent.done ? "ยังไม่เสร็จ" : "เสร็จแล้ว"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => {
+                    setForm(formOf(activeEvent));
+                    setFormError(null);
+                    setMode("form");
+                  }}
+                >
+                  <Pencil size={14} /> แก้ไข
+                </Button>
+                <Button
+                  variant="danger"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 size={14} /> ลบ
+                </Button>
+              </div>
+            )}
 
             {confirmDelete && (
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 animate-fade-in">
@@ -669,19 +693,21 @@ function DaySidebar({
             </dl>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                className="px-3 py-1.5 text-xs"
-                onClick={() =>
-                  openForm({
-                    kind: "service",
-                    influencerId: activeService.id,
-                    doctor: activeService.doctor_name ?? "",
-                    title: activeService.procedure_text ?? "",
-                  })
-                }
-              >
-                <CalendarPlus size={14} /> สร้างคิวจากเคสนี้
-              </Button>
+              {canEdit && (
+                <Button
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() =>
+                    openForm({
+                      kind: "service",
+                      influencerId: activeService.id,
+                      doctor: activeService.doctor_name ?? "",
+                      title: activeService.procedure_text ?? "",
+                    })
+                  }
+                >
+                  <CalendarPlus size={14} /> สร้างคิวจากเคสนี้
+                </Button>
+              )}
               <Link
                 href={`/influencers/${activeService.id}`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
@@ -845,8 +871,8 @@ function DaySidebar({
         )}
       </div>
 
-      {/* ---- ปุ่มเพิ่ม influ ประจำวันนั้น (ซ่อนตอนอยู่ในฟอร์ม) ---- */}
-      {view !== "form" && (
+      {/* ---- ปุ่มเพิ่ม influ ประจำวันนั้น (ซ่อนตอนอยู่ในฟอร์ม/ระดับดูเฉยๆ) ---- */}
+      {view !== "form" && canEdit && (
         <div className="border-t border-brand-100/70 px-4 py-3 pb-safe-3 sm:pb-3">
           <Button className="w-full" onClick={() => openForm()}>
             <UserPlus size={16} />
@@ -865,16 +891,25 @@ export function CalendarClient({
   influencers,
   doctors,
   userId,
+  userName,
+  canEdit,
   loadError,
 }: {
   events: CalendarEvent[];
   influencers: CalendarInflu[];
   doctors: DoctorRow[];
   userId: string | null;
+  userName: string | null;
+  /** ระดับ "ดูเฉยๆ" = เปิดปฏิทินดูได้ แต่เพิ่ม/แก้/ลบ/ติ๊กเสร็จไม่ได้ */
+  canEdit: boolean;
   loadError: string | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const actor = useMemo(
+    () => ({ id: userId, name: userName }),
+    [userId, userName]
+  );
   const today = todayISO();
 
   const [events, setEvents] = useState(initialEvents);
@@ -1040,6 +1075,7 @@ export function CalendarClient({
 
   /* ---- บันทึกคิว (เพิ่ม/แก้) ---- */
   const saveEvent = async (form: FormState): Promise<boolean> => {
+    if (!canEdit) return false;
     setSaving(true);
     setActionError(null);
     const payload = {
@@ -1068,6 +1104,14 @@ export function CalendarClient({
       }
       const saved = data as unknown as CalendarEvent;
       setEvents((cur) => cur.map((e) => (e.id === saved.id ? saved : e)));
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "calendar_event",
+        entityId: saved.id,
+        influencerId: saved.influencer_id,
+        influencerName: nameOf(saved.influencer) || null,
+        summary: `แก้คิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
+      });
       router.refresh();
       // ย้ายคิวไปวันอื่น = ตามไปเปิดวันนั้นให้เห็นผลทันที
       if (saved.event_date !== selectedDay) openDate(saved.event_date, saved.id);
@@ -1086,13 +1130,23 @@ export function CalendarClient({
     }
     const saved = data as unknown as CalendarEvent;
     setEvents((cur) => [...cur, saved]);
+    logInflu(supabase, actor, {
+      action: "create",
+      entity: "calendar_event",
+      entityId: saved.id,
+      influencerId: saved.influencer_id,
+      influencerName: nameOf(saved.influencer) || null,
+      summary: `เพิ่มคิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
+    });
     router.refresh();
     if (saved.event_date !== selectedDay) openDate(saved.event_date);
     return true;
   };
 
   const deleteEvent = async (id: string) => {
+    if (!canEdit) return;
     const prev = events;
+    const removed = events.find((e) => e.id === id) ?? null;
     setActionError(null);
     setEvents((cur) => cur.filter((e) => e.id !== id)); // optimistic
     const { error } = await supabase
@@ -1104,10 +1158,21 @@ export function CalendarClient({
       setActionError(`ลบไม่สำเร็จ: ${error.message}`);
       return;
     }
+    if (removed) {
+      logInflu(supabase, actor, {
+        action: "delete",
+        entity: "calendar_event",
+        entityId: removed.id,
+        influencerId: removed.influencer_id,
+        influencerName: nameOf(removed.influencer) || null,
+        summary: `ลบคิว "${removed.title}" วันที่ ${formatDate(removed.event_date)}`,
+      });
+    }
     router.refresh();
   };
 
   const toggleDone = async (target: CalendarEvent) => {
+    if (!canEdit) return;
     const next = !target.done;
     const prev = events;
     setActionError(null);
@@ -1140,10 +1205,12 @@ export function CalendarClient({
               <Sparkles size={16} />
               บอร์ด Influ
             </Link>
-            <Button onClick={() => openDate(today)}>
-              <CalendarPlus size={16} />
-              เพิ่มคิว
-            </Button>
+            {canEdit && (
+              <Button onClick={() => openDate(today)}>
+                <CalendarPlus size={16} />
+                เพิ่มคิว
+              </Button>
+            )}
           </div>
         }
       />
@@ -1156,6 +1223,11 @@ export function CalendarClient({
       {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           {actionError}
+        </div>
+      )}
+      {!canEdit && (
+        <div className="mb-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-600">
+          บัญชีนี้เป็นระดับ &ldquo;ดูเฉยๆ&rdquo; — เปิดดูคิวได้ทั้งหมด แต่เพิ่ม/แก้/ลบคิวไม่ได้
         </div>
       )}
 
@@ -1461,6 +1533,7 @@ export function CalendarClient({
               influencers={influencers}
               doctors={doctors}
               focusEventId={focusEventId}
+              canEdit={canEdit}
               saving={saving}
               error={actionError}
               onClose={closePanel}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canViewInflu, getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { InfluLinkLite } from "../influencers/influ-links";
 import type { InfluencerListRow } from "../influencers/influencers-client";
@@ -47,8 +47,8 @@ export default async function InfluGalleryPage() {
       .order("position", { ascending: true }),
   ]);
 
-  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและ influ manager
-  if (!hasPermission(access, "team") && !hasPermission(access, "influ"))
+  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
+  if (!hasPermission(access, "team") && !canViewInflu(access))
     return <AccessNotice />;
 
   // นับ follow-up ที่เหลือ + จำนวนงานคอนเทนต์ ต่อ influencer

@@ -7,7 +7,14 @@ export {
   PERMISSION_META,
   ALL_PERMISSIONS,
   hasPermission,
+  influLevel,
+  canViewInflu,
+  canEditInflu,
+  canManageInflu,
+  canDeleteInflu,
+  INFLU_LEVELS,
   type Access,
+  type InfluLevel,
 } from "@/lib/permissions";
 
 /** อ่าน role + permissions ของผู้ใช้ปัจจุบันฝั่ง server (ใช้ guard หน้าเพจ) */
@@ -15,16 +22,17 @@ export async function getAccess(): Promise<Access> {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const uid = typeof data?.claims?.sub === "string" ? data.claims.sub : null;
-  if (!uid) return { uid: null, isAdmin: false, permissions: [] };
+  if (!uid) return { uid: null, name: null, isAdmin: false, permissions: [] };
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, permissions")
+    .select("role, permissions, full_name, email")
     .eq("id", uid)
     .single();
 
   return {
     uid,
+    name: profile?.full_name ?? profile?.email ?? null,
     isAdmin: profile?.role === "admin",
     permissions: (profile?.permissions ?? []) as AppPermission[],
   };

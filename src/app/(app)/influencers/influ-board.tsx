@@ -34,6 +34,7 @@ import {
   RotateCcw,
   Timer,
   Trash2,
+  UserRound,
   UsersRound,
 } from "lucide-react";
 import { Fragment, useMemo, useRef, useState } from "react";
@@ -336,6 +337,7 @@ export function InfluCardContent({
   today,
   overlay = false,
   links,
+  ownerName,
   deleting = false,
   needsBooking = false,
   onDelete,
@@ -346,6 +348,8 @@ export function InfluCardContent({
   today: string;
   /** true = การ์ดลอยใน DragOverlay ระหว่างลาก */
   overlay?: boolean;
+  /** ชื่อผู้รับผิดชอบ (จาก owner_id) — หลายทีมใช้บอร์ดร่วมกันจึงต้องเห็นว่าเคสนี้ของใคร */
+  ownerName?: string | null;
   /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
   links?: InfluLinkLite[];
   deleting?: boolean;
@@ -419,6 +423,12 @@ export function InfluCardContent({
             {influName(i)}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-stone-400">
+            {/* รหัส Influ ID — เงียบๆ แต่มาก่อนเพื่อน เพราะทีมใช้อ้างอิงเวลาคุยกัน */}
+            {i.influ_code && (
+              <span className="font-medium tabular-nums text-stone-500">
+                {i.influ_code}
+              </span>
+            )}
             {i.followers !== null && (
               <span className="inline-flex items-center gap-1 font-medium text-stone-500">
                 <UsersRound size={11} /> {compactFollowers(i.followers)}
@@ -428,6 +438,14 @@ export function InfluCardContent({
             {i.phone && (
               <span className="inline-flex items-center gap-1">
                 <Phone size={11} /> {i.phone}
+              </span>
+            )}
+            {ownerName && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={`ผู้รับผิดชอบเคสนี้ — ${ownerName}`}
+              >
+                <UserRound size={11} /> {ownerName}
               </span>
             )}
           </p>
@@ -529,9 +547,12 @@ function SortableInfluCard({
   influ,
   stats,
   links,
+  ownerName,
   today,
   deleting,
   needsBooking,
+  canEdit,
+  canDelete,
   onClick,
   onDelete,
   onToggleDeclined,
@@ -539,15 +560,19 @@ function SortableInfluCard({
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
   links: InfluLinkLite[] | undefined;
+  ownerName?: string | null;
   today: string;
   deleting: boolean;
   needsBooking: boolean;
+  /** ระดับ "ดูเฉยๆ" = ลากการ์ด/กดปุ่มบนการ์ดไม่ได้ (เปิดดูได้อย่างเดียว) */
+  canEdit: boolean;
+  canDelete: boolean;
   onClick: () => void;
   onDelete: (influ: InfluencerListRow) => void;
   onToggleDeclined: (influ: InfluencerListRow) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: influ.id, data: { type: "influ" } });
+    useSortable({ id: influ.id, data: { type: "influ" }, disabled: !canEdit });
 
   return (
     <div
@@ -573,11 +598,13 @@ function SortableInfluCard({
         influ={influ}
         stats={stats}
         links={links}
+        ownerName={ownerName}
         today={today}
         deleting={deleting}
         needsBooking={needsBooking}
-        onDelete={onDelete}
-        onToggleDeclined={onToggleDeclined}
+        // ไม่ส่ง handler = ปุ่มนั้นไม่ render เลย (ดูเงื่อนไขใน InfluCardContent)
+        onDelete={canDelete ? onDelete : undefined}
+        onToggleDeclined={canEdit ? onToggleDeclined : undefined}
       />
     </div>
   );
@@ -590,10 +617,13 @@ function BoardColumn({
   influs,
   statsByInflu,
   linksByInflu,
+  ownerNameById,
   bookingAlertIds,
   today,
   highlight,
   deletingId,
+  canEdit,
+  canDelete,
   onCardClick,
   onDelete,
   onToggleDeclined,
@@ -602,10 +632,13 @@ function BoardColumn({
   influs: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  ownerNameById?: Map<string, string>;
   bookingAlertIds: ReadonlySet<string>;
   today: string;
   highlight: boolean;
   deletingId: string | null;
+  canEdit: boolean;
+  canDelete: (influ: InfluencerListRow) => boolean;
   onCardClick: (influ: InfluencerListRow) => void;
   onDelete: (influ: InfluencerListRow) => void;
   onToggleDeclined: (influ: InfluencerListRow) => void;
@@ -648,7 +681,7 @@ function BoardColumn({
                   : "border-stone-200 text-stone-300"
               }`}
             >
-              วางการ์ดที่นี่
+              {canEdit ? "วางการ์ดที่นี่" : "ไม่มีเคสในกลุ่มนี้"}
             </div>
           )}
           {influs.map((i) => (
@@ -657,9 +690,12 @@ function BoardColumn({
               influ={i}
               stats={statsByInflu.get(i.id)}
               links={linksByInflu?.get(i.id)}
+              ownerName={i.owner_id ? ownerNameById?.get(i.owner_id) : null}
               today={today}
               deleting={deletingId === i.id}
               needsBooking={bookingAlertIds.has(i.id)}
+              canEdit={canEdit}
+              canDelete={canDelete(i)}
               onClick={() => onCardClick(i)}
               onDelete={onDelete}
               onToggleDeclined={onToggleDeclined}
@@ -677,9 +713,12 @@ export function InfluBoard({
   items,
   statsByInflu,
   linksByInflu,
+  ownerNameById,
   bookingAlertIds,
   today,
   deletingId,
+  canEdit,
+  canDelete,
   onOpen,
   onDelete,
   onToggleDeclined,
@@ -690,10 +729,16 @@ export function InfluBoard({
   statsByInflu: Map<string, InfluStats>;
   /** ลิงก์ไฟล์ source ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด (ไม่ส่ง = ไม่มีปุ่ม) */
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  /** ชื่อผู้รับผิดชอบต่อ uid — แปลง owner_id เป็นชื่อบนการ์ด */
+  ownerNameById?: Map<string, string>;
   /** id ของเคสที่ต้องติดป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" */
   bookingAlertIds: ReadonlySet<string>;
   today: string;
   deletingId: string | null;
+  /** hunter ขึ้นไป — ลากการ์ด/กดปุ่มบนการ์ดได้ (ระดับ "ดูเฉยๆ" = false) */
+  canEdit: boolean;
+  /** ลบเคสนี้ได้ไหม (ผู้ดูแล = ทุกเคส, hunter = เฉพาะเคสของตัวเอง) */
+  canDelete: (influ: InfluencerListRow) => boolean;
   onOpen: (influ: InfluencerListRow) => void;
   onDelete: (influ: InfluencerListRow) => void;
   /** mark/ยกเลิกสถานะ "ปฏิเสธ" จากปุ่มบนการ์ด */
@@ -874,10 +919,13 @@ export function InfluBoard({
               influs={influs}
               statsByInflu={statsByInflu}
               linksByInflu={linksByInflu}
+              ownerNameById={ownerNameById}
               bookingAlertIds={bookingAlertIds}
               today={today}
               highlight={activeId !== null && overGroup === g}
               deletingId={deletingId}
+              canEdit={canEdit}
+              canDelete={canDelete}
               onCardClick={handleCardClick}
               onDelete={onDelete}
               onToggleDeclined={onToggleDeclined}
@@ -891,6 +939,11 @@ export function InfluBoard({
           <InfluCardContent
             influ={activeInflu}
             stats={statsByInflu.get(activeInflu.id)}
+            ownerName={
+              activeInflu.owner_id
+                ? ownerNameById?.get(activeInflu.owner_id)
+                : null
+            }
             today={today}
             needsBooking={bookingAlertIds.has(activeInflu.id)}
             overlay

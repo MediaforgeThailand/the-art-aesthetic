@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import {
   DashboardClient,
@@ -39,7 +39,7 @@ export default async function InfluDashboardPage() {
       // งาน follow-up (stage 6) — นับข้อค้างตามโหมดของแต่ละเคส
       supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
     ]);
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
     <PageContainer>

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
+import { useInfluLog } from "@/components/influ-log-provider";
 import { SignaturePad, SignatureSlot } from "@/components/signature-pad";
 import { Button, Card, Input, Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
@@ -41,6 +42,14 @@ import { useSignedUrl } from "../use-signed-url";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+/** ชื่อเคสที่ไปโผล่ในประวัติการใช้งาน (ชุดเดียวกับ logNameOf ใน detail-client) */
+function logNameOf(
+  i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname">
+): string {
+  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
+  return i.nickname ? `${full} (${i.nickname})` : full;
 }
 
 /* ---------- ปุ่มดูรูปที่อัพโหลดไว้ (รูป influ + รูปช่องทาง) ---------- */
@@ -233,6 +242,7 @@ function MemoCopyStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -371,6 +381,17 @@ function MemoCopyStage({
         // เพิกเฉย
       }
     }
+    const skipped =
+      influencer.stage === INFLU_STAGE.memo && !influencer.completed;
+    log({
+      action: "upload",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `${oldPath ? "เปลี่ยน" : "อัปโหลด"}ไฟล์ Memo ที่อนุมัติแล้ว: ${file.name}${
+        skipped ? " — ผ่านขั้น Memo อัตโนมัติ" : ""
+      }`,
+    });
     router.refresh();
   };
 
@@ -1045,6 +1066,7 @@ function ContractUploadStage({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
   const [error, setError] = useState<string | null>(null);
   // path ของแม่แบบที่กำลังดาวน์โหลด (มี 2 ฉบับ) — null = ไม่มีอันไหนกำลังโหลด
   const [downloadingTpl, setDownloadingTpl] = useState<string | null>(null);
@@ -1147,6 +1169,15 @@ function ContractUploadStage({
         // เพิกเฉย
       }
     }
+    log({
+      action: "upload",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `${oldPath ? "เปลี่ยน" : "อัปโหลด"}ไฟล์สัญญาที่เซนแล้ว: ${file.name}${
+        influencer.contract_start ? "" : " — เริ่มนับอายุสัญญา"
+      }`,
+    });
     router.refresh();
   };
 

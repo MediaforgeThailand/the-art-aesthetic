@@ -71,9 +71,12 @@ type Group = {
 
 export function CostClient({
   items,
+  canEdit,
   loadError,
 }: {
   items: CostItem[];
+  /** ระดับ "ดูเฉยๆ" = แก้ราคา/ติ๊ก support ไม่ได้ (ตัวเลขยังเห็นครบ) */
+  canEdit: boolean;
   loadError: string | null;
 }) {
   const router = useRouter();
@@ -481,11 +484,13 @@ export function CostClient({
                             ) : (
                               <CostPriceInput
                                 value={Number(item.price) || 0}
+                                disabled={!canEdit}
                                 onCommit={(n) => commitPrice(item.id, n)}
                               />
                             )}
                             <SupportToggle
                               on={item.is_supported}
+                              disabled={!canEdit}
                               onToggle={() => toggleSupport(item.id)}
                               compact
                             />

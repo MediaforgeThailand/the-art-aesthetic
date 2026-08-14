@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canEditInflu, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
 import { CalendarClient, type CalendarEvent, type CalendarInflu } from "./calendar-client";
@@ -37,7 +37,7 @@ export default async function InfluCalendarPage() {
       // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มคิว + รูปโปรไฟล์ในแผงข้าง
       supabase.from("doctors").select("*").order("name", { ascending: true }),
     ]);
-  if (!hasPermission(access, "influ")) return <AccessNotice />;
+  if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
     <PageContainer>
@@ -46,6 +46,8 @@ export default async function InfluCalendarPage() {
         influencers={(influencers ?? []) as CalendarInflu[]}
         doctors={(doctors ?? []) as DoctorRow[]}
         userId={access.uid}
+        userName={access.name}
+        canEdit={canEditInflu(access)}
         loadError={error?.message ?? null}
       />
     </PageContainer>
