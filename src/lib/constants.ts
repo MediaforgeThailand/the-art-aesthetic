@@ -135,10 +135,11 @@ export const LIST_PRIORITY_ORDER: TaskPriority[] = [
   "low",
 ];
 
-/** สถานะของงานใน My List — **คำนวณจากข้อมูลจริง ไม่ใช่คอลัมน์ใน DB**
+/** สถานะ "ในตัว" ของงานใน My List — **คำนวณจากข้อมูลจริง ไม่ใช่คอลัมน์ใน DB**
  *  (list_tasks มีแค่ done + due_date; ที่เหลือคือการอ่านสองค่านี้ให้เป็นภาษาคน)
  *  ใช้กับคอลัมน์ "สถานะ" ของตารางแบบ Monday และแถบสรุปท้ายกลุ่ม
- *  กดที่ช่องสถานะ = สลับ done เท่านั้น (ไม่มีสถานะกลางให้เลือกเอง) */
+ *  ตั้งแต่ 0072 ผู้ใช้เพิ่มสถานะ "ระหว่างทาง" ของตัวเองได้ (list_options kind=status)
+ *  — งานที่เลือกสถานะเหล่านั้นยังนับเป็น "ยังไม่เสร็จ" ทุกที่ที่ดู done (ดู statusViewOf) */
 export type ListStatus = "done" | "overdue" | "soon" | "open";
 
 export const LIST_STATUS: Record<
@@ -179,65 +180,83 @@ export const LIST_STATUS_ORDER: ListStatus[] = [
   "done",
 ];
 
-/** ชุดสีของแท็กที่ผู้ใช้เลือกเองได้ — key เก็บใน list_tags.color
- *  DB ไม่มี check constraint (เพิ่มสีใหม่ได้โดยไม่ต้อง migrate) — สีที่ไม่รู้จัก fallback เป็น brand */
-export const LIST_TAG_COLORS: Record<
-  string,
-  { label: string; chip: string; dot: string; text: string }
-> = {
+/** ชุดสีที่ผู้ใช้เลือกเองได้ใน My List — key เก็บใน list_tags.color / list_groups.color /
+ *  list_options.color (สีเดียวกันทั้งแท็ก หมวดหมู่ และตัวเลือกสถานะ/ความสำคัญที่เพิ่มเอง)
+ *  DB ไม่มี check constraint (เพิ่มสีใหม่ได้โดยไม่ต้อง migrate) — สีที่ไม่รู้จัก fallback เป็น brand
+ *  cell = ช่องสีทึบเต็มเซลล์ในตาราง (ใช้กับตัวเลือกที่เพิ่มเอง ให้หน้าตาเท่ากับสถานะในตัว)
+ *  row  = พื้นแถวอ่อนของงานที่ใช้ความสำคัญที่เพิ่มเอง (คู่กับ LIST_PRIORITY.row) */
+export type ListColorMeta = {
+  label: string;
+  chip: string;
+  dot: string;
+  text: string;
+  cell: string;
+  row: string;
+};
+
+export const LIST_TAG_COLORS: Record<string, ListColorMeta> = {
   brand: {
     label: "โรสโกลด์",
     chip: "bg-brand-100 text-brand-800",
     dot: "bg-brand-400",
     text: "text-brand-700",
+    cell: "bg-brand-500 text-white",
+    row: "border-l-brand-300 bg-brand-50/60",
   },
   rose: {
     label: "แดง",
     chip: "bg-rose-100 text-rose-700",
     dot: "bg-rose-400",
     text: "text-rose-600",
+    cell: "bg-rose-500 text-white",
+    row: "border-l-rose-400 bg-rose-50/70",
   },
   amber: {
     label: "เหลือง",
     chip: "bg-amber-100 text-amber-700",
     dot: "bg-amber-400",
     text: "text-amber-600",
+    cell: "bg-amber-400 text-amber-950",
+    row: "border-l-amber-300 bg-amber-50/50",
   },
   emerald: {
     label: "เขียว",
     chip: "bg-emerald-100 text-emerald-700",
     dot: "bg-emerald-400",
     text: "text-emerald-600",
+    cell: "bg-emerald-500 text-white",
+    row: "border-l-emerald-300 bg-emerald-50/60",
   },
   sky: {
     label: "ฟ้า",
     chip: "bg-sky-100 text-sky-700",
     dot: "bg-sky-400",
     text: "text-sky-600",
+    cell: "bg-sky-500 text-white",
+    row: "border-l-sky-300 bg-sky-50/60",
   },
   violet: {
     label: "ม่วง",
     chip: "bg-violet-100 text-violet-700",
     dot: "bg-violet-400",
     text: "text-violet-600",
+    cell: "bg-violet-500 text-white",
+    row: "border-l-violet-300 bg-violet-50/60",
   },
   stone: {
     label: "เทา",
     chip: "bg-stone-100 text-stone-600",
     dot: "bg-stone-400",
     text: "text-stone-500",
+    cell: "bg-stone-400 text-white",
+    row: "border-l-stone-200 bg-white/70",
   },
 };
 
 export const LIST_TAG_COLOR_ORDER = Object.keys(LIST_TAG_COLORS);
 
-/** สีของแท็ก — ค่าที่ระบบไม่รู้จัก (ข้อมูลเก่า/สีที่ถอดออก) ตกลงมาที่ brand */
-export function listTagColor(key: string): {
-  label: string;
-  chip: string;
-  dot: string;
-  text: string;
-} {
+/** สีของแท็ก/หมวด/ตัวเลือก — ค่าที่ระบบไม่รู้จัก (ข้อมูลเก่า/สีที่ถอดออก) ตกลงมาที่ brand */
+export function listTagColor(key: string): ListColorMeta {
   return LIST_TAG_COLORS[key] ?? LIST_TAG_COLORS.brand;
 }
 

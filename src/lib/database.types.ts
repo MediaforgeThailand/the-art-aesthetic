@@ -662,8 +662,14 @@ export type ListTaskRow = {
   title: string;
   /** โน้ต/รายละเอียดยาว (แก้ในแผงรายละเอียด) */
   note: string | null;
-  /** ใช้ชุดเดียวกับบอร์ดทีม — สีของแถวเปลี่ยนตามค่านี้ (LIST_PRIORITY ใน constants) */
+  /** ใช้ชุดเดียวกับบอร์ดทีม — สีของแถวเปลี่ยนตามค่านี้ (LIST_PRIORITY ใน constants)
+   *  มีผลเมื่อ priority_id เป็น null (เลือกความสำคัญที่เพิ่มเอง = อ่านจากตัวเลือกนั้นแทน) */
   priority: TaskPriority;
+  /** ความสำคัญที่ผู้ใช้เพิ่มเอง (list_options kind=priority) — null = ใช้คอลัมน์ priority (migration 0072) */
+  priority_id: string | null;
+  /** สถานะที่ผู้ใช้เพิ่มเอง (list_options kind=status) — null = ใช้สถานะคำนวณจาก done + due_date
+   *  ค่านี้เป็นสถานะ "ระหว่างทาง" เสมอ: ติ๊กเสร็จเมื่อไหร่ client ล้างเป็น null ให้ (migration 0072) */
+  status_id: string | null;
   due_date: string | null;
   done: boolean;
   /** DB ตั้ง/ล้างเองจาก trigger list_tasks_set_done_at — client ส่งมาก็ถูกทับ */
@@ -686,6 +692,24 @@ export type ListGroupRow = {
   /** key ของชุดสีใน LIST_TAG_COLORS — ค่าที่ไม่รู้จัก fallback เป็น brand (DB ไม่มี check) */
   color: string;
   /** ลำดับหมวดบนบอร์ด — float กึ่งกลางเพื่อนบ้านเหมือน position ของงาน */
+  position: number;
+  created_at: string;
+};
+
+/** ชนิดของ dropdown ที่ตัวเลือกอยู่ — เพิ่มชนิดใหม่ต้องแก้ check constraint ของ list_options ด้วย */
+export type ListOptionKind = "status" | "priority";
+
+/** ตัวเลือกที่ผู้ใช้ "กดเพิ่มเอง" ให้ dropdown ของ My List (migration 0072)
+    — เป็นชั้นเสริมของตัวเลือกในตัว: งานที่ไม่ได้เลือก (status_id/priority_id = null)
+    ยังใช้สถานะคำนวณ/ความสำคัญ 4 ระดับเดิมทุกประการ */
+export type ListOptionRow = {
+  id: string;
+  owner_id: string;
+  kind: ListOptionKind;
+  name: string;
+  /** key ของชุดสีใน LIST_TAG_COLORS — ค่าที่ไม่รู้จัก fallback เป็น brand (DB ไม่มี check) */
+  color: string;
+  /** ลำดับในเมนู — float กึ่งกลางเพื่อนบ้านเหมือน position ของงาน */
   position: number;
   created_at: string;
 };
@@ -1012,6 +1036,16 @@ export interface Database {
         Row: ListGroupRow;
         Insert: Partial<ListGroupRow> & { owner_id: string; name: string };
         Update: Partial<ListGroupRow>;
+        Relationships: [];
+      };
+      list_options: {
+        Row: ListOptionRow;
+        Insert: Partial<ListOptionRow> & {
+          owner_id: string;
+          kind: ListOptionKind;
+          name: string;
+        };
+        Update: Partial<ListOptionRow>;
         Relationships: [];
       };
       list_tags: {

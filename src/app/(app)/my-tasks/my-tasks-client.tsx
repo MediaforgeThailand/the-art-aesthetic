@@ -51,6 +51,7 @@ import {
   Plus,
   Rows3,
   Search,
+  Settings2,
   Tags as TagsIcon,
   Trash2,
   X,
@@ -59,19 +60,19 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, ConfirmDialog } from "@/components/ui";
 import {
-  LIST_PRIORITY,
   LIST_PRIORITY_ORDER,
   LIST_STATUS,
-  LIST_STATUS_ORDER,
+  listTagColor,
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
   ListGroupRow,
+  ListOptionKind,
+  ListOptionRow,
   ListTagRow,
   ListTaskFileRow,
   ListTaskRow,
-  TaskPriority,
 } from "@/lib/types";
 import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
 import { compressImages } from "@/lib/upload-prepare";
@@ -87,15 +88,24 @@ import {
   type ListSort,
   midPosition,
   type MyTask,
+  type OptionUi,
+  priorityPatch,
+  priorityViewOf,
+  priorityViews,
   shortDate,
   sortListGroups,
   sortTasks,
+  splitOptions,
   statusOf,
+  statusPatch,
+  statusSelectedKey,
+  statusViewOf,
+  statusViews,
 } from "./list-utils";
+import { OptionManagerModal } from "./option-manager";
 import {
   nextTagColor,
-  PriorityPicker,
-  StatusPicker,
+  OptionPicker,
   TagChip,
   ToolbarMenu,
   type ToolbarOption,
@@ -109,15 +119,25 @@ import {
   type UploadProgress,
 } from "./task-files";
 
-type StatusFilter = "all" | "open" | "overdue" | "soon" | "done";
-
+/** ค่าตัวกรองสถานะ/ความสำคัญ — เป็น string เพราะนอกจากค่าในตัวยังเป็น id ของตัวเลือก
+ *  ที่ผู้ใช้เพิ่มเองได้ด้วย (uuid ไม่มีทางชนกับคีย์ในตัวอย่าง "open"/"urgent") */
 type Filters = {
-  status: StatusFilter;
-  priority: "all" | TaskPriority;
+  status: string;
+  priority: string;
   tagId: string;
   sort: ListSort;
   groupBy: GroupBy;
 };
+
+/** คีย์ตัวกรองในตัว — ค่าที่ไม่อยู่ในนี้คือ id ของตัวเลือกที่เพิ่มเอง (ใช้เช็คค่าค้างใน localStorage) */
+const BUILTIN_STATUS_FILTERS = new Set([
+  "all",
+  "open",
+  "overdue",
+  "soon",
+  "done",
+]);
+const BUILTIN_PRIORITY_FILTERS = new Set<string>(["all", ...LIST_PRIORITY_ORDER]);
 
 const DEFAULT_FILTERS: Filters = {
   // ค่าเริ่มต้นซ่อนงานที่ทำเสร็จแล้ว — ลิสต์ส่วนตัวสะสมของเก่าเร็วมาก
@@ -130,7 +150,7 @@ const DEFAULT_FILTERS: Filters = {
   groupBy: "category",
 };
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
+const STATUS_OPTIONS: { value: string; label: string; dot?: string }[] = [
   { value: "all", label: "ทุกสถานะ" },
   { value: "open", label: "ยังไม่เสร็จ", dot: LIST_STATUS.open.bar },
   { value: "overdue", label: "เลยกำหนด", dot: LIST_STATUS.overdue.bar },
@@ -165,12 +185,15 @@ export function MyTasksClient({
   tasks,
   tags: initialTags,
   groups: initialGroups,
+  options: initialOptions,
   loadError,
 }: {
   uid: string;
   tasks: MyTask[];
   tags: ListTagRow[];
   groups: ListGroupRow[];
+  /** ตัวเลือกสถานะ/ความสำคัญที่ผู้ใช้เพิ่มเอง (list_options — migration 0072) */
+  options: ListOptionRow[];
   loadError: string | null;
 }) {
   const router = useRouter();
@@ -205,6 +228,12 @@ export function MyTasksClient({
   useEffect(() => {
     if (pendingMuts.current === 0) setCats(initialGroups);
   }, [initialGroups]);
+  // ตัวเลือกสถานะ/ความสำคัญที่เพิ่มเอง — เก็บเป็นแถวดิบ แล้วแยกชนิด/เรียงตอนใช้
+  const [opts, setOpts] = useState<ListOptionRow[]>(initialOptions);
+  useEffect(() => {
+    if (pendingMuts.current === 0) setOpts(initialOptions);
+  }, [initialOptions]);
+  const options = useMemo(() => splitOptions(opts), [opts]);
 
   const [err, setErr] = useState<string | null>(loadError);
   const [q, setQ] = useState("");
@@ -215,6 +244,7 @@ export function MyTasksClient({
   const [openId, setOpenId] = useState<string | null>(null);
   const [tagModal, setTagModal] = useState(false);
   const [catModal, setCatModal] = useState(false);
+  const [optModal, setOptModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // ช่อง "+ เพิ่มงาน" ของแต่ละกลุ่ม — ปุ่ม "งานใหม่" บนแถบเครื่องมือแค่พาโฟกัสมาที่ช่องแรก
@@ -227,11 +257,27 @@ export function MyTasksClient({
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(filtersKey(uid));
-      if (raw) setFilters({ ...DEFAULT_FILTERS, ...JSON.parse(raw) });
+      if (raw) {
+        const saved: Filters = { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
+        // ตัวกรองที่ชี้ "ตัวเลือกที่เพิ่มเอง" ซึ่งถูกลบไปแล้ว (จากอีกเครื่อง/อีกแท็บ) จะกรอง
+        // ทุกงานทิ้งถาวรโดยที่ปุ่มของมันหายไปจากเมนูแล้ว — ตกกลับเป็น "ทั้งหมด" ให้เอง
+        const live = new Set(initialOptions.map((o) => o.id));
+        if (!BUILTIN_STATUS_FILTERS.has(saved.status) && !live.has(saved.status))
+          saved.status = DEFAULT_FILTERS.status;
+        if (
+          !BUILTIN_PRIORITY_FILTERS.has(saved.priority) &&
+          !live.has(saved.priority)
+        )
+          saved.priority = DEFAULT_FILTERS.priority;
+        setFilters(saved);
+      }
     } catch {
       // localStorage ใช้ไม่ได้ (โหมดส่วนตัว/บล็อค) — ใช้ค่าเริ่มต้นไป
     }
     setPrefsLoaded(true);
+    // ตั้งใจอ่าน initialOptions ครั้งเดียวตอน mount (ค่าที่ server ส่งมารอบแรก) —
+    // ไม่ผูกเป็น dependency ไม่งั้นทุกครั้งที่ refresh จะเขียนทับตัวกรองที่ผู้ใช้เพิ่งเลือก
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
   useEffect(() => {
@@ -297,7 +343,14 @@ export function MyTasksClient({
     router.refresh();
   });
 
-  const patchTask = (id: string, patch: Partial<ListTaskRow>) => mutate(async () => {
+  const patchTask = (id: string, raw: Partial<ListTaskRow>) => mutate(async () => {
+    // ติ๊กเสร็จ = ล้างสถานะที่เพิ่มเองไปด้วยเสมอ (สถานะพวกนั้นคือ "ระหว่างทาง" — ปล่อยค้างไว้
+    // ช่องสถานะจะเถียงกันเองว่า "กำลังทำ" ทั้งที่งานจบแล้ว) ทำที่นี่ที่เดียวเพื่อให้ทุกทาง
+    // ที่ติ๊กเสร็จได้ (ช่องติ๊ก / เมนูสถานะ / ปุ่มในแผง / ลากเข้ากลุ่ม "เสร็จแล้ว") ตรงกันหมด
+    const patch: Partial<ListTaskRow> =
+      raw.done === true && raw.status_id === undefined
+        ? { ...raw, status_id: null }
+        : raw;
     const before = items;
     setItems((prev) =>
       prev.map((t) =>
@@ -685,16 +738,148 @@ export function MyTasksClient({
     });
   };
 
+  /* ---------- ตัวเลือกที่ผู้ใช้เพิ่มเอง (สถานะ / ความสำคัญ — list_options) ---------- */
+
+  /** สร้างตัวเลือกใหม่ต่อท้ายชนิดนั้น — คืน id (null = ล้มเหลว) */
+  const createOption = (
+    kind: ListOptionKind,
+    name: string
+  ): Promise<string | null> =>
+    mutate(async () => {
+      const clean = name.trim();
+      if (!clean) return null;
+      const same = opts.filter((o) => o.kind === kind);
+      // ชื่อซ้ำในชนิดเดียวกัน = ใช้ตัวที่มีอยู่ (DB ไม่ได้บังคับ unique เพราะชื่อซ้ำคนละชนิดได้ —
+      // กันเมนูมีสองบรรทัดชื่อเหมือนกันเอาเองตรงนี้)
+      const existing = same.find(
+        (o) => o.name.trim().toLowerCase() === clean.toLowerCase()
+      );
+      if (existing) return existing.id;
+      const { data, error } = await supabase
+        .from("list_options")
+        .insert({
+          owner_id: uid,
+          kind,
+          name: clean,
+          color: nextTagColor(opts.length),
+          position: same.reduce((m, o) => Math.max(m, o.position), 0) + 1,
+        })
+        .select("*")
+        .single();
+      if (error || !data) {
+        setErr(error?.message ?? "เพิ่มตัวเลือกไม่สำเร็จ");
+        return null;
+      }
+      setErr(null);
+      setOpts((prev) => [...prev, data as ListOptionRow]);
+      router.refresh();
+      return (data as ListOptionRow).id;
+    });
+
+  /** สร้างตัวเลือกจากในเมนูของงานหนึ่ง แล้วตั้งให้งานนั้นทันที (ไม่ต้องเปิดเมนูซ้ำ) */
+  const createOptionFor = async (
+    kind: ListOptionKind,
+    taskId: string,
+    name: string
+  ): Promise<string | null> => {
+    const id = await createOption(kind, name);
+    if (!id) return null;
+    await patchTask(
+      taskId,
+      kind === "status" ? { done: false, status_id: id } : { priority_id: id }
+    );
+    return id;
+  };
+
+  const patchOption = (id: string, patch: Partial<ListOptionRow>) =>
+    mutate(async () => {
+      const before = opts;
+      setOpts((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+      const { error } = await supabase
+        .from("list_options")
+        .update(patch)
+        .eq("id", id);
+      if (error) {
+        setErr(error.message);
+        setOpts(before);
+        return;
+      }
+      setErr(null);
+      router.refresh();
+    });
+
+  const deleteOption = (id: string) =>
+    mutate(async () => {
+      const beforeOpts = opts;
+      const beforeItems = items;
+      setOpts((prev) => prev.filter((o) => o.id !== id));
+      // งานที่ใช้ตัวเลือกนี้ไม่หาย — ตกกลับไปใช้ค่าในตัว (DB SET NULL ให้เอง, sync state ให้ตรง)
+      setItems((prev) =>
+        prev.map((t) =>
+          t.status_id === id || t.priority_id === id
+            ? {
+                ...t,
+                status_id: t.status_id === id ? null : t.status_id,
+                priority_id: t.priority_id === id ? null : t.priority_id,
+              }
+            : t
+        )
+      );
+      const { error } = await supabase.from("list_options").delete().eq("id", id);
+      if (error) {
+        setErr(error.message);
+        setOpts(beforeOpts);
+        setItems(beforeItems);
+        return;
+      }
+      // ตัวกรองที่ชี้ตัวเลือกนี้อยู่จะกรองทุกงานทิ้งถาวร (ปุ่มของมันหายไปพร้อมตัวเลือกแล้ว) — ปลดให้เอง
+      setFilters((f) => ({
+        ...f,
+        status: f.status === id ? "all" : f.status,
+        priority: f.priority === id ? "all" : f.priority,
+      }));
+      setErr(null);
+      router.refresh();
+    });
+
+  /** ย้ายตัวเลือกขึ้น/ลงหนึ่งขั้นในชนิดของตัวเอง (ตำแหน่งกึ่งกลางเพื่อนบ้านแบบเดียวกับหมวดหมู่) */
+  const moveOption = (id: string, dir: -1 | 1) => {
+    const row = opts.find((o) => o.id === id);
+    if (!row) return;
+    const list = options[row.kind];
+    const idx = list.findIndex((o) => o.id === id);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= list.length) return;
+    const rest = list.filter((o) => o.id !== id);
+    void patchOption(id, {
+      position: midPosition(
+        target > 0 ? rest[target - 1].position : null,
+        target < rest.length ? rest[target].position : null
+      ),
+    });
+  };
+
   /* ---------- กรอง + เรียง + จัดกลุ่ม ---------- */
 
   const filtered = useMemo(() => {
     const keyword = q.trim().toLowerCase();
     return items.filter((t) => {
+      // "ยังไม่เสร็จ" = ทุกงานที่ยังไม่ติ๊กเสร็จ รวมงานที่ตั้งสถานะเพิ่มเองไว้ (เช่น กำลังทำ)
+      // ส่วนค่าที่ไม่ใช่คีย์ในตัว = id ของสถานะที่เพิ่มเอง ต้องตรงกับสถานะที่งานโชว์อยู่จริง
       if (filters.status === "open" && t.done) return false;
       if (filters.status === "done" && !t.done) return false;
       if (filters.status === "overdue" && !isOverdue(t)) return false;
       if (filters.status === "soon" && statusOf(t) !== "soon") return false;
-      if (filters.priority !== "all" && t.priority !== filters.priority)
+      if (
+        !BUILTIN_STATUS_FILTERS.has(filters.status) &&
+        statusViewOf(t, options.status).key !== filters.status
+      )
+        return false;
+      // เทียบกับ "ความสำคัญที่โชว์บนแถว" — งานที่ใช้ระดับเพิ่มเองจึงไม่ไปโผล่ในตัวกรองระดับในตัว
+      if (
+        filters.priority !== "all" &&
+        priorityViewOf(t, options.priority).key !== filters.priority
+      )
         return false;
       if (filters.tagId !== "all" && !t.tagIds.includes(filters.tagId))
         return false;
@@ -706,19 +891,19 @@ export function MyTasksClient({
         return false;
       return true;
     });
-  }, [items, q, filters]);
+  }, [items, q, filters, options]);
 
   const ordered = useMemo(
-    () => sortTasks(filtered, filters.sort),
-    [filtered, filters.sort]
+    () => sortTasks(filtered, filters.sort, options.priority),
+    [filtered, filters.sort, options.priority]
   );
 
   const groups = useMemo(
     () =>
-      buildGroups(ordered, filters.groupBy, tags, sortedCats).filter(
+      buildGroups(ordered, filters.groupBy, tags, sortedCats, options).filter(
         (g) => g.tasks.length > 0 || g.keepEmpty
       ),
-    [ordered, filters.groupBy, tags, sortedCats]
+    [ordered, filters.groupBy, tags, sortedCats, options]
   );
 
   const stats = useMemo(() => {
@@ -747,6 +932,42 @@ export function MyTasksClient({
       if (t.group_id) m.set(t.group_id, (m.get(t.group_id) ?? 0) + 1);
     return m;
   }, [items]);
+
+  /** จำนวนงานที่ใช้ตัวเลือกที่เพิ่มเองแต่ละอัน (เตือนก่อนลบในโมดัลจัดการตัวเลือก) */
+  const optUsage = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of items) {
+      if (t.status_id) m.set(t.status_id, (m.get(t.status_id) ?? 0) + 1);
+      if (t.priority_id) m.set(t.priority_id, (m.get(t.priority_id) ?? 0) + 1);
+    }
+    return m;
+  }, [items]);
+
+  /* ---------- ชุด dropdown สถานะ/ความสำคัญ ที่ส่งต่อให้ตารางและแผงรายละเอียด ---------- */
+
+  // เมนูสถานะเลือกได้เฉพาะค่าที่ "ตั้งเองได้" — เลยกำหนด/ใกล้ครบกำหนดมาจากวันกำหนดส่ง
+  const statusMenu = useMemo(
+    () => statusViews(options.status).filter((v) => statusPatch(v) !== null),
+    [options.status]
+  );
+  const priorityMenu = useMemo(
+    () => priorityViews(options.priority),
+    [options.priority]
+  );
+
+  const optionUi: OptionUi = {
+    status: options.status,
+    priority: options.priority,
+    statusMenu,
+    priorityMenu,
+    onPickStatus: (taskId, v) => {
+      const patch = statusPatch(v);
+      if (patch) void patchTask(taskId, patch);
+    },
+    onPickPriority: (taskId, v) => void patchTask(taskId, priorityPatch(v)),
+    onCreate: createOptionFor,
+    onManage: () => setOptModal(true),
+  };
 
   const hiddenCount = items.length - filtered.length;
   const openTask = openId ? items.find((t) => t.id === openId) ?? null : null;
@@ -846,13 +1067,23 @@ export function MyTasksClient({
 
   /* ---------- ตัวเลือกบนแถบเครื่องมือ ---------- */
 
-  const statusOptions: ToolbarOption[] = STATUS_OPTIONS.map((o) => ({
-    key: o.value,
-    label: o.label,
-    dot: o.dot,
-    selected: filters.status === o.value,
-    onPick: () => setFilter("status", o.value),
-  }));
+  // ตัวกรองมีทั้งค่าในตัวและตัวเลือกที่ผู้ใช้เพิ่มเอง (ต่อท้าย) — กรองด้วยป้ายที่เห็นบนตารางได้เลย
+  const statusOptions: ToolbarOption[] = [
+    ...STATUS_OPTIONS.map((o) => ({
+      key: o.value,
+      label: o.label,
+      dot: o.dot,
+      selected: filters.status === o.value,
+      onPick: () => setFilter("status", o.value),
+    })),
+    ...options.status.map((o) => ({
+      key: o.id,
+      label: o.name,
+      dot: listTagColor(o.color).dot,
+      selected: filters.status === o.id,
+      onPick: () => setFilter("status", o.id),
+    })),
+  ];
 
   const priorityOptions: ToolbarOption[] = [
     {
@@ -861,12 +1092,12 @@ export function MyTasksClient({
       selected: filters.priority === "all",
       onPick: () => setFilter("priority", "all"),
     },
-    ...LIST_PRIORITY_ORDER.map((p) => ({
-      key: p,
-      label: LIST_PRIORITY[p].label,
-      dot: LIST_PRIORITY[p].dot,
-      selected: filters.priority === p,
-      onPick: () => setFilter("priority", p),
+    ...priorityMenu.map((v) => ({
+      key: v.key,
+      label: v.label,
+      dot: v.bar,
+      selected: filters.priority === v.key,
+      onPick: () => setFilter("priority", v.key),
     })),
   ];
 
@@ -899,14 +1130,19 @@ export function MyTasksClient({
     onPick: () => setFilter("sort", o.value),
   }));
 
+  // ป้ายบนปุ่มตัวกรอง — หาจากรายการเดียวกับในเมนู (ครอบทั้งค่าในตัวและตัวเลือกที่เพิ่มเอง)
   const statusLabel =
     filters.status === "all"
       ? "สถานะ"
-      : `สถานะ: ${STATUS_OPTIONS.find((o) => o.value === filters.status)?.label}`;
+      : `สถานะ: ${
+          statusOptions.find((o) => o.key === filters.status)?.label ?? "—"
+        }`;
   const priorityLabel =
     filters.priority === "all"
       ? "ความสำคัญ"
-      : `ความสำคัญ: ${LIST_PRIORITY[filters.priority].label}`;
+      : `ความสำคัญ: ${
+          priorityOptions.find((o) => o.key === filters.priority)?.label ?? "—"
+        }`;
   const tagLabel =
     filters.tagId === "all"
       ? "แท็ก"
@@ -950,10 +1186,14 @@ export function MyTasksClient({
               onClick={() => setFilter("status", "done")}
             />
           </div>
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="ml-auto flex flex-wrap items-center gap-0.5">
             <Button variant="ghost" onClick={() => setCatModal(true)}>
               <Rows3 size={16} />
               จัดการหมวดหมู่
+            </Button>
+            <Button variant="ghost" onClick={() => setOptModal(true)}>
+              <Settings2 size={16} />
+              จัดการตัวเลือก
             </Button>
             <Button variant="ghost" onClick={() => setTagModal(true)}>
               <TagsIcon size={16} />
@@ -1120,6 +1360,7 @@ export function MyTasksClient({
                 key={g.key}
                 group={g}
                 tags={tags}
+                opt={optionUi}
                 collapsed={!!collapsed[g.key]}
                 dragDisabled={dragDisabled}
                 emptyHint={items.length === 0}
@@ -1138,8 +1379,6 @@ export function MyTasksClient({
                 onAdd={(title) => void addTask(title, g)}
                 onOpen={setOpenId}
                 onToggleDone={(t) => void patchTask(t.id, { done: !t.done })}
-                onSetDone={(t, d) => void patchTask(t.id, { done: d })}
-                onPriority={(id, p) => void patchTask(id, { priority: p })}
                 onDelete={setConfirmDelete}
                 /* กดชื่อหัวกลุ่ม = เปลี่ยนชื่อได้เลย ทั้งหมวดจริงและกลุ่มสำรอง
                    (กลุ่มสำรองยังไม่มีแถวใน list_groups — ตั้งชื่อ = สร้างหมวดแล้วย้ายงานเข้า)
@@ -1166,6 +1405,7 @@ export function MyTasksClient({
           task={openTask}
           tags={tags}
           groups={sortedCats}
+          opt={optionUi}
           uploading={uploadingId === openTask.id}
           uploadProgress={uploadingId === openTask.id ? uploadProgress : null}
           onClose={() => setOpenId(null)}
@@ -1187,6 +1427,18 @@ export function MyTasksClient({
         onRename={(id, name) => void patchTag(id, { name })}
         onRecolor={(id, color) => void patchTag(id, { color })}
         onDelete={(id) => void deleteTag(id)}
+      />
+
+      <OptionManagerModal
+        open={optModal}
+        onClose={() => setOptModal(false)}
+        options={options}
+        usage={optUsage}
+        onCreate={createOption}
+        onRename={(id, name) => void patchOption(id, { name })}
+        onRecolor={(id, color) => void patchOption(id, { color })}
+        onMove={moveOption}
+        onDelete={(id) => void deleteOption(id)}
       />
 
       <GroupManagerModal
@@ -1338,6 +1590,7 @@ function AddCategoryInline({
 function GroupSection({
   group,
   tags,
+  opt,
   collapsed,
   dragDisabled,
   emptyHint,
@@ -1347,14 +1600,14 @@ function GroupSection({
   onAdd,
   onOpen,
   onToggleDone,
-  onSetDone,
-  onPriority,
   onDelete,
   onRename,
   onUploadFiles,
 }: {
   group: ListGroup;
   tags: ListTagRow[];
+  /** ตัวเลือกสถานะ/ความสำคัญ + callback ของ dropdown ทั้งสองช่อง */
+  opt: OptionUi;
   collapsed: boolean;
   dragDisabled: boolean;
   /** id ของงานที่กำลังอัพโหลดไฟล์อยู่ (null = ไม่มี) */
@@ -1366,8 +1619,6 @@ function GroupSection({
   onAdd: (title: string) => void;
   onOpen: (id: string) => void;
   onToggleDone: (t: MyTask) => void;
-  onSetDone: (t: MyTask, done: boolean) => void;
-  onPriority: (id: string, p: TaskPriority) => void;
   onDelete: (id: string) => void;
   /** เปลี่ยนชื่อกลุ่ม inline แบบ Monday — มีเฉพาะโหมดจัดกลุ่มตามหมวดหมู่ (รวมกลุ่มสำรอง
    *  "ยังไม่จัดหมวดหมู่" ที่การตั้งชื่อ = สร้างหมวดใหม่); กลุ่มคำนวณเปลี่ยนชื่อไม่ได้ */
@@ -1502,12 +1753,11 @@ function GroupSection({
                     id={rowId(group.key, t.id)}
                     task={t}
                     tags={tags}
+                    opt={opt}
                     dragDisabled={dragDisabled}
                     uploading={uploadingId === t.id}
                     onOpen={() => onOpen(t.id)}
                     onToggleDone={() => onToggleDone(t)}
-                    onSetDone={(d) => onSetDone(t, d)}
-                    onPriority={(p) => onPriority(t.id, p)}
                     onDelete={() => onDelete(t.id)}
                     onPickFiles={(files) => onUploadFiles(t.id, files)}
                   />
@@ -1558,7 +1808,7 @@ function GroupSection({
 
               {/* ---- แถบสรุปท้ายกลุ่ม (จอ ≥sm) ---- */}
               {group.tasks.length > 0 && (
-                <GroupSummary tasks={group.tasks} />
+                <GroupSummary tasks={group.tasks} opt={opt} />
               )}
 
               {group.tasks.length === 0 && emptyHint && (
@@ -1595,23 +1845,24 @@ function HeadCell({
 
 /* ---------- แถบสรุปท้ายกลุ่ม (สัดส่วนสถานะ/ความสำคัญ + ช่วงกำหนดส่ง) ---------- */
 
-function GroupSummary({ tasks }: { tasks: MyTask[] }) {
+function GroupSummary({ tasks, opt }: { tasks: MyTask[]; opt: OptionUi }) {
   const seg = (parts: { color: string; n: number }[]) => {
     const total = parts.reduce((m, p) => m + p.n, 0) || 1;
     return parts
       .filter((p) => p.n > 0)
       .map((p) => ({ color: p.color, w: `${(100 * p.n) / total}%` }));
   };
+  // นับตาม "ค่าที่โชว์บนแถว" — สัดส่วนในแถบสรุปจึงรวมตัวเลือกที่ผู้ใช้เพิ่มเองด้วย
   const statusSeg = seg(
-    LIST_STATUS_ORDER.map((s) => ({
-      color: LIST_STATUS[s].bar,
-      n: tasks.filter((t) => statusOf(t) === s).length,
+    statusViews(opt.status).map((v) => ({
+      color: v.bar,
+      n: tasks.filter((t) => statusViewOf(t, opt.status).key === v.key).length,
     }))
   );
   const prioSeg = seg(
-    LIST_PRIORITY_ORDER.map((p) => ({
-      color: LIST_PRIORITY[p].bar,
-      n: tasks.filter((t) => t.priority === p).length,
+    opt.priorityMenu.map((v) => ({
+      color: v.bar,
+      n: tasks.filter((t) => priorityViewOf(t, opt.priority).key === v.key).length,
     }))
   );
   const fileCount = tasks.reduce((m, t) => m + t.files.length, 0);
@@ -1679,34 +1930,32 @@ function TaskRow({
   id,
   task,
   tags,
+  opt,
   dragDisabled,
   uploading,
   onOpen,
   onToggleDone,
-  onSetDone,
-  onPriority,
   onDelete,
   onPickFiles,
 }: {
   id: string;
   task: MyTask;
   tags: ListTagRow[];
+  opt: OptionUi;
   dragDisabled: boolean;
   /** งานนี้กำลังอัพโหลดไฟล์อยู่ — ล็อกปุ่มแนบไฟล์ของแถวไว้ก่อน */
   uploading: boolean;
   onOpen: () => void;
   onToggleDone: () => void;
-  onSetDone: (done: boolean) => void;
-  onPriority: (p: TaskPriority) => void;
   onDelete: () => void;
   onPickFiles: (files: FileList) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id, disabled: dragDisabled });
 
-  const status = statusOf(task);
-  const statusMeta = LIST_STATUS[status];
-  const prio = LIST_PRIORITY[task.priority];
+  // ค่าที่โชว์จริงบนแถว — ตัวเลือกที่ผู้ใช้เพิ่มเองมาก่อน ไม่มีค่อยใช้ค่าในตัว
+  const statusMeta = statusViewOf(task, opt.status);
+  const prio = priorityViewOf(task, opt.priority);
   const due = dueInfo(task.due_date, task.done);
   const taskTags = task.tagIds
     .map((tid) => tags.find((t) => t.id === tid))
@@ -1784,12 +2033,23 @@ function TaskRow({
         </div>
 
         <div className="border-l border-brand-100/70">
-          {/* dropdown เลือกจงใจ ไม่สลับทันทีตอนกด — เดิมคลิกเดียว done เลย ผู้ใช้เผลอกดบ่อย */}
-          <StatusPicker
-            status={status}
-            done={task.done}
-            hasDue={!!task.due_date}
-            onSetDone={onSetDone}
+          {/* dropdown เลือกจงใจ ไม่สลับทันทีตอนกด — เดิมคลิกเดียว done เลย ผู้ใช้เผลอกดบ่อย
+              (ท้ายเมนูเพิ่มสถานะของตัวเองได้ เช่น "กำลังทำ" — migration 0072) */}
+          <OptionPicker
+            label="สถานะ"
+            view={statusMeta}
+            views={opt.statusMenu}
+            selectedKey={statusSelectedKey(task)}
+            onPick={(v) => opt.onPickStatus(task.id, v)}
+            onCreate={(name) => opt.onCreate("status", task.id, name)}
+            addLabel="เพิ่มสถานะ"
+            placeholder="ชื่อสถานะ เช่น กำลังทำ"
+            hint={
+              task.due_date && !task.done
+                ? "“เลยกำหนด / ใกล้ครบกำหนด” เปลี่ยนตามวันกำหนดส่งอัตโนมัติ"
+                : null
+            }
+            onManage={opt.onManage}
           />
         </div>
 
@@ -1812,10 +2072,15 @@ function TaskRow({
         </div>
 
         <div className="border-l border-brand-100/70">
-          <PriorityPicker
-            value={task.priority}
-            variant="cell"
-            onChange={onPriority}
+          <OptionPicker
+            label="ความสำคัญ"
+            view={prio}
+            views={opt.priorityMenu}
+            onPick={(v) => opt.onPickPriority(task.id, v)}
+            onCreate={(name) => opt.onCreate("priority", task.id, name)}
+            addLabel="เพิ่มความสำคัญ"
+            placeholder="ชื่อระดับความสำคัญ"
+            onManage={opt.onManage}
           />
         </div>
 

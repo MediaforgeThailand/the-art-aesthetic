@@ -5,6 +5,7 @@ import { getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ListGroupRow,
+  ListOptionRow,
   ListTagRow,
   ListTaskFileRow,
   ListTaskRow,
@@ -27,7 +28,7 @@ export default async function MyTasksPage() {
   const supabase = await createClient();
 
   // ยิงขนานทั้งหมดรวม getAccess (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มี uid)
-  const [access, tasksRes, tagsRes, linkRes, groupsRes, filesRes] =
+  const [access, tasksRes, tagsRes, linkRes, groupsRes, filesRes, optsRes] =
     await Promise.all([
       getAccess(),
       supabase
@@ -46,6 +47,12 @@ export default async function MyTasksPage() {
       supabase
         .from("list_task_files")
         .select("*")
+        .order("created_at", { ascending: true }),
+      // ตัวเลือกสถานะ/ความสำคัญที่ผู้ใช้เพิ่มเอง (client แยกชนิดเองด้วย splitOptions)
+      supabase
+        .from("list_options")
+        .select("*")
+        .order("position", { ascending: true })
         .order("created_at", { ascending: true }),
     ]);
 
@@ -79,12 +86,14 @@ export default async function MyTasksPage() {
         tasks={tasks}
         tags={(tagsRes.data ?? []) as ListTagRow[]}
         groups={(groupsRes.data ?? []) as ListGroupRow[]}
+        options={(optsRes.data ?? []) as ListOptionRow[]}
         loadError={
           tasksRes.error?.message ??
           tagsRes.error?.message ??
           linkRes.error?.message ??
           groupsRes.error?.message ??
           filesRes.error?.message ??
+          optsRes.error?.message ??
           null
         }
       />

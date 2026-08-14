@@ -60,6 +60,8 @@ export type {
   ListVisibility,
   ListTaskRow,
   ListGroupRow,
+  ListOptionKind,
+  ListOptionRow,
   ListTagRow,
   ListTaskTagRow,
   ListTaskFileRow,

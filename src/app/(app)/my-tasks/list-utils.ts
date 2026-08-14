@@ -14,6 +14,8 @@ import {
 import { formatDate, todayISO } from "@/lib/format";
 import type {
   ListGroupRow,
+  ListOptionKind,
+  ListOptionRow,
   ListTagRow,
   ListTaskFileRow,
   ListTaskRow,
@@ -44,6 +46,162 @@ const PRIORITY_RANK: Record<TaskPriority, number> = {
   medium: 2,
   low: 3,
 };
+
+/* ---------- ตัวเลือกที่ผู้ใช้เพิ่มเอง (list_options — migration 0072) ---------- */
+
+/** ตัวเลือกที่เพิ่มเองแยกตามชนิด เรียงตามลำดับในเมนูแล้ว */
+export type ListOptions = Record<ListOptionKind, ListOptionRow[]>;
+
+export const EMPTY_OPTIONS: ListOptions = { status: [], priority: [] };
+
+/** แยกตัวเลือกตามชนิด + เรียงตาม position (ชนกันให้อันเก่ากว่าขึ้นก่อน เหมือน sortListGroups) */
+export function splitOptions(rows: ListOptionRow[]): ListOptions {
+  const sorted = [...rows].sort(
+    (a, b) =>
+      a.position - b.position ||
+      Date.parse(a.created_at) - Date.parse(b.created_at)
+  );
+  return {
+    status: sorted.filter((o) => o.kind === "status"),
+    priority: sorted.filter((o) => o.kind === "priority"),
+  };
+}
+
+/**
+ * หน้าตาของค่าที่จะโชว์ในช่องสถานะ/ความสำคัญ — ตัวเลือก "ในตัว" กับที่ผู้ใช้เพิ่มเอง
+ * ถูกแปลงเป็นรูปแบบเดียวกัน คนอ่านตารางจึงแยกไม่ออกว่าอันไหนมาจากไหน (แบบ label ของ Monday)
+ */
+export type OptionView = {
+  /** คีย์สำหรับจัดกลุ่ม/เทียบว่าเลือกอยู่ไหม — ในตัว = "open"/"done"/"urgent"…, ที่เพิ่มเอง = id */
+  key: string;
+  label: string;
+  /** ช่องสีทึบเต็มเซลล์ในตาราง */
+  cell: string;
+  /** จุดสีในเมนู + แถบสีของกลุ่ม/แถบสรุป */
+  bar: string;
+  /** พื้นแถวอ่อน (เฉพาะความสำคัญ — สถานะไม่ย้อมแถว) */
+  row: string;
+  /** สีชื่อหัวกลุ่ม */
+  text: string;
+  /** true = ตัวเลือกที่ผู้ใช้เพิ่มเอง (แก้/ลบได้ในโมดัลจัดการตัวเลือก) */
+  custom: boolean;
+};
+
+/**
+ * ชุดข้อมูล+callback ของ dropdown สถานะ/ความสำคัญ ที่ส่งต่อกันทั้งหน้า (ตาราง + แผงรายละเอียด)
+ * รวมเป็นก้อนเดียวเพราะทุกที่ที่โชว์สองช่องนี้ต้องใช้ครบชุดเดียวกันเสมอ
+ * — แยกส่งทีละตัวจะกลายเป็น prop 8 ตัวที่ลืมส่งได้ง่าย
+ */
+export type OptionUi = {
+  /** ตัวเลือกที่เพิ่มเอง (ไว้แปลค่าบนแถวเป็นชื่อ/สี) */
+  status: ListOptionRow[];
+  priority: ListOptionRow[];
+  /** ตัวเลือกที่ "เลือกได้" ในเมนู — สถานะที่มาจากวันกำหนดส่งถูกกรองออกแล้ว */
+  statusMenu: OptionView[];
+  priorityMenu: OptionView[];
+  onPickStatus: (taskId: string, v: OptionView) => void;
+  onPickPriority: (taskId: string, v: OptionView) => void;
+  /** สร้างตัวเลือกใหม่จากในเมนู แล้วตั้งให้งานนั้นเลย (คืน id ใหม่ / null = ล้มเหลว) */
+  onCreate: (
+    kind: ListOptionKind,
+    taskId: string,
+    name: string
+  ) => Promise<string | null>;
+  /** เปิดโมดัลจัดการตัวเลือก (เปลี่ยนชื่อ/สี/ลำดับ/ลบ) */
+  onManage: () => void;
+};
+
+/** ตัวเลือกที่ผู้ใช้เพิ่มเอง → รูปแบบเดียวกับตัวเลือกในตัว (สีมาจากชุด LIST_TAG_COLORS) */
+export function optionView(o: ListOptionRow): OptionView {
+  const c = listTagColor(o.color);
+  return {
+    key: o.id,
+    label: o.name,
+    cell: c.cell,
+    bar: c.dot,
+    row: c.row,
+    text: c.text,
+    custom: true,
+  };
+}
+
+const builtinStatusView = (s: ListStatus): OptionView => ({
+  key: s,
+  label: LIST_STATUS[s].label,
+  cell: LIST_STATUS[s].cell,
+  bar: LIST_STATUS[s].bar,
+  row: "",
+  text: LIST_STATUS[s].text,
+  custom: false,
+});
+
+const builtinPriorityView = (p: TaskPriority): OptionView => ({
+  key: p,
+  label: LIST_PRIORITY[p].label,
+  cell: LIST_PRIORITY[p].cell,
+  bar: LIST_PRIORITY[p].bar,
+  row: LIST_PRIORITY[p].row,
+  text: LIST_PRIORITY[p].text,
+  custom: false,
+});
+
+/** ตัวเลือกทั้งเมนู "สถานะ" — ในตัว (ยังไม่เสร็จ…เสร็จแล้ว) + ที่เพิ่มเองแทรกก่อน "เสร็จแล้ว"
+ *  (ที่เพิ่มเองเป็นสถานะระหว่างทางเสมอ — วางไว้ก่อนปลายทางให้อ่านเรียงเป็นเส้นเดียว) */
+export function statusViews(custom: ListOptionRow[]): OptionView[] {
+  const builtin = LIST_STATUS_ORDER.map(builtinStatusView);
+  const at = builtin.findIndex((v) => v.key === "done");
+  const customs = custom.map(optionView);
+  return at < 0
+    ? [...builtin, ...customs]
+    : [...builtin.slice(0, at), ...customs, ...builtin.slice(at)];
+}
+
+/** ตัวเลือกทั้งเมนู "ความสำคัญ" — 4 ระดับในตัวก่อน แล้วต่อด้วยที่เพิ่มเอง */
+export function priorityViews(custom: ListOptionRow[]): OptionView[] {
+  return [...LIST_PRIORITY_ORDER.map(builtinPriorityView), ...custom.map(optionView)];
+}
+
+/**
+ * สถานะที่โชว์บนแถว — สถานะที่ผู้ใช้เลือกเองมาก่อน ถ้าไม่ได้เลือกค่อยคำนวณจาก done + due_date
+ *
+ * **ติ๊กเสร็จชนะเสมอ**: งานที่ done=true แสดง "เสร็จแล้ว" แม้ status_id ยังค้างอยู่
+ * (ปกติ client ล้างให้ตอนติ๊ก — กันข้อมูลที่มาจากทางอื่น เช่น SQL มือ ไม่ให้โชว์ป้ายขัดกัน)
+ */
+export function statusViewOf(t: MyTask, custom: ListOptionRow[]): OptionView {
+  if (!t.done && t.status_id) {
+    const o = custom.find((x) => x.id === t.status_id);
+    if (o) return optionView(o);
+  }
+  return builtinStatusView(statusOf(t));
+}
+
+/**
+ * ค่าที่ให้ติ๊กถูกในเมนูสถานะ — ต่างจาก statusViewOf ตรงงานที่ "เลยกำหนด/ใกล้ครบกำหนด"
+ * ซึ่งเป็นป้ายที่มาจากวันที่ ไม่มีในเมนู: งานพวกนี้ยังถือว่าเลือก "ยังไม่เสร็จ" อยู่
+ * (ไม่งั้นเปิดเมนูแล้วไม่มีอะไรถูกติ๊กเลย แล้วกด "ยังไม่เสร็จ" ก็ยิง update ที่ไม่เปลี่ยนอะไร)
+ */
+export function statusSelectedKey(t: MyTask): string {
+  if (t.done) return "done";
+  return t.status_id ?? "open";
+}
+
+/** ความสำคัญที่โชว์บนแถว — ที่เพิ่มเองมาก่อน ไม่มีค่อยใช้คอลัมน์ priority เดิม */
+export function priorityViewOf(t: MyTask, custom: ListOptionRow[]): OptionView {
+  if (t.priority_id) {
+    const o = custom.find((x) => x.id === t.priority_id);
+    if (o) return optionView(o);
+  }
+  return builtinPriorityView(t.priority);
+}
+
+/** ลำดับสำหรับเรียง "ความสำคัญมากก่อน" — ที่เพิ่มเองต่อท้าย 4 ระดับในตัวตามลำดับในเมนู */
+function priorityRank(t: MyTask, custom: ListOptionRow[]): number {
+  if (t.priority_id) {
+    const i = custom.findIndex((o) => o.id === t.priority_id);
+    if (i >= 0) return PRIORITY_RANK.low + 1 + i;
+  }
+  return PRIORITY_RANK[t.priority];
+}
 
 export type DueInfo = {
   /** จำนวนวันจากวันนี้ (ลบ = เลยกำหนด) */
@@ -126,10 +284,16 @@ export function isOverdue(t: MyTask): boolean {
   return !t.done && !!t.due_date && t.due_date < todayISO();
 }
 
-/** เรียงลิสต์ตามตัวเลือก — ที่ติ๊กเสร็จแล้วจมลงล่างสุดเสมอทุกโหมด */
-export function sortTasks(items: MyTask[], sort: ListSort): MyTask[] {
+/** เรียงลิสต์ตามตัวเลือก — ที่ติ๊กเสร็จแล้วจมลงล่างสุดเสมอทุกโหมด
+ *  (prioOpts = ความสำคัญที่ผู้ใช้เพิ่มเอง ใช้จัดลำดับต่อท้าย 4 ระดับในตัว) */
+export function sortTasks(
+  items: MyTask[],
+  sort: ListSort,
+  prioOpts: ListOptionRow[] = []
+): MyTask[] {
   const byCreatedDesc = (a: MyTask, b: MyTask) =>
     Date.parse(b.created_at) - Date.parse(a.created_at);
+  const rank = (t: MyTask) => priorityRank(t, prioOpts);
 
   return [...items].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
@@ -141,10 +305,10 @@ export function sortTasks(items: MyTask[], sort: ListSort): MyTask[] {
         if (!a.due_date !== !b.due_date) return a.due_date ? -1 : 1;
         if (a.due_date && b.due_date && a.due_date !== b.due_date)
           return a.due_date < b.due_date ? -1 : 1;
-        return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+        return rank(a) - rank(b);
       }
       case "priority": {
-        const d = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+        const d = rank(a) - rank(b);
         if (d !== 0) return d;
         if (!a.due_date !== !b.due_date) return a.due_date ? -1 : 1;
         if (a.due_date && b.due_date && a.due_date !== b.due_date)
@@ -241,7 +405,8 @@ export function buildGroups(
   items: MyTask[],
   groupBy: GroupBy,
   tags: ListTagRow[],
-  cats: ListGroupRow[]
+  cats: ListGroupRow[],
+  opts: ListOptions = EMPTY_OPTIONS
 ): ListGroup[] {
   if (groupBy === "category") {
     const groups = sortListGroups(cats).map((c) => {
@@ -293,20 +458,21 @@ export function buildGroups(
   }
 
   if (groupBy === "priority") {
-    const groups = LIST_PRIORITY_ORDER.map((p) =>
+    const groups = priorityViews(opts.priority).map((v) =>
       emptyGroup({
-        key: p,
-        name: LIST_PRIORITY[p].label,
-        bar: LIST_PRIORITY[p].bar,
-        text: LIST_PRIORITY[p].text,
-        // ทั้ง 4 กลุ่มโชว์เสมอ — เป็นเป้าหมายให้ลากงานมาเปลี่ยนความสำคัญได้
+        key: v.key,
+        name: v.label,
+        bar: v.bar,
+        text: v.text,
+        // ทุกกลุ่มโชว์เสมอ (รวมที่เพิ่มเอง) — เป็นเป้าหมายให้ลากงานมาเปลี่ยนความสำคัญได้
         keepEmpty: true,
-        add: { patch: { priority: p }, tagId: null },
-        drop: { priority: p },
+        add: { patch: priorityPatch(v), tagId: null },
+        drop: priorityPatch(v),
       })
     );
     const byKey = new Map(groups.map((g) => [g.key, g]));
-    for (const t of items) byKey.get(t.priority)?.tasks.push(t);
+    for (const t of items)
+      byKey.get(priorityViewOf(t, opts.priority).key)?.tasks.push(t);
     return groups;
   }
 
@@ -397,25 +563,42 @@ export function buildGroups(
     return [past, todayG, week, later, none];
   }
 
-  // สถานะ (ค่าเริ่มต้น)
-  const groups = LIST_STATUS_ORDER.map((s) =>
-    emptyGroup({
-      key: s,
-      name: LIST_STATUS[s].label,
-      bar: LIST_STATUS[s].bar,
-      text: LIST_STATUS[s].text,
+  // สถานะ — ในตัว + ที่ผู้ใช้เพิ่มเอง (ที่เพิ่มเองแทรกก่อน "เสร็จแล้ว")
+  const groups = statusViews(opts.status).map((v) => {
+    const patch = statusPatch(v);
+    return emptyGroup({
+      key: v.key,
+      name: v.label,
+      bar: v.bar,
+      text: v.text,
       // เลยกำหนด/ใกล้ครบกำหนด ตั้งให้งานใหม่ตรงๆ ไม่ได้ (มาจากวันที่) — ไม่มีช่องเพิ่ม
-      add: s === "open" ? { patch: {}, tagId: null } : null,
-      // ลากเข้า "เสร็จแล้ว" = ติ๊กเสร็จ, ลากเข้า "ยังไม่เสร็จ" = เอาติ๊กออก
+      add: patch ? { patch, tagId: null } : null,
+      // ลากเข้า "เสร็จแล้ว" = ติ๊กเสร็จ, "ยังไม่เสร็จ"/สถานะที่เพิ่มเอง = เอาติ๊กออกแล้วตั้งป้าย
       // ส่วน เลยกำหนด/ใกล้ครบกำหนด มาจากวันที่ ลากเข้าไปตั้งอะไรให้ไม่ได้ = ไม่รับ drop
       // (เดิมตั้ง {done:false} ให้ทุกกลุ่ม — ลากงานค้างไปวาง "เลยกำหนด" แล้วเด้งกลับเฉยๆ ดูเหมือนบัค)
-      drop: s === "done" ? { done: true } : s === "open" ? { done: false } : null,
-      keepEmpty: s === "open",
-    })
-  );
+      drop: patch,
+      keepEmpty: v.key === "open" || v.custom,
+    });
+  });
   const byKey = new Map(groups.map((g) => [g.key, g]));
-  for (const t of items) byKey.get(statusOf(t))?.tasks.push(t);
+  for (const t of items) byKey.get(statusViewOf(t, opts.status).key)?.tasks.push(t);
   return groups;
+}
+
+/** patch ที่ทำให้งานเข้ากลุ่มสถานะนั้น — null = กลุ่มที่ตั้งค่าเองไม่ได้ (มาจากวันกำหนดส่ง)
+ *  สถานะที่เพิ่มเองบังคับ done=false เสมอ: มันคือสถานะ "ระหว่างทาง" ไม่ใช่ปลายทาง */
+export function statusPatch(v: OptionView): Partial<ListTaskRow> | null {
+  if (v.custom) return { done: false, status_id: v.key };
+  if (v.key === "done") return { done: true, status_id: null };
+  if (v.key === "open") return { done: false, status_id: null };
+  return null;
+}
+
+/** patch ที่ทำให้งานเข้ากลุ่มความสำคัญนั้น (ที่เพิ่มเอง = ตั้ง priority_id, ในตัว = ล้างทิ้ง) */
+export function priorityPatch(v: OptionView): Partial<ListTaskRow> {
+  return v.custom
+    ? { priority_id: v.key }
+    : { priority: v.key as TaskPriority, priority_id: null };
 }
 
 /**

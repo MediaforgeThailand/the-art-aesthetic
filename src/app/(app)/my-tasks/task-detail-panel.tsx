@@ -15,23 +15,29 @@ import { CalendarDays, Check, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
-import { LIST_PRIORITY } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import type {
   ListGroupRow,
   ListTagRow,
   ListTaskFileRow,
   ListTaskRow,
-  TaskPriority,
 } from "@/lib/types";
-import { dueInfo, type MyTask } from "./list-utils";
-import { PriorityPicker, TagChip, TagPicker } from "./pickers";
+import {
+  dueInfo,
+  type MyTask,
+  type OptionUi,
+  priorityViewOf,
+  statusSelectedKey,
+  statusViewOf,
+} from "./list-utils";
+import { OptionPicker, TagChip, TagPicker } from "./pickers";
 import { FilesSection, type UploadProgress } from "./task-files";
 
 export function TaskDetailPanel({
   task,
   tags,
   groups,
+  opt,
   uploading,
   uploadProgress,
   onClose,
@@ -46,6 +52,8 @@ export function TaskDetailPanel({
   tags: ListTagRow[];
   /** หมวดหมู่ทั้งหมดของฉัน (เรียงตามบอร์ดแล้ว) — ไว้ย้ายงานเข้าหมวดจากแผงโดยไม่ต้องลาก */
   groups: ListGroupRow[];
+  /** ตัวเลือกสถานะ/ความสำคัญ (รวมที่ผู้ใช้เพิ่มเอง) + callback ของ dropdown ทั้งสองช่อง */
+  opt: OptionUi;
   /** งานนี้กำลังอัพโหลดไฟล์อยู่ (state อยู่ที่หน้าแม่ — แถวในตารางกับแผงจึงตรงกันเสมอ) */
   uploading: boolean;
   uploadProgress: UploadProgress | null;
@@ -102,7 +110,8 @@ export function TaskDetailPanel({
   const taskTags = task.tagIds
     .map((id) => tags.find((t) => t.id === id))
     .filter((t): t is ListTagRow => t !== undefined);
-  const meta = LIST_PRIORITY[task.priority];
+  const meta = priorityViewOf(task, opt.priority);
+  const statusMeta = statusViewOf(task, opt.status);
 
   return createPortal(
     <>
@@ -121,7 +130,7 @@ export function TaskDetailPanel({
         {/* ---- หัวแผง ---- */}
         <div className="flex shrink-0 items-center gap-2 border-b border-brand-100/70 px-4 py-3">
           <span
-            className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`}
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.bar}`}
             aria-hidden
           />
           <p className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-800">
@@ -196,15 +205,42 @@ export function TaskDetailPanel({
             </div>
             <div>
               <Label>ความสำคัญ</Label>
-              <PriorityPicker
-                value={task.priority}
+              <OptionPicker
+                label="ความสำคัญ"
                 variant="field"
-                onChange={(p: TaskPriority) => onPatch({ priority: p })}
+                view={meta}
+                views={opt.priorityMenu}
+                onPick={(v) => opt.onPickPriority(task.id, v)}
+                onCreate={(name) => opt.onCreate("priority", task.id, name)}
+                addLabel="เพิ่มความสำคัญ"
+                placeholder="ชื่อระดับความสำคัญ"
+                onManage={opt.onManage}
               />
               <p className="mt-1.5 text-xs text-stone-400">
                 สีของแถวในลิสต์เปลี่ยนตามค่านี้
               </p>
             </div>
+          </div>
+
+          <div>
+            <Label>สถานะ</Label>
+            <OptionPicker
+              label="สถานะ"
+              variant="field"
+              view={statusMeta}
+              views={opt.statusMenu}
+              selectedKey={statusSelectedKey(task)}
+              onPick={(v) => opt.onPickStatus(task.id, v)}
+              onCreate={(name) => opt.onCreate("status", task.id, name)}
+              addLabel="เพิ่มสถานะ"
+              placeholder="ชื่อสถานะ เช่น กำลังทำ"
+              hint={
+                task.due_date && !task.done
+                  ? "“เลยกำหนด / ใกล้ครบกำหนด” เปลี่ยนตามวันกำหนดส่งอัตโนมัติ"
+                  : null
+              }
+              onManage={opt.onManage}
+            />
           </div>
 
           {groups.length > 0 && (
