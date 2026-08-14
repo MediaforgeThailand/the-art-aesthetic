@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
   InfluencerRow,
+  InfluRoundLite,
   InfluFollowupRow,
   InfluLinkRow,
   InfluPostLinkRow,
@@ -136,6 +137,17 @@ export default async function InfluencerDetailPage({
     | null;
   if (!influencer) notFound();
 
+  // รอบงานทั้งหมดของคนเดียวกัน (person_id) — แถบสลับรอบบนหัวหน้า + เลขรอบถัดไปตอนเปิดรอบใหม่
+  // ต้องรอ person_id จาก query หลักก่อน เลยยิงแยกอีกเที่ยว (DB อยู่ region เดียวกับ function ~1-2ms)
+  const { data: personRounds } = await supabase
+    .from("influencers")
+    .select(
+      "id, round_no, stage, completed, declined_at, archived, service_date, created_at"
+    )
+    .eq("person_id", influencer.person_id)
+    .order("round_no", { ascending: true })
+    .order("created_at", { ascending: true });
+
   return (
     <PageContainer>
       <InfluDetailClient
@@ -143,6 +155,7 @@ export default async function InfluencerDetailPage({
         ownerName={
           influencer.owner?.full_name || influencer.owner?.email || null
         }
+        personRounds={(personRounds ?? []) as InfluRoundLite[]}
         followups={(followups ?? []) as InfluFollowupRow[]}
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}

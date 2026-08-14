@@ -30,7 +30,7 @@ export default async function InfluCalendarPage() {
       supabase
         .from("influencers")
         .select(
-          "id, first_name, last_name, nickname, service_date, doctor_name, stage, completed, declined_at, procedure_text"
+          "id, first_name, last_name, nickname, round_no, service_date, doctor_name, stage, completed, declined_at, procedure_text"
         )
         .eq("archived", false)
         .order("first_name", { ascending: true }),

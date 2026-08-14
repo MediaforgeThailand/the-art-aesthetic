@@ -314,6 +314,11 @@ export type ProcedureChange = {
 
 export type InfluencerRow = {
   id: string;
+  /** ตัวบุคคล (โปรไฟล์) — influ 1 คนเข้ามาทำได้หลายรอบ ทุกรอบแชร์ person_id เดียวกัน
+      (0073; แถวเดิม backfill = id ของตัวเอง — เพิ่มคนใหม่ DB gen ให้เอง, เปิดรอบใหม่ client ส่งของคนเดิม) */
+  person_id: string;
+  /** รอบที่เท่าไหร่ของคนนี้ (เริ่ม 1) — เปิดรอบใหม่ = แถวใหม่ round_no ต่อจากรอบล่าสุด */
+  round_no: number;
   first_name: string;
   last_name: string | null;
   nickname: string | null;
@@ -1212,7 +1217,20 @@ export interface Database {
 /** influencer แบบย่อ (ใช้แสดงบน task) */
 export type InfluencerLite = Pick<
   InfluencerRow,
-  "id" | "first_name" | "last_name" | "nickname"
+  "id" | "first_name" | "last_name" | "nickname" | "round_no"
+>;
+
+/** ข้อมูลย่อของ "รอบงาน" หนึ่งรอบของคนเดียวกัน — แถบสลับรอบบนหน้าเดินงาน (/influencers/[id]) */
+export type InfluRoundLite = Pick<
+  InfluencerRow,
+  | "id"
+  | "round_no"
+  | "stage"
+  | "completed"
+  | "declined_at"
+  | "archived"
+  | "service_date"
+  | "created_at"
 >;
 
 export type TaskWithAssignee = TaskRow & {

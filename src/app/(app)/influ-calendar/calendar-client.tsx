@@ -70,6 +70,7 @@ export type CalendarInflu = Pick<
   | "first_name"
   | "last_name"
   | "nickname"
+  | "round_no"
   | "service_date"
   | "doctor_name"
   | "stage"
@@ -743,9 +744,12 @@ function DaySidebar({
                 onChange={(e) => pickInfluencer(e.target.value)}
               >
                 <option value="">— ไม่ระบุ (คิวทั่วไป) —</option>
+                {/* คนเดิมเข้ามาหลายรอบมีหลายเคส — บอกรอบกำกับ ให้คิวผูกกับเคสรอบที่ถูก
+                    (ป้าย "รอลงคิวหมอ" เช็คคิว service ต่อเคส ผูกผิดรอบ = ป้ายไม่ดับ) */}
                 {influencers.map((i) => (
                   <option key={i.id} value={i.id}>
                     {nameOf(i)}
+                    {i.round_no > 1 ? ` · รอบ ${i.round_no}` : ""}
                   </option>
                 ))}
               </Select>

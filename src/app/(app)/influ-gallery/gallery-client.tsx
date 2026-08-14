@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileSignature,
   ListChecks,
+  Repeat,
   Search,
   Sparkles,
   UsersRound,
@@ -63,6 +64,46 @@ function monthsDaysBetween(fromISO: string, toISO: string): string {
 
 type ContractFilter = "all" | "active" | "expired";
 
+/** โปรไฟล์ 1 คน — influ ที่เข้ามาทำหลายรอบ (person_id เดียวกัน) ถูกรวมเป็นการ์ดเดียว
+    หน้านี้คือมุมมอง "ตัวบุคคล" ส่วนบอร์ด Influ Management ยังเป็นการ์ดต่อรอบงาน (0073) */
+type PersonGroup = {
+  /** person_id */
+  key: string;
+  /** ทุกรอบของคนนี้ เรียงรอบล่าสุดก่อน */
+  rounds: InfluencerListRow[];
+  /** รอบล่าสุด — แหล่งข้อมูลหลักของการ์ด (ชื่อ/ผู้ติดตาม/สถานะ) และปลายทางตอนคลิก */
+  display: InfluencerListRow;
+  /** รูปโปรไฟล์จากรอบล่าสุดที่มีรูป — รอบที่เพิ่งเปิดใหม่อาจยังไม่ได้อัพรูป */
+  photoPath: string | null;
+  /** รอบล่าสุดที่มีสัญญา — ใช้แสดง/กรองอายุสัญญา (รอบใหม่ยังไม่เซนสัญญา ต้องไม่ทำให้สัญญาเดิมหาย) */
+  contractRow: InfluencerListRow | null;
+};
+
+/** จัดกลุ่มรอบงานเป็นรายบุคคล — ลำดับคนตามรอบที่สร้างล่าสุด (input เรียง created_at ใหม่→เก่าอยู่แล้ว) */
+function groupByPerson(influencers: InfluencerListRow[]): PersonGroup[] {
+  const byPerson = new Map<string, InfluencerListRow[]>();
+  for (const i of influencers) {
+    const arr = byPerson.get(i.person_id);
+    if (arr) arr.push(i);
+    else byPerson.set(i.person_id, [i]);
+  }
+  const groups: PersonGroup[] = [];
+  for (const [key, rounds] of byPerson) {
+    rounds.sort(
+      (a, b) =>
+        b.round_no - a.round_no || b.created_at.localeCompare(a.created_at)
+    );
+    groups.push({
+      key,
+      rounds,
+      display: rounds[0],
+      photoPath: rounds.find((r) => r.photo_path)?.photo_path ?? null,
+      contractRow: rounds.find((r) => r.contract_start) ?? null,
+    });
+  }
+  return groups;
+}
+
 export function InfluGalleryClient({
   influencers,
   followupRemaining,
@@ -82,34 +123,44 @@ export function InfluGalleryClient({
   // ตัวกรองสถานะสัญญา — ช่วยดูว่าใคร "หมดสัญญาแล้ว" ได้เร็ว (จุดประสงค์หลักของข้อมูลเก่า)
   const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
 
+  // มุมมองรายบุคคล — คนที่เข้ามาหลายรอบรวมเป็นการ์ดเดียว (รายละเอียดรายรอบดูในหน้าเดินงาน)
+  const persons = useMemo(() => groupByPerson(influencers), [influencers]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return influencers.filter((i) => {
+    return persons.filter((p) => {
       if (contractFilter !== "all") {
-        const daysLeft = contractDaysLeftOf(i, today);
+        // อายุสัญญาของคน = สัญญาจากรอบล่าสุดที่มีสัญญา
+        const daysLeft = p.contractRow
+          ? contractDaysLeftOf(p.contractRow, today)
+          : null;
         if (daysLeft === null) return false; // ไม่มีข้อมูลสัญญา — ไม่เข้าเกณฑ์ active/expired
         if (contractFilter === "active" && daysLeft < 0) return false;
         if (contractFilter === "expired" && daysLeft >= 0) return false;
       }
       if (q === "") return true;
-      return (
-        influName(i).toLowerCase().includes(q) ||
-        (i.procedure_text ?? "").toLowerCase().includes(q)
+      // ค้นเจอจากรอบไหนก็ได้ — หัตถการรอบเก่าก็ยังค้นถึงตัวคนได้
+      return p.rounds.some(
+        (i) =>
+          influName(i).toLowerCase().includes(q) ||
+          (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [influencers, search, contractFilter, today]);
+  }, [persons, search, contractFilter, today]);
 
   const contractCounts = useMemo(() => {
     let active = 0;
     let expired = 0;
-    for (const i of influencers) {
-      const d = contractDaysLeftOf(i, today);
+    for (const p of persons) {
+      const d = p.contractRow
+        ? contractDaysLeftOf(p.contractRow, today)
+        : null;
       if (d === null) continue;
       if (d < 0) expired += 1;
       else active += 1;
     }
-    return { all: influencers.length, active, expired };
-  }, [influencers, today]);
+    return { all: persons.length, active, expired };
+  }, [persons, today]);
 
   const contractChips: { key: ContractFilter; label: string; count: number }[] =
     [
@@ -122,7 +173,7 @@ export function InfluGalleryClient({
     <>
       <PageHeader
         title="โปรไฟล์ Influencer"
-        description="ภาพรวม Influencer ทั้งหมด — รูป ยอดผู้ติดตาม ระดับ อายุสัญญา และจำนวนคอนเทนต์ที่ทำ · คลิกการ์ดเพื่อดูรายละเอียด"
+        description="ภาพรวม Influencer ทั้งหมด — รูป ยอดผู้ติดตาม ระดับ อายุสัญญา และจำนวนคอนเทนต์ที่ทำ · คนที่เข้ามาทำหลายรอบถูกรวมเป็นการ์ดเดียว (โปรไฟล์ต่อคน) · คลิกการ์ดเพื่อดูรายละเอียด"
         action={
           <Link
             href="/influencers"
@@ -196,14 +247,18 @@ export function InfluGalleryClient({
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 animate-fade-in-up sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((i) => (
+          {filtered.map((p) => (
             <InfluCard
-              key={i.id}
-              influ={i}
+              key={p.key}
+              person={p}
               today={today}
-              followupLeft={followupRemaining[i.id] ?? 0}
-              contentTasks={contentTaskCount[i.id] ?? 0}
-              links={sourceLinks[i.id]}
+              followupLeft={followupRemaining[p.display.id] ?? 0}
+              // งานคอนเทนต์นับรวมทุกรอบ — เป็นผลงานของ "คน" ไม่ใช่ของรอบใดรอบหนึ่ง
+              contentTasks={p.rounds.reduce(
+                (n, r) => n + (contentTaskCount[r.id] ?? 0),
+                0
+              )}
+              links={p.rounds.flatMap((r) => sourceLinks[r.id] ?? [])}
             />
           ))}
         </div>
@@ -213,26 +268,31 @@ export function InfluGalleryClient({
 }
 
 function InfluCard({
-  influ: i,
+  person,
   today,
   followupLeft,
   contentTasks,
   links,
 }: {
-  influ: InfluencerListRow;
+  person: PersonGroup;
   today: string;
   followupLeft: number;
   contentTasks: number;
-  links: InfluLinkLite[] | undefined;
+  links: InfluLinkLite[];
 }) {
+  // ข้อมูลแสดงหลัก = รอบล่าสุด (คลิกการ์ดก็เปิดหน้าเดินงานของรอบล่าสุด — สลับรอบอื่นได้ในนั้น)
+  const i = person.display;
+  const quickLinks = links.length > 0 ? links : undefined;
   // ถ้าขอ signed URL ไม่สำเร็จ (failed) จะ fallback ไปแสดงอวตารตัวอักษรด้านล่างเอง
-  const { url: photoUrl } = useSignedUrl(i.photo_path);
+  const { url: photoUrl } = useSignedUrl(person.photoPath);
   const followerText =
     i.follower_note ||
     (i.followers != null ? `${formatNumber(i.followers)} followers` : null);
 
-  const contractEnd = i.contract_start
-    ? contractEndDate(i.contract_start, i.contract_months)
+  // อายุสัญญาอ่านจากรอบล่าสุดที่มีสัญญา — รอบใหม่ที่เพิ่งเปิดยังไม่เซน สัญญาเดิมต้องไม่หายจากการ์ด
+  const contractRow = person.contractRow;
+  const contractEnd = contractRow?.contract_start
+    ? contractEndDate(contractRow.contract_start, contractRow.contract_months)
     : null;
   const contractDaysLeft = contractEnd
     ? Math.round(
@@ -272,16 +332,22 @@ function InfluCard({
               </Badge>
             </span>
           )}
-          {/* สถานะ stage / จบงาน มุมบนขวา */}
+          {/* สถานะ stage / จบงาน มุมบนขวา (ของรอบล่าสุด) */}
           <span className="absolute right-2 top-2">
             <Badge
               className={
-                i.completed
-                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"
-                  : "bg-white/85 text-brand-700 shadow-sm"
+                i.declined_at !== null
+                  ? "border border-stone-300 bg-white/85 text-stone-500 shadow-sm"
+                  : i.completed
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"
+                    : "bg-white/85 text-brand-700 shadow-sm"
               }
             >
-              {i.completed ? "จบงานแล้ว" : `${i.stage}. ${stageInfo?.short ?? ""}`}
+              {i.declined_at !== null
+                ? "ปฏิเสธ"
+                : i.completed
+                  ? "จบงานแล้ว"
+                  : `${i.stage}. ${stageInfo?.short ?? ""}`}
             </Badge>
           </span>
           {/* ข้อมูลเก่าที่นำเข้า (archive-only) — ไม่โผล่บนบอร์ด Influ Management */}
@@ -289,6 +355,14 @@ function InfluCard({
             <span className="absolute bottom-2 left-2">
               <Badge className="border border-stone-300 bg-white/85 text-stone-600 shadow-sm">
                 <Archive size={11} /> ข้อมูลเก่า
+              </Badge>
+            </span>
+          )}
+          {/* เข้ามาทำหลายรอบ — จำนวนการ์ด/รอบงานของคนนี้ */}
+          {person.rounds.length > 1 && (
+            <span className="absolute bottom-2 right-2">
+              <Badge className="border border-stone-300 bg-white/85 text-stone-600 shadow-sm">
+                <Repeat size={11} /> {person.rounds.length} รอบ
               </Badge>
             </span>
           )}
@@ -305,7 +379,7 @@ function InfluCard({
               </span>
             )}
             {/* ปุ่มเปิดไฟล์ source — อยู่ในการ์ดที่เป็นลิงก์ จึง stopPropagation เปิดแท็บใหม่เอง */}
-            <SourceLinkQuickButton links={links} />
+            <SourceLinkQuickButton links={quickLinks} />
           </div>
 
           {/* อายุสัญญาคงเหลือ — บอกเป็น "เดือน + วัน" */}
@@ -349,7 +423,7 @@ function InfluCard({
               ))}
           </div>
 
-          {i.contract_start && contractEnd && (
+          {contractRow?.contract_start && contractEnd && (
             <p className="text-[11px] text-stone-400">
               สัญญาถึง {formatDate(contractEnd)}
             </p>

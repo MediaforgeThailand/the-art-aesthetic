@@ -94,6 +94,14 @@ export function sizeGroupFromFollowers(
   return "s";
 }
 
+/* ---------- รอบงาน (0073): โปรไฟล์ 1 คน มีการ์ด/เคสได้หลายรอบ ---------- */
+
+/** ป้าย "รอบ N" ของเคส — รอบแรกไม่โชว์ (เคสส่วนใหญ่มีรอบเดียว ไม่ต้องรกจอ)
+    ใช้ทุกที่ที่ชื่อ influ อาจซ้ำกันข้ามรอบ: การ์ดบอร์ด / ตัวเลือกในฟอร์ม / หน้า cost-สัญญา */
+export function roundLabel(roundNo: number): string | null {
+  return roundNo > 1 ? `รอบ ${roundNo}` : null;
+}
+
 /* ---------- Influ Calendar: ประเภทคิวบนปฏิทิน (/influ-calendar) ----------
    เพิ่มชนิดใหม่ต้องแก้ 3 ที่: InfluCalendarKind (database.types), ตารางนี้
    และ check constraint ของ influ_calendar_events (migration ใหม่) */
