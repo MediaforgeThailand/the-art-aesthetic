@@ -19,7 +19,7 @@ export default async function InfluCostPage() {
     supabase
       .from("influ_procedure_items")
       .select(
-        "*, influencer:influencers(id, first_name, last_name, nickname, service_date, stage, completed, archived, declined_at)"
+        "*, influencer:influencers(id, first_name, last_name, nickname, round_no, service_date, stage, completed, archived, declined_at)"
       )
       .order("created_at", { ascending: false }),
   ]);

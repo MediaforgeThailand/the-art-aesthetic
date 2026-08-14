@@ -46,6 +46,7 @@ import {
   INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
+  roundLabel,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluencerRow, InfluSizeGroup, InfluTaskRow } from "@/lib/types";
@@ -419,6 +420,12 @@ export function InfluCardContent({
             {influName(i)}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-stone-400">
+            {/* รอบ ≥2 = คนเดิมกลับมาทำใหม่ — ข้อความเงียบแบบเดียวกับ tier (ไม่ใช่ชิปสี ตามกติกา redesign) */}
+            {roundLabel(i.round_no) && (
+              <span className="font-medium text-stone-500">
+                {roundLabel(i.round_no)}
+              </span>
+            )}
             {i.followers !== null && (
               <span className="inline-flex items-center gap-1 font-medium text-stone-500">
                 <UsersRound size={11} /> {compactFollowers(i.followers)}

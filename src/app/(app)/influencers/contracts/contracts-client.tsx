@@ -22,7 +22,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
-import { contractEndDate, INFLU_TIERS } from "@/lib/influ-constants";
+import { contractEndDate, INFLU_TIERS, roundLabel } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluCampaignRow, InfluencerRow } from "@/lib/types";
 
@@ -139,6 +139,12 @@ export function ContractsClient({
                     สัญญา {formatDate(i.contract_start)} – {formatDate(end)}
                   </p>
                 </div>
+                {/* คนเดิมเข้ามาหลายรอบ = สัญญาคนละฉบับต่อรอบ — บอกว่าแถวนี้คือรอบไหน */}
+                {roundLabel(i.round_no) && (
+                  <Badge className="border border-stone-200 bg-stone-50 text-stone-500">
+                    {roundLabel(i.round_no)}
+                  </Badge>
+                )}
                 {i.tier && (
                   <Badge className={INFLU_TIERS[i.tier].badge}>
                     {INFLU_TIERS[i.tier].label}

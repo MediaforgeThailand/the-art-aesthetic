@@ -41,6 +41,7 @@ export type {
   InfluFollowupMode,
   ProcedureChange,
   InfluencerRow,
+  InfluRoundLite,
   InfluFollowupRow,
   InfluSignatureRow,
   InfluTaskRow,

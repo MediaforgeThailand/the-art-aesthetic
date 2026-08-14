@@ -16,6 +16,7 @@ import {
   MessageSquarePlus,
   PenLine,
   PhoneCall,
+  Repeat,
   Send,
   Undo2,
   X,
@@ -55,12 +56,14 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
+  roundLabel,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
   InfluencerRow,
+  InfluRoundLite,
   InfluFollowupMode,
   InfluFollowupRow,
   InfluLinkRow,
@@ -198,6 +201,8 @@ function NameEditModal({
     }
     setBusy(true);
     setErr(null);
+    // ชื่อเป็นข้อมูล "ตัวบุคคล" — แก้ครั้งเดียวเปลี่ยนให้ทุกรอบของคนนี้ (person_id เดียวกัน)
+    // ไม่งั้นคนที่เข้ามาทำหลายรอบจะชื่อไม่ตรงกันข้ามการ์ด
     const { error } = await supabase
       .from("influencers")
       .update({
@@ -205,7 +210,7 @@ function NameEditModal({
         last_name: lastName.trim() || null,
         nickname: nickname.trim() || null,
       })
-      .eq("id", influencer.id);
+      .eq("person_id", influencer.person_id);
     setBusy(false);
     if (error) {
       setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
@@ -251,7 +256,8 @@ function NameEditModal({
         )}
         <p className="text-xs text-stone-400">
           ชื่อนี้ถูกใช้ในเอกสาร Memo และสัญญาที่สร้างจากระบบ —
-          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม
+          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม ·
+          ถ้าคนนี้เข้ามาทำหลายรอบ ชื่อจะถูกแก้ให้ทุกรอบพร้อมกัน
         </p>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -360,6 +366,7 @@ function CaseInfoEditModal({
 
 export function InfluDetailClient({
   influencer,
+  personRounds,
   followups,
   signatures,
   tasks,
@@ -373,6 +380,8 @@ export function InfluDetailClient({
   canManage,
 }: {
   influencer: InfluencerRow;
+  /** รอบงานทั้งหมดของคนเดียวกัน (person_id เดียวกัน รวมเคสนี้ + เคสเก่า archived) เรียงรอบแรก→ล่าสุด */
+  personRounds: InfluRoundLite[];
   followups: InfluFollowupRow[];
   signatures: InfluSignatureRow[];
   tasks: InfluTaskRow[];
@@ -445,6 +454,78 @@ export function InfluDetailClient({
     router.refresh();
   };
 
+  /* ---- เปิดรอบใหม่: influ คนเดิมกลับมาทำอีกครั้ง = การ์ดใหม่ + memo/สัญญา/checklist ชุดใหม่ ----
+     สร้างแถว influencers ใหม่ person_id เดียวกัน เริ่ม Stage 1 — คัดลอกเฉพาะข้อมูลตัวบุคคล
+     (ชื่อ/เบอร์/อาชีพ/ผู้ติดตาม/รูป) ส่วนข้อมูลเคส (โปรแกรม/วัน/แพทย์/ไฟล์) เริ่มว่างทั้งหมด
+     เปิดได้เฉพาะเมื่อรอบนี้จบแล้ว (จบงาน/ปฏิเสธ/ข้อมูลเก่า) — รอบที่ยังเดินอยู่ให้เดินต่อในการ์ดเดิม */
+  const [newRoundOpen, setNewRoundOpen] = useState(false);
+  const [newRoundErr, setNewRoundErr] = useState<string | null>(null);
+  const canStartNewRound =
+    canManage && (influencer.completed || influencer.declined_at !== null);
+  const startNewRound = async () => {
+    setNewRoundErr(null);
+    // เลขรอบถัดไปอ่านสดจาก DB — กันหน้าค้าง/สอง session เปิดพร้อมกันแล้วได้เลขซ้ำ
+    const { data: latest, error: latestErr } = await supabase
+      .from("influencers")
+      .select("round_no")
+      .eq("person_id", influencer.person_id)
+      .order("round_no", { ascending: false })
+      .limit(1);
+    if (latestErr) {
+      setNewRoundErr(`เปิดรอบใหม่ไม่สำเร็จ: ${latestErr.message}`);
+      return;
+    }
+    const nextNo = (latest?.[0]?.round_no ?? influencer.round_no) + 1;
+    const { data: created, error } = await supabase
+      .from("influencers")
+      .insert({
+        person_id: influencer.person_id,
+        round_no: nextNo,
+        first_name: influencer.first_name,
+        last_name: influencer.last_name,
+        nickname: influencer.nickname,
+        phone: influencer.phone,
+        occupation: influencer.occupation,
+        followers: influencer.followers,
+        follower_note: influencer.follower_note,
+        tier: influencer.tier,
+        stage: INFLU_STAGE.contact,
+      })
+      .select("id")
+      .single();
+    if (error || !created) {
+      setNewRoundErr(
+        `เปิดรอบใหม่ไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
+      );
+      return;
+    }
+    // คัดลอกรูปเข้าโฟลเดอร์ของเคสใหม่ (best effort) — ห้ามชี้ path ของเคสเก่าข้ามการ์ด
+    // เพราะลบเคสเก่า = ไฟล์ใต้ influencers/{id}/ ถูกลบตาม รูปของรอบใหม่จะพังไปด้วย
+    const store = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
+    const copyPhoto = async (path: string | null): Promise<string | null> => {
+      if (!path) return null;
+      const base = sanitizeFileName(path.split("/").pop() ?? "photo.jpg");
+      const dest = `influencers/${created.id}/${Date.now()}-${base}`;
+      const { error: cpErr } = await store.copy(path, dest);
+      return cpErr ? null : dest;
+    };
+    const [photo, channelPhoto] = await Promise.all([
+      copyPhoto(influencer.photo_path),
+      copyPhoto(influencer.channel_photo_path),
+    ]);
+    if (photo || channelPhoto) {
+      await supabase
+        .from("influencers")
+        .update({
+          ...(photo ? { photo_path: photo } : {}),
+          ...(channelPhoto ? { channel_photo_path: channelPhoto } : {}),
+        })
+        .eq("id", created.id);
+    }
+    router.push(`/influencers/${created.id}`);
+    router.refresh();
+  };
+
   // สรุป: follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
   const activeTasks = useMemo(
     () => activeFollowupTasks(influencer.followup_mode, tasks),
@@ -512,7 +593,67 @@ export function InfluDetailClient({
             <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
           </Badge>
         )}
+        {/* คนนี้มีหลายรอบ — บอกว่าการ์ดนี้คือรอบที่เท่าไหร่ (สลับรอบได้ที่แถบใต้หัวข้อ) */}
+        {personRounds.length > 1 && (
+          <Badge className="border border-stone-200 bg-stone-50 text-stone-500">
+            <Repeat size={12} /> รอบที่ {influencer.round_no}
+          </Badge>
+        )}
+        {/* เปิดรอบใหม่ — influ คนเดิมกลับมาทำอีกครั้ง ต้องออก Memo ใหม่ + การ์ดใหม่ */}
+        {canStartNewRound && (
+          <button
+            type="button"
+            onClick={() => setNewRoundOpen(true)}
+            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่ม Stage 1 เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+          >
+            <Repeat size={14} />
+            เปิดรอบใหม่
+          </button>
+        )}
       </div>
+
+      {/* แถบสลับรอบ — คนเดิมมีหลายการ์ด (หลายรอบงาน) กดดูรอบอื่นได้จากตรงนี้ */}
+      {personRounds.length > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 animate-fade-in-up">
+          <span className="text-xs text-stone-400">รอบงานของคนนี้:</span>
+          {personRounds.map((r) => {
+            const current = r.id === influencer.id;
+            const status = r.declined_at
+              ? "ปฏิเสธ"
+              : r.completed
+                ? "จบงาน"
+                : `ขั้น ${r.stage}/${INFLU_STAGES.length}`;
+            const label = `รอบ ${r.round_no} · ${status}`;
+            return current ? (
+              <span
+                key={r.id}
+                className="inline-flex items-center gap-1 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1 text-xs font-medium text-cream shadow-sm"
+              >
+                {label}
+              </span>
+            ) : (
+              <Link
+                key={r.id}
+                href={`/influencers/${r.id}`}
+                title={
+                  r.service_date
+                    ? `เข้ารับบริการ ${formatDate(r.service_date)}`
+                    : undefined
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 px-3 py-1 text-xs font-medium text-stone-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+      {newRoundErr && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+          {newRoundErr}
+        </p>
+      )}
 
       {/* stepper — มีปุ่ม "ภาพรวม" นำหน้า */}
       <div className="mb-6 flex flex-wrap gap-2 animate-fade-in-up">
@@ -693,6 +834,27 @@ export function InfluDetailClient({
         confirmVariant="primary"
         onConfirm={() => void rollbackStage()}
         onClose={() => setRollbackOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={newRoundOpen}
+        title={`เปิดรอบใหม่ — รอบที่ ${influencer.round_no + 1}?`}
+        message={
+          <>
+            สร้างการ์ดใหม่ให้{" "}
+            <span className="font-medium text-stone-800">คุณ{fullName}</span>{" "}
+            บนบอร์ด Influ Management เริ่มที่ Stage 1 —
+            ใช้เมื่อคนเดิมกลับมาทำอีกครั้ง ซึ่งต้องออก Memo ขออนุมัติ
+            และเซนสัญญาชุดใหม่ทั้งหมด
+            <br />
+            ข้อมูลตัวบุคคล (ชื่อ เบอร์ ยอดผู้ติดตาม รูป) ถูกคัดลอกไปให้ —
+            ส่วนโปรแกรม/วันนัด/เอกสารของรอบนี้ไม่ถูกแตะ และไม่ติดไปกับรอบใหม่
+          </>
+        }
+        confirmLabel="เปิดรอบใหม่"
+        confirmVariant="primary"
+        onConfirm={() => void startNewRound()}
+        onClose={() => setNewRoundOpen(false)}
       />
     </div>
   );

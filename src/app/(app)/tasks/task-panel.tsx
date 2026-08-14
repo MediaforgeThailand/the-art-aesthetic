@@ -71,10 +71,11 @@ function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
-/** ชื่อที่แสดงของ influencer */
+/** ชื่อที่แสดงของ influencer — คนเดิมเข้ามาหลายรอบมีหลายเคส ต้องบอกรอบกำกับให้เลือกถูกใบ */
 function influLabel(i: InfluencerLite): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
-  return i.nickname ? `${full} (${i.nickname})` : full;
+  const name = i.nickname ? `${full} (${i.nickname})` : full;
+  return i.round_no > 1 ? `${name} · รอบ ${i.round_no}` : name;
 }
 
 /** patch ที่ส่งกลับ: ส่วนที่เขียนลง DB + ส่วนที่อัปเดตเฉพาะ state ฝั่งจอ (เช่น assignee object) */

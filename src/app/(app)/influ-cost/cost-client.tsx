@@ -27,6 +27,7 @@ import {
   type CostUsage,
   costUsageOf,
   itemEffectiveCost,
+  roundLabel,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluProcedureItemRow } from "@/lib/types";
@@ -41,6 +42,8 @@ export type CostInflu = {
   first_name: string;
   last_name: string | null;
   nickname: string | null;
+  /** รอบที่เท่าไหร่ของคนนี้ — ต้นทุนแยกรายรอบ ชื่อซ้ำกันได้ต้องบอกรอบกำกับ */
+  round_no: number;
   service_date: string | null;
   stage: number;
   completed: boolean;
@@ -417,6 +420,12 @@ export function CostClient({
                             className="text-stone-300"
                           />
                         </Link>
+                        {/* คนเดิมเข้ามาหลายรอบ — ต้นทุนแยกเคสต่อรอบ บอกรอบกำกับกันสับสน */}
+                        {roundLabel(g.influ.round_no) && (
+                          <Badge className="border border-stone-200 bg-stone-50 text-stone-500">
+                            {roundLabel(g.influ.round_no)}
+                          </Badge>
+                        )}
                         {g.influ.archived && (
                           <Badge className="border border-stone-200 bg-stone-100 text-stone-500">
                             ข้อมูลเก่า
