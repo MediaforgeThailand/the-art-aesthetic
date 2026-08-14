@@ -726,7 +726,6 @@ export function InfluencersClient({
     <>
       <PageHeader
         title="Influ Management"
-        description="บอร์ด Influencer แบ่งตามขนาดผู้ติดตาม — ลากการ์ดย้ายกลุ่ม/เรียงลำดับได้ คลิกการ์ดเพื่อเดินงานทีละ stage"
         action={
           <div className="flex flex-wrap gap-2">
             <button

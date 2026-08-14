@@ -28,16 +28,15 @@ import {
   Ban,
   BellRing,
   CalendarClock,
-  CheckCircle2,
+  Check,
   FileSignature,
   Phone,
-  PhoneCall,
   RotateCcw,
   Timer,
   Trash2,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -119,7 +118,8 @@ export const needsDoctorBooking = (
   !bookedIds.has(i.id);
 
 /** ป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" — ตัวเด่นสุดบนการ์ด เพราะเป็นงานที่ต้องรีบตาม
-    มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ */
+    มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ
+    (พื้นเรียบไม่ไล่เฉดหลัง redesign แต่ยังเรืองแสงตามที่ผู้ใช้ขอไว้ 2026-08-03) */
 export function NoDoctorBookingBadge({
   serviceDate,
 }: {
@@ -132,7 +132,7 @@ export function NoDoctorBookingBadge({
           ? `คุยวันไว้แล้ว (${formatDate(serviceDate)}) แต่ยังไม่มีคิวในปฏิทิน — ลงคิวฝั่งโรงพยาบาลแล้วมาเพิ่มคิวในปฏิทินให้ครบ`
           : "ยังไม่ได้เคาะวันกับ influ และยังไม่มีคิวในปฏิทิน — ตามให้ยืนยันวันเข้ารับบริการ"
       }
-      className="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-gradient-to-b from-amber-100 to-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900 animate-glow-amber"
+      className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 animate-glow-amber"
     >
       <CalendarClock size={11} />
       {serviceDate ? "ยังไม่ได้ลงคิวหมอ" : "ยังไม่เคาะวัน · ไม่มีคิวหมอ"}
@@ -162,9 +162,16 @@ function compactFollowers(n: number): string {
   return formatNumber(n);
 }
 
-/* ---------- ชิปเตือนบนการ์ด ---------- */
+/* ---------- ชิปเตือนบนการ์ด ----------
+   กติกาสีหลัง redesign 2026-08-14 (ผู้ใช้สั่ง "minimal · ดูง่าย"): การ์ดเป็นโทนกลาง (stone)
+   สีจะโผล่เฉพาะเรื่องที่ต้อง "ลงมือทำ" เท่านั้น — amber = ใกล้ถึง/ต้องตาม · rose = เลยกำหนดแล้ว
+   ห้ามเพิ่มชิปสีเพื่อบอกสถานะปกติ (ตอบรับแล้ว/อยู่ขั้นไหน) อีก — ข้อมูลนั้นอยู่ที่ StageTracker แล้ว */
 
-/** ชิป countdown แจ้งเตือน follow up — 2 สัปดาห์ / 1 สัปดาห์ / 3,2,1 วัน / เกินกำหนด */
+const CHIP_QUIET = "border border-stone-200 bg-stone-50 text-stone-500";
+const CHIP_WARN = "border border-amber-200 bg-amber-50 text-amber-700";
+const CHIP_LATE = "border border-rose-200 bg-rose-50 font-semibold text-rose-600";
+
+/** ชิป countdown แจ้งเตือน follow up — เลยกำหนด/วันนี้ = rose · ภายใน 7 วัน = amber · 8-14 วัน = เงียบ */
 function FollowupCountdownChip({
   daysUntil,
   overdueCount,
@@ -174,7 +181,7 @@ function FollowupCountdownChip({
 }) {
   if (daysUntil < 0) {
     return (
-      <Badge className="border border-rose-300 bg-rose-100 font-semibold text-rose-700 animate-fade-in">
+      <Badge className={`${CHIP_LATE} animate-fade-in`}>
         <BellRing size={11} /> เกินกำหนด {Math.abs(daysUntil)} วัน
         {overdueCount > 1 && ` (${overdueCount} งาน)`}
       </Badge>
@@ -182,28 +189,21 @@ function FollowupCountdownChip({
   }
   if (daysUntil === 0) {
     return (
-      <Badge className="border border-rose-300 bg-rose-50 font-semibold text-rose-600">
+      <Badge className={CHIP_LATE}>
         <BellRing size={11} /> Follow up วันนี้
-      </Badge>
-    );
-  }
-  if (daysUntil <= 3) {
-    return (
-      <Badge className="border border-amber-300 bg-amber-100 font-semibold text-amber-800">
-        <BellRing size={11} /> Follow up อีก {daysUntil} วัน
       </Badge>
     );
   }
   if (daysUntil <= 7) {
     return (
-      <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-        <Timer size={11} /> อีก {daysUntil} วัน
+      <Badge className={CHIP_WARN}>
+        <Timer size={11} /> Follow up อีก {daysUntil} วัน
       </Badge>
     );
   }
   if (daysUntil <= 14) {
     return (
-      <Badge className="border border-sky-200 bg-sky-50 text-sky-700">
+      <Badge className={CHIP_QUIET}>
         <Timer size={11} /> อีก {daysUntil} วัน
       </Badge>
     );
@@ -211,7 +211,7 @@ function FollowupCountdownChip({
   return null;
 }
 
-/** ชิปอายุสัญญา — เขียวปกติ / เหลือง ≤30 วัน / แดงหมดแล้ว */
+/** ชิปอายุสัญญา — เงียบเป็นปกติ, เหลืองเมื่อเหลือ ≤30 วัน, แดงเมื่อหมดแล้ว */
 function ContractChip({
   contractStart,
   months,
@@ -223,33 +223,112 @@ function ContractChip({
 }) {
   const end = contractEndDate(contractStart, months);
   const daysLeft = dayDiff(end, today);
-  if (daysLeft < 0) {
-    return (
-      <Badge className="border border-rose-200 bg-rose-50 text-rose-600">
-        <FileSignature size={11} /> สัญญาหมดแล้ว
-      </Badge>
-    );
-  }
   return (
     <span title={`สัญญาถึง ${formatDate(end)}`}>
-      <Badge
-        className={
-          daysLeft <= 30
-            ? "border border-amber-200 bg-amber-50 text-amber-700"
-            : "border border-emerald-200 bg-emerald-50 text-emerald-700"
-        }
-      >
-        <FileSignature size={11} /> สัญญาเหลือ {formatNumber(daysLeft)} วัน
-      </Badge>
+      {daysLeft < 0 ? (
+        <Badge className={CHIP_LATE}>
+          <FileSignature size={11} /> สัญญาหมดแล้ว
+        </Badge>
+      ) : (
+        <Badge className={daysLeft <= 30 ? CHIP_WARN : CHIP_QUIET}>
+          <FileSignature size={11} /> สัญญาเหลือ {formatNumber(daysLeft)} วัน
+        </Badge>
+      )}
     </span>
   );
 }
 
+/* ---------- แถบ stage แบบแอปส่งของ ----------
+   เดิมเป็นแท่งสีเปล่า 5 อัน ดูแล้วไม่รู้ว่าอยู่ขั้นไหนและขั้นนั้นชื่ออะไร (ผู้ใช้ 2026-08-14)
+   ใหม่ = จุดร้อยเส้นแบบ delivery tracking: ผ่านแล้ว = ติ๊กถูก · ขั้นที่อยู่ตอนนี้ = จุดทึบมีวงรอบ ·
+   ยังไม่ถึง = วงเปล่า + บรรทัดเดียวใต้จุดบอกชื่อขั้นปัจจุบันกับ x/5
+   (จำนวนขั้นอ่านจาก INFLU_STAGES เสมอ ห้าม hardcode — เคยยุบจาก 6 เหลือ 5 ขั้นมาแล้วใน 0062) */
+function StageTracker({
+  stage,
+  completed,
+  declined,
+  declinedAt,
+}: {
+  stage: number;
+  completed: boolean;
+  declined: boolean;
+  declinedAt: string | null;
+}) {
+  const total = INFLU_STAGES.length;
+  const label = declined
+    ? "ปฏิเสธแล้ว"
+    : completed
+      ? "จบงานแล้ว"
+      : stage === INFLU_STAGE.contact
+        ? "ติดต่อ · รอตอบรับ"
+        : (INFLU_STAGES.find((s) => s.step === stage)?.title ?? "");
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-1">
+        {INFLU_STAGES.map((s, idx) => {
+          const done = !declined && (completed || stage > s.step);
+          const here = !completed && !declined && stage === s.step;
+          return (
+            <Fragment key={s.step}>
+              {idx > 0 && (
+                <span
+                  className={`h-0.5 flex-1 rounded-full ${
+                    done || here ? "bg-brand-300" : "bg-stone-200"
+                  }`}
+                />
+              )}
+              <span
+                title={`${s.step}. ${s.title}`}
+                className={`flex shrink-0 items-center justify-center rounded-full ${
+                  here
+                    ? "h-4 w-4 bg-brand-500 ring-4 ring-brand-100"
+                    : done
+                      ? "h-3.5 w-3.5 bg-brand-400 text-white"
+                      : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white"
+                }`}
+              >
+                {here ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                ) : done ? (
+                  <Check size={9} strokeWidth={4} />
+                ) : null}
+              </span>
+            </Fragment>
+          );
+        })}
+      </div>
+      <p className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <span
+          title={
+            declined && declinedAt
+              ? `ปฏิเสธเมื่อ ${formatDate(thaiDateISO(declinedAt))}`
+              : undefined
+          }
+          className={`truncate ${
+            declined
+              ? "text-stone-400"
+              : completed
+                ? "font-medium text-emerald-600"
+                : "font-medium text-stone-600"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="shrink-0 tabular-nums text-stone-400">
+          {completed ? total : stage}/{total}
+        </span>
+      </p>
+    </div>
+  );
+}
+
 /* ---------- เนื้อการ์ด ----------
-   โทนสีแยกสถานะชัดเจน:
-   · ติดต่ออยู่ (stage 1 — ยังไม่ตอบรับ) = พื้นหม่น เส้นประ + ชิปเหลือง "รอตอบรับ"
-   · ตอบรับแล้ว (stage 2 ขึ้นไป)        = พื้นขาว แถบซ้ายเขียว + ชิปเขียว "ตอบรับแล้ว"
-   · จบงานแล้ว                           = พื้นเขียวอ่อนทั้งใบ */
+   redesign 2026-08-14 (ผู้ใช้: "minimal · ดูง่าย · stage แบบแอปส่งของ")
+   · พื้นการ์ดบอกแค่ 4 สถานะแบบเบาๆ: รอตอบรับ = เส้นประจาง · กำลังทำ = ขาว · จบงาน = เขียวอ่อน · ปฏิเสธ = จาง
+   · "ตอบรับแล้ว / อยู่ขั้นไหน / จบงาน / ปฏิเสธ" ไม่ทำเป็นชิปแล้ว — อ่านจาก StageTracker แถวล่างที่เดียว
+   · แถวชิปกลางการ์ดเหลือเฉพาะเรื่องที่ต้องลงมือทำ (ยังไม่ลงคิวหมอ · follow up · อายุสัญญา)
+   · tier ย้ายไปเป็นข้อความเงียบๆ ข้างยอดผู้ติดตาม (เดิมเป็นชิปสีคนละสีต่อ tier) */
 
 export function InfluCardContent({
   influ: i,
@@ -278,7 +357,6 @@ export function InfluCardContent({
 }) {
   const declined = i.declined_at !== null;
   const accepted = i.completed || i.stage >= INFLU_STAGE.caseDetail;
-  const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
   const nextDueDays =
     !i.completed && i.stage === INFLU_STAGE.followup && stats?.nextDue
       ? dayDiff(stats.nextDue, today)
@@ -296,12 +374,20 @@ export function InfluCardContent({
     i.size_group !== null && i.size_group !== sizeGroupFromFollowers(i.followers);
 
   const tone = declined
-    ? "border border-dashed border-rose-200/90 bg-rose-50/40 opacity-80"
+    ? "border border-dashed border-stone-300 bg-stone-50/70 opacity-75"
     : i.completed
-      ? "border border-emerald-300/80 bg-emerald-50/80"
+      ? "border border-emerald-200/80 bg-emerald-50/60"
       : accepted
-        ? "border border-emerald-300/70 border-l-4 border-l-emerald-400 bg-white"
-        : "border-2 border-dashed border-stone-300/90 bg-stone-100/70";
+        ? "border border-stone-200 bg-white/90"
+        : "border border-dashed border-stone-300 bg-white/50";
+
+  /* แถวชิปโผล่เฉพาะตอนมีอะไรให้ทำจริง — ไม่มีก็ไม่กินที่ */
+  const hasChips =
+    needsBooking ||
+    (!i.completed && nextDueDays !== null) ||
+    showFollowedChip ||
+    i.contract_start !== null ||
+    movedManually;
 
   return (
     <div
@@ -309,13 +395,13 @@ export function InfluCardContent({
         overlay ? "rotate-1 shadow-2xl ring-2 ring-brand-300" : ""
       }`}
     >
-      {/* แถวบน: avatar + ชื่อ + ยอดผู้ติดตาม/เบอร์ + ปุ่มลบ */}
+      {/* แถวบน: avatar + ชื่อ + ยอดผู้ติดตาม/tier/เบอร์ + ปุ่มลบ */}
       <div className="flex items-start gap-2.5">
         <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-sm font-semibold text-cream ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
             accepted && !declined
-              ? "from-brand-400 to-brand-600"
-              : "from-stone-300 to-stone-400"
+              ? "bg-brand-100 text-brand-700"
+              : "bg-stone-100 text-stone-400"
           }`}
         >
           {i.first_name.charAt(0)}
@@ -323,17 +409,22 @@ export function InfluCardContent({
         <div className="min-w-0 flex-1">
           <p
             className={`truncate text-sm font-medium ${
-              accepted ? "text-stone-900" : "text-stone-600"
+              declined
+                ? "text-stone-400"
+                : accepted
+                  ? "text-stone-900"
+                  : "text-stone-600"
             }`}
           >
             {influName(i)}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-stone-500">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-stone-400">
             {i.followers !== null && (
-              <span className="inline-flex items-center gap-1 font-medium text-stone-600">
+              <span className="inline-flex items-center gap-1 font-medium text-stone-500">
                 <UsersRound size={11} /> {compactFollowers(i.followers)}
               </span>
             )}
+            {i.tier && <span>{INFLU_TIERS[i.tier].label}</span>}
             {i.phone && (
               <span className="inline-flex items-center gap-1">
                 <Phone size={11} /> {i.phone}
@@ -391,54 +482,10 @@ export function InfluCardContent({
         </div>
       </div>
 
-      {/* สถานะตอบรับ + tier — ป้าย "ยังไม่ได้ลงคิวหมอ" มาก่อนเพื่อน เพราะต้องรีบตาม */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        {needsBooking && <NoDoctorBookingBadge serviceDate={i.service_date} />}
-        {declined ? (
-          <span title={`ปฏิเสธเมื่อ ${formatDate(thaiDateISO(i.declined_at!))}`}>
-            <Badge className="border border-rose-300 bg-rose-100 font-semibold text-rose-700">
-              <Ban size={11} /> ปฏิเสธแล้ว
-            </Badge>
-          </span>
-        ) : i.completed ? (
-          <Badge className="border border-emerald-300 bg-emerald-100 font-semibold text-emerald-700">
-            <CheckCircle2 size={11} /> จบงานแล้ว
-          </Badge>
-        ) : accepted ? (
-          <Badge className="border border-emerald-200 bg-emerald-50 font-semibold text-emerald-700">
-            <CheckCircle2 size={11} /> ตอบรับแล้ว · {i.stage}.{" "}
-            {stageInfo?.short ?? ""}
-          </Badge>
-        ) : (
-          <Badge className="border border-amber-300 bg-amber-100 font-semibold text-amber-800">
-            <PhoneCall size={11} /> ติดต่ออยู่ · รอตอบรับ
-          </Badge>
-        )}
-        {i.tier && (
-          <Badge className={INFLU_TIERS[i.tier].badge}>
-            {INFLU_TIERS[i.tier].label}
-          </Badge>
-        )}
-        {movedManually && (
-          <span title="การ์ดถูกลากย้ายกลุ่มเอง ไม่ตรงกับกลุ่มอัตโนมัติจากยอดผู้ติดตาม — ลากกลับกลุ่มเดิมเพื่อให้จัดอัตโนมัติอีกครั้ง">
-            <Badge className="border border-stone-200 bg-white/80 text-stone-400">
-              ย้ายกลุ่มเอง
-            </Badge>
-          </span>
-        )}
-      </div>
-
-      {i.procedure_text && (
-        <p className="mt-1.5 truncate text-xs text-stone-500">
-          {i.procedure_text}
-        </p>
-      )}
-
-      {/* ชิปเตือน follow up / follow แล้ว / อายุสัญญา */}
-      {((!i.completed && nextDueDays !== null) ||
-        showFollowedChip ||
-        i.contract_start !== null) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {/* ชิปเตือน — เรียงตามความรีบ: ยังไม่ลงคิวหมอ → follow up → อายุสัญญา */}
+      {hasChips && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {needsBooking && <NoDoctorBookingBadge serviceDate={i.service_date} />}
           {!i.completed && nextDueDays !== null && (
             <FollowupCountdownChip
               daysUntil={nextDueDays}
@@ -446,8 +493,8 @@ export function InfluCardContent({
             />
           )}
           {showFollowedChip && (
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={11} /> follow แล้ว ·{" "}
+            <Badge className={CHIP_QUIET}>
+              <Check size={11} /> follow แล้ว ·{" "}
               {daysSinceDone === 0 ? "วันนี้" : `${daysSinceDone} วันก่อน`}
             </Badge>
           )}
@@ -458,25 +505,20 @@ export function InfluCardContent({
               today={today}
             />
           )}
+          {movedManually && (
+            <span title="การ์ดถูกลากย้ายกลุ่มเอง ไม่ตรงกับกลุ่มอัตโนมัติจากยอดผู้ติดตาม — ลากกลับกลุ่มเดิมเพื่อให้จัดอัตโนมัติอีกครั้ง">
+              <Badge className={CHIP_QUIET}>ย้ายกลุ่มเอง</Badge>
+            </span>
+          )}
         </div>
       )}
 
-      {/* stepper จิ๋ว 6 stage */}
-      <div className="mt-2.5 flex items-center gap-1">
-        {INFLU_STAGES.map((s) => (
-          <span
-            key={s.step}
-            title={s.title}
-            className={`h-1.5 flex-1 rounded-full ${
-              i.completed || i.stage > s.step
-                ? "bg-emerald-400"
-                : i.stage === s.step
-                  ? "bg-gradient-to-r from-brand-400 to-brand-600"
-                  : "bg-stone-200"
-            }`}
-          />
-        ))}
-      </div>
+      <StageTracker
+        stage={i.stage}
+        completed={i.completed}
+        declined={declined}
+        declinedAt={i.declined_at}
+      />
     </div>
   );
 }
