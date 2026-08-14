@@ -341,6 +341,17 @@ export function comparePromoCategories(a: string, b: string): number {
 /** เหลือกี่วันถึงนับว่า "ใกล้หมดเขต" — ใช้ทั้งป้ายบนแถวและชิปตัวกรอง */
 export const PROMO_ENDING_SOON_DAYS = 30;
 
+/**
+ * Sales Assistant — แอป iPad ของทีมขาย (คนละ repo/โดเมน: the-art-sales-assistant)
+ * แอปนั้นมีปุ่ม "Price-List" ที่ลิงก์มา `/price-list?from=sales` และหน้านี้ตอบกลับด้วย
+ * ปุ่ม "กลับแอปขาย" ที่ชี้กลับมาที่นี่ — สัญญาระหว่าง 2 repo คือ query `?from=sales`
+ * ตัวเดียว ห้ามโชว์ปุ่มนี้กับคนทั่วไป เพราะ /price-list เป็นลิงก์ที่แชร์ให้ลูกค้าดูด้วย
+ */
+export const SALES_ASSISTANT_URL = "https://the-art-sales-assistant.vercel.app/";
+
+/** ค่า `?from=` ที่แอปขายส่งมา — ใช้ตัดสินว่าจะโชว์ปุ่มกลับไหม */
+export const SALES_ASSISTANT_FROM = "sales";
+
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
 /** ประเภทแหล่งไฟล์ — key เก็บลง DB, ระบบเดาอัตโนมัติจาก URL ได้ */

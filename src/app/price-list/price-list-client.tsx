@@ -17,6 +17,7 @@ import {
   PRICE_GROUP_ORDER,
   PRICE_GROUPS,
   PROMO_ENDING_SOON_DAYS,
+  SALES_ASSISTANT_URL,
   sortPriceGroups,
 } from "@/lib/constants";
 import {
@@ -306,14 +307,53 @@ function PriceCell({
 
 /* ---------- หน้าเว็บ ---------- */
 
+/** ปุ่มกลับแอปขาย — โผล่เฉพาะตอนเปิดมาจาก Sales Assistant (`?from=sales`)
+ *  ลูกค้าที่เปิดลิงก์แชร์/QR ไม่เห็นปุ่มนี้
+ *
+ *  ทำไมลอยมุมซ้ายล่าง: แถบค้นหา/แท็บด้านบนเป็น sticky เต็มความกว้างอยู่แล้ว
+ *  วางปุ่มลอยไว้ข้างบนจะทับแท็บ ส่วนถ้าวางไว้ในหัวเรื่องเฉย ๆ พอเซลล์เลื่อนดู
+ *  ตารางยาว ๆ ปุ่มจะหายไปจากจอ ต้องเลื่อนกลับขึ้นบนสุดถึงจะกดกลับได้
+ *
+ *  ทำไมเช็ค referrer: ถ้ามาจากแอปขายจริง history.back() ดีกว่าลิงก์ตรง เพราะแอปขาย
+ *  เก็บ state ไว้ในหน่วยความจำ (หัตถการที่เปิดค้าง/ตะกร้า) — กลับด้วย history
+ *  ได้หน้าเดิมทั้งดุ้น ส่วนกรณีอื่น (เปิดลิงก์ตรง ๆ, แท็บใหม่) history.back()
+ *  จะพาไปเว็บที่ไม่เกี่ยวหรือไม่ไปไหนเลย จึงต้อง fallback เป็นลิงก์เต็ม
+ */
+function BackToSalesButton() {
+  const salesOrigin = new URL(SALES_ASSISTANT_URL).origin;
+
+  return (
+    <a
+      href={SALES_ASSISTANT_URL}
+      onClick={(e) => {
+        if (
+          window.history.length > 1 &&
+          document.referrer.startsWith(salesOrigin)
+        ) {
+          e.preventDefault();
+          window.history.back();
+        }
+      }}
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+      className="fixed left-4 z-30 inline-flex items-center gap-2 rounded-full bg-brand-700 py-2.5 pl-3 pr-4 text-sm font-semibold text-cream shadow-lg shadow-brand-900/30 transition-transform hover:bg-brand-800 active:scale-95"
+    >
+      <ArrowLeft size={16} />
+      กลับแอปขาย
+    </a>
+  );
+}
+
 type SpecialFilter = "promo" | "ending" | "deal" | "expired";
 
 export function PriceListClient({
   packages,
   loadError,
+  fromSales,
 }: {
   packages: Pkg[];
   loadError: string | null;
+  /** เปิดมาจากแอป Sales Assistant — โชว์ปุ่มกลับ */
+  fromSales: boolean;
 }) {
   const today = todayISO();
   const [search, setSearch] = useState("");
@@ -417,7 +457,10 @@ export function PriceListClient({
     });
 
   return (
-    <div className="min-h-screen pb-16">
+    // เผื่อที่ล่างเพิ่มตอนมีปุ่มลอย ไม่ให้ปุ่มบังแถวสุดท้ายของตาราง
+    <div className={fromSales ? "min-h-screen pb-28" : "min-h-screen pb-16"}>
+      {fromSales && <BackToSalesButton />}
+
       {/* หัวแบรนด์ */}
       <header className="bg-gradient-to-b from-brand-600 via-brand-500 to-brand-400 px-4 pb-14 pt-8 text-center text-cream">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3">
