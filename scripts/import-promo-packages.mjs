@@ -17,8 +17,18 @@
  *
  * สคริปต์นี้ "ล้างแล้วใส่ใหม่ทั้งชุด": แพ็กเกจที่ทีมแก้เอง/เพิ่มเองในหน้า /pricing (รหัส MANUAL-*)
  * จะถูกเก็บไว้ ส่วนแถวที่มาจากไฟล์จะถูกเขียนทับด้วยข้อมูลใหม่ (จับคู่ด้วยรหัสแพ็กเกจ)
+ *
+ * ไฟล์ POS บางแถวชื่อโปรกับรายการหัตถการไม่ตรงกัน (ของหลักหาย/จำนวนผิด/ผูกคนละไอเทม)
+ * การแก้เก็บไว้ที่ promo-corrections.mjs และใส่กลับทุกครั้งที่นำเข้า — ดูเหตุผลรายข้อในไฟล์นั้น
  */
 import fs from "node:fs";
+import {
+  applyLineFixes,
+  composeText,
+  fixUnit,
+  LINE_FIX,
+  NEEDS_TEAM,
+} from "./promo-corrections.mjs";
 
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
@@ -68,14 +78,18 @@ const clean = (s) =>
     .trim();
 
 const itemInfo = new Map(
-  items.map((i) => [
-    clean(i["Item Code (SKU)"]),
-    {
-      name: clean(i["ชื่อหัตถการ"]),
-      price: num(i["ราคา Pricelist (บาท)"]),
-      unit: clean(i["หน่วย"]),
-    },
-  ])
+  items.map((i) => {
+    const code = clean(i["Item Code (SKU)"]);
+    return [
+      code,
+      {
+        name: clean(i["ชื่อหัตถการ"]),
+        price: num(i["ราคา Pricelist (บาท)"]),
+        // หน่วยบางตัวลงผิดมาจาก POS (Ulthera/Doublo เป็น "ครั้ง") — ดู promo-corrections.mjs
+        unit: fixUnit(code, clean(i["หน่วย"])),
+      },
+    ];
+  })
 );
 const byPack = new Map();
 for (const l of lines) {
@@ -114,22 +128,26 @@ const today = new Intl.DateTimeFormat("en-CA", {
 }).format(new Date());
 
 const rows = [];
+const fixedPacks = [];
 for (const p of packs) {
   const sku = clean(p["Package Code (SKU)"]);
   const end = clean(p["หมดเขต"]);
   if (end !== "" && end < today) continue; // หมดเขตไปแล้ว — ไม่ต้องขึ้นหน้าเว็บ
 
-  const ls = (byPack.get(sku) ?? []).map((l) => {
+  const raw = (byPack.get(sku) ?? []).map((l) => {
     const isku = clean(l["Item Code (SKU)"]);
     const info = itemInfo.get(isku);
     return {
       item_sku: isku || null,
       item_name: clean(l["ชื่อหัตถการ-ไอเทม"]) || info?.name || "",
       qty: num(l["จำนวน"]),
-      unit: clean(l["หน่วย"]) || info?.unit || null,
+      unit: fixUnit(isku, clean(l["หน่วย"]) || info?.unit || null),
       unit_price: num(l["ราคาเต็ม-หน่วย (Price list)"]) || info?.price || null,
     };
   });
+  // ใส่การแก้ที่ต้นทางยังไม่ได้แก้ (ของหลักหาย/จำนวนผิด/ผูกคนละไอเทม)
+  const { lines: ls, applied } = applyLineFixes(sku, raw, itemInfo);
+  if (applied.length) fixedPacks.push({ sku, name: clean(p["ชื่อโปรโมชั่น"]), applied });
   const full = ls.reduce((s, l) => s + l.qty * (l.unit_price ?? 0), 0);
   const single = ls.length === 1 ? ls[0] : null;
   const catText = `${clean(p["ชื่อโปรโมชั่น"])} ${ls.map((l) => l.item_name).join(" ")}`;
@@ -166,6 +184,25 @@ for (const p of packs) {
   });
 }
 console.log(`อ่านไฟล์ได้ ${rows.length} แพ็กเกจ (ตัดที่หมดเขตก่อน ${today} ออกแล้ว)`);
+
+/* ---------- รายงานการแก้ที่ใส่กลับเข้าไป ----------
+   ต้องเห็นทุกครั้งที่นำเข้า ไม่ใช่แก้เงียบ ๆ — จะได้รู้ว่าเมื่อไรต้นทางแก้เองแล้ว */
+if (fixedPacks.length) {
+  console.log(`\n=== แก้ข้อมูลที่ผิดมาจากไฟล์ POS ${fixedPacks.length} แพ็กเกจ (promo-corrections.mjs) ===`);
+  for (const f of fixedPacks)
+    for (const a of f.applied) console.log(`  [${f.sku}] ${f.name}\n      ${a.kind}: ${a.why}`);
+}
+const untouched = LINE_FIX.filter((f) => !fixedPacks.some((p) => p.sku === f.pkg));
+if (untouched.length)
+  console.log(
+    `\n⚠ มี ${untouched.length} ข้อใน promo-corrections.mjs ที่ไม่ได้ใช้ ` +
+      `(${[...new Set(untouched.map((f) => f.pkg))].join(", ")}) — โปรอาจหมดเขตหรือต้นทางแก้แล้ว ควรตรวจแล้วลบออก`
+  );
+if (NEEDS_TEAM.length) {
+  console.log(`\n=== ยังแก้ไม่ได้ ต้องให้ทีมชี้ขาด (${NEEDS_TEAM.length}) ===`);
+  for (const n of NEEDS_TEAM) console.log(`  [${n.pkg}] ${n.why}`);
+}
+console.log("");
 
 /* ---------- เขียนลง DB ---------- */
 const auth = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
