@@ -28,6 +28,8 @@ import {
   fixUnit,
   LINE_FIX,
   NEEDS_TEAM,
+  PACK_NORMAL,
+  scalePackNormal,
 } from "./promo-corrections.mjs";
 
 const SUPABASE_URL =
@@ -146,7 +148,10 @@ for (const p of packs) {
     };
   });
   // ใส่การแก้ที่ต้นทางยังไม่ได้แก้ (ของหลักหาย/จำนวนผิด/ผูกคนละไอเทม)
-  const { lines: ls, applied } = applyLineFixes(sku, raw, itemInfo);
+  const { lines: fixed, applied } = applyLineFixes(sku, raw, itemInfo);
+  // แพ็กเกจแบบซื้อจำนวน: ราคาปกติต้องเป็นราคาของแพ็กเกจตามไฟล์ราคา ไม่ใช่ (จำนวน × ราคาต่อหน่วย)
+  const { lines: ls, applied: scaled } = scalePackNormal(sku, fixed);
+  if (scaled) applied.push(scaled);
   if (applied.length) fixedPacks.push({ sku, name: clean(p["ชื่อโปรโมชั่น"]), applied });
   const full = ls.reduce((s, l) => s + l.qty * (l.unit_price ?? 0), 0);
   const single = ls.length === 1 ? ls[0] : null;
@@ -192,7 +197,13 @@ if (fixedPacks.length) {
   for (const f of fixedPacks)
     for (const a of f.applied) console.log(`  [${f.sku}] ${f.name}\n      ${a.kind}: ${a.why}`);
 }
-const untouched = LINE_FIX.filter((f) => !fixedPacks.some((p) => p.sku === f.pkg));
+const untouched = [
+  ...LINE_FIX.map((f) => f.pkg),
+  ...Object.keys(PACK_NORMAL),
+]
+  .filter((pkg, i, a) => a.indexOf(pkg) === i)
+  .filter((pkg) => !fixedPacks.some((p) => p.sku === pkg))
+  .map((pkg) => ({ pkg }));
 if (untouched.length)
   console.log(
     `\n⚠ มี ${untouched.length} ข้อใน promo-corrections.mjs ที่ไม่ได้ใช้ ` +
