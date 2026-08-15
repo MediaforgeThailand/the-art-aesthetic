@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import type { DoctorRow } from "@/lib/types";
-import { useSignedUrl } from "./use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 
 /* รูปโปรไฟล์หมอ — photo_path จาก bucket documents (signed URL มี cache ใน useSignedUrl)
    ไม่มีรูป = วงกลมไอคอนหูฟังแพทย์, doctor = null = วงกลมเส้นประ ("ไม่ระบุ") */

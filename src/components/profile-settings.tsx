@@ -3,7 +3,7 @@
 import { Camera, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";

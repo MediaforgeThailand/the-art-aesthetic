@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { LogoMark, LogoWordmark } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
@@ -33,9 +33,6 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   perm: AppPermission | AppPermission[] | "admin" | null;
-  /** path เพิ่มเติมที่ให้ถือว่าเมนูนี้ active — ใช้กับเมนูรวม (Influencer System)
-      ที่หน้าลูกอยู่คนละ prefix กับปุ่ม (เช่น /influencers, /influ-calendar) */
-  activePrefixes?: string[];
   /** ป้ายสั้นสำหรับแถบเมนูล่างบนมือถือ (ช่องกว้าง ~70px) — ไม่ใส่ = ไม่ขึ้นแถบล่าง */
   short?: string;
   /** ป้ายใต้ไอคอนบนแถบเมนูจอใหญ่ (กว้าง 68px) — ทุกเมนูต้องมี ไม่งั้นตกไปใช้ label เต็มแล้วล้น
@@ -56,25 +53,23 @@ const MOBILE_NAV_ORDER = [
 ];
 const MOBILE_NAV_MAX = 4;
 
+/** สิทธิ์ทุกระดับของระบบ Influencer (ระบบนั้นมีแถบเมนูของตัวเอง — ที่นี่เหลือแค่ทางเข้า) */
+const INFLU_PERMS: AppPermission[] = ["influ", "influ_hunter", "influ_view"];
+
 const navItems: NavItem[] = [
   // แดชบอร์ด = รายงานทุก section ในหน้าเดียว (เมนู "รายงาน" /reports ถูกถอดออก 2026-08-07 เพราะซ้ำกับหน้านี้)
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
   // ระบบ Influencer รวมเป็นปุ่มเดียว → หน้ารวม /influencer-management (บอร์ด/ปฏิทิน/ต้นทุน/
-  // แดชบอร์ด/สัญญา/Log/ถังขยะ อยู่ในนั้นทั้งหมด) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็นระบบของตัวเอง
+  // แดชบอร์ด/สัญญา/Log/ถังขยะ อยู่ในนั้นทั้งหมด) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็น "แอปของตัวเอง"
+  // (route group (influ) มีแถบเมนูของตัวเอง) ปุ่มนี้จึงเป็นแค่ทางเข้า ไม่มีหน้าลูกอยู่ในโครงนี้
   {
     href: "/influencer-management",
     label: "Influencer System",
     icon: Sparkles,
-    perm: ["influ", "influ_hunter", "influ_view"],
+    perm: INFLU_PERMS,
     short: "Influ",
     rail: "Influ",
-    activePrefixes: [
-      "/influencers",
-      "/influ-calendar",
-      "/influ-dashboard",
-      "/influ-cost",
-    ],
   },
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ", "influ_hunter", "influ_view"], short: "โปรไฟล์", rail: "โปรไฟล์" },
@@ -175,9 +170,16 @@ export function Sidebar({
     };
   }, []);
 
+  /** มีระดับใดระดับหนึ่งในระบบ Influencer ไหม (ใช้ยุบเมนูให้เหลือปุ่มเดียว — ดูด้านล่าง) */
+  const hasInflu = INFLU_PERMS.some((p) => permissions.includes(p));
+
   // แต่ละเมนูขึ้นกับสิทธิ์ของเมนูนั้นแยกอิสระ (แบบ Discord)
   // เมนู "จัดการบัญชี" (perm 'admin') = เฉพาะ role admin; ที่เหลือดูจาก permissions รายคน
   const visibleNav = navItems.filter((item) => {
+    // ระบบ Influencer แยกเป็นแอปของตัวเองแล้ว (route group (influ) มีแถบเมนูในตัว) —
+    // คนที่มีสิทธิ์ในระบบนั้นจึงเข้าผ่านปุ่ม "Influencer System" ปุ่มเดียว ไม่ต้องมี
+    // "โปรไฟล์ Influencer" ซ้ำอีกปุ่ม; เก็บไว้เฉพาะคนที่มีแค่สิทธิ์ team (ทางเข้าทางเดียวของเขา)
+    if (item.href === "/influ-gallery" && hasInflu) return false;
     if (item.perm === null) return true;
     if (item.perm === "admin") return isAdmin;
     if (Array.isArray(item.perm))
@@ -185,10 +187,9 @@ export function Sidebar({
     return permissions.includes(item.perm);
   });
 
-  /** เมนูนี้ active ไหม — เมนูรวมต้องสว่างตอนอยู่หน้าลูกที่คนละ prefix ด้วย (activePrefixes) */
-  const isActive = (item: Pick<NavItem, "href" | "activePrefixes">) =>
-    pathname.startsWith(item.href) ||
-    (item.activePrefixes ?? []).some((p) => pathname.startsWith(p));
+  /** เมนูนี้ active ไหม (ระบบ Influencer อยู่คนละโครงแล้ว — แถบนี้ไม่ถูก render ที่นั่น) */
+  const isActive = (item: Pick<NavItem, "href">) =>
+    pathname.startsWith(item.href);
 
   /** เมนูของแถบล่างบนมือถือ — 4 อันแรกตาม MOBILE_NAV_ORDER ที่ผู้ใช้คนนี้มีสิทธิ์เห็น
       (ใช้ป้ายสั้น `short` เพราะช่องกว้างแค่ ~70px) */

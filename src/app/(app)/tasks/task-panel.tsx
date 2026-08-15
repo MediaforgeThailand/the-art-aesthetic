@@ -52,7 +52,7 @@ import type {
   TaskSubtaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
-import { useSignedUrl } from "../influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "./media-lightbox";
 import { PersonSelect } from "./person-select";
 import {

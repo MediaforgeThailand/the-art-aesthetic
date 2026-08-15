@@ -15,7 +15,7 @@
 
 import { FileText, ImageOff, Paperclip, Play, Plus, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
-import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "@/app/(app)/tasks/media-lightbox";
 import { formatFileSize } from "@/lib/format";
 import { isImagePath, isVideoPath } from "@/lib/media";

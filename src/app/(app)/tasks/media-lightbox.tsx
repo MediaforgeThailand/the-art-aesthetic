@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useSignedUrl } from "../influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { isImagePath, isVideoPath } from "./task-card";
 
 export type LightboxItem = { file_path: string; file_name: string | null };

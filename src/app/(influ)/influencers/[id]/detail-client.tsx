@@ -86,7 +86,7 @@ import {
   ProcedureItemsEditor,
   type PriceCatalogEntry,
 } from "../procedure-items-editor";
-import { useSignedUrl } from "../use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 import { PackageStage } from "./package-stage";
 import { PostLinksCard } from "./post-links";

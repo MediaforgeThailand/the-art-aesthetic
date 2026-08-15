@@ -11,7 +11,7 @@
 import { Download, FileText, ImageOff, Play } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { useSignedUrl } from "@/app/(app)/influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "@/app/(app)/tasks/media-lightbox";
 import { Badge, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";

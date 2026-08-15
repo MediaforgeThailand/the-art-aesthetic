@@ -25,7 +25,7 @@ import {
   type InfluLinkLite,
   SourceLinkQuickButton,
 } from "../influencers/influ-links";
-import { useSignedUrl } from "../influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import {
   influName,
   type InfluencerListRow,

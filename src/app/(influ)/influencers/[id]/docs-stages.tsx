@@ -38,7 +38,7 @@ import {
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluSignatureRow } from "@/lib/types";
-import { useSignedUrl } from "../use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");

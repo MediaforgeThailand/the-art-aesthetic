@@ -36,7 +36,7 @@ import { formatDate } from "@/lib/format";
 import { isImagePath, isVideoPath } from "@/lib/media";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
-import { useSignedUrl } from "../influencers/use-signed-url";
+import { useSignedUrl } from "@/lib/use-signed-url";
 
 export type ProfileOption = Pick<
   ProfileRow,
