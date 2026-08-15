@@ -89,6 +89,8 @@ function contentSummary(p: Pkg): string {
 type Row = {
   key: string;
   name: string;
+  /** รหัสในระบบ POS — หัตถการ (AES-…) สำหรับแถวคอร์ส · แพ็กเกจ (PKAES-…) สำหรับแถวแพ็กเกจ */
+  code: string | null;
   /** บรรทัดรองใต้ชื่อ — ประกอบด้วยอะไรบ้าง (แพ็กเกจรวม) หรือหน่วยของหัตถการ */
   sub: string | null;
   category: string;
@@ -170,6 +172,7 @@ function buildRows(packages: Pkg[], today: string): Row[] {
       finish({
         key: `item:${sku}`,
         name: first.base_item_name ?? first.name,
+        code: sku,
         sub: null,
         // หมวดของแถว = หมวดที่พบบ่อยสุดในกลุ่ม (ปกติเหมือนกันหมดอยู่แล้ว)
         category: first.category,
@@ -185,11 +188,16 @@ function buildRows(packages: Pkg[], today: string): Row[] {
         all: sorted,
         sort: Math.min(...sorted.map((p) => p.sort)),
         // ค้นหาจากชื่อ "ทุก" SKU รวมอันที่ยุบทิ้ง — ทีมขายจำชื่อในระบบ POS ได้ ต้องค้นเจอ
+        // และจากรหัสด้วย (AES-… / PKAES-…) เพราะบิลกับใบเสนอราคาอ้างรหัส ไม่ได้อ้างชื่อ
         search: [
           first.base_item_name ?? "",
           first.category,
+          sku,
           ...list.map((p) => p.name),
-          ...list.flatMap((p) => p.items.map((i) => i.item_name)),
+          ...list.map((p) => p.sku),
+          ...list.flatMap((p) =>
+            p.items.map((i) => `${i.item_name} ${i.item_sku ?? ""}`)
+          ),
         ]
           .join(" ")
           .toLowerCase(),
@@ -203,6 +211,7 @@ function buildRows(packages: Pkg[], today: string): Row[] {
       finish({
         key: `pkg:${p.id}`,
         name: p.name,
+        code: p.sku,
         sub: multi
           ? contentSummary(p)
           : p.base_qty && p.base_unit
@@ -218,7 +227,12 @@ function buildRows(packages: Pkg[], today: string): Row[] {
         extras: [],
         all: [p],
         sort: p.sort,
-        search: [p.name, p.category, ...p.items.map((i) => i.item_name)]
+        search: [
+          p.name,
+          p.category,
+          p.sku,
+          ...p.items.map((i) => `${i.item_name} ${i.item_sku ?? ""}`),
+        ]
           .join(" ")
           .toLowerCase(),
       })
@@ -229,6 +243,24 @@ function buildRows(packages: Pkg[], today: string): Row[] {
 }
 
 /* ---------- ชิ้นส่วนเล็ก ---------- */
+
+/** รหัสในระบบ POS — ทีมขายกับแอดมินใช้อ้างตอนออกบิล ต้องเห็นได้แต่ห้ามแย่งสายตาจากชื่อ */
+function Code({
+  code,
+  className = "",
+}: {
+  code: string | null | undefined;
+  className?: string;
+}) {
+  if (!code) return null;
+  return (
+    <span
+      className={`select-all whitespace-nowrap font-mono text-[10px] leading-none tracking-tight text-stone-400 ${className}`}
+    >
+      {code}
+    </span>
+  );
+}
 
 function DiscountBadge({ pct, big = false }: { pct: number; big?: boolean }) {
   return (
@@ -785,6 +817,7 @@ function DeskRow({
             <p className="text-[13px] font-medium leading-5 text-stone-800">
               {row.name}
             </p>
+            <Code code={row.code} className="mt-1 block" />
             {row.sub && (
               <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-stone-500">
                 {row.sub}
@@ -895,6 +928,7 @@ function MobileCard({
           <p className="text-sm font-semibold leading-5 text-stone-800">
             {row.name}
           </p>
+          <Code code={row.code} className="mt-1 block" />
           {row.sub && (
             <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-stone-500">
               {row.sub}
@@ -1031,6 +1065,7 @@ function DetailModal({
           <h2 className="mt-0.5 font-display text-xl font-bold leading-snug text-stone-900">
             {row.name}
           </h2>
+          <Code code={row.code} className="mt-1.5 block" />
           {row.fullPrice !== null && (
             <p className="mt-1 text-[13px] text-stone-500">
               ราคาปกติ {baht(row.fullPrice)}
@@ -1070,6 +1105,8 @@ function DetailModal({
                         {p.name}
                       </p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        {/* แถวแพ็กเกจเดี่ยว รหัสหัวโมดัลคืออันเดียวกัน — ไม่ต้องซ้ำ */}
+                        <Code code={p.sku === row.code ? null : p.sku} />
                         <span className="text-[11px] text-stone-500">
                           {p.starts_on && p.ends_on
                             ? `${shortThaiDate(p.starts_on)} – ${shortThaiDate(p.ends_on)}`
@@ -1124,6 +1161,7 @@ function DetailModal({
                                 {it.unit ? ` ${it.unit}` : "×"}
                               </b>
                               {it.item_name}
+                              <Code code={it.item_sku} className="ml-1.5" />
                             </span>
                             {it.unit_price ? (
                               <span className="shrink-0 whitespace-nowrap tabular-nums text-[11px] text-stone-400">
