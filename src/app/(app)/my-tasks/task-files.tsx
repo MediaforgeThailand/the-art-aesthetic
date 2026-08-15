@@ -23,7 +23,14 @@ import type { ListTaskFileRow } from "@/lib/types";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
 
 /** ความคืบหน้าการอัพโหลดของงานหนึ่งใบ (index เริ่มที่ 0) */
-export type UploadProgress = { index: number; total: number; pct: number };
+/** `phase` แยกขั้น "บีบวิดีโอ" ออกจาก "อัพโหลด" — การบีบกินเวลาเป็นนาที
+ *  ถ้าเขียนว่ากำลังอัพโหลดค้างอยู่ ผู้ใช้จะคิดว่าเน็ตพังแล้วปิดแท็บทิ้ง */
+export type UploadProgress = {
+  index: number;
+  total: number;
+  pct: number;
+  phase: "compress" | "upload";
+};
 
 function Thumb({ file }: { file: ListTaskFileRow }) {
   const { url, failed } = useSignedUrl(file.file_path);
@@ -265,7 +272,8 @@ export function FilesSection({
       {uploading && progress && (
         <div className="mb-2">
           <p className="mb-1 text-[11px] text-stone-500">
-            กำลังอัพโหลด {progress.index + 1}/{progress.total} ·{" "}
+            {progress.phase === "compress" ? "กำลังบีบไฟล์" : "กำลังอัพโหลด"}{" "}
+            {progress.index + 1}/{progress.total} ·{" "}
             {Math.round(progress.pct * 100)}%
           </p>
           <div className="h-1.5 overflow-hidden rounded-full bg-stone-200">
@@ -319,8 +327,9 @@ export function FilesSection({
 
       {files.length > 0 && (
         <p className="mt-2 text-[11px] text-stone-400">
-          กดที่ไฟล์เพื่อดูเต็มจอ · เพดาน {formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์
-          (วิดีโอยาวกว่านั้นให้วางลิงก์ Google Drive ในโน้ตแทน)
+          กดที่ไฟล์เพื่อดูเต็มจอ · วิดีโอใหญ่ระบบบีบให้อัตโนมัติก่อนอัพ · เพดาน{" "}
+          {formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ (ใหญ่กว่านั้นให้วางลิงก์ Google
+          Drive ในโน้ตแทน)
         </p>
       )}
 

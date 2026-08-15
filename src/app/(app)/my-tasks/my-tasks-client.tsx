@@ -75,7 +75,7 @@ import type {
   ListTaskRow,
 } from "@/lib/types";
 import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
-import { compressImages } from "@/lib/upload-prepare";
+import { prepareUploadFiles } from "@/lib/upload-prepare";
 import { GroupManagerModal } from "./group-manager";
 import {
   buildGroups,
@@ -411,16 +411,37 @@ export function MyTasksClient({
   );
 
   const uploadFiles = (taskId: string, fileList: FileList) => mutate(async () => {
-    // ย่อรูปก่อนแล้วค่อยเช็คเพดาน — รูปจากมือถือที่เกินเพดานมักผ่านได้หลังย่อ (วิดีโอไม่ถูกแตะ)
-    const picked = await compressImages(Array.from(fileList));
-    if (picked.length === 0) return;
+    const chosen = Array.from(fileList);
+    if (chosen.length === 0) return;
+    // ย่อรูป/บีบวิดีโอก่อนแล้วค่อยเช็คเพดาน — ไฟล์ที่เกินเพดานมักผ่านได้หลังย่อ
+    setUploadingId(taskId);
+    setUploadProgress({
+      index: 0,
+      total: chosen.length,
+      pct: 0,
+      phase: "compress",
+    });
+    let picked: File[];
+    try {
+      picked = await prepareUploadFiles(chosen, (p) =>
+        setUploadProgress({ ...p, phase: "compress" })
+      );
+    } finally {
+      setUploadingId(null);
+      setUploadProgress(null);
+    }
     const tooLarge = tooLargeSummary(picked);
     if (tooLarge) {
       setErr(tooLarge);
       return;
     }
     setUploadingId(taskId);
-    setUploadProgress({ index: 0, total: picked.length, pct: 0 });
+    setUploadProgress({
+      index: 0,
+      total: picked.length,
+      pct: 0,
+      phase: "upload",
+    });
     const rows: { task_id: string; file_path: string; file_name: string }[] = [];
     // try/finally: ปุ่มต้องกลับมากดได้เสมอแม้ระหว่างทางมี exception
     try {
@@ -428,12 +449,23 @@ export function MyTasksClient({
         const path = `my-tasks/${taskId}/${Date.now()}_${Math.random()
           .toString(36)
           .slice(2, 6)}_${sanitizeFileName(file.name)}`;
-        setUploadProgress({ index: i, total: picked.length, pct: 0 });
+        setUploadProgress({
+          index: i,
+          total: picked.length,
+          pct: 0,
+          phase: "upload",
+        });
         const { error } = await uploadWithProgress(
           STORAGE_BUCKET_DOCUMENTS,
           path,
           file,
-          (pct) => setUploadProgress({ index: i, total: picked.length, pct })
+          (pct) =>
+            setUploadProgress({
+              index: i,
+              total: picked.length,
+              pct,
+              phase: "upload",
+            })
         );
         if (error) {
           // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ — ยังไม่มีแถวใน DB อ้างถึง

@@ -8,17 +8,20 @@
  * ไม่ใช่เก็บต้นฉบับความละเอียดเต็ม (ต้นฉบับอยู่ใน Google Drive ของทีมอยู่แล้ว)
  *
  * ขอบเขต:
- * - **รูปเท่านั้น** (jpeg/png/webp ที่เบราว์เซอร์ decode ได้) — heic ของ iPhone decode ไม่ได้
+ * - **รูป** (jpeg/png/webp ที่เบราว์เซอร์ decode ได้) — heic ของ iPhone decode ไม่ได้
  *   จึงส่งต่อไฟล์เดิม
- * - **วิดีโอไม่ถูกแตะ** — การ transcode ในเบราว์เซอร์ต้องใช้ WebCodecs + muxer ซึ่งเป็น
- *   งานแยกก้อน; ตอนนี้วิดีโอเกินเพดานจะถูกกันที่ `fileTooLargeMessage` ใน `@/lib/upload`
- *   พร้อมข้อความให้แนบเป็นลิงก์ Drive แทน
+ * - **วิดีโอ** ถูกบีบด้วย WebCodecs ที่ `compressVideoFile` (@/lib/video-compress)
+ *   ไฟล์อื่น (pdf ฯลฯ) ส่งต่อตามเดิม
+ *
+ * จุดอัพโหลดทุกที่ควรเรียกผ่าน `prepareUploadFile`/`prepareUploadFiles` ตัวเดียว จะได้ไม่ต้อง
+ * จำว่าไฟล์ชนิดไหนต้องผ่านตัวย่อตัวไหน
  *
  * เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว — ที่นี่ไม่เช็คขนาด
- * (ผู้เรียกต้องย่อก่อน แล้วค่อยเช็คเพดาน เพราะรูปที่เกินอาจผ่านได้หลังย่อ)
+ * (ผู้เรียกต้องย่อก่อน แล้วค่อยเช็คเพดาน เพราะไฟล์ที่เกินมักผ่านได้หลังย่อ)
  */
 
 import { IMAGE_COMPRESS_OVER_MB, IMAGE_MAX_DIMENSION } from "@/lib/constants";
+import { compressVideoFile } from "@/lib/video-compress";
 
 const MB = 1024 * 1024;
 
@@ -73,9 +76,29 @@ export async function compressImageFile(file: File): Promise<File> {
   }
 }
 
-/** ย่อทั้งชุด (ทำทีละไฟล์ — เลี่ยงการถอดรหัสรูปหลายใบพร้อมกันจนมือถือหน่วยความจำไม่พอ) */
-export async function compressImages(files: File[]): Promise<File[]> {
+/** เตรียมไฟล์เดียวก่อนอัพ — รูปย่อด้วย canvas, วิดีโอบีบด้วย WebCodecs, ที่เหลือส่งต่อตามเดิม
+ *  `onProgress` มีค่าเฉพาะตอนบีบวิดีโอ (0–1) เพราะเป็นขั้นตอนเดียวที่กินเวลาเป็นนาที */
+export async function prepareUploadFile(
+  file: File,
+  onProgress?: (ratio: number) => void
+): Promise<File> {
+  if (file.type.startsWith("video/")) return compressVideoFile(file, onProgress);
+  return compressImageFile(file);
+}
+
+/** เตรียมทั้งชุด (ทำทีละไฟล์ — เลี่ยงการถอด/เข้ารหัสหลายไฟล์พร้อมกันจนมือถือหน่วยความจำไม่พอ)
+ *  `onProgress` รายงานว่ากำลังทำไฟล์ที่เท่าไรจากทั้งหมด และไฟล์นั้นไปถึงไหนแล้ว */
+export async function prepareUploadFiles(
+  files: File[],
+  onProgress?: (p: { index: number; total: number; pct: number }) => void
+): Promise<File[]> {
   const out: File[] = [];
-  for (const f of files) out.push(await compressImageFile(f));
+  for (const [index, f] of files.entries()) {
+    out.push(
+      await prepareUploadFile(f, (pct) =>
+        onProgress?.({ index, total: files.length, pct })
+      )
+    );
+  }
   return out;
 }

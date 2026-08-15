@@ -32,14 +32,15 @@ import {
   REVISION_KINDS,
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatFileSize } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import {
+  MAX_UPLOAD_BYTES,
   fileTooLargeMessage,
   tooLargeSummary,
   uploadWithProgress,
 } from "@/lib/upload";
-import { compressImageFile, compressImages } from "@/lib/upload-prepare";
+import { prepareUploadFile, prepareUploadFiles } from "@/lib/upload-prepare";
 import type {
   InfluencerLite,
   NotificationType,
@@ -492,11 +493,14 @@ export function TaskPanel({
     task.deliverable_url ?? ""
   );
   const [uploadingFiles, setUploadingFiles] = useState(false);
-  /** ความคืบหน้าตอนอัพ: ไฟล์ที่เท่าไรจากทั้งหมด + % ของไฟล์ปัจจุบัน */
+  /** ความคืบหน้าตอนอัพ: ไฟล์ที่เท่าไรจากทั้งหมด + % ของไฟล์ปัจจุบัน
+   *  `phase` แยกขั้น "บีบวิดีโอ" ออกจาก "อัพโหลด" — การบีบกินเวลาเป็นนาที
+   *  ถ้าเขียนว่ากำลังอัพโหลดค้างอยู่ ทีมจะคิดว่าเน็ตพังแล้วปิดแท็บทิ้ง */
   const [uploadProgress, setUploadProgress] = useState<{
     index: number;
     total: number;
     pct: number;
+    phase: "compress" | "upload";
   } | null>(null);
   const deliverableInputRef = useRef<HTMLInputElement>(null);
   const files = task.files ?? [];
@@ -513,9 +517,24 @@ export function TaskPanel({
   };
 
   const uploadFiles = async (fileList: FileList) => {
-    // ย่อรูปในเบราว์เซอร์ก่อน แล้วค่อยเช็คเพดาน — รูปจากมือถือที่เกินเพดาน
-    // มักผ่านได้หลังย่อ (วิดีโอไม่ถูกแตะ)
-    const picked = await compressImages(Array.from(fileList));
+    const chosen = Array.from(fileList);
+    // ย่อรูป/บีบวิดีโอในเบราว์เซอร์ก่อน แล้วค่อยเช็คเพดาน — ไฟล์ที่เกินเพดานมักผ่านได้หลังย่อ
+    setUploadingFiles(true);
+    setUploadProgress({
+      index: 0,
+      total: chosen.length,
+      pct: 0,
+      phase: "compress",
+    });
+    let picked: File[];
+    try {
+      picked = await prepareUploadFiles(chosen, (p) =>
+        setUploadProgress({ ...p, phase: "compress" })
+      );
+    } finally {
+      setUploadingFiles(false);
+      setUploadProgress(null);
+    }
     // กันไฟล์ใหญ่เกินเพดานตั้งแต่ก่อนเริ่ม — ไม่ต้องรออัพวิดีโอเป็นนาทีแล้วค่อยเจอ error
     const tooLarge = tooLargeSummary(picked);
     if (tooLarge) {
@@ -523,7 +542,12 @@ export function TaskPanel({
       return;
     }
     setUploadingFiles(true);
-    setUploadProgress({ index: 0, total: picked.length, pct: 0 });
+    setUploadProgress({
+      index: 0,
+      total: picked.length,
+      pct: 0,
+      phase: "upload",
+    });
     const rows: { task_id: string; file_path: string; file_name: string }[] =
       [];
     // try/finally: ปุ่มต้องกลับมากดได้เสมอแม้ระหว่างทางมี exception
@@ -531,13 +555,23 @@ export function TaskPanel({
     try {
       for (const [i, file] of picked.entries()) {
         const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${sanitizeFileName(file.name)}`;
-        setUploadProgress({ index: i, total: picked.length, pct: 0 });
+        setUploadProgress({
+          index: i,
+          total: picked.length,
+          pct: 0,
+          phase: "upload",
+        });
         const { error } = await uploadWithProgress(
           STORAGE_BUCKET_DOCUMENTS,
           path,
           file,
           (ratio) =>
-            setUploadProgress({ index: i, total: picked.length, pct: ratio })
+            setUploadProgress({
+              index: i,
+              total: picked.length,
+              pct: ratio,
+              phase: "upload",
+            })
         );
         if (error) {
           // เก็บกวาดไฟล์ที่อัพไปแล้วในชุดนี้ (best effort) — ยังไม่มีแถว task_files อ้างถึง
@@ -632,8 +666,8 @@ export function TaskPanel({
   /** แนบไฟล์ (หลายไฟล์) เข้างานย่อย */
   const uploadSubtaskFiles = async (sub: TaskSubtaskRow, fileList: FileList) => {
     if (sub.id.startsWith("temp-")) return;
-    // ย่อรูปก่อนเช็คเพดาน เหมือนไฟล์งานบนการ์ด
-    const picked = await compressImages(Array.from(fileList));
+    // ย่อรูป/บีบวิดีโอก่อนเช็คเพดาน เหมือนไฟล์งานบนการ์ด
+    const picked = await prepareUploadFiles(Array.from(fileList));
     const tooLarge = tooLargeSummary(picked);
     if (tooLarge) {
       showError(tooLarge);
@@ -838,8 +872,8 @@ export function TaskPanel({
     // อัพไฟล์แนบก่อน (ถ้ามี) — ล้มเหลวก็ยังไม่แตะรายการคอมเมนต์
     let filePath: string | null = null;
     if (file) {
-      // ย่อรูปก่อน (วิดีโอ/ไฟล์อื่นส่งต่อตามเดิม) แล้วค่อยเช็คเพดาน
-      const ready = await compressImageFile(file);
+      // ย่อรูป/บีบวิดีโอก่อน (ไฟล์อื่นส่งต่อตามเดิม) แล้วค่อยเช็คเพดาน
+      const ready = await prepareUploadFile(file);
       const tooLarge = fileTooLargeMessage(ready);
       if (tooLarge) {
         setSending(false);
@@ -1698,9 +1732,9 @@ export function TaskPanel({
               <Upload size={14} />
               {uploadingFiles
                 ? uploadProgress
-                  ? `กำลังอัพโหลด ${uploadProgress.index + 1}/${uploadProgress.total} · ${Math.round(uploadProgress.pct * 100)}%`
+                  ? `${uploadProgress.phase === "compress" ? "กำลังบีบไฟล์" : "กำลังอัพโหลด"} ${uploadProgress.index + 1}/${uploadProgress.total} · ${Math.round(uploadProgress.pct * 100)}%`
                   : "กำลังอัพโหลด..."
-                : "อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์ · ไม่เกิน 50MB ต่อไฟล์)"}
+                : `อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์ · วิดีโอใหญ่ระบบบีบให้อัตโนมัติ · ไม่เกิน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์)`}
             </button>
             {uploadProgress && (
               <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">

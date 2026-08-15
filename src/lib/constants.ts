@@ -458,7 +458,7 @@ export const ANALYSIS_CATEGORY_ORDER: AnalysisCategory[] = [
   "other",
 ];
 
-/* ---------- ย่อรูปก่อนอัพโหลด ----------
+/* ---------- ย่อไฟล์ก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้
    ใน Supabase Dashboard → Storage → Settings; **ห้ามตั้งด้วย SQL** — เคยทำอัพโหลดพังทั้งระบบ) */
 
@@ -467,3 +467,14 @@ export const IMAGE_COMPRESS_OVER_MB = 1;
 
 /** ด้านยาวสุดของรูปหลังย่อ — พอสำหรับดูตรวจงานบนจอ 4K โดยไฟล์เล็กลงหลายเท่า */
 export const IMAGE_MAX_DIMENSION = 2560;
+
+/** วิดีโอที่ใหญ่กว่านี้จะถูกบีบในเบราว์เซอร์ก่อนอัพ (`compressVideoFile` ใน @/lib/video-compress)
+ *  ตั้งไว้สูงกว่าฝั่งรูปมาก เพราะการแปลงวิดีโอกินเวลา — คลิปเล็กไม่คุ้มที่จะให้ผู้ใช้รอ */
+export const VIDEO_COMPRESS_OVER_MB = 20;
+
+/** ด้านยาวสุดของวิดีโอหลังบีบ — 1080p พอสำหรับตรวจงาน (ต้นฉบับ 4K จากมือถือเล็กลงหลายเท่า) */
+export const VIDEO_MAX_DIMENSION = 1920;
+
+/** ระดับคุณภาพที่ส่งให้ตัวเข้ารหัส — 'medium' ให้ภาพพอดูงานได้โดยไฟล์เล็กลงมาก
+ *  (ขยับเป็น 'high' ถ้าทีมบอกว่าภาพแตกจนตรวจงานไม่ได้) */
+export const VIDEO_QUALITY_LEVEL = "medium" as const;
