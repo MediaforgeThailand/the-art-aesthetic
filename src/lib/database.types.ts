@@ -521,6 +521,20 @@ export type InfluProfileRow = {
   updated_at: string;
 };
 
+/** รูปภาพของโปรไฟล์ — หลายรูปต่อคน (migration 0082)
+    รูปแรกตาม position = รูปหน้าปก ฝั่งแอป sync ลง influ_profiles.photo_path เสมอ
+    ไฟล์จากฟีเจอร์นี้อยู่ documents/influ-profiles/{profile_id}/ — แถว backfill
+    ยังชี้โฟลเดอร์เคสเดิม ห้ามลบไฟล์ตอนลบแถว (แอปเช็ค prefix ก่อน remove) */
+export type InfluProfilePhotoRow = {
+  id: string;
+  profile_id: string;
+  file_path: string;
+  file_name: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** ช่องทางติดต่อ/โซเชียลของโปรไฟล์ — หลายช่องต่อคน (IG/TikTok/Line/เบอร์สำรอง ...) */
 export type InfluProfileChannelRow = {
   id: string;
@@ -545,6 +559,67 @@ export type InfluServiceRow = {
   /** ต้นทุนอ้างอิงตั้งต้น (บาท) — null/0 = ยังไม่รู้ */
   default_price: number | null;
   active: boolean;
+  created_by: string | null;
+  created_at: string;
+};
+
+/** สถานะบน pipeline ของบอร์ด Hunting (influ_prospects.status — migration 0081)
+    new → contacted → negotiating → accepted | declined
+    ป้าย/สี/ลำดับอยู่ INFLU_PROSPECT_STATUSES (influ-constants) */
+export type InfluProspectStatus =
+  | "new"
+  | "contacted"
+  | "negotiating"
+  | "accepted"
+  | "declined";
+
+/** ช่องทางโซเชียลที่จดไว้ตอนล่า — เก็บเป็น jsonb ใน influ_prospects.channels
+    (โครงเดียวกับแถว influ_profile_channels — ถูกแปลงเป็นแถวจริงตอนตอบรับ) */
+export type InfluProspectChannel = {
+  platform: string;
+  value: string;
+  followers: number | null;
+};
+
+/** คนที่กำลังตามล่า/ติดต่อ ยังไม่ตอบรับ — บอร์ด Hunting (migration 0081)
+    ตอบรับเมื่อไหร่ = สร้าง influ_profiles + ตั้ง profile_id/accepted_at แล้วไปเดินเคสต่อ */
+export type InfluProspectRow = {
+  id: string;
+  /** ชื่อเดียว (ตอนล่ามักรู้แค่ชื่อช่อง) — แตกชื่อ/นามสกุลทีหลังตอนเป็นโปรไฟล์ */
+  name: string;
+  nickname: string | null;
+  phone: string | null;
+  occupation: string | null;
+  followers: number | null;
+  photo_path: string | null;
+  channels: InfluProspectChannel[];
+  /** เจอมาจากไหน (ค้น TikTok / มีคนแนะนำ / ทักมาเอง ...) */
+  source: string | null;
+  /** ความน่าสนใจ 0-5 ดาว (0 = ยังไม่ให้คะแนน) */
+  rating: number;
+  /** หัตถการที่น่าจะเสนอ/สนใจ — ข้อความอิสระ ยังไม่ confirm */
+  interested_services: string | null;
+  note: string | null;
+  status: InfluProspectStatus;
+  /** นัดตามครั้งถัดไป — เลยวันแล้วขึ้นเตือนบนบอร์ด */
+  next_followup_on: string | null;
+  accepted_at: string | null;
+  declined_at: string | null;
+  /** โปรไฟล์ที่สร้างตอนตอบรับ (FK SET NULL) */
+  profile_id: string | null;
+  owner_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** log การติดต่อรายครั้งของ prospect (วันที่/ช่องทาง/ผลลัพธ์) */
+export type InfluProspectContactRow = {
+  id: string;
+  prospect_id: string;
+  contacted_on: string;
+  channel: string | null;
+  note: string | null;
   created_by: string | null;
   created_at: string;
 };
@@ -1088,6 +1163,27 @@ export interface Database {
           name: string;
         };
         Update: Partial<InfluServiceRow>;
+        Relationships: [];
+      };
+      influ_profile_photos: {
+        Row: InfluProfilePhotoRow;
+        Insert: Partial<InfluProfilePhotoRow> & {
+          profile_id: string;
+          file_path: string;
+        };
+        Update: Partial<InfluProfilePhotoRow>;
+        Relationships: [];
+      };
+      influ_prospects: {
+        Row: InfluProspectRow;
+        Insert: Partial<InfluProspectRow> & { name: string };
+        Update: Partial<InfluProspectRow>;
+        Relationships: [];
+      };
+      influ_prospect_contacts: {
+        Row: InfluProspectContactRow;
+        Insert: Partial<InfluProspectContactRow> & { prospect_id: string };
+        Update: Partial<InfluProspectContactRow>;
         Relationships: [];
       };
       doctors: {

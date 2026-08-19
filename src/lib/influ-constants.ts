@@ -4,6 +4,7 @@ import type {
   InfluFollowupMode,
   InfluPostKind,
   InfluProductTeam,
+  InfluProspectStatus,
   InfluSizeGroup,
   InfluTier,
 } from "./types";
@@ -106,6 +107,82 @@ export const INFLU_CHANNEL_PLATFORMS = [
   "Line",
   "อื่นๆ",
 ] as const;
+/* ---------- บอร์ด Hunting — pipeline คนที่ยังไม่ตอบรับ (migration 0081) ---------- */
+
+/** สถานะบนบอร์ด Hunting — ป้าย/สี/คำอธิบายคอลัมน์
+    เพิ่มสถานะใหม่ต้องแก้ 3 ที่: type InfluProspectStatus (database.types),
+    ตารางนี้ และ check constraint influ_prospects_status_valid (migration ใหม่) */
+export const INFLU_PROSPECT_STATUSES: Record<
+  InfluProspectStatus,
+  { label: string; desc: string; chip: string; dot: string }
+> = {
+  new: {
+    label: "ยังไม่ติดต่อ",
+    desc: "เจอมาแล้ว จดชื่อไว้ก่อน ยังไม่ได้ทัก",
+    chip: "border border-stone-200 bg-stone-50 text-stone-600",
+    dot: "bg-stone-400",
+  },
+  contacted: {
+    label: "ทักแล้ว รอตอบ",
+    desc: "ส่งข้อความไปแล้ว รอเขาตอบกลับ",
+    chip: "border border-sky-200 bg-sky-50 text-sky-700",
+    dot: "bg-sky-500",
+  },
+  negotiating: {
+    label: "กำลังคุยรายละเอียด",
+    desc: "ตอบกลับแล้ว กำลังคุยเงื่อนไข/หัตถการ",
+    chip: "border border-brand-200 bg-brand-50 text-brand-700",
+    dot: "bg-brand-500",
+  },
+  accepted: {
+    label: "ตอบรับแล้ว",
+    desc: "เข้าระบบแล้ว — มีโปรไฟล์ พร้อมสร้างนัด",
+    chip: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+  declined: {
+    label: "ปฏิเสธ",
+    desc: "ไม่รับงาน/เงื่อนไขไม่ลงตัว",
+    chip: "border border-rose-200 bg-rose-50 text-rose-600",
+    dot: "bg-rose-400",
+  },
+};
+
+export const INFLU_PROSPECT_STATUS_ORDER: InfluProspectStatus[] = [
+  "new",
+  "contacted",
+  "negotiating",
+  "accepted",
+  "declined",
+];
+
+/** คอลัมน์บนบอร์ด Hunting — declined ไม่เป็นคอลัมน์ (ดูผ่านชิปสลับมุมมอง) */
+export const INFLU_PROSPECT_COLUMNS: InfluProspectStatus[] = [
+  "new",
+  "contacted",
+  "negotiating",
+  "accepted",
+];
+
+/** สถานะที่ยังต้องตามงานอยู่ — ใช้นับเตือน "ถึงกำหนดตาม" (accepted/declined จบแล้ว) */
+export const INFLU_PROSPECT_ACTIVE: InfluProspectStatus[] = [
+  "new",
+  "contacted",
+  "negotiating",
+];
+
+/** ช่องทางแนะนำตอนบันทึก log การติดต่อ (text อิสระ — พิมพ์เองได้) */
+export const INFLU_CONTACT_CHANNELS = [
+  "Instagram DM",
+  "TikTok",
+  "Facebook / Messenger",
+  "Line",
+  "โทรศัพท์",
+  "อีเมล",
+  "นัดเจอ",
+  "อื่นๆ",
+] as const;
+
 /* ---------- กลุ่มขนาดบนบอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
 
 export const INFLU_SIZE_GROUPS: Record<

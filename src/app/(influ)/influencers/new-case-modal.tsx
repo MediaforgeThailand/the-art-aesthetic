@@ -48,6 +48,7 @@ export function NewCaseModal({
   me,
   actor,
   onServiceCreated,
+  initialProfile = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -61,6 +62,9 @@ export function NewCaseModal({
   actor: InfluLogActor;
   /** หัตถการใหม่ที่เพิ่งลงทะเบียน — แจ้ง parent ให้ลิสต์กลางอัปเดต */
   onServiceCreated?: (service: InfluServiceRow) => void;
+  /** โปรไฟล์ที่เลือกให้ล่วงหน้า (เช่นมาจากปุ่ม "ตอบรับ" บนบอร์ด Hunting)
+      อ่านเฉพาะตอน mount — parent ที่เปลี่ยนค่านี้ต้อง remount ด้วย key */
+  initialProfile?: InfluProfileRow | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -73,7 +77,9 @@ export function NewCaseModal({
     return [...createdProfiles, ...profiles.filter((c) => !seen.has(c.id))];
   }, [createdProfiles, profiles]);
 
-  const [selected, setSelected] = useState<InfluProfileRow | null>(null);
+  const [selected, setSelected] = useState<InfluProfileRow | null>(
+    initialProfile ?? null
+  );
   const [profileQuery, setProfileQuery] = useState("");
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [influCode, setInfluCode] = useState("");

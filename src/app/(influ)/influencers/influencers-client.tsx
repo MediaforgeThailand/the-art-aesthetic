@@ -4,6 +4,7 @@ import {
   BellRing,
   CalendarClock,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -758,16 +759,6 @@ export function InfluencersClient({
     [services, extraServices]
   );
 
-  const stageChips: {
-    key: number | "all" | "done" | "declined";
-    label: string;
-  }[] = [
-    { key: "all", label: "ทั้งหมด" },
-    ...INFLU_STAGES.map((s) => ({ key: s.step, label: `${s.step}. ${s.short}` })),
-    { key: "done", label: "จบงานแล้ว" },
-    { key: "declined", label: "ปฏิเสธ" },
-  ];
-
   const countFor = (key: number | "all" | "done" | "declined") =>
     key === "all"
       ? items.length
@@ -787,7 +778,8 @@ export function InfluencersClient({
   return (
     <>
       <PageHeader
-        title="Influ Management"
+        title="เคสดำเนินงาน"
+        description="เคสของ influ ที่ตอบรับแล้ว — เดินงาน Memo → เซนสัญญา → ตามงาน (งานก่อนตอบรับอยู่ที่บอร์ด Hunting)"
         action={
           <div className="flex flex-wrap gap-2">
             {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
@@ -897,25 +889,9 @@ export function InfluencersClient({
         </div>
       )}
 
-      {tab === "board" && bookingAlertIds.size > 0 && !bookingAlertActive && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 animate-fade-in">
-          <CalendarClock size={16} className="shrink-0" />
-          <span>
-            มี {formatNumber(bookingAlertIds.size)} เคสที่ผ่าน Memo แล้วแต่
-            <span className="font-semibold">ยังไม่มีคิวหมอในปฏิทิน</span> —
-            ตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอเรียบร้อย
-          </span>
-          <button
-            type="button"
-            onClick={() => setStageFilter("needbooking")}
-            className="ml-auto cursor-pointer rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-amber-600 active:scale-[0.97]"
-          >
-            ดูเฉพาะเคสเหล่านี้
-          </button>
-        </div>
-      )}
-
-      {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง) */}
+      {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง)
+          แบนเนอร์เตือน "ยังไม่มีคิวหมอ" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-19) —
+          เหลือปุ่มกรอง "รอลงคิวหมอ" ตัวเดียวเป็นทางเข้า */}
       {tab === "board" && (
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
@@ -925,36 +901,17 @@ export function InfluencersClient({
           />
           <Input
             type="search"
-            placeholder="ค้นหาชื่อ รหัส Influ ID เบอร์ หรือหัตถการ..."
+            placeholder="ค้นหา"
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {stageChips.map((chip) => {
-            const active = stageFilter === chip.key;
-            const count = countFor(chip.key);
-            return (
-              <button
-                key={String(chip.key)}
-                type="button"
-                onClick={() => setStageFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
-                  active
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                    : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-                }`}
-              >
-                {chip.label}
-                <span className={active ? "opacity-80" : "text-stone-400"}>
-                  {" "}
-                  ({count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <StageFilterTracker
+          value={stageFilter}
+          countFor={countFor}
+          onChange={setStageFilter}
+        />
         {/* ตัวกรองเตือน: ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ปุ่มเรืองแสงเมื่อมีเคสค้าง */}
         <button
           type="button"
@@ -1151,5 +1108,135 @@ export function InfluencersClient({
         doctors={doctors}
       />
     </>
+  );
+}
+
+/* ---------- ตัวกรอง stage แบบเส้น tracker (ผู้ใช้ 2026-08-19) ----------
+   "ทำให้เป็น visual graphic เลือกง่ายๆ เป็นเส้นคล้ายๆ stage ใน card ไม่ต้องมีทั้งหมด"
+   — หน้าตาเดียวกับ StageTracker บนการ์ด: จุดร้อยเส้น + จบงานต่อท้าย, "ปฏิเสธ" แยก
+   นอกเส้น (ไม่ใช่ขั้นงาน) · กดจุด = กรองขั้นนั้น · กดซ้ำ = กลับมาดูทั้งหมด (ไม่มีปุ่ม "ทั้งหมด")
+   ขั้น 1-2 ซ่อนเมื่อว่าง — ย้ายไปบอร์ด Hunting แล้ว (0081) เคสถูกย้อน stage ลงมายังโผล่ได้ */
+function StageFilterTracker({
+  value,
+  countFor,
+  onChange,
+}: {
+  value: number | "all" | "done" | "declined" | "needbooking";
+  countFor: (key: number | "all" | "done" | "declined") => number;
+  onChange: (key: number | "all" | "done" | "declined") => void;
+}) {
+  const nodes: { key: number | "done"; label: string }[] = [
+    ...INFLU_STAGES.filter(
+      (s) =>
+        s.step > INFLU_STAGE.caseDetail ||
+        countFor(s.step) > 0 ||
+        value === s.step
+    ).map((s) => ({
+      key: s.step as number | "done",
+      label: `${s.step}. ${s.short}`,
+    })),
+    { key: "done", label: "จบงาน" },
+  ];
+  const declinedActive = value === "declined";
+  const declinedCount = countFor("declined");
+  return (
+    <div className="flex min-w-[min(26rem,100%)] flex-1 items-start gap-1 overflow-x-auto pb-0.5">
+      <div className="flex min-w-[24rem] flex-1">
+        {nodes.map((n, i) => {
+          const active = value === n.key;
+          const isDone = n.key === "done";
+          const count = countFor(n.key);
+          return (
+            <button
+              key={String(n.key)}
+              type="button"
+              title={active ? "กดซ้ำเพื่อดูทุกขั้น" : undefined}
+              onClick={() => onChange(active ? "all" : n.key)}
+              className="group relative flex flex-1 cursor-pointer flex-col items-center gap-1.5 px-1 pb-0.5"
+            >
+              {/* เส้นเชื่อมซ้าย/ขวาของจุด — flex-1 เท่ากันทุกช่อง เส้นจึงต่อเนื่องพอดีกลางจุด */}
+              {i > 0 && (
+                <span className="absolute left-0 right-1/2 top-[9px] h-0.5 bg-stone-200" />
+              )}
+              {i < nodes.length - 1 && (
+                <span className="absolute left-1/2 right-0 top-[9px] h-0.5 bg-stone-200" />
+              )}
+              <span className="relative flex h-5 items-center justify-center">
+                <span
+                  className={`flex items-center justify-center rounded-full transition-all ${
+                    active
+                      ? `h-5 w-5 shadow-sm ring-4 ${
+                          isDone
+                            ? "bg-emerald-600 ring-emerald-200"
+                            : "bg-gradient-to-b from-brand-600 to-brand-700 ring-brand-200"
+                        }`
+                      : isDone
+                        ? "h-3.5 w-3.5 border-[1.5px] border-emerald-300 bg-emerald-50 text-emerald-500 group-hover:border-emerald-500"
+                        : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white group-hover:border-brand-500"
+                  }`}
+                >
+                  {active ? (
+                    isDone ? (
+                      <Check size={11} strokeWidth={3.5} className="text-white" />
+                    ) : (
+                      <span className="h-2 w-2 rounded-full bg-white" />
+                    )
+                  ) : isDone ? (
+                    <Check size={9} strokeWidth={4} />
+                  ) : null}
+                </span>
+              </span>
+              <span
+                className={`whitespace-nowrap text-[11px] leading-none transition-colors ${
+                  active
+                    ? `rounded-full px-2 py-1 font-semibold text-white shadow-sm ${
+                        isDone
+                          ? "bg-emerald-600"
+                          : "bg-gradient-to-b from-brand-600 to-brand-700"
+                      }`
+                    : "font-medium text-stone-500 group-hover:text-brand-700"
+                }`}
+              >
+                {n.label}{" "}
+                <span className={active ? "opacity-80" : "text-stone-400"}>
+                  ({count})
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {/* ปฏิเสธ — อยู่นอกเส้นงาน (ตัวกรองนี้ข้าม "ยกเว้น" เพื่อดูเคสที่ถูกซ่อน) */}
+      <button
+        type="button"
+        title={declinedActive ? "กดซ้ำเพื่อดูทุกขั้น" : "ดูเฉพาะเคสที่ปฏิเสธ"}
+        onClick={() => onChange(declinedActive ? "all" : "declined")}
+        className="group flex shrink-0 cursor-pointer flex-col items-center gap-1.5 border-l border-dashed border-stone-300 px-2 pb-0.5"
+      >
+        <span className="flex h-5 items-center justify-center">
+          <span
+            className={`flex items-center justify-center rounded-full transition-all ${
+              declinedActive
+                ? "h-5 w-5 bg-rose-500 shadow-sm ring-4 ring-rose-200"
+                : "h-3.5 w-3.5 border-[1.5px] border-rose-300 bg-rose-50 group-hover:border-rose-500"
+            }`}
+          >
+            {declinedActive && <span className="h-2 w-2 rounded-full bg-white" />}
+          </span>
+        </span>
+        <span
+          className={`whitespace-nowrap text-[11px] leading-none transition-colors ${
+            declinedActive
+              ? "rounded-full bg-rose-500 px-2 py-1 font-semibold text-white shadow-sm"
+              : "font-medium text-stone-500 group-hover:text-rose-600"
+          }`}
+        >
+          ปฏิเสธ{" "}
+          <span className={declinedActive ? "opacity-80" : "text-stone-400"}>
+            ({declinedCount})
+          </span>
+        </span>
+      </button>
+    </div>
   );
 }

@@ -13,16 +13,24 @@
  * กลับไปที่เคสทุกรอบของคนนี้ (person_id) ให้บอร์ด/การ์ดแสดงตรงกัน
  */
 
-import { Link2, Plus, Trash2, UsersRound } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { ImagePlus, Link2, Plus, Trash2, UsersRound, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Textarea } from "@/components/ui";
+import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
   INFLU_CHANNEL_PLATFORMS,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluProfileChannelRow, InfluProfileRow } from "@/lib/types";
+import { tooLargeSummary } from "@/lib/upload";
+import { prepareUploadFiles } from "@/lib/upload-prepare";
+import { useSignedUrl } from "@/lib/use-signed-url";
+import type {
+  InfluProfileChannelRow,
+  InfluProfilePhotoRow,
+  InfluProfileRow,
+} from "@/lib/types";
 
 /** ชื่อเต็มของโปรไฟล์ (ไว้ใช้ในลิสต์เลือก/บันทึก log) */
 export function profileName(p: {
@@ -49,6 +57,28 @@ const EMPTY_CHANNEL: ChannelDraft = {
   value: "",
   followers: "",
 };
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+/** รูปที่อัพจากฟอร์มนี้อยู่โฟลเดอร์ของโปรไฟล์เอง — แถว backfill (0082) ชี้ไฟล์ใน
+    โฟลเดอร์เคสเดิม (influencers/{caseId}/) ห้ามลบไฟล์ตามตอนลบแถว เพราะไฟล์เป็น
+    ของเคสนั้น — เช็คด้วย prefix นี้ก่อน storage.remove เสมอ */
+const ownedPhotoPrefix = (profileId: string) => `influ-profiles/${profileId}/`;
+
+/** ไฟล์รูปใหม่ที่เลือกค้างไว้ในฟอร์ม — อัพโหลดจริงตอนกดบันทึก */
+type PendingPhoto = { file: File; preview: string };
+
+/* path ปลายทางของไฟล์รูป — timestamp กันชื่อชน; อยู่ระดับโมดูลเพราะกฎ
+   react-hooks/purity ไม่ให้เรียก Date.now() ตรงๆ ในตัว component */
+function newProfilePhotoPath(profileId: string, idx: number, name: string) {
+  return `${ownedPhotoPrefix(profileId)}${Date.now()}_${idx}_${sanitizeFileName(name)}`;
+}
+function newCasePhotoPath(caseId: string, coverPath: string) {
+  const base = sanitizeFileName(coverPath.split("/").pop() ?? "photo.jpg");
+  return `influencers/${caseId}/${Date.now()}_${base}`;
+}
 
 type ProfileFormProps = {
   open: boolean;
@@ -106,6 +136,41 @@ function ProfileFormInner({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // รูปภาพ (0082): แถวที่มีอยู่ (โหมดแก้ไข — โหลดหลัง mount) + ไฟล์ใหม่ที่เลือกค้างไว้
+  // ทุกการเปลี่ยนแปลง (ลบ/เพิ่ม) มีผลจริงตอนกดบันทึก — แนวเดียวกับช่องทางติดต่อ
+  const [photos, setPhotos] = useState<InfluProfilePhotoRow[]>([]);
+  const [removedPhotoIds, setRemovedPhotoIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  useEffect(() => {
+    if (!profile) return;
+    let alive = true;
+    void supabase
+      .from("influ_profile_photos")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        if (alive && data) setPhotos(data as InfluProfilePhotoRow[]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [profile, supabase]);
+
+  const visiblePhotos = photos.filter((p) => !removedPhotoIds.has(p.id));
+
+  const addPhotoFiles = (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const files = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setPendingPhotos((prev) => [
+      ...prev,
+      ...files.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    ]);
+  };
+
   const setRow = (idx: number, patch: Partial<ChannelDraft>) =>
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
 
@@ -114,6 +179,17 @@ function ProfileFormInner({
     if (saving || !firstName.trim()) return;
     setSaving(true);
     setErr(null);
+    // เตรียมรูปใหม่ก่อนแตะ DB — ย่อรูปก่อนแล้วค่อยเช็คเพดานไฟล์ (ลำดับตามกติกา upload-prepare)
+    let uploadFiles: File[] = [];
+    if (pendingPhotos.length > 0) {
+      uploadFiles = await prepareUploadFiles(pendingPhotos.map((p) => p.file));
+      const tooBig = tooLargeSummary(uploadFiles);
+      if (tooBig) {
+        setSaving(false);
+        setErr(tooBig);
+        return;
+      }
+    }
     const followerCount = parseFollowers(followers);
     const fields = {
       first_name: firstName.trim(),
@@ -197,21 +273,104 @@ function ProfileFormInner({
       savedChannels = inserted ?? [];
     }
 
+    // ---- รูปภาพ (0082): ลบที่ติ๊กไว้ → อัพไฟล์ใหม่ → sync รูปหน้าปก ----
+    const removedRows = photos.filter((p) => removedPhotoIds.has(p.id));
+    if (removedRows.length > 0) {
+      await supabase
+        .from("influ_profile_photos")
+        .delete()
+        .in(
+          "id",
+          removedRows.map((r) => r.id)
+        );
+      // ลบไฟล์เฉพาะที่อยู่โฟลเดอร์ของโปรไฟล์เอง — แถว backfill ชี้ไฟล์ของเคส ห้ามลบตาม
+      const owned = removedRows
+        .map((r) => r.file_path)
+        .filter((path) => path.startsWith(ownedPhotoPrefix(saved.id)));
+      if (owned.length > 0) {
+        try {
+          await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove(owned);
+        } catch {
+          // best effort — ไฟล์ค้างดีกว่าฟอร์มพัง
+        }
+      }
+    }
+    const maxPos = Math.max(0, ...visiblePhotos.map((p) => p.position));
+    const uploadedPaths: { path: string; name: string }[] = [];
+    for (const f of uploadFiles) {
+      const path = newProfilePhotoPath(saved.id, uploadedPaths.length, f.name);
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .upload(path, f);
+      if (!upErr) uploadedPaths.push({ path, name: f.name });
+    }
+    if (uploadedPaths.length > 0) {
+      await supabase.from("influ_profile_photos").insert(
+        uploadedPaths.map((u, i) => ({
+          profile_id: saved.id,
+          file_path: u.path,
+          file_name: u.name,
+          position: maxPos + i + 1,
+          created_by: actor.id,
+        }))
+      );
+    }
+    // รูปแรก = รูปหน้าปก — sync ลง photo_path เสมอ (consumer เดิมอ่านช่องนี้ทั้งหมด:
+    // การ์ดบอร์ด + copy รูปเข้าโฟลเดอร์เคสใหม่ตอน "สร้างนัด")
+    const coverPath =
+      visiblePhotos[0]?.file_path ?? uploadedPaths[0]?.path ?? null;
+    if (coverPath !== saved.photo_path) {
+      await supabase
+        .from("influ_profiles")
+        .update({ photo_path: coverPath })
+        .eq("id", saved.id);
+    }
+    // ก้อนที่ส่งกลับ parent ต้องมี photo_path ล่าสุด (NewCaseModal ใช้ copy รูปเข้าเคสใหม่)
+    // — reassign ตัว `saved` ตรงๆ ไม่ได้ เพราะ TS จะเลิก narrow null ใน closure ข้างบน
+    const savedResult: InfluProfileRow = { ...saved, photo_path: coverPath };
+    // เคสของคนนี้ที่ยังไม่มีรูป → copy รูปหน้าปกเข้าโฟลเดอร์เคส (best effort)
+    // การ์ดบอร์ดโชว์รูปของเคส และห้ามชี้ path ข้ามเคส (กติกา 0073 — ลบเคส = ลบโฟลเดอร์)
+    // เคสที่มีรูปของตัวเองแล้วไม่ถูกแตะ
+    if (coverPath) {
+      const { data: bareCases } = await supabase
+        .from("influencers")
+        .select("id")
+        .eq("person_id", saved.id)
+        .is("photo_path", null);
+      for (const c of bareCases ?? []) {
+        const dest = newCasePhotoPath(c.id, coverPath);
+        const { error: cpErr } = await supabase.storage
+          .from(STORAGE_BUCKET_DOCUMENTS)
+          .copy(coverPath, dest);
+        if (!cpErr) {
+          await supabase
+            .from("influencers")
+            .update({ photo_path: dest })
+            .eq("id", c.id);
+        }
+      }
+    }
+
     logInflu(supabase, actor, {
       action: profile ? "update" : "create",
       entity: "profile",
-      entityId: saved.id,
-      influencerName: profileName(saved),
-      summary: `${profile ? "แก้ไข" : "สร้าง"}โปรไฟล์ ${profileName(saved)}${
+      entityId: savedResult.id,
+      influencerName: profileName(savedResult),
+      summary: `${profile ? "แก้ไข" : "สร้าง"}โปรไฟล์ ${profileName(savedResult)}${
         cleanRows.length > 0
           ? ` — ช่องทางติดต่อ ${cleanRows.length} ช่องทาง`
           : ""
-      }`,
-      meta: { profile_id: saved.id, channels: cleanRows.length },
+      }${uploadedPaths.length > 0 ? ` — รูปใหม่ ${uploadedPaths.length} รูป` : ""}`,
+      meta: {
+        profile_id: savedResult.id,
+        channels: cleanRows.length,
+        photos_added: uploadedPaths.length,
+        photos_removed: removedRows.length,
+      },
     });
 
     setSaving(false);
-    onSaved?.(saved, savedChannels);
+    onSaved?.(savedResult, savedChannels);
     onClose();
   };
 
@@ -297,6 +456,70 @@ function ProfileFormInner({
               Tier จัดให้อัตโนมัติจากยอดผู้ติดตาม
             </p>
           </div>
+        </div>
+
+        {/* รูปภาพ — หลายรูปต่อคน (0082) รูปแรก = รูปหน้าปกที่ใช้โชว์ทุกที่ */}
+        <div>
+          <Label>
+            รูปภาพ{" "}
+            <span className="font-normal text-stone-400">
+              (รูปแรก = รูปหน้าปกบนการ์ด)
+            </span>
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            {visiblePhotos.map((p, idx) => (
+              <ExistingPhotoTile
+                key={p.id}
+                photo={p}
+                cover={idx === 0}
+                disabled={saving}
+                onRemove={() =>
+                  setRemovedPhotoIds((prev) => new Set(prev).add(p.id))
+                }
+              />
+            ))}
+            {pendingPhotos.map((p, idx) => (
+              <PhotoTile
+                key={p.preview}
+                src={p.preview}
+                cover={visiblePhotos.length === 0 && idx === 0}
+                pending
+                disabled={saving}
+                onRemove={() => {
+                  URL.revokeObjectURL(p.preview);
+                  setPendingPhotos((prev) =>
+                    prev.filter((x) => x.preview !== p.preview)
+                  );
+                }}
+              />
+            ))}
+            <label
+              className={`flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-brand-300 text-brand-600 transition-colors ${
+                saving
+                  ? "opacity-50"
+                  : "cursor-pointer hover:bg-brand-50 active:scale-[0.97]"
+              }`}
+            >
+              <ImagePlus size={20} />
+              <span className="text-xs font-medium">เพิ่มรูป</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={saving}
+                className="hidden"
+                onChange={(e) => {
+                  addPhotoFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {pendingPhotos.length > 0 && (
+            <p className="mt-1.5 text-xs text-stone-400">
+              รูปใหม่ {pendingPhotos.length} รูป จะถูกอัพโหลดตอนกดบันทึก
+            </p>
+          )}
         </div>
 
         {/* ช่องทางติดต่อทั้งหมด — หลายช่องต่อคน (IG/TikTok/Line/เบอร์สำรอง ...) */}
@@ -397,5 +620,75 @@ function ProfileFormInner({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* ---------- ชิ้นรูปในแกลเลอรีของฟอร์ม ---------- */
+
+/** รูปที่บันทึกแล้ว — แปลง path → signed URL (มี cache ใน useSignedUrl) */
+function ExistingPhotoTile({
+  photo,
+  cover,
+  disabled,
+  onRemove,
+}: {
+  photo: InfluProfilePhotoRow;
+  cover: boolean;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const { url } = useSignedUrl(photo.file_path);
+  return (
+    <PhotoTile src={url} cover={cover} disabled={disabled} onRemove={onRemove} />
+  );
+}
+
+function PhotoTile({
+  src,
+  cover,
+  pending = false,
+  disabled,
+  onRemove,
+}: {
+  src: string | null;
+  cover: boolean;
+  /** ไฟล์ใหม่ที่ยังไม่อัพโหลด — ติดขอบประให้รู้ว่ายังไม่ถูกบันทึก */
+  pending?: boolean;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="relative">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- signed URL ชั่วคราว ใช้ next/image ไม่ได้
+        <img
+          src={src}
+          alt=""
+          className={`h-24 w-24 rounded-xl object-cover ring-1 ${
+            pending ? "ring-2 ring-dashed ring-brand-300" : "ring-stone-200"
+          }`}
+        />
+      ) : (
+        <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-stone-100 text-stone-300">
+          <ImagePlus size={20} />
+        </div>
+      )}
+      {cover && (
+        <span className="absolute bottom-1 left-1 rounded-full bg-brand-600/90 px-2 py-0.5 text-[10px] font-semibold text-white">
+          หน้าปก
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="ลบรูปนี้"
+        onClick={onRemove}
+        className="absolute -right-2 -top-2 flex h-11 w-11 cursor-pointer items-center justify-center sm:h-auto sm:w-auto"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-stone-500 shadow ring-1 ring-stone-200 transition-colors hover:bg-rose-50 hover:text-rose-600 sm:h-6 sm:w-6">
+          <X size={13} />
+        </span>
+      </button>
+    </div>
   );
 }
