@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 // คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
 // (~10-30KB/รายการ) หน้า list ไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
 const INFLU_LIST_COLUMNS =
-  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, owner_id, created_by, created_at, updated_at";
+  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, consult_only, talent_fee, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, owner_id, created_by, created_at, updated_at";
 
 export default async function InfluencersPage() {
   const supabase = await createClient();
@@ -56,7 +56,7 @@ export default async function InfluencersPage() {
       supabase
         .from("influ_tasks")
         .select("influencer_id, due_date, done, done_at, is_custom"),
-      // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" + โมดัลจัดการหมอ
+      // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มสร้างนัด (แก้ทะเบียนที่หน้า /influ-doctors)
       supabase.from("doctors").select("*").order("name", { ascending: true }),
       // ลิงก์ไฟล์ source (Google Drive) — ปุ่มเปิดเร็วบนการ์ด
       supabase

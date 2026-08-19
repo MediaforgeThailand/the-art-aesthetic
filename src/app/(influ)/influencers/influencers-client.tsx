@@ -3,26 +3,16 @@
 import {
   BellRing,
   CalendarClock,
-  CalendarDays,
   Check,
-  CheckCircle2,
   ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  Clock3,
   Eye,
   EyeOff,
-  FileSignature,
-  LayoutGrid,
   Plus,
   Search,
   Sparkles,
-  Stethoscope,
   UserRound,
-  UserRoundPlus,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -35,12 +25,11 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { formatDate, formatNumber, todayISO } from "@/lib/format";
+import { formatNumber, todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
 import {
   INFLU_STAGE,
   INFLU_STAGES,
-  INFLU_TIERS,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
@@ -51,11 +40,9 @@ import type {
   InfluServiceRow,
   InfluSizeGroup,
 } from "@/lib/types";
-import { DoctorManagerModal } from "./doctor-manager";
 import type { InfluLinkLite } from "./influ-links";
 import { NewCaseModal } from "./new-case-modal";
 import type { PriceCatalogEntry } from "./procedure-items-editor";
-import { ProfileFormModal } from "./profile-form";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -67,7 +54,6 @@ import {
   type InfluStatusKey,
   type InfluTaskLite,
   needsDoctorBooking,
-  thaiDateISO,
 } from "./influ-board";
 
 // ที่อยู่ใหม่ของ type/helper อยู่ใน influ-board.tsx — re-export ให้หน้าอื่น (influ-gallery) import ได้เหมือนเดิม
@@ -85,21 +71,6 @@ const INFLU_STATUS_ORDER: InfluStatusKey[] = [
 ];
 /** ค่าเริ่มต้น: ซ่อนคนที่ปฏิเสธออกจากบอร์ด (ดูได้จากชิป "ปฏิเสธ" หรือเอาติ๊กออก) */
 const DEFAULT_EXCLUDED: InfluStatusKey[] = ["declined"];
-
-/** รอทำ Memo มานานแค่ไหน — Date.now() ต้องอยู่นอก component ไม่งั้นโดนกฎ react-hooks/purity */
-function memoWaitLabel(since: string): string {
-  const ms = Date.now() - new Date(since).getTime();
-  const days = Math.floor(ms / 86_400_000);
-  if (days >= 1) return `รอมา ${days} วัน`;
-  const hours = Math.floor(ms / 3_600_000);
-  if (hours >= 1) return `รอมา ${hours} ชม.`;
-  return "เพิ่งติ๊ก";
-}
-
-/** รอเกิน 2 วัน = เริ่มช้า ให้เด่นขึ้น (กติกาเดียวกับป้ายรอตรวจในหน้า Task) */
-function memoWaitIsLate(since: string): boolean {
-  return Date.now() - new Date(since).getTime() > 2 * 86_400_000;
-}
 
 function readSavedExcluded(): Set<InfluStatusKey> {
   if (typeof window === "undefined") return new Set(DEFAULT_EXCLUDED);
@@ -238,117 +209,6 @@ function InfluExcludeFilter({
   );
 }
 
-/* ---------- แท็บ "รอทำ Memo" — เคสที่ติ๊กว่าข้อมูลครบแล้ว รอ influ manager ลงมือทำ ---------- */
-
-function MemoWaitingList({
-  items,
-  canEdit,
-  onOpen,
-  onToggleDocsSent,
-}: {
-  items: InfluencerListRow[];
-  /** ระดับ "ดูเฉยๆ" = ติ๊กไม่ได้ (ยังเห็นคิวและสถานะครบ) */
-  canEdit: boolean;
-  onOpen: (id: string) => void;
-  /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" — บันทึกลง DB กันทีมส่งซ้ำ */
-  onToggleDocsSent: (influ: InfluencerListRow) => void;
-}) {
-  if (items.length === 0) {
-    return (
-      <Card>
-        <EmptyState
-          icon={<ClipboardCheck size={40} strokeWidth={1.5} />}
-          title="ไม่มีเคสรอทำ Memo"
-          description="เมื่อทีมติ๊กว่า 'ข้อมูลพร้อมทำ Memo' ใน Stage 3 เคสนั้นจะมาแสดงที่นี่ — พออัพโหลดไฟล์ Memo แล้วจะหลุดจากคิวเอง"
-        />
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3 animate-fade-in-up">
-      <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
-        <ClipboardCheck size={14} className="mt-0.5 shrink-0" />
-        เคสที่ข้อมูลครบพร้อมทำ Memo แล้ว — กดเพื่อเปิด Stage 3
-        คัดลอกข้อความไปทำ Memo แล้วอัพโหลดไฟล์กลับเข้ามา (อัพโหลดแล้วหลุดจากคิวนี้เอง) ·
-        ติ๊ก ☑ หน้ารายชื่อเมื่อ<span className="font-semibold">ส่งเอกสารแล้ว</span>
-        เพื่อกันทีมส่งซ้ำ
-      </p>
-      <Card className="divide-y divide-stone-100 !p-0">
-        {items.map((i) => {
-          const late = memoWaitIsLate(i.memo_ready_at!);
-          const sent = i.docs_sent_at !== null;
-          const meta = [
-            i.tier ? INFLU_TIERS[i.tier].label : null,
-            i.followers !== null ? `${formatNumber(i.followers)} followers` : null,
-            i.procedure_text,
-          ]
-            .filter(Boolean)
-            .join(" · ");
-          return (
-            <div
-              key={i.id}
-              className={`flex items-center gap-1 transition-colors hover:bg-brand-50/40 ${
-                sent ? "bg-emerald-50/40" : ""
-              }`}
-            >
-              {/* ช่องติ๊ก "ส่งเอกสารแล้ว" — แยกจากปุ่มเปิดเคส (ห้าม button ซ้อน button) */}
-              <label
-                title={
-                  sent
-                    ? `ส่งเอกสารแล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))} — กดเพื่อยกเลิก`
-                    : "ทำเครื่องหมายว่าส่งเอกสารให้ influencer แล้ว"
-                }
-                className="flex shrink-0 cursor-pointer items-center py-3 pl-4 pr-1"
-              >
-                <input
-                  type="checkbox"
-                  checked={sent}
-                  disabled={!canEdit}
-                  onChange={() => onToggleDocsSent(i)}
-                  aria-label={`ส่งเอกสารแล้ว — ${influName(i)}`}
-                  className="h-4 w-4 cursor-pointer accent-[#a96a58] disabled:cursor-default disabled:opacity-50"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => onOpen(i.id)}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-2 pr-4 text-left active:scale-[0.997]"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-stone-800">
-                    {influName(i)}
-                  </p>
-                  {meta !== "" && (
-                    <p className="truncate text-xs text-stone-500">{meta}</p>
-                  )}
-                </div>
-                {sent && (
-                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                    <CheckCircle2 size={11} />
-                    ส่งเอกสารแล้ว
-                  </span>
-                )}
-                <span
-                  className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                    late
-                      ? "bg-amber-100 text-amber-800"
-                      : "bg-stone-100 text-stone-500"
-                  }`}
-                >
-                  <Clock3 size={11} />
-                  {memoWaitLabel(i.memo_ready_at!)}
-                </span>
-                <ChevronRight size={16} className="shrink-0 text-stone-300" />
-              </button>
-            </div>
-          );
-        })}
-      </Card>
-    </div>
-  );
-}
-
 /** ผู้ใช้ปัจจุบัน + ระดับสิทธิ์ในระบบ Influencer (คำนวณฝั่ง server ส่งลงมา) */
 export type InfluMe = {
   id: string | null;
@@ -391,7 +251,6 @@ export function InfluencersClient({
   me: InfluMe;
   loadError: string | null;
 }) {
-  const [doctorsOpen, setDoctorsOpen] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
@@ -459,9 +318,6 @@ export function InfluencersClient({
       ),
     [items, bookedIds]
   );
-
-  /** แท็บ: บอร์ดปกติ | คิวรอทำ Memo (stage 3 ที่ติ๊กว่าข้อมูลครบแล้ว) */
-  const [tab, setTab] = useState<"board" | "memo">("board");
 
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<
@@ -620,36 +476,6 @@ export function InfluencersClient({
     markServerStale();
   };
 
-  /** ติ๊ก/ยกเลิก "ส่งเอกสารแล้ว" ในคิวรอทำ Memo — บันทึกลง DB ให้ทั้งทีมเห็นตรงกัน
-      (เคสยังอยู่ในคิวจนกว่าจะอัพโหลดไฟล์ Memo — ติ๊กนี้แค่กันส่งเอกสารซ้ำ) */
-  const toggleDocsSent = async (target: InfluencerListRow) => {
-    const next = target.docs_sent_at ? null : new Date().toISOString();
-    const prevItems = items;
-    setActionError(null);
-    setItems((cur) =>
-      cur.map((i) => (i.id === target.id ? { ...i, docs_sent_at: next } : i))
-    );
-    const { error } = await supabase
-      .from("influencers")
-      .update({ docs_sent_at: next })
-      .eq("id", target.id);
-    if (error) {
-      setItems(prevItems);
-      setActionError(`บันทึกสถานะส่งเอกสารไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    logInflu(supabase, actor, {
-      action: "status",
-      entityId: target.id,
-      influencerId: target.id,
-      influencerName: influName(target),
-      summary: next
-        ? `ติ๊กว่าส่งเอกสารให้ ${influName(target)} แล้ว`
-        : `ยกเลิกการติ๊ก "ส่งเอกสารแล้ว" ของ ${influName(target)}`,
-    });
-    markServerStale();
-  };
-
   /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ
      ไม่งั้นชิปเตือนบนการ์ดจะนับข้อของโหมดที่มองไม่เห็นด้วย */
   const activeTasks = useMemo(() => {
@@ -730,27 +556,7 @@ export function InfluencersClient({
     });
   }, [items, search, stageFilter, excluded, bookingAlertIds, mineOnly, me.id]);
 
-  /** คิว "รอทำ Memo" — ติ๊กว่าข้อมูลครบแล้ว (Stage 3) แต่ยังไม่ได้อัพโหลดไฟล์ Memo
-      = ยังไม่มีใครลงมือทำ; อัพโหลดแล้วหลุดจากคิวเอง — เรียงคนที่รอนานสุดขึ้นก่อน
-      (ไม่สนตัวกรอง/ยกเว้นของบอร์ด — คิวนี้ต้องเห็นครบเสมอ) */
-  const memoWaiting = useMemo(
-    () =>
-      items
-        .filter(
-          (i) =>
-            i.memo_ready_at !== null &&
-            i.memo_file_path === null &&
-            i.stage === INFLU_STAGE.memo &&
-            !i.completed &&
-            i.declined_at === null
-        )
-        .sort((a, b) => (a.memo_ready_at ?? "").localeCompare(b.memo_ready_at ?? "")),
-    [items]
-  );
-
-  /* ---- modal เพิ่ม influ (stage 1: รหัส Influ ID · ชื่อ · เบอร์ · หัตถการที่รับ) ---- */
-  // flow ใหม่ (0080): เพิ่มโปรไฟล์ก่อน → ค่อย "สร้างนัด" (เคสเริ่มที่ขั้น Memo)
-  const [profileOpen, setProfileOpen] = useState(false);
+  /* ---- modal "สร้างนัดใหม่" — เปิดเคสจากโปรไฟล์ที่มีอยู่ (flow 0080) ---- */
   const [caseOpen, setCaseOpen] = useState(false);
   // หัตถการที่เพิ่งถูกลงทะเบียนเข้าเมนูทีมระหว่างเปิดหน้า — โผล่ในโมดัลทันทีไม่ต้องรอ refresh
   const [extraServices, setExtraServices] = useState<InfluServiceRow[]>([]);
@@ -777,53 +583,18 @@ export function InfluencersClient({
 
   return (
     <>
+      {/* ทางเข้าอื่นทั้งหมด (ปฏิทินคิว · สัญญา · จัดการหมอ) ย้ายไปแถบเมนูบนสุดของระบบแล้ว
+          (ผู้ใช้ 2026-08-19) — หัวหน้านี้เหลือปุ่มลงมือทำงานปุ่มเดียว */}
       <PageHeader
         title="เคสดำเนินงาน"
         description="เคสของ influ ที่ตอบรับแล้ว — เดินงาน Memo → เซนสัญญา → ตามงาน (งานก่อนตอบรับอยู่ที่บอร์ด Hunting)"
         action={
-          <div className="flex flex-wrap gap-2">
-            {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
-            {me.canManage && (
-              <button
-                type="button"
-                onClick={() => setDoctorsOpen(true)}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-              >
-                <Stethoscope size={16} />
-                จัดการหมอ
-              </button>
-            )}
-            <Link
-              href="/influ-calendar"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-            >
-              <CalendarDays size={16} />
-              ปฏิทินคิว
-            </Link>
-            <Link
-              href="/influencers/contracts"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-            >
-              <FileSignature size={16} />
-              อายุสัญญา & Campaign
-            </Link>
-            {me.canEdit && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(true)}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-                >
-                  <UserRoundPlus size={16} />
-                  เพิ่มโปรไฟล์
-                </button>
-                <Button onClick={() => setCaseOpen(true)}>
-                  <Plus size={16} />
-                  สร้างนัดใหม่
-                </Button>
-              </>
-            )}
-          </div>
+          me.canEdit ? (
+            <Button onClick={() => setCaseOpen(true)}>
+              <Plus size={16} />
+              สร้างนัดใหม่
+            </Button>
+          ) : undefined
         }
       />
 
@@ -836,52 +607,13 @@ export function InfluencersClient({
         </div>
       )}
 
-      {/* แท็บ: บอร์ด | รอทำ Memo — แยกคิวให้ influ manager เห็นว่ามีเคสไหนข้อมูลครบรออยู่ */}
-      <div className="mb-4 flex gap-1 overflow-x-auto [scrollbar-width:none] animate-fade-in-up">
-        <button
-          type="button"
-          onClick={() => setTab("board")}
-          className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-            tab === "board"
-              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-              : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
-          }`}
-        >
-          <LayoutGrid size={16} />
-          บอร์ด
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("memo")}
-          className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-            tab === "memo"
-              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-              : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
-          }`}
-        >
-          <ClipboardCheck size={16} />
-          รอทำ Memo
-          {memoWaiting.length > 0 && (
-            <span
-              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-                tab === "memo"
-                  ? "bg-white/25 text-cream"
-                  : "bg-amber-100 text-amber-700"
-              }`}
-            >
-              {memoWaiting.length}
-            </span>
-          )}
-        </button>
-      </div>
-
       {loadError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </div>
       )}
 
-      {tab === "board" && totalDue > 0 && (
+      {totalDue > 0 && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 animate-fade-in">
           <BellRing size={16} className="shrink-0" />
           มีงาน follow up ถึงกำหนดแล้ว {formatNumber(totalDue)} รายการ —
@@ -889,10 +621,8 @@ export function InfluencersClient({
         </div>
       )}
 
-      {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง)
-          แบนเนอร์เตือน "ยังไม่มีคิวหมอ" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-19) —
+      {/* ค้นหา + กรอง stage — แบนเนอร์เตือน "ยังไม่มีคิวหมอ" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-19)
           เหลือปุ่มกรอง "รอลงคิวหมอ" ตัวเดียวเป็นทางเข้า */}
-      {tab === "board" && (
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
@@ -986,7 +716,6 @@ export function InfluencersClient({
           </button>
         )}
       </div>
-      )}
 
       {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
@@ -994,19 +723,12 @@ export function InfluencersClient({
         </div>
       )}
 
-      {tab === "memo" ? (
-        <MemoWaitingList
-          items={memoWaiting}
-          canEdit={me.canEdit}
-          onOpen={(id) => router.push(`/influencers/${id}`)}
-          onToggleDocsSent={(i) => void toggleDocsSent(i)}
-        />
-      ) : items.length === 0 ? (
+      {items.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}
             title="ยังไม่มี Influencer ในระบบ"
-            description="เริ่มจากเพิ่มโปรไฟล์คนที่ตกลงร่วมงาน แล้วกด 'สร้างนัดใหม่' เพื่อเปิดเคสเดินงานทีละ stage"
+            description="เพิ่มโปรไฟล์คนที่ตกลงร่วมงานที่บอร์ด Hunting ก่อน แล้วกด 'สร้างนัดใหม่' ที่นี่เพื่อเปิดเคสเดินงานทีละ stage"
             action={
               me.canEdit ? (
                 <Button onClick={() => setCaseOpen(true)}>
@@ -1056,13 +778,8 @@ export function InfluencersClient({
         />
       )}
 
-      {/* flow ใหม่ (0080): เพิ่มโปรไฟล์ (ตัวบุคคล) → สร้างนัด (เคส เริ่มที่ขั้น Memo) */}
-      <ProfileFormModal
-        open={profileOpen}
-        onClose={() => setProfileOpen(false)}
-        actor={actor}
-        onSaved={() => router.refresh()}
-      />
+      {/* flow ใหม่ (0080): เพิ่มโปรไฟล์ (ตัวบุคคล) ทำที่บอร์ด Hunting → มาสร้างนัดที่นี่
+          (โมดัลสร้างโปรไฟล์ยังเปิดจากในฟอร์มสร้างนัดได้ ถ้าเจอว่ายังไม่มีโปรไฟล์) */}
       <NewCaseModal
         open={caseOpen}
         onClose={() => setCaseOpen(false)}
@@ -1101,12 +818,6 @@ export function InfluencersClient({
         onClose={() => setDeleteTarget(null)}
       />
 
-      {/* ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ทั้งใน stage 2 และปฏิทินคิว */}
-      <DoctorManagerModal
-        open={doctorsOpen}
-        onClose={() => setDoctorsOpen(false)}
-        doctors={doctors}
-      />
     </>
   );
 }

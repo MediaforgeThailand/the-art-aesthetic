@@ -104,7 +104,9 @@ export default function LoginPage() {
         );
         return;
       }
-      router.push("/dashboard");
+      // /start เลือกหน้าแรกตามสิทธิ์ของคนนั้น — เดิมชี้ /dashboard ตายตัว
+      // คนที่ไม่มีสิทธิ์ data เจอ "ไม่มีสิทธิ์เข้าถึง" ทุกครั้งที่ล็อกอิน
+      router.push("/start");
       router.refresh();
     } finally {
       setLoading(false);
@@ -141,7 +143,9 @@ export default function LoginPage() {
         setError(error.message);
         return;
       }
-      router.push("/dashboard");
+      // /start เลือกหน้าแรกตามสิทธิ์ของคนนั้น — เดิมชี้ /dashboard ตายตัว
+      // คนที่ไม่มีสิทธิ์ data เจอ "ไม่มีสิทธิ์เข้าถึง" ทุกครั้งที่ล็อกอิน
+      router.push("/start");
       router.refresh();
     } catch (err) {
       setError(authErrorText(err instanceof Error ? err.message : String(err)));

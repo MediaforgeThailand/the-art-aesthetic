@@ -30,6 +30,7 @@ import {
   CalendarClock,
   Check,
   FileSignature,
+  MessageCircleQuestion,
   Phone,
   RotateCcw,
   Timer,
@@ -210,6 +211,8 @@ function compactFollowers(n: number): string {
    ห้ามเพิ่มชิปสีเพื่อบอกสถานะปกติ (ตอบรับแล้ว/อยู่ขั้นไหน) อีก — ข้อมูลนั้นอยู่ที่ StageTracker แล้ว */
 
 const CHIP_QUIET = "border border-stone-200 bg-stone-50 text-stone-500";
+/** ทำเสร็จไปแล้ว (เช่นส่ง Memo แล้ว) — เขียวอ่อนแบบเดียวกับพื้นการ์ดเคสที่จบงาน */
+const CHIP_DONE = "border border-emerald-200 bg-emerald-50 text-emerald-700";
 const CHIP_WARN = "border border-amber-200 bg-amber-50 text-amber-700";
 const CHIP_LATE = "border border-rose-200 bg-rose-50 font-semibold text-rose-600";
 
@@ -440,9 +443,17 @@ export function InfluCardContent({
         ? "border border-stone-200 bg-white/90"
         : "border border-dashed border-stone-300 bg-white/50";
 
+  /** ส่ง Memo ไปขออนุมัติแล้ว (ติ๊กในหน้าเคส) — ติ๊กถูกเล็กๆ กันทีมส่งซ้ำ */
+  const memoSent = i.docs_sent_at !== null;
+  /** เคส "รอปรึกษา" ที่ยังไม่ได้เติมหัตถการ — บอกว่าทำไมการ์ดนี้ยังไม่มีโปรแกรม */
+  const consultPending =
+    i.consult_only && !i.completed && (i.procedure_text ?? "") === "";
+
   /* แถวชิปโผล่เฉพาะตอนมีอะไรให้ทำจริง — ไม่มีก็ไม่กินที่ */
   const hasChips =
     needsBooking ||
+    consultPending ||
+    memoSent ||
     (!i.completed && nextDueDays !== null) ||
     showFollowedChip ||
     i.contract_start !== null ||
@@ -557,6 +568,22 @@ export function InfluCardContent({
       {hasChips && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {needsBooking && <NoDoctorBookingBadge serviceDate={i.service_date} />}
+          {consultPending && (
+            <span title="เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ — รอปรึกษาแพทย์แล้วกลับมาเพิ่มที่ Stage 2">
+              <Badge className={CHIP_WARN}>
+                <MessageCircleQuestion size={11} /> รอปรึกษา
+              </Badge>
+            </span>
+          )}
+          {memoSent && (
+            <span
+              title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))}`}
+            >
+              <Badge className={CHIP_DONE}>
+                <Check size={11} strokeWidth={3} /> ส่ง Memo แล้ว
+              </Badge>
+            </span>
+          )}
           {!i.completed && nextDueDays !== null && (
             <FollowupCountdownChip
               daysUntil={nextDueDays}
