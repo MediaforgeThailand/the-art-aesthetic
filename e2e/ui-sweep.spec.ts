@@ -270,7 +270,13 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     .first();
   if ((await influCard.count()) > 0) {
     await influCard.click();
-    await page.waitForURL("**/influencers/**", { timeout: 15_000 });
+    try {
+      await page.waitForURL("**/influencers/**", { timeout: 15_000 });
+    } catch {
+      // click แรกอาจยิงก่อน hydration ผูก handler เสร็จ (แพตเทิร์นเดียวกับ login)
+      await influCard.click();
+      await page.waitForURL("**/influencers/**", { timeout: 30_000 });
+    }
     await settle(page, 1200);
     await page.screenshot({
       path: shotPath(project, "influ-detail"),
