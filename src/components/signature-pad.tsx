@@ -154,7 +154,7 @@ export function SignaturePad({
             type="button"
             onClick={onClose}
             aria-label="ปิด"
-            className="ml-auto cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 active:scale-90"
+            className="ml-auto flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 active:scale-90 sm:h-8 sm:w-8"
           >
             <X size={18} />
           </button>

@@ -361,7 +361,7 @@ export function CostClient({
         <button
           type="button"
           onClick={() => setUnpricedOnly((v) => !v)}
-          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] ${
+          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
             unpricedOnly
               ? "border-amber-300 bg-amber-100 text-amber-700"
               : "border-stone-200 bg-white/60 text-stone-500 hover:bg-white"
@@ -373,7 +373,7 @@ export function CostClient({
           type="button"
           onClick={() => setIncludeOld((v) => !v)}
           title="รวมข้อมูลเก่าที่นำเข้า (archive) และเคสที่ปฏิเสธ"
-          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] ${
+          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
             includeOld
               ? "border-brand-300 bg-brand-100 text-brand-700"
               : "border-stone-200 bg-white/60 text-stone-500 hover:bg-white"

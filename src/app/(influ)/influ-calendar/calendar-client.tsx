@@ -342,7 +342,7 @@ function DaySidebar({
     <aside
       aria-label={`คิววันที่ ${formatDate(dateISO)}`}
       // แผงลอยทับปฏิทิน — เปิดเฉพาะตอนกดเลือกวัน (ปฏิทินจึงกินพื้นที่เต็มความกว้างตลอด)
-      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[27rem] flex-col border-white/70 bg-white/95 shadow-[0_0_60px_rgba(94,58,49,0.25)] backdrop-blur-2xl animate-slide-in-right sm:inset-y-3 sm:right-3 sm:rounded-2xl sm:border"
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[27rem] flex-col border-white/70 bg-white/95 max-sm:pt-safe max-sm:pb-safe shadow-[0_0_60px_rgba(94,58,49,0.25)] backdrop-blur-2xl animate-slide-in-right sm:inset-y-3 sm:right-3 sm:rounded-2xl sm:border"
     >
       {/* ---- หัวแผง ---- */}
       <div className="flex items-center gap-2 border-b border-brand-100/70 px-4 py-3">
@@ -358,7 +358,7 @@ function DaySidebar({
           type="button"
           onClick={onClose}
           aria-label="ปิดแผง"
-          className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
+          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
         >
           <X size={18} />
         </button>
@@ -405,13 +405,18 @@ function DaySidebar({
                               ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
                               : "ทำเครื่องหมายว่าเสร็จแล้ว"
                           }
-                          className={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border transition-colors active:scale-90 ${
-                            e.done
-                              ? "border-emerald-400 bg-emerald-400 text-white"
-                              : "border-stone-300 bg-white hover:border-brand-400"
-                          }`}
+                          className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center active:scale-90 max-sm:-m-3 max-sm:-mt-2.5 max-sm:h-11 max-sm:w-11"
                         >
-                          {e.done && <Check size={12} />}
+                          {/* กล่องที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
+                              e.done
+                                ? "border-emerald-400 bg-emerald-400 text-white"
+                                : "border-stone-300 bg-white hover:border-brand-400"
+                            }`}
+                          >
+                            {e.done && <Check size={12} />}
+                          </span>
                         </button>
                       ) : (
                         // ดูเฉยๆ — ยังต้องเห็นว่าคิวไหนเสร็จแล้ว แต่กดเปลี่ยนไม่ได้
@@ -1242,7 +1247,7 @@ export function CalendarClient({
             type="button"
             onClick={() => goMonth(-1)}
             aria-label="เดือนก่อนหน้า"
-            className="cursor-pointer rounded-md p-1.5 text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
           >
             <ChevronLeft size={18} />
           </button>
@@ -1253,7 +1258,7 @@ export function CalendarClient({
             type="button"
             onClick={() => goMonth(1)}
             aria-label="เดือนถัดไป"
-            className="cursor-pointer rounded-md p-1.5 text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
           >
             <ChevronRight size={18} />
           </button>
@@ -1305,7 +1310,7 @@ export function CalendarClient({
               type="button"
               onClick={() => toggleKind(k)}
               title={off ? "แสดงประเภทนี้" : "ซ่อนประเภทนี้"}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all active:scale-95 max-sm:min-h-11 ${
                 off
                   ? "border-stone-200 bg-white/50 text-stone-400"
                   : `${meta.chip} shadow-sm`
@@ -1322,7 +1327,7 @@ export function CalendarClient({
           type="button"
           onClick={() => setShowServiceDates((v) => !v)}
           title="สลับการแสดงวันเข้ารับบริการที่มาจากเคสในบอร์ดเคสดำเนินงาน"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium transition-all active:scale-95 max-sm:min-h-11 ${
             showServiceDates
               ? "border-brand-300 bg-white/70 text-brand-700"
               : "border-stone-200 bg-white/50 text-stone-400"

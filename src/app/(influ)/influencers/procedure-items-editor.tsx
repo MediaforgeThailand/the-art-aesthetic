@@ -515,7 +515,7 @@ export function ProcedureItemsEditor({
                     type="button"
                     onClick={() => removeItem(item.id)}
                     title="ลบรายการนี้"
-                    className="cursor-pointer rounded-md p-1 text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90"
+                    className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90 sm:h-7 sm:w-7"
                   >
                     <X size={14} />
                   </button>

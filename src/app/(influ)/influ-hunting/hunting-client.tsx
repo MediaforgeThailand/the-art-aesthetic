@@ -383,7 +383,7 @@ export function HuntingClient({
           <button
             type="button"
             onClick={() => setDueOnly(true)}
-            className="cursor-pointer text-sm font-medium text-amber-700 underline-offset-2 hover:underline"
+            className="inline-flex cursor-pointer items-center text-sm font-medium text-amber-700 underline-offset-2 hover:underline max-sm:min-h-11"
           >
             ดูเฉพาะที่ถึงกำหนด
           </button>
@@ -392,7 +392,7 @@ export function HuntingClient({
 
       {/* แถบค้นหา + ชิปกรอง */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"

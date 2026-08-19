@@ -207,7 +207,7 @@ export function ProspectDetailModal({
             <button
               type="button"
               onClick={() => setEditNext(true)}
-              className="cursor-pointer text-xs font-medium text-brand-700 underline-offset-2 hover:underline"
+              className="inline-flex cursor-pointer items-center text-xs font-medium text-brand-700 underline-offset-2 hover:underline max-sm:min-h-11"
             >
               {prospect.next_followup_on ? "เปลี่ยนวัน" : "ตั้งวัน"}
             </button>
@@ -227,7 +227,7 @@ export function ProspectDetailModal({
               <button
                 type="button"
                 onClick={() => setEditNext(false)}
-                className="cursor-pointer text-xs text-stone-400 hover:text-stone-600"
+                className="inline-flex cursor-pointer items-center text-xs text-stone-400 hover:text-stone-600 max-sm:min-h-11"
               >
                 ยกเลิก
               </button>

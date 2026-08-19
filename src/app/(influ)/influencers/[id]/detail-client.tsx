@@ -696,7 +696,7 @@ export function InfluDetailClient({
               type="button"
               onClick={() => setNameOpen(true)}
               title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
-              className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
             >
               <PenLine size={15} />
             </button>
@@ -761,7 +761,7 @@ export function InfluDetailClient({
             type="button"
             onClick={() => setNewRoundOpen(true)}
             title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่ม Stage 1 เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Repeat size={14} />
             เปิดรอบใหม่
@@ -1290,7 +1290,7 @@ function OverviewPanel({
                 type="button"
                 onClick={() => setCaseInfoOpen(true)}
                 title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส"
-                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:min-h-11"
               >
                 <PenLine size={13} />
                 แก้วัน/แพทย์
@@ -1457,7 +1457,7 @@ function OverviewPanel({
               <button
                 type="button"
                 onClick={onEditProfile}
-                className="ml-auto cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 active:scale-[0.97]"
+                className="ml-auto cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 active:scale-[0.97] max-sm:min-h-11"
               >
                 แก้โปรไฟล์
               </button>
@@ -2622,7 +2622,7 @@ function FollowupStage({
                 type="button"
                 disabled={readOnly || switching}
                 onClick={() => void switchMode(m)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 max-sm:min-h-11 ${
                   readOnly || switching
                     ? "cursor-default"
                     : "cursor-pointer active:scale-[0.97]"
@@ -2821,13 +2821,18 @@ function StandardChecklist({
                   disabled={readOnly}
                   onClick={() => void onToggleDone(t)}
                   title={t.done ? "ยกเลิกติ๊ก" : "ติ๊กว่า follow up แล้ว"}
-                  className={`mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all active:scale-90 disabled:cursor-default ${
-                    t.done
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
-                  }`}
+                  className="mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center active:scale-90 disabled:cursor-default max-sm:-mx-2.5 max-sm:-mb-2.5 max-sm:-mt-2 max-sm:h-11 max-sm:w-11"
                 >
-                  <Check size={13} strokeWidth={3} />
+                  {/* วงที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
+                      t.done
+                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                  </span>
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -2848,13 +2853,13 @@ function StandardChecklist({
                               onCancelEditTitle();
                             }
                           }}
-                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-sm font-medium text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-base font-medium sm:text-sm text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                         />
                         <button
                           type="button"
                           onClick={() => void onSaveTitle(t)}
                           title="บันทึกชื่อ"
-                          className="cursor-pointer rounded-md p-1 text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90"
+                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90 sm:h-7 sm:w-7"
                         >
                           <Check size={14} />
                         </button>
@@ -2862,7 +2867,7 @@ function StandardChecklist({
                           type="button"
                           onClick={onCancelEditTitle}
                           title="ยกเลิก"
-                          className="cursor-pointer rounded-md p-1 text-stone-400 transition-all hover:bg-stone-100 active:scale-90"
+                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-stone-100 active:scale-90 sm:h-7 sm:w-7"
                         >
                           <X size={14} />
                         </button>
@@ -2883,7 +2888,7 @@ function StandardChecklist({
                             type="button"
                             onClick={() => onStartEditTitle(t)}
                             title="แก้ไขชื่อรายการ"
-                            className="cursor-pointer rounded-md p-1 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
                           >
                             <PenLine size={13} />
                           </button>
@@ -2933,7 +2938,7 @@ function StandardChecklist({
                         type="button"
                         onClick={() => void onCopyScript(t)}
                         title="คัดลอก script"
-                        className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-all active:scale-90 ${
+                        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all active:scale-90 sm:h-7 sm:w-7 ${
                           copiedId === t.id
                             ? "text-emerald-600"
                             : "text-stone-400 hover:bg-brand-50 hover:text-brand-600"
@@ -2954,7 +2959,7 @@ function StandardChecklist({
                     placeholder="+ เพิ่มหมายเหตุ เช่น ส่งไฟล์แล้ว รอทีมตรวจ..."
                     onChange={(e) => onDraftChange(t.id, e.target.value)}
                     onBlur={() => void onSaveDescription(t)}
-                    className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-base sm:text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   />
                   {t.done && t.done_at && (
                     <p className="mt-1 text-[11px] text-emerald-600">

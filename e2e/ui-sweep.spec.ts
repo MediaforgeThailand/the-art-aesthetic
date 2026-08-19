@@ -17,6 +17,12 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influencers", name: "influencers" },
   { path: "/influ-gallery", name: "influ-gallery" },
   { path: "/influencers/contracts", name: "influ-contracts" },
+  { path: "/influ-hunting", name: "influ-hunting" },
+  { path: "/influ-calendar", name: "influ-calendar" },
+  { path: "/influ-cost", name: "influ-cost" },
+  { path: "/influ-dashboard", name: "influ-dashboard" },
+  { path: "/influencer-management/logs", name: "influ-logs" },
+  { path: "/influencer-management/trash", name: "influ-trash" },
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
@@ -112,7 +118,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        await page.getByRole("button", { name: "เปิดเมนู" }).click();
+        await page
+          .getByRole("button", { name: "เปิดเมนู", exact: true })
+          .click();
         return true;
       },
       "drawer"
@@ -134,7 +142,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        await page.getByRole("button", { name: "เปิดเมนู" }).click();
+        await page.getByRole("button", { name: "เปิดเมนู", exact: true }).click();
         await settle(page, 400);
         await page
           .locator('button[title="ตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ/รูป)"]')
@@ -216,8 +224,12 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expect(panel).toBeVisible();
     await page.screenshot({ path: shotPath(project, "tasks-panel") });
     await expectNoHorizontalOverflow(page, "แผงรายละเอียดงาน");
+    // จอเล็กปุ่ม X ถูกซ่อน (ใช้แถบ "กลับ" ด้านบนแทน) — เลือกตัวที่มองเห็นจริง
     await page
-      .locator('button[aria-label="ปิดแผงรายละเอียดงาน"], button[aria-label="ปิดแผงรายละเอียด"]')
+      .locator(
+        'button[aria-label="ปิดแผงรายละเอียดงาน"], button[aria-label="ปิดแผงรายละเอียด"], button[aria-label="กลับไปที่รายการงาน"]'
+      )
+      .locator("visible=true")
       .first()
       .click();
     await settle(page, 400);
@@ -228,7 +240,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/pricing", label: "เพิ่มรายการ", name: "pricing-add-item" },
     { path: "/files", label: "เพิ่มลิงก์", name: "files-add-link" },
     { path: "/accounts", label: "เพิ่มบัญชี", name: "accounts-add-user" },
-    { path: "/influencers", label: "เพิ่ม Influencer", name: "influ-add" },
+    { path: "/influencers", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
+    { path: "/influencers", label: "สร้างนัดใหม่", name: "influ-new-case" },
+    { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
   ];
   for (const a of ADD_BUTTONS) {

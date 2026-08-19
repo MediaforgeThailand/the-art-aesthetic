@@ -92,7 +92,7 @@ export function SourceLinkQuickButton({
       title={title}
       onClick={open}
       onPointerDown={(e) => e.stopPropagation()}
-      className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 active:scale-[0.97]"
+      className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 active:scale-[0.97] max-sm:min-h-11"
     >
       <FolderOpen size={11} className="shrink-0" />
       <span className="truncate">ไฟล์ Source</span>

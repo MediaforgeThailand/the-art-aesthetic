@@ -245,13 +245,13 @@ export function DoctorManagerModal({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                   />
-                  <Button type="submit" loading={busy} className="shrink-0 px-2.5 py-1.5 text-xs">
+                  <Button type="submit" loading={busy} className="shrink-0 px-2.5 py-1.5 text-xs max-sm:min-h-11">
                     บันทึก
                   </Button>
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                    className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 sm:h-7 sm:w-7"
                   >
                     <X size={14} />
                   </button>
