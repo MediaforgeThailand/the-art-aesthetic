@@ -388,7 +388,7 @@ export function CostClient({
         <EmptyState
           icon={<Wallet size={40} />}
           title="ไม่พบรายการต้นทุนตามตัวกรอง"
-          description="เพิ่มโปรแกรมของแต่ละเคสได้ที่ Stage 2 ในหน้า Influ Management"
+          description="เพิ่มโปรแกรมของแต่ละเคสได้ที่ Stage 2 ในหน้าเคสดำเนินงาน"
         />
       ) : (
         <div className="space-y-6">

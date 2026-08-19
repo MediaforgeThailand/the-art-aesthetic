@@ -23,6 +23,7 @@ export default async function InfluDashboardPage() {
     { data: influencers, error },
     { data: items, error: itemsError },
     { data: tasks, error: tasksError },
+    { data: prospects },
   ] = await Promise.all([
       getAccess(),
       // เฉพาะเคสใน pipeline (archive = ข้อมูลนำเข้าเก่า ไม่นับในแดชบอร์ด)
@@ -38,6 +39,8 @@ export default async function InfluDashboardPage() {
         .select("id, influencer_id, price, is_supported"),
       // งาน follow-up (stage 6) — นับข้อค้างตามโหมดของแต่ละเคส
       supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
+      // บอร์ด Hunting (0081) — การ์ด "รอตอบรับ" เดิมนับ stage 1 ซึ่งย้ายออกไปแล้ว
+      supabase.from("influ_prospects").select("status"),
     ]);
   if (!canViewInflu(access)) return <AccessNotice />;
 
@@ -47,6 +50,7 @@ export default async function InfluDashboardPage() {
         influencers={(influencers ?? []) as DashInflu[]}
         items={(items ?? []) as DashCostItem[]}
         tasks={(tasks ?? []) as DashTask[]}
+        prospectStatuses={(prospects ?? []).map((p) => p.status)}
         // error ของ query ต้นทุน/follow-up ต้องแจ้งด้วย ไม่งั้นการ์ดขึ้น ฿0 เหมือน
         // "ยังไม่มีใครกรอกต้นทุน" ทั้งที่จริงคือโหลดข้อมูลไม่สำเร็จ
         loadError={

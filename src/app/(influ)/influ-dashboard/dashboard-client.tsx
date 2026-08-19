@@ -13,9 +13,9 @@ import {
   ArrowUpRight,
   CalendarClock,
   CheckCircle2,
+  Crosshair,
   FileSignature,
   Gift,
-  Hourglass,
   ListChecks,
   Sparkles,
   UserX,
@@ -44,13 +44,18 @@ import {
 import {
   contractEndDate,
   costUsageOf,
+  INFLU_PROSPECT_ACTIVE,
   INFLU_STAGE,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   itemEffectiveCost,
 } from "@/lib/influ-constants";
 import { AXIS_TICK, compactBaht, TEAM_COLORS, TOOLTIP_STYLE } from "@/lib/report-utils";
-import type { InfluFollowupMode, InfluTier } from "@/lib/types";
+import type {
+  InfluFollowupMode,
+  InfluProspectStatus,
+  InfluTier,
+} from "@/lib/types";
 
 export type DashInflu = {
   id: string;
@@ -113,23 +118,29 @@ export function DashboardClient({
   influencers,
   items,
   tasks,
+  prospectStatuses,
   loadError,
 }: {
   influencers: DashInflu[];
   items: DashCostItem[];
   tasks: DashTask[];
+  /** สถานะรายชื่อบนบอร์ด Hunting (0081) — นับการ์ด "กำลังตามอยู่" */
+  prospectStatuses: InfluProspectStatus[];
   loadError: string | null;
 }) {
   const today = todayISO();
+
+  // รายชื่อที่ยังตามอยู่บนบอร์ด Hunting (แทนการ์ด "รอตอบรับ" เดิมที่นับ stage 1
+  // ซึ่งย้ายออกจากบอร์ดเคสไปแล้วใน 0081 — นับจากเคสจะเป็น 0 ตลอดกาล)
+  const huntingActive = prospectStatuses.filter((s) =>
+    INFLU_PROSPECT_ACTIVE.includes(s)
+  ).length;
 
   const stats = useMemo(() => {
     const byId = new Map(influencers.map((i) => [i.id, i]));
     const active = influencers.filter((i) => i.declined_at === null);
 
-    // ---- pipeline ----
-    const waiting = active.filter(
-      (i) => !i.completed && i.stage === INFLU_STAGE.contact
-    ).length;
+    // ---- pipeline ---- (ขั้น "ติดต่อ · รอตอบรับ" ย้ายไปบอร์ด Hunting แล้ว — 0081)
     const inProgress = active.filter(
       (i) => !i.completed && i.stage >= INFLU_STAGE.caseDetail
     ).length;
@@ -208,7 +219,6 @@ export function DashboardClient({
 
     return {
       total: active.length,
-      waiting,
       inProgress,
       done,
       declined,
@@ -233,7 +243,7 @@ export function DashboardClient({
               href="/influencers"
               className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-white hover:text-brand-700"
             >
-              <Sparkles size={13} /> บอร์ดงาน
+              <Sparkles size={13} /> เคสดำเนินงาน
             </Link>
             <Link
               href="/influ-cost"
@@ -260,11 +270,11 @@ export function DashboardClient({
           sub="ไม่นับข้อมูลเก่า (archive)"
         />
         <HeroCard
-          icon={Hourglass}
+          icon={Crosshair}
           iconClass="bg-amber-50 text-amber-600"
-          label="ติดต่ออยู่ · รอตอบรับ"
-          value={formatNumber(stats.waiting)}
-          sub="ขั้นติดต่อ"
+          label="Hunting · กำลังตาม"
+          value={formatNumber(huntingActive)}
+          sub="ยังไม่ตอบรับ — บอร์ด Hunting"
           delay={40}
         />
         <HeroCard

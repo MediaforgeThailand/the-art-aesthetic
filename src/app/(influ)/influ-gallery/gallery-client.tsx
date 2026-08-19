@@ -235,7 +235,7 @@ export function InfluGalleryClient({
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}
             title="ยังไม่มี Influencer ในระบบ"
-            description="เพิ่ม Influencer ในหน้า Influ Management ก่อน"
+            description="เพิ่มโปรไฟล์และสร้างนัดได้ที่หน้าเคสดำเนินงาน"
           />
         </Card>
       ) : filtered.length === 0 ? (

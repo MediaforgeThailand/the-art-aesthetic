@@ -237,7 +237,7 @@ export function DoctorSelect({
               ))}
               {filtered.length === 0 && q !== "" && (
                 <p className="px-2 py-2 text-xs text-stone-400">
-                  ไม่พบชื่อนี้ — เพิ่มหมอใหม่ได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
+                  ไม่พบชื่อนี้ — เพิ่มหมอใหม่ได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
                 </p>
               )}
             </div>

@@ -20,7 +20,7 @@ import { InfluencersClient, type InfluencerListRow } from "./influencers-client"
 import type { PriceCatalogEntry } from "./procedure-items-editor";
 
 export const metadata: Metadata = {
-  title: "Influ Management",
+  title: "เคสดำเนินงาน",
 };
 
 // คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64

@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   CalendarDays,
+  Crosshair,
   FileSignature,
   Gauge,
   History,
@@ -91,7 +92,9 @@ export function InfluShell({
   }, [userId]);
 
   const navItems: ShellNavItem[] = [
-    { href: "/influencers", label: "บอร์ดเคส", icon: LayoutGrid, show: canView },
+    // Hunting = งานก่อนตอบรับ (0081) มาก่อนบอร์ดเคสตามลำดับ flow จริง
+    { href: "/influ-hunting", label: "Hunting", icon: Crosshair, show: canView },
+    { href: "/influencers", label: "เคสดำเนินงาน", icon: LayoutGrid, show: canView },
     { href: "/influ-calendar", label: "ปฏิทินคิว", icon: CalendarDays, show: canView },
     { href: "/influ-dashboard", label: "แดชบอร์ด", icon: Gauge, show: canView },
     { href: "/influ-cost", label: "ต้นทุน", icon: Wallet, show: canView },

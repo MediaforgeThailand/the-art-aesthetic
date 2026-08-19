@@ -466,7 +466,7 @@ function DaySidebar({
             {services.length > 0 && (
               <div className="mt-4">
                 <p className="mb-1.5 text-xs font-semibold text-brand-700">
-                  จากเคสใน Influ Management (ยังไม่ได้ตั้งคิว)
+                  จากเคสในบอร์ดเคสดำเนินงาน (ยังไม่ได้ตั้งคิว)
                 </p>
                 <ul className="space-y-1.5">
                   {services.map((s) => (
@@ -792,7 +792,7 @@ function DaySidebar({
               />
               <p className="mt-1 text-xs text-stone-400">
                 เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
-                (เพิ่มหมอใหม่ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management)
+                (เพิ่มหมอใหม่ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน)
               </p>
             </div>
 
@@ -1321,7 +1321,7 @@ export function CalendarClient({
         <button
           type="button"
           onClick={() => setShowServiceDates((v) => !v)}
-          title="สลับการแสดงวันเข้ารับบริการที่มาจากเคสใน Influ Management"
+          title="สลับการแสดงวันเข้ารับบริการที่มาจากเคสในบอร์ดเคสดำเนินงาน"
           className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
             showServiceDates
               ? "border-brand-300 bg-white/70 text-brand-700"

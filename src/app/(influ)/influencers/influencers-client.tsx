@@ -787,7 +787,8 @@ export function InfluencersClient({
   return (
     <>
       <PageHeader
-        title="Influ Management"
+        title="เคสดำเนินงาน"
+        description="เคสของ influ ที่ตอบรับแล้ว — เดินงาน Memo → เซนสัญญา → ตามงาน (งานก่อนตอบรับอยู่ที่บอร์ด Hunting)"
         action={
           <div className="flex flex-wrap gap-2">
             {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
@@ -935,6 +936,15 @@ export function InfluencersClient({
           {stageChips.map((chip) => {
             const active = stageFilter === chip.key;
             const count = countFor(chip.key);
+            // ขั้นติดต่อ/รายละเอียดย้ายไปบอร์ด Hunting แล้ว (0081) — เคสใหม่เริ่มที่ Memo
+            // ชิป 2 ขั้นแรกจึงซ่อนเมื่อว่าง (เคสเก่าที่ถูกย้อน stage ลงมายังโผล่ได้)
+            if (
+              typeof chip.key === "number" &&
+              chip.key <= INFLU_STAGE.caseDetail &&
+              count === 0 &&
+              !active
+            )
+              return null;
             return (
               <button
                 key={String(chip.key)}

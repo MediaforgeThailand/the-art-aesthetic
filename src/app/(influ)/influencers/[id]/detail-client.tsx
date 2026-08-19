@@ -432,7 +432,7 @@ function CaseInfoEditModal({
             onChange={setDoctorName}
           />
           <p className="mt-1 text-[11px] text-stone-400">
-            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
+            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
           </p>
         </div>
         {err && (
@@ -612,7 +612,9 @@ export function InfluDetailClient({
         followers: influencer.followers,
         follower_note: influencer.follower_note,
         tier: influencer.tier,
-        stage: INFLU_STAGE.contact,
+        // เริ่มที่ Memo เหมือน "สร้างนัดใหม่" (0080/0081) — ขั้นติดต่อ/รายละเอียดเป็นงานก่อน
+        // ตอบรับ อยู่บอร์ด Hunting แล้ว; โปรแกรมของรอบใหม่กลับไปเติมใน Stage 2 ได้เสมอ
+        stage: INFLU_STAGE.memo,
         // การ์ดรอบใหม่เป็นของคนที่กดเปิดรอบ (กติกา "ผู้รับผิดชอบ = ผู้สร้างการ์ด")
         // — รหัส Influ ID ไม่คัดลอกมา เพราะ unique ต่อการ์ด ต้องออกรหัสของรอบนี้เอง
         owner_id: userId,
@@ -862,8 +864,9 @@ export function InfluDetailClient({
         })}
         {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข หรือเอกสารขั้นก่อนหน้าผิด ต้องกลับไปทำใหม่
             เปิดให้เคสที่ปิดงานแล้วด้วย (ย้อนแล้วเคสกลับมาเป็น "กำลังดำเนินการ") — ไม่งั้นพอปิดงาน
-            แล้วเจอว่าไฟล์สัญญาผิดฉบับ จะไม่เหลือทางแก้เลย */}
-        {canManage && influencer.stage > INFLU_STAGE.contact && (
+            แล้วเจอว่าไฟล์สัญญาผิดฉบับ จะไม่เหลือทางแก้เลย
+            พื้นต่ำสุด = Stage 2 (0081): ขั้น "ติดต่อ" ย้ายไปบอร์ด Hunting แล้ว ถอยไปถึงไม่มีความหมาย */}
+        {canManage && influencer.stage > INFLU_STAGE.caseDetail && (
           <button
             type="button"
             onClick={() => setRollbackOpen(true)}
@@ -1066,9 +1069,9 @@ export function InfluDetailClient({
           <>
             สร้างการ์ดใหม่ให้{" "}
             <span className="font-medium text-stone-800">คุณ{fullName}</span>{" "}
-            บนบอร์ด Influ Management เริ่มที่ Stage 1 —
+            บนบอร์ดเคสดำเนินงาน เริ่มที่ขั้น Memo —
             ใช้เมื่อคนเดิมกลับมาทำอีกครั้ง ซึ่งต้องออก Memo ขออนุมัติ
-            และเซนสัญญาชุดใหม่ทั้งหมด
+            และเซนสัญญาชุดใหม่ทั้งหมด (โปรแกรมของรอบใหม่กลับไปเติมได้ที่ Stage 2)
             <br />
             ข้อมูลตัวบุคคล (ชื่อ เบอร์ ยอดผู้ติดตาม รูป) ถูกคัดลอกไปให้ —
             ส่วนโปรแกรม/วันนัด/เอกสารของรอบนี้ไม่ถูกแตะ และไม่ติดไปกับรอบใหม่
@@ -2018,7 +2021,7 @@ function CaseDetailStage({
               onChange={setDoctorName}
             />
             <p className="mt-1 text-[11px] text-stone-400">
-              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้า Influ Management
+              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
