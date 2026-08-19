@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BellRing,
@@ -8,6 +9,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
+  FileSignature,
   Image as ImageIcon,
   ImagePlus,
   LayoutList,
@@ -520,12 +522,15 @@ export function InfluDetailClient({
   const [rollbackErr, setRollbackErr] = useState<string | null>(null);
   const rollbackStage = async () => {
     const target = influencer.stage - 1;
-    if (target < 1 || influencer.completed) return;
+    if (target < 1) return;
     setRollbackErr(null);
     const { error } = await supabase
       .from("influencers")
       .update({
         stage: target,
+        // เคสที่ปิดงานไปแล้วต้องกลับมาเป็น "กำลังดำเนินการ" ด้วย ไม่งั้นย้อนมาแล้วยังแก้อะไรไม่ได้
+        // (readOnly/canEdit ทั้งหน้าผูกกับ completed) — เช่นเพิ่งรู้ว่าไฟล์สัญญาผิดฉบับหลังปิดงาน
+        ...(influencer.completed ? { completed: false } : {}),
         // ถอยออกจากขั้นสัญญา+รับบริการ (4→3): ล้างวันเริ่มสัญญา —
         // จะถูกตั้งใหม่เมื่ออัพไฟล์สัญญาในขั้นนั้นอีกครั้ง
         ...(influencer.stage === INFLU_STAGE.contractService
@@ -543,8 +548,8 @@ export function InfluDetailClient({
       entityId: influencer.id,
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
-      summary: `ย้อนขั้นงานจาก ${INFLU_STAGES[influencer.stage - 1]?.title ?? influencer.stage} กลับไป ${INFLU_STAGES[target - 1]?.title ?? target}`,
-      meta: { from: influencer.stage, to: target },
+      summary: `ย้อนขั้นงานจาก ${INFLU_STAGES[influencer.stage - 1]?.title ?? influencer.stage} กลับไป ${INFLU_STAGES[target - 1]?.title ?? target}${influencer.completed ? " (เปิดเคสที่ปิดงานแล้วกลับมาทำต่อ)" : ""}`,
+      meta: { from: influencer.stage, to: target, reopened: influencer.completed },
     });
     // effect ที่เฝ้า influencer.stage จะพา view ไปหน้า stage ใหม่เองหลัง refresh
     router.refresh();
@@ -833,19 +838,56 @@ export function InfluDetailClient({
             </button>
           );
         })}
-        {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข ต้องกลับไปยื่นเอกสารใหม่ */}
-        {canEdit && influencer.stage > INFLU_STAGE.contact && (
+        {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข หรือเอกสารขั้นก่อนหน้าผิด ต้องกลับไปทำใหม่
+            เปิดให้เคสที่ปิดงานแล้วด้วย (ย้อนแล้วเคสกลับมาเป็น "กำลังดำเนินการ") — ไม่งั้นพอปิดงาน
+            แล้วเจอว่าไฟล์สัญญาผิดฉบับ จะไม่เหลือทางแก้เลย */}
+        {canManage && influencer.stage > INFLU_STAGE.contact && (
           <button
             type="button"
             onClick={() => setRollbackOpen(true)}
-            title={`ย้อนจาก Stage ${influencer.stage} กลับไป Stage ${influencer.stage - 1} — ใช้เมื่อ influ ขอเปลี่ยนโปรแกรม/เงื่อนไข แล้วต้องทำเอกสารรอบใหม่`}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-stone-300 bg-white/40 px-3 py-2 text-xs font-medium text-stone-400 transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 active:scale-[0.97]"
+            title={`ย้อนจาก Stage ${influencer.stage} กลับไป Stage ${influencer.stage - 1} — ใช้เมื่อต้องกลับไปแก้ข้อมูล/เอกสารของขั้นก่อนหน้า${
+              influencer.completed ? " (เคสจะกลับมาเป็นกำลังดำเนินการ)" : ""
+            }`}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50/70 px-3.5 py-2 text-xs font-medium text-amber-700 transition-all hover:border-amber-400 hover:bg-amber-100 active:scale-[0.97] max-sm:min-h-11"
           >
             <Undo2 size={13} />
-            ย้อน Stage
+            ย้อน Stage {influencer.stage} → {influencer.stage - 1}
           </button>
         )}
       </div>
+
+      {/* เดินเลยขั้นสัญญามาแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
+          — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสค้างอยู่ขั้นตามงานโดยไม่มีสัญญาแบบเงียบๆ */}
+      {canManage &&
+        !influencer.contract_file_path &&
+        influencer.stage > INFLU_STAGE.contractService && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 animate-fade-in">
+            <AlertTriangle size={16} className="shrink-0 text-amber-600" />
+            <p className="min-w-0 flex-1 text-xs leading-5 text-amber-800">
+              เคสนี้อยู่ Stage {influencer.stage} แต่<b>ยังไม่มีไฟล์สัญญา</b>ในระบบ
+              — อัพไฟล์ฉบับที่ถูกต้องได้เลยที่ขั้นสัญญา
+              หรือย้อน stage กลับไปทำขั้นนั้นใหม่
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setView(INFLU_STAGE.contractService)}
+                className="!px-3 !py-1.5 !text-xs"
+              >
+                <FileSignature size={13} />
+                ไปขั้นสัญญา
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setRollbackOpen(true)}
+                className="!px-3 !py-1.5 !text-xs"
+              >
+                <Undo2 size={13} />
+                ย้อน Stage {influencer.stage} → {influencer.stage - 1}
+              </Button>
+            </div>
+          </div>
+        )}
       {rollbackErr && (
         <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
           {rollbackErr}
@@ -941,6 +983,15 @@ export function InfluDetailClient({
             ขอเปลี่ยนโปรแกรมที่รับ แล้วต้องแก้ข้อมูล/ยื่นเอกสารขออนุมัติรอบใหม่
             <br />
             ข้อมูลและไฟล์ที่กรอกไว้แล้วไม่ถูกลบ — กลับมาแก้แล้วเดินหน้าต่อได้เลย
+            {influencer.completed && (
+              <>
+                <br />
+                <span className="text-amber-700">
+                  เคสนี้ปิดงานแล้ว — การย้อน stage จะเปิดเคสกลับมาเป็น
+                  &quot;กำลังดำเนินการ&quot; (ปิดงานใหม่ได้เมื่อทำครบ)
+                </span>
+              </>
+            )}
             {influencer.stage === INFLU_STAGE.contractService && (
               <>
                 <br />
