@@ -11,7 +11,13 @@ export default async function Home() {
   const access = await getAccess();
 
   if (access.permissions.includes("data")) redirect("/dashboard");
-  if (access.permissions.includes("influ")) redirect("/influencers");
+  // ระดับใดก็ได้ของระบบ Influencer (Admin/Influencer/Viewer) — บอร์ดเคสคือหน้ารวมของระบบ
+  if (
+    access.permissions.includes("influ") ||
+    access.permissions.includes("influ_hunter") ||
+    access.permissions.includes("influ_view")
+  )
+    redirect("/influencers");
   if (access.permissions.includes("team")) redirect("/tasks");
   if (access.permissions.includes("pricing")) redirect("/pricing");
   // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ

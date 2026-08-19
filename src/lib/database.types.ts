@@ -494,6 +494,61 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
+/** Product team ของหัตถการ (migration 0080) — บริษัทแบ่งทีมสินค้า:
+    aesthetics = สกินทั้งหมด / breast = หน้าอก / abdomen = หนังหน้าท้อง / lipo = ดูดไขมัน
+    เพิ่มทีมใหม่ต้องแก้ 3 ที่: type นี้, INFLU_PRODUCT_TEAMS (influ-constants)
+    และ check constraint ใน migration ใหม่ (influ_services.team + influ_procedure_items.product_team) */
+export type InfluProductTeam = "aesthetics" | "breast" | "abdomen" | "lipo";
+
+/** โปรไฟล์ "ตัวบุคคล" ของ influencer (migration 0080) — 1 แถว = 1 คน
+    มีโปรไฟล์ = ตกลงร่วมงานกันแล้ว แต่ยังไม่ confirm หัตถการ/วันนัด
+    เคสทุกรอบของคนเดียวกันชี้มาที่นี่ผ่าน influencers.person_id (FK) */
+export type InfluProfileRow = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  nickname: string | null;
+  phone: string | null;
+  occupation: string | null;
+  followers: number | null;
+  follower_note: string | null;
+  tier: InfluTier | null;
+  /** แถว backfill ชี้ไฟล์ในโฟลเดอร์ของเคสเดิม — เคสถูกลบ = ไฟล์หาย ต้อง fallback ได้เสมอ */
+  photo_path: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** ช่องทางติดต่อ/โซเชียลของโปรไฟล์ — หลายช่องต่อคน (IG/TikTok/Line/เบอร์สำรอง ...) */
+export type InfluProfileChannelRow = {
+  id: string;
+  profile_id: string;
+  /** ชื่อแพลตฟอร์ม text อิสระ — ตัวเลือกแนะนำอยู่ INFLU_CHANNEL_PLATFORMS (influ-constants) */
+  platform: string;
+  /** ลิงก์ / handle / เบอร์ — ขึ้นต้น http = กดเปิดได้ */
+  value: string;
+  /** ยอดผู้ติดตามของช่องนี้ (ยอดรวมของคนอยู่ที่ influ_profiles.followers) */
+  followers: number | null;
+  position: number;
+  created_at: string;
+};
+
+/** ทะเบียนหัตถการที่ทีมเพิ่มเอง แยกตาม product team (migration 0080)
+    ทีม aesthetics ใช้ price_items เป็นเมนูหลัก — ตารางนี้เก็บเฉพาะที่ทีมพิมพ์เพิ่มใหม่
+    ทีมอื่น (หน้าอก/หนังหน้าท้อง/ดูดไขมัน) ยังไม่มีเมนูกลาง = รายการทั้งหมดมาจากตารางนี้ */
+export type InfluServiceRow = {
+  id: string;
+  team: InfluProductTeam;
+  name: string;
+  /** ต้นทุนอ้างอิงตั้งต้น (บาท) — null/0 = ยังไม่รู้ */
+  default_price: number | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** รายการโปรแกรม/หัตถการของ influencer รายรายการ (Influencer Cost)
     price = ต้นทุนค่าบริการ (บาท; 0 = ยังไม่กรอก — backfill จาก procedure_text เดิมเป็น 0 ทั้งหมด)
     is_supported = แบรนด์สินค้า support ของ → ต้นทุนรายการนี้นับเป็น 0 */
@@ -505,6 +560,8 @@ export type InfluProcedureItemRow = {
   is_supported: boolean;
   /** ลิงก์ไป price_items (เลือกจาก dropdown Price List) — เพิ่มเองอิสระได้ = null */
   price_item_id: string | null;
+  /** หัตถการนี้เป็นของ product team ไหน (0080) — ของเดิมทั้งหมด = aesthetics */
+  product_team: InfluProductTeam;
   position: number;
   created_at: string;
   updated_at: string;
@@ -1006,6 +1063,31 @@ export interface Database {
           name: string;
         };
         Update: Partial<InfluProcedureItemRow>;
+        Relationships: [];
+      };
+      influ_profiles: {
+        Row: InfluProfileRow;
+        Insert: Partial<InfluProfileRow> & { first_name: string };
+        Update: Partial<InfluProfileRow>;
+        Relationships: [];
+      };
+      influ_profile_channels: {
+        Row: InfluProfileChannelRow;
+        Insert: Partial<InfluProfileChannelRow> & {
+          profile_id: string;
+          platform: string;
+          value: string;
+        };
+        Update: Partial<InfluProfileChannelRow>;
+        Relationships: [];
+      };
+      influ_services: {
+        Row: InfluServiceRow;
+        Insert: Partial<InfluServiceRow> & {
+          team: InfluProductTeam;
+          name: string;
+        };
+        Update: Partial<InfluServiceRow>;
         Relationships: [];
       };
       doctors: {

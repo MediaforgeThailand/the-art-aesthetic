@@ -23,21 +23,21 @@ export const PERMISSION_META: {
   },
   {
     key: "influ_view",
-    label: "Influencer — ดูเฉยๆ",
+    label: "Influencer — Viewer (ดูอย่างเดียว)",
     detail:
       "เข้าดูทุกหน้าในระบบ Influencer ได้ทั้งหมด (บอร์ด เคส ปฏิทิน ต้นทุน แดชบอร์ด) แต่เพิ่ม/แก้/ลบอะไรไม่ได้เลย",
     group: "influ",
   },
   {
     key: "influ_hunter",
-    label: "Influencer — Hunter",
+    label: "Influencer — ระดับ Influencer (ทำงานเคส)",
     detail:
       "สร้างการ์ด Influ (เป็นผู้รับผิดชอบเคสของตัวเอง) เดินงาน แก้ข้อมูล และลบเคสที่ตัวเองสร้างได้ · ไม่เห็นถังขยะ/ประวัติการใช้งาน และแก้ทะเบียนหมอไม่ได้",
     group: "influ",
   },
   {
     key: "influ",
-    label: "Influencer — ผู้ดูแลระบบ",
+    label: "Influencer — Admin (ผู้ดูแลระบบ)",
     detail:
       "ทำได้ทุกอย่างในระบบ Influencer รวมถึงลบเคสของทุกคน · ทะเบียนหมอ · ประวัติการใช้งาน (Log) · ถังขยะ 30 วัน",
     group: "influ",
@@ -88,20 +88,20 @@ export const INFLU_LEVELS: Record<
 > = {
   view: {
     key: "influ_view",
-    label: "ดูเฉยๆ (อ่านอย่างเดียว)",
-    short: "ดูเฉยๆ",
+    label: "Viewer (ดูอย่างเดียว)",
+    short: "Viewer",
     badge: "border border-stone-200 bg-stone-50 text-stone-600",
   },
   hunter: {
     key: "influ_hunter",
-    label: "Hunter (สร้าง/แก้เคสได้)",
-    short: "Hunter",
+    label: "Influencer (สร้าง/แก้เคสได้)",
+    short: "Influencer",
     badge: "border border-sky-200 bg-sky-50 text-sky-700",
   },
   manager: {
     key: "influ",
-    label: "ผู้ดูแลระบบ Influencer",
-    short: "ผู้ดูแลระบบ",
+    label: "Admin (ผู้ดูแลระบบ Influencer)",
+    short: "Admin",
     badge: "border border-brand-200 bg-brand-50 text-brand-700",
   },
 };

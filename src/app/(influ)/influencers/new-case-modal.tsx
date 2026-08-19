@@ -1,0 +1,431 @@
+"use client";
+
+/**
+ * โมดัล "สร้างนัดใหม่" — เปิดเคส (รอบงาน) จากโปรไฟล์ที่มีอยู่ (flow ใหม่ 0080)
+ *
+ * ลำดับใหม่ของการเพิ่มงาน: ต้องมีโปรไฟล์ก่อน (ProfileFormModal) → ค่อยมาสร้างนัดที่นี่
+ * เลือกโปรไฟล์ + หัตถการ (แยก product team) + วันนัด/แพทย์ (ไม่บังคับ — ยังไม่เคาะได้)
+ * เคสใหม่เริ่มที่ **Stage 3 (Memo)** เลย เพราะขั้นติดต่อ/รายละเอียดจบไปแล้วตอนทำโปรไฟล์
+ * (Stage 2 ยังกลับไปแก้ได้เสมอตามกติกาเดิม — ข้อมูลเคสไม่ใช่สถานะงาน)
+ *
+ * ใช้กลไกเดียวกับ "เปิดรอบใหม่" ใน detail-client: person_id = โปรไฟล์, round_no อ่านสดจาก DB,
+ * คัดลอกเฉพาะข้อมูลตัวบุคคล + copy รูปเข้าโฟลเดอร์เคสใหม่ (best effort ห้ามชี้ path ข้ามเคส)
+ */
+
+import { CalendarPlus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { Button, Input, Label, Modal } from "@/components/ui";
+import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
+import { formatNumber } from "@/lib/format";
+import {
+  INFLU_STAGE,
+  procedureSummaryText,
+} from "@/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+import { createClient } from "@/lib/supabase/client";
+import type {
+  DoctorRow,
+  InfluProfileRow,
+  InfluServiceRow,
+} from "@/lib/types";
+import { DoctorSelect } from "./doctor-select";
+import type { PriceCatalogEntry } from "./procedure-items-editor";
+import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
+import { ProfileFormModal, profileName } from "./profile-form";
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+export function NewCaseModal({
+  open,
+  onClose,
+  profiles,
+  services,
+  priceCatalog,
+  doctors,
+  me,
+  actor,
+  onServiceCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** โปรไฟล์ทั้งหมด (influ_profiles) — ตัวเลือกขั้นแรก */
+  profiles: InfluProfileRow[];
+  /** เมนูหัตถการที่ทีมเพิ่มเอง (ทุก product team) */
+  services: InfluServiceRow[];
+  priceCatalog: PriceCatalogEntry[];
+  doctors: DoctorRow[];
+  me: { id: string | null; name: string };
+  actor: InfluLogActor;
+  /** หัตถการใหม่ที่เพิ่งลงทะเบียน — แจ้ง parent ให้ลิสต์กลางอัปเดต */
+  onServiceCreated?: (service: InfluServiceRow) => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+
+  // โปรไฟล์ที่เพิ่งสร้างจากในโมดัลนี้ — merge กับ props ตอนอ่าน (ไม่ mirror ทั้งก้อน
+  // ด้วย effect เพราะชนกฎ react-hooks/set-state-in-effect) จึงโผล่ให้เลือกทันที
+  const [createdProfiles, setCreatedProfiles] = useState<InfluProfileRow[]>([]);
+  const allProfiles = useMemo(() => {
+    const seen = new Set(createdProfiles.map((c) => c.id));
+    return [...createdProfiles, ...profiles.filter((c) => !seen.has(c.id))];
+  }, [createdProfiles, profiles]);
+
+  const [selected, setSelected] = useState<InfluProfileRow | null>(null);
+  const [profileQuery, setProfileQuery] = useState("");
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [influCode, setInfluCode] = useState("");
+  const [procedures, setProcedures] = useState<PickedProcedure[]>([]);
+  const [serviceDate, setServiceDate] = useState("");
+  const [doctorName, setDoctorName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => {
+    setSelected(null);
+    setProfileQuery("");
+    setInfluCode("");
+    setProcedures([]);
+    setServiceDate("");
+    setDoctorName("");
+    setErr(null);
+  };
+
+  const matchedProfiles = useMemo(() => {
+    const q = profileQuery.trim().toLowerCase();
+    const list = q
+      ? allProfiles.filter((p) =>
+          [p.first_name, p.last_name, p.nickname, p.phone]
+            .filter(Boolean)
+            .some((s) => (s as string).toLowerCase().includes(q))
+        )
+      : allProfiles;
+    return list.slice(0, 8);
+  }, [allProfiles, profileQuery]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    if (!selected) {
+      setErr("เลือกโปรไฟล์ Influencer ก่อน — ถ้ายังไม่มีให้กด 'สร้างโปรไฟล์ใหม่'");
+      return;
+    }
+    if (procedures.length === 0) {
+      setErr("เลือกหัตถการที่จะเข้ารับอย่างน้อย 1 รายการ");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+
+    // เลขรอบอ่านสดจาก DB — กันหน้าค้าง/สอง session สร้างพร้อมกันแล้วได้เลขซ้ำ (กติกา 0073)
+    const { data: latest, error: latestErr } = await supabase
+      .from("influencers")
+      .select("round_no")
+      .eq("person_id", selected.id)
+      .order("round_no", { ascending: false })
+      .limit(1);
+    if (latestErr) {
+      setSaving(false);
+      setErr(`สร้างนัดไม่สำเร็จ: ${latestErr.message}`);
+      return;
+    }
+    const roundNo = (latest?.[0]?.round_no ?? 0) + 1;
+
+    const { data: created, error } = await supabase
+      .from("influencers")
+      .insert({
+        person_id: selected.id,
+        round_no: roundNo,
+        // ข้อมูลตัวบุคคลคัดลอกจากโปรไฟล์ (การ์ด/บอร์ด/Memo อ่านจากแถวเคสโดยตรง)
+        first_name: selected.first_name,
+        last_name: selected.last_name,
+        nickname: selected.nickname,
+        phone: selected.phone,
+        occupation: selected.occupation,
+        followers: selected.followers,
+        follower_note: selected.follower_note,
+        tier: selected.tier,
+        // ขั้นติดต่อ+รายละเอียดจบตอนทำโปรไฟล์/ฟอร์มนี้แล้ว — เริ่มที่ Memo เลย
+        stage: INFLU_STAGE.memo,
+        influ_code: influCode.trim() || null,
+        service_date: serviceDate || null,
+        doctor_name: doctorName.trim() || null,
+        owner_id: me.id,
+        created_by: me.id,
+        // sync ข้อความสรุปตั้งแต่แรก — Memo/ปฏิทิน/ช่องค้นหาใช้ค่านี้
+        procedure_text: procedureSummaryText(procedures) || null,
+      })
+      .select("id")
+      .single();
+    if (error || !created) {
+      setSaving(false);
+      // 23505 = ชนกับ unique index ของ influ_code (คนละเคสแต่กรอกรหัสซ้ำ)
+      setErr(
+        error?.code === "23505"
+          ? `รหัส Influ ID "${influCode.trim()}" ถูกใช้กับเคสอื่นแล้ว — ใช้รหัสอื่น`
+          : `สร้างนัดไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
+      );
+      return;
+    }
+
+    // หัตถการที่เลือก → influ_procedure_items (ราคาอ้างอิง = ต้นทุนตั้งต้น, แยก product team)
+    const { error: itemsError } = await supabase
+      .from("influ_procedure_items")
+      .insert(
+        procedures.map((p, idx) => ({
+          influencer_id: created.id,
+          name: p.name,
+          price: p.price,
+          price_item_id: p.priceItemId,
+          product_team: p.team,
+          position: idx + 1,
+        }))
+      );
+
+    // รูปโปรไฟล์ copy เข้าโฟลเดอร์เคสใหม่ (best effort) — ห้ามชี้ path ข้ามเคส
+    // เพราะลบเคส = ลบโฟลเดอร์ influencers/{id}/ ของเคสนั้น (กติกา 0073)
+    if (selected.photo_path) {
+      const base = sanitizeFileName(
+        selected.photo_path.split("/").pop() ?? "photo.jpg"
+      );
+      const dest = `influencers/${created.id}/${Date.now()}-${base}`;
+      const { error: cpErr } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .copy(selected.photo_path, dest);
+      if (!cpErr) {
+        await supabase
+          .from("influencers")
+          .update({ photo_path: dest })
+          .eq("id", created.id);
+      }
+    }
+
+    const name = profileName(selected);
+    logInflu(supabase, actor, {
+      action: "create",
+      entityId: created.id,
+      influencerId: created.id,
+      influencerName: name,
+      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name}${
+        influCode.trim() ? ` (รหัส ${influCode.trim()})` : ""
+      } — หัตถการ: ${procedureSummaryText(procedures)}`,
+      meta: {
+        person_id: selected.id,
+        round_no: roundNo,
+        procedures: procedures.length,
+      },
+    });
+
+    setSaving(false);
+    if (itemsError) {
+      setErr(
+        `สร้างเคสแล้ว แต่บันทึกหัตถการไม่สำเร็จ (${itemsError.message}) — เพิ่มรายการอีกครั้งได้ที่ Stage 2`
+      );
+    }
+    onClose();
+    reset();
+    router.push(`/influencers/${created.id}`);
+    router.refresh();
+  };
+
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={() => {
+          if (saving) return;
+          onClose();
+          reset();
+        }}
+        title="สร้างนัดใหม่ (เปิดเคส)"
+      >
+        <form onSubmit={(e) => void submit(e)} className="space-y-4">
+          <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs leading-5 text-brand-700">
+            <CalendarPlus size={14} className="mt-0.5 shrink-0" />
+            <span>
+              เลือกโปรไฟล์ที่ตกลงร่วมงานแล้ว + หัตถการที่จะเข้ารับ —
+              เคสจะเริ่มที่ขั้น <span className="font-semibold">Memo ขออนุมัติ</span>{" "}
+              ทันที · ผู้รับผิดชอบเคสคือ{" "}
+              <span className="font-semibold">{me.name || "บัญชีของคุณ"}</span>
+            </span>
+          </p>
+
+          {/* ---- ขั้น 1: เลือกโปรไฟล์ ---- */}
+          <div>
+            <Label>โปรไฟล์ Influencer *</Label>
+            {selected ? (
+              <div className="flex items-center gap-2.5 rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-2.5">
+                <UserRound size={18} className="shrink-0 text-brand-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-stone-800">
+                    {profileName(selected)}
+                  </p>
+                  <p className="truncate text-xs text-stone-500">
+                    {[
+                      selected.phone,
+                      selected.followers != null
+                        ? `${formatNumber(selected.followers)} followers`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "ยังไม่มีข้อมูลติดต่อ"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  aria-label="เปลี่ยนโปรไฟล์"
+                  onClick={() => setSelected(null)}
+                  className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-white hover:text-rose-500 active:scale-90 sm:h-8 sm:w-8"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="relative">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+                  />
+                  <input
+                    type="text"
+                    disabled={saving}
+                    value={profileQuery}
+                    onChange={(e) => setProfileQuery(e.target.value)}
+                    placeholder="ค้นหาจากชื่อ / ชื่อเล่น / เบอร์..."
+                    className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+                  />
+                </div>
+                <div className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white">
+                  {matchedProfiles.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelected(p)}
+                      className="flex w-full cursor-pointer items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-brand-50"
+                    >
+                      <UserRound size={15} className="shrink-0 text-stone-300" />
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                        {profileName(p)}
+                      </span>
+                      {p.followers != null && (
+                        <span className="shrink-0 text-xs tabular-nums text-stone-400">
+                          {formatNumber(p.followers)}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  {matchedProfiles.length === 0 && (
+                    <p className="px-3 py-2.5 text-sm text-stone-400">
+                      ไม่พบโปรไฟล์ที่ตรงกับคำค้น
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setProfileModalOpen(true)}
+                    className="flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 px-3 py-2.5 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                  >
+                    <UserRoundPlus size={15} />
+                    สร้างโปรไฟล์ใหม่...
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ---- ขั้น 2: ข้อมูลเคส ---- */}
+          <div>
+            <Label htmlFor="nc-code">รหัส Influ ID</Label>
+            <Input
+              id="nc-code"
+              disabled={saving}
+              value={influCode}
+              onChange={(e) => setInfluCode(e.target.value)}
+              placeholder="เช่น INF-2569-001"
+            />
+            <p className="mt-1 text-xs text-stone-400">
+              รหัสต่อเคส/รอบ ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่มีรหัส)
+            </p>
+          </div>
+          <div>
+            <Label>หัตถการที่รับ *</Label>
+            <ProcedurePicker
+              picked={procedures}
+              onChange={setProcedures}
+              catalog={priceCatalog}
+              services={services}
+              onServiceCreated={onServiceCreated}
+              disabled={saving}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>
+              <Input
+                id="nc-date"
+                type="date"
+                disabled={saving}
+                value={serviceDate}
+                onChange={(e) => setServiceDate(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-stone-400">
+                ยังไม่เคาะวันได้ — มาเติมทีหลังใน Stage 2
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>
+              <DoctorSelect
+                id="nc-doctor"
+                doctors={doctors}
+                value={doctorName}
+                onChange={setDoctorName}
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          {err && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+              {err}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving}
+              onClick={() => {
+                onClose();
+                reset();
+              }}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              type="submit"
+              loading={saving}
+              disabled={!selected || procedures.length === 0}
+            >
+              สร้างนัดและเปิดหน้าเดินงาน
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* สร้างโปรไฟล์ใหม่จากในนี้ได้เลย — เซฟแล้วถูกเลือกให้ทันที */}
+      <ProfileFormModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        actor={actor}
+        onSaved={(p) => {
+          setCreatedProfiles((prev) => [p, ...prev]);
+          setSelected(p);
+        }}
+      />
+    </>
+  );
+}

@@ -1231,7 +1231,7 @@ export function CalendarClient({
       )}
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-600">
-          บัญชีนี้เป็นระดับ &ldquo;ดูเฉยๆ&rdquo; — เปิดดูคิวได้ทั้งหมด แต่เพิ่ม/แก้/ลบคิวไม่ได้
+          บัญชีนี้เป็นระดับ &ldquo;Viewer&rdquo; — เปิดดูคิวได้ทั้งหมด แต่เพิ่ม/แก้/ลบคิวไม่ได้
         </div>
       )}
 

@@ -17,6 +17,9 @@ import type {
   InfluLinkRow,
   InfluPostLinkRow,
   InfluProcedureItemRow,
+  InfluProfileChannelRow,
+  InfluProfileRow,
+  InfluServiceRow,
   InfluSignatureRow,
   InfluTaskRow,
   ProfileRow,
@@ -56,6 +59,7 @@ export default async function InfluencerDetailPage({
     { data: postLinks },
     { data: profile },
     { data: doctors },
+    { data: services },
   ] = await Promise.all([
     getAccess(),
     // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
@@ -122,6 +126,12 @@ export default async function InfluencerDetailPage({
       : Promise.resolve({ data: null }),
     // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ใน stage 2 / โมดัลแก้วัน-แพทย์
     supabase.from("doctors").select("*").order("name", { ascending: true }),
+    // เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) — ใช้ใน editor ของ Stage 2
+    supabase
+      .from("influ_services")
+      .select("*")
+      .eq("active", true)
+      .order("name", { ascending: true }),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -139,14 +149,31 @@ export default async function InfluencerDetailPage({
 
   // รอบงานทั้งหมดของคนเดียวกัน (person_id) — แถบสลับรอบบนหัวหน้า + เลขรอบถัดไปตอนเปิดรอบใหม่
   // ต้องรอ person_id จาก query หลักก่อน เลยยิงแยกอีกเที่ยว (DB อยู่ region เดียวกับ function ~1-2ms)
-  const { data: personRounds } = await supabase
-    .from("influencers")
-    .select(
-      "id, round_no, stage, completed, declined_at, archived, service_date, created_at"
-    )
-    .eq("person_id", influencer.person_id)
-    .order("round_no", { ascending: true })
-    .order("created_at", { ascending: true });
+  const [
+    { data: personRounds },
+    { data: personProfile },
+    { data: profileChannels },
+  ] = await Promise.all([
+    supabase
+      .from("influencers")
+      .select(
+        "id, round_no, stage, completed, declined_at, archived, service_date, created_at"
+      )
+      .eq("person_id", influencer.person_id)
+      .order("round_no", { ascending: true })
+      .order("created_at", { ascending: true }),
+    // โปรไฟล์ตัวบุคคล (0080) — id เดียวกับ person_id (เคสเก่าก่อนแยกโปรไฟล์อาจไม่มีแถว)
+    supabase
+      .from("influ_profiles")
+      .select("*")
+      .eq("id", influencer.person_id)
+      .maybeSingle(),
+    supabase
+      .from("influ_profile_channels")
+      .select("*")
+      .eq("profile_id", influencer.person_id)
+      .order("position", { ascending: true }),
+  ]);
 
   return (
     <PageContainer>
@@ -162,6 +189,9 @@ export default async function InfluencerDetailPage({
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        services={(services ?? []) as InfluServiceRow[]}
+        personProfile={(personProfile as InfluProfileRow | null) ?? null}
+        profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
         postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
         userId={userId}

@@ -91,7 +91,6 @@ export function InfluShell({
   }, [userId]);
 
   const navItems: ShellNavItem[] = [
-    { href: "/influencer-management", label: "หน้ารวม", icon: Sparkles, show: canView },
     { href: "/influencers", label: "บอร์ดเคส", icon: LayoutGrid, show: canView },
     { href: "/influ-calendar", label: "ปฏิทินคิว", icon: CalendarDays, show: canView },
     { href: "/influ-dashboard", label: "แดชบอร์ด", icon: Gauge, show: canView },
@@ -147,7 +146,7 @@ export function InfluShell({
       <header className="shrink-0 border-b border-white/60 bg-white/60 pt-safe backdrop-blur-xl">
         <div className="flex items-center gap-2 px-3 py-2 sm:px-4">
           <Link
-            href={canView ? "/influencer-management" : "/influ-gallery"}
+            href={canView ? "/influencers" : "/influ-gallery"}
             className="flex min-w-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-80"
           >
             <LogoMark className="h-9 w-9 shrink-0" />

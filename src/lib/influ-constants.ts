@@ -3,6 +3,7 @@ import type {
   InfluCalendarKind,
   InfluFollowupMode,
   InfluPostKind,
+  InfluProductTeam,
   InfluSizeGroup,
   InfluTier,
 } from "./types";
@@ -57,6 +58,54 @@ export function tierFromFollowers(followers: number): InfluTier {
   return "nano";
 }
 
+/* ---------- Product team ของหัตถการ (migration 0080) ----------
+   บริษัทแบ่งทีมสินค้าแยกกัน — เลือกทีมก่อนแล้วช่องค้นหาหัตถการจะขึ้นตามทีมที่เลือก
+   aesthetics ใช้ price_items เป็นเมนูหลัก + influ_services ที่ทีมเพิ่มเอง
+   ทีมอื่นใช้ influ_services (ทีมเพิ่มเองทั้งหมด — ยังไม่มีเมนูกลาง)
+   เพิ่มทีมใหม่ต้องแก้ 3 ที่: type InfluProductTeam, ตารางนี้ และ check constraint (migration ใหม่) */
+
+export const INFLU_PRODUCT_TEAMS: Record<
+  InfluProductTeam,
+  { label: string; chip: string }
+> = {
+  aesthetics: {
+    label: "Aesthetics (สกิน)",
+    chip: "border border-brand-200 bg-brand-50 text-brand-700",
+  },
+  breast: {
+    label: "หน้าอก",
+    chip: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
+  abdomen: {
+    label: "หนังหน้าท้อง",
+    chip: "border border-amber-200 bg-amber-50 text-amber-700",
+  },
+  lipo: {
+    label: "ดูดไขมัน",
+    chip: "border border-sky-200 bg-sky-50 text-sky-700",
+  },
+};
+
+export const INFLU_PRODUCT_TEAM_ORDER: InfluProductTeam[] = [
+  "aesthetics",
+  "breast",
+  "abdomen",
+  "lipo",
+];
+
+export const DEFAULT_PRODUCT_TEAM: InfluProductTeam = "aesthetics";
+
+/** ตัวเลือกแพลตฟอร์มแนะนำของช่องทางติดต่อในโปรไฟล์ (พิมพ์ชื่ออื่นเองได้ — เก็บเป็น text อิสระ) */
+export const INFLU_CHANNEL_PLATFORMS = [
+  "Instagram",
+  "TikTok",
+  "Facebook",
+  "YouTube",
+  "X (Twitter)",
+  "Lemon8",
+  "Line",
+  "อื่นๆ",
+] as const;
 /* ---------- กลุ่มขนาดบนบอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
 
 export const INFLU_SIZE_GROUPS: Record<

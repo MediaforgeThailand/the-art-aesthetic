@@ -77,6 +77,9 @@ import type {
   InfluLinkRow,
   InfluPostLinkRow,
   InfluProcedureItemRow,
+  InfluProfileChannelRow,
+  InfluProfileRow,
+  InfluServiceRow,
   InfluSignatureRow,
   InfluTaskRow,
   ProcedureChange,
@@ -84,6 +87,7 @@ import type {
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../doctor-select";
 import { InfluLinksCard } from "../influ-links";
+import { ProfileFormModal } from "../profile-form";
 import {
   ProcedureItemsEditor,
   type PriceCatalogEntry,
@@ -236,6 +240,15 @@ function NameEditModal({
       setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
       return;
     }
+    // โปรไฟล์ตัวบุคคล (0080) ต้องตามชื่อใหม่ด้วย — best effort (เคสเก่าบางแถวอาจไม่มีโปรไฟล์)
+    await supabase
+      .from("influ_profiles")
+      .update({
+        first_name: first,
+        last_name: lastName.trim() || null,
+        nickname: nickname.trim() || null,
+      })
+      .eq("id", influencer.person_id);
     // รหัส Influ ID ผูกกับ "การ์ดรอบนี้" ไม่ใช่ตัวบุคคล — ห้ามยิงพร้อมชื่อที่อัปเดตทุกรอบ
     // ไม่งั้นทุกรอบของคนเดียวกันจะได้รหัสซ้ำกันแล้วชน unique index
     if (nextCode !== (influencer.influ_code ?? null)) {
@@ -455,6 +468,9 @@ export function InfluDetailClient({
   contentTasks,
   procedureItems,
   priceCatalog,
+  services,
+  personProfile,
+  profileChannels,
   sourceLinks,
   postLinks,
   ownerName,
@@ -474,6 +490,11 @@ export function InfluDetailClient({
   procedureItems: InfluProcedureItemRow[];
   /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2) */
   priceCatalog: PriceCatalogEntry[];
+  /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services, 0080) */
+  services: InfluServiceRow[];
+  /** โปรไฟล์ตัวบุคคล (influ_profiles — id = person_id); เคสก่อนระบบโปรไฟล์อาจไม่มีแถว */
+  personProfile: InfluProfileRow | null;
+  profileChannels: InfluProfileChannelRow[];
   /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
   sourceLinks: InfluLinkRow[];
   /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน) */
@@ -515,6 +536,7 @@ export function InfluDetailClient({
   /** แก้ข้อมูลเคสได้หรือไม่ — ใช้กับส่วนที่ปกติแก้ได้จนกว่าจะปิดงาน (Stage 2, ไฟล์, ชื่อ) */
   const canEdit = canManage && !influencer.completed;
   const [nameOpen, setNameOpen] = useState(false);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
 
   // ย้อนกลับ 1 stage — ใช้เมื่อเงื่อนไขเคสเปลี่ยน (เช่น influ ขอเปลี่ยนโปรแกรมที่รับ)
   // แล้วต้องกลับไปแก้ข้อมูล/ยื่นเอกสารรอบใหม่; ข้อมูล-ไฟล์ที่กรอกไว้แล้วไม่ถูกลบ
@@ -902,6 +924,13 @@ export function InfluDetailClient({
             contentTasks={contentTasks}
             procedureItems={procedureItems}
             sourceLinks={sourceLinks}
+            personProfile={personProfile}
+            profileChannels={profileChannels}
+            onEditProfile={
+              canManage && personProfile
+                ? () => setProfileEditOpen(true)
+                : null
+            }
             doctors={doctors}
             canManage={canManage}
             onGoStage={(step) => setView(step)}
@@ -921,6 +950,7 @@ export function InfluDetailClient({
             influencer={influencer}
             initialItems={procedureItems}
             priceCatalog={priceCatalog}
+            services={services}
             doctors={doctors}
             readOnly={!canEdit}
           />
@@ -970,6 +1000,18 @@ export function InfluDetailClient({
         <NameEditModal
           influencer={influencer}
           onClose={() => setNameOpen(false)}
+        />
+      )}
+
+      {/* แก้โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (0080) — บันทึกแล้ว sync ชื่อ/เบอร์ให้ทุกรอบ */}
+      {personProfile && (
+        <ProfileFormModal
+          open={profileEditOpen}
+          onClose={() => setProfileEditOpen(false)}
+          profile={personProfile}
+          channels={profileChannels}
+          actor={actor}
+          onSaved={() => router.refresh()}
         />
       )}
 
@@ -1082,6 +1124,9 @@ function OverviewPanel({
   contentTasks,
   procedureItems,
   sourceLinks,
+  personProfile,
+  profileChannels,
+  onEditProfile,
   doctors,
   canManage,
   onGoStage,
@@ -1091,6 +1136,11 @@ function OverviewPanel({
   contentTasks: TaskWithAssignee[];
   procedureItems: InfluProcedureItemRow[];
   sourceLinks: InfluLinkRow[];
+  /** โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (0080) — ใช้ร่วมกันทุกรอบของคนนี้ */
+  personProfile: InfluProfileRow | null;
+  profileChannels: InfluProfileChannelRow[];
+  /** null = ไม่มีสิทธิ์แก้ (team/Viewer) หรือเคสเก่าที่ยังไม่มีโปรไฟล์ */
+  onEditProfile: (() => void) | null;
   doctors: DoctorRow[];
   /** false = สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี — ซ่อนปุ่มแก้ไขทั้งหมด */
   canManage: boolean;
@@ -1392,6 +1442,73 @@ function OverviewPanel({
           initialLinks={sourceLinks}
           readOnly={!canManage}
         />
+
+        {/* โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (influ_profiles, 0080) — ข้อมูลกลางของทุกรอบ */}
+        <Card className="p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Link2 size={16} className="text-brand-600" />
+            <h2 className="text-sm font-semibold text-stone-900">
+              ช่องทางการติดต่อ (โปรไฟล์)
+            </h2>
+            {onEditProfile && (
+              <button
+                type="button"
+                onClick={onEditProfile}
+                className="ml-auto cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 active:scale-[0.97]"
+              >
+                แก้โปรไฟล์
+              </button>
+            )}
+          </div>
+          {personProfile ? (
+            <>
+              {profileChannels.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {profileChannels.map((c) => (
+                    <li key={c.id} className="flex items-center gap-2 text-sm">
+                      <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] font-medium text-stone-600">
+                        {c.platform}
+                      </span>
+                      {/^https?:\/\//i.test(c.value) ? (
+                        <a
+                          href={c.value}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="min-w-0 flex-1 truncate text-brand-700 underline-offset-2 hover:underline"
+                        >
+                          {c.value}
+                        </a>
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate text-stone-700">
+                          {c.value}
+                        </span>
+                      )}
+                      {c.followers != null && (
+                        <span className="shrink-0 text-xs tabular-nums text-stone-400">
+                          {formatNumber(c.followers)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-stone-400">
+                  ยังไม่ได้บันทึกช่องทางติดต่อ
+                  {onEditProfile ? " — กด \u201cแก้โปรไฟล์\u201d เพื่อเพิ่ม" : ""}
+                </p>
+              )}
+              {personProfile.note && (
+                <p className="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-xs leading-5 text-stone-600">
+                  {personProfile.note}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-stone-400">
+              เคสนี้สร้างก่อนระบบโปรไฟล์ — ยังไม่มีข้อมูลโปรไฟล์กลางของคนนี้
+            </p>
+          )}
+        </Card>
       </div>
 
       {caseInfoOpen && (
@@ -1686,12 +1803,15 @@ function CaseDetailStage({
   influencer,
   initialItems,
   priceCatalog,
+  services,
   doctors,
   readOnly,
 }: {
   influencer: InfluencerRow;
   initialItems: InfluProcedureItemRow[];
   priceCatalog: PriceCatalogEntry[];
+  /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) */
+  services: InfluServiceRow[];
   doctors: DoctorRow[];
   readOnly: boolean;
 }) {
@@ -1857,6 +1977,7 @@ function CaseDetailStage({
               items={items}
               setItems={setItems}
               catalog={priceCatalog}
+              services={services}
               readOnly={readOnly}
             />
           </div>

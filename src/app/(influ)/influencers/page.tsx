@@ -9,7 +9,12 @@ import {
   influLevel,
 } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { DoctorRow, InfluTaskRow } from "@/lib/types";
+import type {
+  DoctorRow,
+  InfluProfileRow,
+  InfluServiceRow,
+  InfluTaskRow,
+} from "@/lib/types";
 import type { InfluLinkLite } from "./influ-links";
 import { InfluencersClient, type InfluencerListRow } from "./influencers-client";
 import type { PriceCatalogEntry } from "./procedure-items-editor";
@@ -36,6 +41,8 @@ export default async function InfluencersPage() {
     { data: serviceBookings },
     { data: priceCatalog },
     { data: profiles },
+    { data: influProfiles },
+    { data: services },
   ] = await Promise.all([
       getAccess(),
       supabase
@@ -71,6 +78,17 @@ export default async function InfluencersPage() {
         .order("name", { ascending: true }),
       // ชื่อผู้รับผิดชอบ (owner_id) — แสดงบนการ์ด + ตัวกรอง "เคสของฉัน"
       supabase.from("profiles").select("id, full_name, email"),
+      // โปรไฟล์ตัวบุคคล (0080) — ตัวเลือกตอน "สร้างนัดใหม่"
+      supabase
+        .from("influ_profiles")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      // เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (aesthetics ใช้ price_items เป็นหลัก)
+      supabase
+        .from("influ_services")
+        .select("*")
+        .eq("active", true)
+        .order("name", { ascending: true }),
     ]);
   if (!canViewInflu(access)) return <AccessNotice />;
 
@@ -94,6 +112,8 @@ export default async function InfluencersPage() {
             .filter((id): id is string => id !== null)
         }
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        profiles={(influProfiles ?? []) as InfluProfileRow[]}
+        services={(services ?? []) as InfluServiceRow[]}
         people={
           (profiles ?? []).map((p) => ({
             id: p.id,

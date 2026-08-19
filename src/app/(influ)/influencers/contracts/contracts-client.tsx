@@ -176,7 +176,7 @@ export function ContractsClient({
                         ? "สัญญาหมดอายุแล้ว — เรียกร่วม campaign ไม่ได้"
                         : canEdit
                           ? "เพิ่ม Sub Campaign"
-                          : "บัญชีนี้เป็นระดับ 'ดูเฉยๆ' — เพิ่ม campaign ไม่ได้"
+                          : "บัญชีนี้เป็นระดับ 'Viewer' — เพิ่ม campaign ไม่ได้"
                     }
                   >
                     <Plus size={15} />

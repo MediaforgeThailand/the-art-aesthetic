@@ -15,6 +15,9 @@ import { Gift, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_PRODUCT_TEAM,
+  INFLU_PRODUCT_TEAM_ORDER,
+  INFLU_PRODUCT_TEAMS,
   itemEffectiveCost,
   PROCEDURE_NAME_MAX,
   procedureSummaryText,
@@ -22,7 +25,11 @@ import {
 } from "@/lib/influ-constants";
 import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluProcedureItemRow } from "@/lib/types";
+import type {
+  InfluProcedureItemRow,
+  InfluProductTeam,
+  InfluServiceRow,
+} from "@/lib/types";
 
 /** ตัวเลือกจาก Price List กลาง (ส่งมาจาก server — id + ชื่อ + ราคาไว้โชว์ใน dropdown
     + search_aliases = คำเรียกปากเปล่า เช่น "Botox Korea" → Hutox ให้ค้นหาเจอ) */
@@ -40,6 +47,122 @@ export function catalogPriceOf(entry: PriceCatalogEntry): number | null {
   const raw = entry.price_normal?.trim() || entry.promos?.[0]?.price || "";
   const n = Number(String(raw).split("/")[0].replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/* ---------- เมนูหัตถการตาม product team (migration 0080) ----------
+   aesthetics = price_items (เมนูหลัก) + influ_services ที่ทีมเพิ่มเอง
+   ทีมอื่น    = influ_services ของทีมนั้นล้วน (ยังไม่มีเมนูกลาง) */
+
+/** ตัวเลือก 1 รายการในช่องค้นหา — มาจาก Price List หรือทะเบียนที่ทีมเพิ่มเอง */
+export type ServiceOption = {
+  key: string;
+  name: string;
+  team: InfluProductTeam;
+  /** มาจาก price_items → ราคาอ้างอิงถูกล็อก (กติกา Price List เดิม) */
+  priceItemId: string | null;
+  refPrice: number | null;
+  aliases: string | null;
+};
+
+/** รวมเมนูของทีมที่เลือก — price_items เฉพาะทีม aesthetics + influ_services ของทีมนั้น */
+export function buildServiceOptions(
+  catalog: PriceCatalogEntry[],
+  services: InfluServiceRow[],
+  team: InfluProductTeam
+): ServiceOption[] {
+  const opts: ServiceOption[] = [];
+  if (team === "aesthetics") {
+    for (const c of catalog) {
+      opts.push({
+        key: `pi:${c.id}`,
+        name: c.name,
+        team,
+        priceItemId: c.id,
+        refPrice: catalogPriceOf(c),
+        aliases: c.search_aliases,
+      });
+    }
+  }
+  for (const sv of services) {
+    if (sv.team !== team || !sv.active) continue;
+    // ชื่อซ้ำกับ Price List (ทีมเคยพิมพ์เพิ่มก่อนเมนูกลางจะมี) — ให้เมนูกลางชนะ
+    if (
+      team === "aesthetics" &&
+      opts.some((o) => o.name.toLowerCase() === sv.name.toLowerCase())
+    )
+      continue;
+    opts.push({
+      key: `svc:${sv.id}`,
+      name: sv.name,
+      team,
+      priceItemId: null,
+      refPrice:
+        sv.default_price !== null && Number(sv.default_price) > 0
+          ? Number(sv.default_price)
+          : null,
+      aliases: null,
+    });
+  }
+  return opts.sort((a, b) => a.name.localeCompare(b.name, "th"));
+}
+
+/** ลงทะเบียนหัตถการใหม่เข้าเมนูของทีม (พิมพ์เองในช่องค้นหา = เพิ่มเข้าเมนูให้ค้นเจอครั้งหน้า)
+    ชื่อซ้ำในทีมเดียวกัน (23505) = ใช้แถวเดิม ไม่ถือเป็น error */
+export async function registerService(
+  supabase: ReturnType<typeof createClient>,
+  team: InfluProductTeam,
+  name: string
+): Promise<{ service: InfluServiceRow | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from("influ_services")
+    .insert({ team, name })
+    .select("*")
+    .single();
+  if (!error && data) return { service: data as InfluServiceRow, error: null };
+  if (error?.code === "23505") {
+    const { data: existing } = await supabase
+      .from("influ_services")
+      .select("*")
+      .eq("team", team)
+      .ilike("name", name)
+      .maybeSingle();
+    if (existing) return { service: existing as InfluServiceRow, error: null };
+  }
+  return {
+    service: null,
+    error: error?.message ?? "เพิ่มเข้าเมนูไม่สำเร็จ",
+  };
+}
+
+/** แถวชิปเลือก product team — ใช้ทั้งใน Stage 2 และตอนสร้างนัดใหม่ */
+export function TeamPicker({
+  team,
+  onChange,
+  disabled,
+}: {
+  team: InfluProductTeam;
+  onChange: (t: InfluProductTeam) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {INFLU_PRODUCT_TEAM_ORDER.map((t) => (
+        <button
+          key={t}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(t)}
+          className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] disabled:cursor-default disabled:opacity-60 max-sm:min-h-11 ${
+            team === t
+              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+              : "border border-stone-200 bg-white/60 text-stone-500 hover:bg-white"
+          }`}
+        >
+          {INFLU_PRODUCT_TEAMS[t].label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ---------- ชิ้นส่วนย่อยที่หน้า /influ-cost ใช้ร่วม ---------- */
@@ -138,12 +261,15 @@ export function ProcedureItemsEditor({
   items,
   setItems,
   catalog,
+  services,
   readOnly,
 }: {
   influencerId: string;
   items: InfluProcedureItemRow[];
   setItems: React.Dispatch<React.SetStateAction<InfluProcedureItemRow[]>>;
   catalog: PriceCatalogEntry[];
+  /** ทะเบียนหัตถการที่ทีมเพิ่มเอง (ทุก product team) — มาจาก influ_services */
+  services: InfluServiceRow[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -153,19 +279,27 @@ export function ProcedureItemsEditor({
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // ทีมที่กำลังเลือกหัตถการอยู่ — ช่องค้นหาแสดงเฉพาะเมนูของทีมนี้ (0080)
+  const [team, setTeam] = useState<InfluProductTeam>(DEFAULT_PRODUCT_TEAM);
+  // สำเนาทะเบียนในเครื่อง — รายการที่เพิ่งพิมพ์เพิ่มต้องโผล่ในช่องค้นหาทันทีไม่ต้องรอ refresh
+  const [svcList, setSvcList] = useState<InfluServiceRow[]>(services);
 
+  const options = useMemo(
+    () => buildServiceOptions(catalog, svcList, team),
+    [catalog, svcList, team]
+  );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return catalog.slice(0, 40);
+    if (!q) return options.slice(0, 40);
     // ค้นทั้งชื่อจริงและคำเรียกปากเปล่า (search_aliases) — เช่น "botox korea" ต้องเจอ Hutox
-    return catalog
+    return options
       .filter(
         (c) =>
           c.name.toLowerCase().includes(q) ||
-          (c.search_aliases ?? "").toLowerCase().includes(q)
+          (c.aliases ?? "").toLowerCase().includes(q)
       )
       .slice(0, 40);
-  }, [catalog, query]);
+  }, [options, query]);
 
   /** sync ข้อความสรุปกลับ procedure_text — ให้ Memo/บอร์ด/ปฏิทินเห็นรูปแบบเดิม (best effort)
       แล้ว refresh ให้หน้าภาพรวม/Memo ในหน้าเดียวกันเห็นค่าล่าสุด (state ในฟอร์มนี้ไม่โดนทับ) */
@@ -199,6 +333,7 @@ export function ProcedureItemsEditor({
         name: clean,
         price: refPrice ?? 0,
         price_item_id: priceItemId,
+        product_team: team,
         position: nextPos,
       })
       .select("*")
@@ -213,6 +348,22 @@ export function ProcedureItemsEditor({
     syncText(next);
     setQuery("");
     inputRef.current?.focus();
+  };
+
+  /** พิมพ์ชื่อใหม่ที่ไม่มีในเมนู = เพิ่มเข้าเมนูของทีมนี้ด้วย (ครั้งหน้าพิมพ์ค้นหาเจอเลย
+      — กติกาผู้ใช้ 2026-08-19) แล้วค่อยผูกเป็นรายการของเคส */
+  const addNewToTeam = async (name: string) => {
+    const clean = shortenProgramName(name, PROCEDURE_NAME_MAX);
+    if (!clean || adding) return;
+    const { service, error } = await registerService(supabase, team, clean);
+    if (error) {
+      setErr(`เพิ่มเข้าเมนูทีมไม่สำเร็จ: ${error}`);
+      return;
+    }
+    if (service && !svcList.some((sv) => sv.id === service.id)) {
+      setSvcList((prev) => [...prev, service]);
+    }
+    await addItem(clean, null, service?.default_price ?? null);
   };
 
   /** คืนชื่อที่บันทึกจริง — ช่องชื่อเป็น uncontrolled ต้องเขียนค่านี้กลับลง input ตอน blur
@@ -301,6 +452,13 @@ export function ProcedureItemsEditor({
                   : "border-stone-200 bg-white/70"
               }`}
             >
+              {item.product_team !== "aesthetics" && (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${INFLU_PRODUCT_TEAMS[item.product_team].chip}`}
+                >
+                  {INFLU_PRODUCT_TEAMS[item.product_team].label}
+                </span>
+              )}
               {readOnly ? (
                 <span className="min-w-0 flex-1 break-words text-sm text-stone-800">
                   {item.name}
@@ -390,9 +548,19 @@ export function ProcedureItemsEditor({
         </p>
       )}
 
-      {/* ช่องเพิ่มรายการ — พิมพ์ค้นหา + dropdown จาก Price List */}
+      {/* ช่องเพิ่มรายการ — เลือก product team ก่อน แล้วพิมพ์ค้นหาเมนูของทีมนั้น (0080) */}
       {!readOnly && (
-        <div className="relative mt-2.5">
+        <div className="mt-2.5">
+          <div className="mb-2">
+            <TeamPicker
+              team={team}
+              onChange={(t) => {
+                setTeam(t);
+                setQuery("");
+              }}
+            />
+          </div>
+        <div className="relative">
           <div className="flex items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
             <Search size={15} className="shrink-0 text-stone-400" />
             <input
@@ -407,12 +575,16 @@ export function ProcedureItemsEditor({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  if (query.trim()) void addItem(query, null);
+                  if (query.trim()) void addNewToTeam(query);
                 } else if (e.key === "Escape") {
                   setOpen(false);
                 }
               }}
-              placeholder="พิมพ์ชื่อโปรแกรม เช่น Ultraformer III 300 shot..."
+              placeholder={
+                team === "aesthetics"
+                  ? "พิมพ์ชื่อโปรแกรม เช่น Ultraformer III 300 shot..."
+                  : `ค้นหา/เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
+              }
               maxLength={PROCEDURE_NAME_MAX}
               className="w-full bg-transparent text-base text-stone-900 outline-none placeholder:text-stone-400 sm:text-sm"
             />
@@ -428,21 +600,22 @@ export function ProcedureItemsEditor({
               {filtered.length > 0 ? (
                 <>
                   <p className="sticky top-0 border-b border-stone-100 bg-stone-50/95 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    จาก Price List กลาง — เลือกแล้วใส่ราคาให้อัตโนมัติ
+                    {team === "aesthetics"
+                      ? "เมนูทีม Aesthetics (Price List + ที่ทีมเพิ่มเอง)"
+                      : `เมนูทีม ${INFLU_PRODUCT_TEAMS[team].label} (ที่ทีมเพิ่มกันเอง)`}
                   </p>
                   {filtered.map((c) => {
-                    const refPrice = catalogPriceOf(c);
                     const q = query.trim().toLowerCase();
                     // เจอเพราะคำเรียกปากเปล่า (ไม่ใช่ชื่อจริง) — โชว์ alias ให้รู้ว่าทำไมขึ้นมา
                     const aliasHit =
-                      q !== "" &&
-                      !!c.search_aliases &&
-                      !c.name.toLowerCase().includes(q);
+                      q !== "" && !!c.aliases && !c.name.toLowerCase().includes(q);
                     return (
                       <button
-                        key={c.id}
+                        key={c.key}
                         type="button"
-                        onPointerDown={() => void addItem(c.name, c.id, refPrice)}
+                        onPointerDown={() =>
+                          void addItem(c.name, c.priceItemId, c.refPrice)
+                        }
                         className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
                         title={c.name}
                       >
@@ -450,12 +623,12 @@ export function ProcedureItemsEditor({
                           <span className="block truncate">{c.name}</span>
                           {aliasHit && (
                             <span className="block truncate text-[10px] text-stone-400">
-                              ({c.search_aliases})
+                              ({c.aliases})
                             </span>
                           )}
                         </span>
                         <span className="shrink-0 text-xs font-semibold tabular-nums text-brand-600">
-                          {refPrice !== null ? formatCurrency(refPrice) : "฿0"}
+                          {c.refPrice !== null ? formatCurrency(c.refPrice) : "฿0"}
                         </span>
                       </button>
                     );
@@ -463,27 +636,30 @@ export function ProcedureItemsEditor({
                 </>
               ) : (
                 <p className="px-3 py-2.5 text-xs text-stone-400">
-                  ไม่พบใน Price List — กดปุ่มด้านล่างเพื่อเพิ่มเป็นโปรแกรมใหม่
+                  ไม่พบในเมนูของทีมนี้ — กดปุ่มด้านล่างเพื่อเพิ่มเป็นหัตถการใหม่
                 </p>
               )}
               {query.trim() !== "" && (
                 <button
                   type="button"
-                  onPointerDown={() => void addItem(query, null)}
+                  onPointerDown={() => void addNewToTeam(query)}
                   className="sticky bottom-0 flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 bg-white px-3 py-3 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
                 >
                   <Plus size={14} />
                   เพิ่ม &quot;{shortenProgramName(query, PROCEDURE_NAME_MAX)}
-                  &quot; เป็นโปรแกรมใหม่
+                  &quot; เข้าเมนูทีม {INFLU_PRODUCT_TEAMS[team].label}
                 </button>
               )}
             </div>
           )}
           <p className="mt-1 text-[11px] text-stone-400">
-            เลือกจาก Price List = ราคาอ้างอิงตามเมนูอัตโนมัติ แก้เองไม่ได้ ·
-            พิมพ์แล้วกด Enter = โปรแกรมนอกเมนู กรอกต้นทุนเองที่ช่อง ฿ (ติ๊ก
-            Support เมื่อแบรนด์ส่งของมาให้ = ไม่คิดต้นทุน)
+            {team === "aesthetics"
+              ? "เลือกจาก Price List = ราคาอ้างอิงตามเมนูอัตโนมัติ แก้เองไม่ได้"
+              : `เมนูของทีม ${INFLU_PRODUCT_TEAMS[team].label} มาจากที่ทีมเพิ่มกันเอง`}{" "}
+            · พิมพ์ชื่อใหม่แล้วกด Enter = เพิ่มเข้าเมนูของทีมนี้ให้ค้นเจอครั้งหน้า
+            (ติ๊ก Support เมื่อแบรนด์ส่งของมาให้ = ไม่คิดต้นทุน)
           </p>
+        </div>
         </div>
       )}
 

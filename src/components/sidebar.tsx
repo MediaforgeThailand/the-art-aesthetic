@@ -44,7 +44,7 @@ type NavItem = {
     (เรียงตามที่ทีมเปิดบ่อยจริง ไม่ใช่ตามลำดับใน sidebar) */
 const MOBILE_NAV_ORDER = [
   "/tasks",
-  "/influencer-management",
+  "/influencers",
   "/my-tasks",
   "/dashboard",
   "/influ-gallery",
@@ -60,11 +60,11 @@ const navItems: NavItem[] = [
   // แดชบอร์ด = รายงานทุก section ในหน้าเดียว (เมนู "รายงาน" /reports ถูกถอดออก 2026-08-07 เพราะซ้ำกับหน้านี้)
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
-  // ระบบ Influencer รวมเป็นปุ่มเดียว → หน้ารวม /influencer-management (บอร์ด/ปฏิทิน/ต้นทุน/
-  // แดชบอร์ด/สัญญา/Log/ถังขยะ อยู่ในนั้นทั้งหมด) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็น "แอปของตัวเอง"
-  // (route group (influ) มีแถบเมนูของตัวเอง) ปุ่มนี้จึงเป็นแค่ทางเข้า ไม่มีหน้าลูกอยู่ในโครงนี้
+  // ระบบ Influencer รวมเป็นปุ่มเดียว → บอร์ดเคส /influencers = หน้ารวมของระบบ (0080 —
+  // หน้ารวมเดิม /influencer-management เหลือแค่ redirect; ปฏิทิน/ต้นทุน/แดชบอร์ด/สัญญา/
+  // Log/ถังขยะ อยู่ในแถบเมนูของระบบนั้นเอง) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็น "แอปของตัวเอง"
   {
-    href: "/influencer-management",
+    href: "/influencers",
     label: "Influencer System",
     icon: Sparkles,
     perm: INFLU_PERMS,
