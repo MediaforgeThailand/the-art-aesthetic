@@ -52,6 +52,7 @@ export type {
   InfluProductTeam,
   InfluProfileRow,
   InfluProfileChannelRow,
+  InfluProfilePhotoRow,
   InfluProspectChannel,
   InfluProspectContactRow,
   InfluProspectRow,

@@ -51,6 +51,7 @@ import {
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluencerRow, InfluSizeGroup, InfluTaskRow } from "@/lib/types";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import { type InfluLinkLite, SourceLinkQuickButton } from "./influ-links";
 
 /** แถว influencer สำหรับหน้า list — ตัด procedure_history ออก
@@ -119,9 +120,10 @@ export const needsDoctorBooking = (
   i.declined_at === null &&
   !bookedIds.has(i.id);
 
-/** ป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" — ตัวเด่นสุดบนการ์ด เพราะเป็นงานที่ต้องรีบตาม
-    มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ
-    (พื้นเรียบไม่ไล่เฉดหลัง redesign แต่ยังเรืองแสงตามที่ผู้ใช้ขอไว้ 2026-08-03) */
+/** ป้าย "ยังไม่ได้ลงคิวหมอ" — text เด่นพอประมาณ ไม่เรืองแสง (ผู้ใช้ 2026-08-19:
+    "ทำให้เด่นน้อยกว่านี้ ไม่ต้องมี glow แค่ text เด่นประมาณนึงพอ" — glow เดิมแย่งสายตา
+    จาก StageTracker ที่ทำให้เด่นขึ้นแทน; ปุ่มกรอง "รอลงคิวหมอ" บนแถบเครื่องมือยังเรืองแสงอยู่)
+    มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ */
 export function NoDoctorBookingBadge({
   serviceDate,
 }: {
@@ -134,10 +136,48 @@ export function NoDoctorBookingBadge({
           ? `คุยวันไว้แล้ว (${formatDate(serviceDate)}) แต่ยังไม่มีคิวในปฏิทิน — ลงคิวฝั่งโรงพยาบาลแล้วมาเพิ่มคิวในปฏิทินให้ครบ`
           : "ยังไม่ได้เคาะวันกับ influ และยังไม่มีคิวในปฏิทิน — ตามให้ยืนยันวันเข้ารับบริการ"
       }
-      className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 animate-glow-amber"
+      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"
     >
       <CalendarClock size={11} />
       {serviceDate ? "ยังไม่ได้ลงคิวหมอ" : "ยังไม่เคาะวัน · ไม่มีคิวหมอ"}
+    </span>
+  );
+}
+
+/** รูปโปรไฟล์บนการ์ด — โชว์รูปจริง (photo_path → signed URL มี cache ใน useSignedUrl)
+    ไม่มีรูป/โหลดไม่ได้ = ตัวอักษรแรกแบบเดิม (ผู้ใช้ 2026-08-19: การ์ดไม่เคยโชว์รูปเลย
+    ทั้งที่เคสมี photo_path — เดิม render แค่ initial ตัวเดียว) */
+function InfluCardAvatar({
+  influ: i,
+  accepted,
+  declined,
+}: {
+  influ: InfluencerListRow;
+  accepted: boolean;
+  declined: boolean;
+}) {
+  const { url } = useSignedUrl(i.photo_path);
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- signed URL ชั่วคราว ใช้ next/image ไม่ได้
+      <img
+        src={url}
+        alt=""
+        className={`h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-stone-200 ${
+          declined ? "opacity-60 grayscale" : ""
+        }`}
+      />
+    );
+  }
+  return (
+    <span
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+        accepted && !declined
+          ? "bg-brand-100 text-brand-700"
+          : "bg-stone-100 text-stone-400"
+      }`}
+    >
+      {i.first_name.charAt(0)}
     </span>
   );
 }
@@ -244,6 +284,8 @@ function ContractChip({
    เดิมเป็นแท่งสีเปล่า 5 อัน ดูแล้วไม่รู้ว่าอยู่ขั้นไหนและขั้นนั้นชื่ออะไร (ผู้ใช้ 2026-08-14)
    ใหม่ = จุดร้อยเส้นแบบ delivery tracking: ผ่านแล้ว = ติ๊กถูก · ขั้นที่อยู่ตอนนี้ = จุดทึบมีวงรอบ ·
    ยังไม่ถึง = วงเปล่า + บรรทัดเดียวใต้จุดบอกชื่อขั้นปัจจุบันกับ x/5
+   ปรับ contrast 2026-08-19 (ผู้ใช้: "ขั้นที่ถึงมองไม่ค่อยชัด") — ขั้นปัจจุบัน = จุด brand-600→700
+   เข้ม + ชื่อขั้นเป็น pill ทึบตัวขาว (จบงาน = pill เขียว) แลกกับป้ายคิวหมอที่เลิกเรืองแสง
    (จำนวนขั้นอ่านจาก INFLU_STAGES เสมอ ห้าม hardcode — เคยยุบจาก 6 เหลือ 5 ขั้นมาแล้วใน 0062) */
 function StageTracker({
   stage,
@@ -276,22 +318,24 @@ function StageTracker({
               {idx > 0 && (
                 <span
                   className={`h-0.5 flex-1 rounded-full ${
-                    done || here ? "bg-brand-300" : "bg-stone-200"
+                    done || here ? "bg-brand-400" : "bg-stone-200"
                   }`}
                 />
               )}
+              {/* ขั้นปัจจุบันต้อง contrast ชัด (ผู้ใช้ 2026-08-19: "มองไม่ค่อยชัด") —
+                  จุดใหญ่สีเข้ม brand-600→700 + วงรอบ ไม่กลืนกับจุดที่ผ่านแล้ว */}
               <span
                 title={`${s.step}. ${s.title}`}
                 className={`flex shrink-0 items-center justify-center rounded-full ${
                   here
-                    ? "h-4 w-4 bg-brand-500 ring-4 ring-brand-100"
+                    ? "h-5 w-5 bg-gradient-to-b from-brand-600 to-brand-700 shadow-sm ring-4 ring-brand-200"
                     : done
-                      ? "h-3.5 w-3.5 bg-brand-400 text-white"
+                      ? "h-3.5 w-3.5 bg-brand-500 text-white"
                       : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white"
                 }`}
               >
                 {here ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  <span className="h-2 w-2 rounded-full bg-white" />
                 ) : done ? (
                   <Check size={9} strokeWidth={4} />
                 ) : null}
@@ -301,22 +345,32 @@ function StageTracker({
         })}
       </div>
       <p className="mt-2 flex items-center justify-between gap-2 text-xs">
-        <span
-          title={
-            declined && declinedAt
-              ? `ปฏิเสธเมื่อ ${formatDate(thaiDateISO(declinedAt))}`
-              : undefined
-          }
-          className={`truncate ${
-            declined
-              ? "text-stone-400"
-              : completed
-                ? "font-medium text-emerald-600"
-                : "font-medium text-stone-600"
-          }`}
-        >
-          {label}
-        </span>
+        {/* ชื่อขั้นปัจจุบันเป็น pill ทึบตัวหนังสือขาว — อ่านออกทันทีว่าอยู่ขั้นไหน
+            (เดิมเป็น text stone จางกลืนกับการ์ด); ปฏิเสธ = ข้อความจางตามเดิม */}
+        {declined ? (
+          <span
+            title={
+              declinedAt
+                ? `ปฏิเสธเมื่อ ${formatDate(thaiDateISO(declinedAt))}`
+                : undefined
+            }
+            className="truncate text-stone-400"
+          >
+            {label}
+          </span>
+        ) : (
+          <span
+            className={`inline-flex min-w-0 items-center rounded-full px-2.5 py-1 shadow-sm ${
+              completed
+                ? "bg-emerald-600"
+                : "bg-gradient-to-b from-brand-600 to-brand-700"
+            }`}
+          >
+            <span className="truncate text-[11px] font-semibold leading-none text-white">
+              {label}
+            </span>
+          </span>
+        )}
         <span className="shrink-0 tabular-nums text-stone-400">
           {completed ? total : stage}/{total}
         </span>
@@ -402,15 +456,7 @@ export function InfluCardContent({
     >
       {/* แถวบน: avatar + ชื่อ + ยอดผู้ติดตาม/tier/เบอร์ + ปุ่มลบ */}
       <div className="flex items-start gap-2.5">
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-            accepted && !declined
-              ? "bg-brand-100 text-brand-700"
-              : "bg-stone-100 text-stone-400"
-          }`}
-        >
-          {i.first_name.charAt(0)}
-        </span>
+        <InfluCardAvatar influ={i} accepted={accepted} declined={declined} />
         <div className="min-w-0 flex-1">
           <p
             className={`truncate text-sm font-medium ${

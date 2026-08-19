@@ -521,6 +521,20 @@ export type InfluProfileRow = {
   updated_at: string;
 };
 
+/** รูปภาพของโปรไฟล์ — หลายรูปต่อคน (migration 0082)
+    รูปแรกตาม position = รูปหน้าปก ฝั่งแอป sync ลง influ_profiles.photo_path เสมอ
+    ไฟล์จากฟีเจอร์นี้อยู่ documents/influ-profiles/{profile_id}/ — แถว backfill
+    ยังชี้โฟลเดอร์เคสเดิม ห้ามลบไฟล์ตอนลบแถว (แอปเช็ค prefix ก่อน remove) */
+export type InfluProfilePhotoRow = {
+  id: string;
+  profile_id: string;
+  file_path: string;
+  file_name: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** ช่องทางติดต่อ/โซเชียลของโปรไฟล์ — หลายช่องต่อคน (IG/TikTok/Line/เบอร์สำรอง ...) */
 export type InfluProfileChannelRow = {
   id: string;
@@ -1149,6 +1163,15 @@ export interface Database {
           name: string;
         };
         Update: Partial<InfluServiceRow>;
+        Relationships: [];
+      };
+      influ_profile_photos: {
+        Row: InfluProfilePhotoRow;
+        Insert: Partial<InfluProfilePhotoRow> & {
+          profile_id: string;
+          file_path: string;
+        };
+        Update: Partial<InfluProfilePhotoRow>;
         Relationships: [];
       };
       influ_prospects: {
