@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   Crosshair,
+  IdCard,
   Link2,
   Search,
   UserRoundPlus,
@@ -41,7 +42,7 @@ import type {
 } from "@/lib/types";
 import { NewCaseModal } from "../influencers/new-case-modal";
 import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
-import { profileName } from "../influencers/profile-form";
+import { ProfileFormModal, profileName } from "../influencers/profile-form";
 import {
   followupOverdue,
   type NewContactInput,
@@ -118,6 +119,8 @@ export function HuntingClient({
   const [mineOnly, setMineOnly] = useState(false);
   const [dueOnly, setDueOnly] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  /** โมดัลเพิ่มโปรไฟล์ (influ_profiles) — คนที่ตกลงร่วมงานแล้วแต่ยังไม่เปิดเคส */
+  const [profileOpen, setProfileOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<InfluProspectRow | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [caseProfile, setCaseProfile] = useState<InfluProfileRow | null>(null);
@@ -355,15 +358,27 @@ export function HuntingClient({
 
   return (
     <div>
+      {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้วขึ้นโปรไฟล์ที่นี่ก่อน
+          แล้วค่อยไปสร้างนัดที่บอร์ดเคส (ตอบรับจาก prospect ก็ยังสร้างโปรไฟล์ให้เหมือนเดิม) */}
       <PageHeader
         title="Influ Hunting"
         description="ตามล่า influencer — จดชื่อที่เจอ ติดตามการทัก จนตอบรับเข้าระบบ (ตอบรับแล้ว = มีโปรไฟล์ พร้อมสร้างนัด)"
         action={
           me.canEdit ? (
-            <Button onClick={() => setFormOpen(true)}>
-              <UserRoundPlus size={16} />
-              เพิ่มรายชื่อ
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+              >
+                <IdCard size={16} />
+                เพิ่มโปรไฟล์
+              </button>
+              <Button onClick={() => setFormOpen(true)}>
+                <UserRoundPlus size={16} />
+                เพิ่มรายชื่อ
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -524,6 +539,16 @@ export function HuntingClient({
       )}
 
       {/* โมดัลทั้งหมด */}
+      {/* เพิ่มโปรไฟล์ (ตัวบุคคล) — โปรไฟล์ที่สร้างจากที่นี่โผล่ในตัวเลือกของ "สร้างนัดใหม่" ทันที */}
+      <ProfileFormModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        actor={actor}
+        onSaved={(p) => {
+          setExtraProfiles((prev) => [p, ...prev]);
+          router.refresh();
+        }}
+      />
       <ProspectFormModal
         open={formOpen}
         onClose={() => {

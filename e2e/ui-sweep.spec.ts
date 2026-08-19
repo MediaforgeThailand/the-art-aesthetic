@@ -15,6 +15,8 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/dashboard", name: "dashboard" },
   { path: "/pricing", name: "pricing" },
   { path: "/influencers", name: "influencers" },
+  { path: "/influ-hunting", name: "influ-hunting" },
+  { path: "/influ-doctors", name: "influ-doctors" },
   { path: "/influ-gallery", name: "influ-gallery" },
   { path: "/influencers/contracts", name: "influ-contracts" },
   { path: "/tasks", name: "tasks" },
@@ -228,7 +230,8 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/pricing", label: "เพิ่มรายการ", name: "pricing-add-item" },
     { path: "/files", label: "เพิ่มลิงก์", name: "files-add-link" },
     { path: "/accounts", label: "เพิ่มบัญชี", name: "accounts-add-user" },
-    { path: "/influencers", label: "เพิ่ม Influencer", name: "influ-add" },
+    { path: "/influencers", label: "สร้างนัดใหม่", name: "influ-new-case" },
+    { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
   ];
   for (const a of ADD_BUTTONS) {

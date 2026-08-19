@@ -15,6 +15,7 @@ import {
   LayoutList,
   Link2,
   ListChecks,
+  MessageCircleQuestion,
   MessageSquarePlus,
   PenLine,
   PhoneCall,
@@ -432,7 +433,7 @@ function CaseInfoEditModal({
             onChange={setDoctorName}
           />
           <p className="mt-1 text-[11px] text-stone-400">
-            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
+            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
           </p>
         </div>
         {err && (
@@ -727,6 +728,24 @@ export function InfluDetailClient({
         {influencer.completed && (
           <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
             <CheckCircle2 size={12} /> จบงานแล้ว
+          </Badge>
+        )}
+        {/* ติ๊ก "ส่ง Memo แล้ว" (ติ๊กที่ขั้น Memo) — โชว์บนหัวด้วย จะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู */}
+        {influencer.docs_sent_at && (
+          <span
+            title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
+              influencer.docs_sent_at
+            )}`}
+          >
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+            </Badge>
+          </span>
+        )}
+        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่ Stage 2) */}
+        {influencer.consult_only && !influencer.procedure_text && (
+          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+            <MessageCircleQuestion size={12} /> รอปรึกษา
           </Badge>
         )}
         {/* follow-up ที่เหลือ (เฉพาะขั้นตามงาน) */}
@@ -1298,12 +1317,26 @@ function OverviewPanel({
             )}
           </div>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
-            <Field label="หัตถการที่รับ" value={influencer.procedure_text} />
+            <Field
+              label="หัตถการที่รับ"
+              value={
+                influencer.procedure_text ||
+                (influencer.consult_only ? "รอปรึกษาแพทย์ (ยังไม่ระบุ)" : null)
+              }
+            />
             <Field
               label="มูลค่าเคส"
               value={
                 influencer.case_value != null
                   ? formatCurrency(influencer.case_value)
+                  : null
+              }
+            />
+            <Field
+              label="ค่าตัว"
+              value={
+                influencer.talent_fee != null
+                  ? formatCurrency(influencer.talent_fee)
                   : null
               }
             />
@@ -1835,6 +1868,12 @@ function CaseDetailStage({
   const [caseValue, setCaseValue] = useState(
     influencer.case_value != null ? String(influencer.case_value) : ""
   );
+  /** เคส "รอปรึกษา" (ติ๊กมาตั้งแต่ตอนสร้างนัด) — ธงเดียวที่อนุญาตให้ไม่มีหัตถการ
+      เอาติ๊กออกเมื่อปรึกษาแพทย์แล้วเคาะโปรแกรมได้ (ต้องมีรายการอย่างน้อย 1 ก่อน) */
+  const [consultOnly, setConsultOnly] = useState(influencer.consult_only);
+  const [talentFee, setTalentFee] = useState(
+    influencer.talent_fee != null ? String(influencer.talent_fee) : ""
+  );
   const [followers, setFollowers] = useState(
     influencer.followers != null ? String(influencer.followers) : ""
   );
@@ -1852,8 +1891,11 @@ function CaseDetailStage({
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
+  // เคส "รอปรึกษา" = ยกเว้นข้อบังคับเรื่องหัตถการ (ยังไม่รู้ว่าจะทำอะไรจนกว่าจะเจอแพทย์)
   const canProceed =
-    occupation.trim() !== "" && items.length > 0 && followersNum > 0;
+    occupation.trim() !== "" &&
+    (items.length > 0 || consultOnly) &&
+    followersNum > 0;
 
   const upload = async (
     file: File,
@@ -1907,8 +1949,13 @@ function CaseDetailStage({
     // (บอกให้รู้ว่าขาดอะไร ดีกว่าปล่อยให้ล้างค่าทิ้งเงียบๆ หรือกดปุ่มไม่ได้โดยไม่บอกเหตุผล)
     if (!canProceed) {
       setError(
-        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ"
+        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ (หรือติ๊ก 'รอปรึกษา')"
       );
+      return;
+    }
+    const feeNum = talentFee.trim() === "" ? null : Number(talentFee);
+    if (feeNum !== null && (!Number.isFinite(feeNum) || feeNum < 0)) {
+      setError("ค่าตัวต้องเป็นตัวเลขไม่ติดลบ");
       return;
     }
     setBusy(true);
@@ -1922,6 +1969,9 @@ function CaseDetailStage({
         service_date: serviceDate === "" ? null : serviceDate,
         doctor_name: doctorName.trim() || null,
         case_value: caseValue === "" ? null : Number(caseValue),
+        // มีรายการหัตถการแล้ว = ไม่ใช่เคสรอปรึกษาอีกต่อไป (ธงค้างไว้จะทำให้การ์ดขึ้นชิปผิด)
+        consult_only: items.length > 0 ? false : consultOnly,
+        talent_fee: feeNum,
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
         tier,
@@ -1974,7 +2024,30 @@ function CaseDetailStage({
             </div>
           </div>
           <div>
-            <Label>โปรแกรม/หัตถการที่รับ * (Influencer Cost)</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="!mb-0">
+                โปรแกรม/หัตถการที่รับ {items.length > 0 || !consultOnly ? "*" : ""}{" "}
+                (Influencer Cost)
+              </Label>
+              {/* ติ๊กนี้ค้างอยู่จากตอนสร้างนัด — พอเพิ่มรายการแล้วระบบเอาออกให้เองตอนบันทึก */}
+              {items.length === 0 && (
+                <label
+                  className={`flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800 ${
+                    readOnly ? "opacity-60" : "cursor-pointer"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={consultOnly}
+                    disabled={readOnly}
+                    onChange={(e) => setConsultOnly(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer accent-[#a96a58] disabled:cursor-default"
+                  />
+                  รอปรึกษา (ยังไม่ระบุหัตถการ)
+                </label>
+              )}
+            </div>
+            <div className="mt-1.5" />
             <ProcedureItemsEditor
               influencerId={influencer.id}
               items={items}
@@ -2010,6 +2083,22 @@ function CaseDetailStage({
                 placeholder="78200"
               />
             </div>
+            <div>
+              <Label htmlFor="d-fee">ค่าตัว (บาท)</Label>
+              <Input
+                id="d-fee"
+                type="number"
+                min="0"
+                step="any"
+                disabled={readOnly}
+                value={talentFee}
+                onChange={(e) => setTalentFee(e.target.value)}
+                placeholder="เว้นว่าง = ไม่มีค่าตัว"
+              />
+              <p className="mt-1 text-[11px] text-stone-400">
+                เคสที่ influ คิดเงิน — ขึ้นเป็นบรรทัด &quot;ค่าตัว&quot; ในข้อความ Memo
+              </p>
+            </div>
           </div>
           <div>
             <Label htmlFor="d-doc">แพทย์ที่รับเคส</Label>
@@ -2021,7 +2110,7 @@ function CaseDetailStage({
               onChange={setDoctorName}
             />
             <p className="mt-1 text-[11px] text-stone-400">
-              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
+              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
