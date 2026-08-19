@@ -902,6 +902,9 @@ export function InfluDetailClient({
               influencer={influencer}
               signatures={signatures}
               readOnly={readOnly}
+              // ไฟล์สัญญาแก้/ลบได้จนกว่าเคสจะปิดงาน แม้ stage นี้ผ่านไปแล้ว
+              // (กติกาเดียวกับไฟล์ Memo) — ปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม
+              fileEditable={canEdit}
             />
             <ServiceDayStage influencer={influencer} readOnly={readOnly} />
           </div>

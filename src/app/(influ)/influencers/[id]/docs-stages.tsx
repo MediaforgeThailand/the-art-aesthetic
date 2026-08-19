@@ -11,6 +11,7 @@ import {
   FileText,
   Images,
   PenLine,
+  Trash2,
   Undo2,
   Upload,
 } from "lucide-react";
@@ -18,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useInfluLog } from "@/components/influ-log-provider";
 import { SignaturePad, SignatureSlot } from "@/components/signature-pad";
-import { Button, Card, Input, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, Input, Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
   formatCurrency,
@@ -1011,6 +1012,9 @@ export function ContractStage(props: {
   influencer: InfluencerRow;
   signatures: InfluSignatureRow[];
   readOnly: boolean;
+  /** แก้ไฟล์สัญญาได้ไหม (เปลี่ยน/ลบ) — แยกจาก readOnly ที่ล็อกการเดิน stage
+      กติกาเดียวกับ Memo: ไฟล์เป็นเอกสารของเคส แก้ได้จนกว่าเคสจะปิดงาน แม้ stage นี้ผ่านไปแล้ว */
+  fileEditable: boolean;
 }) {
   // เก็บโหมดเซนดิจิทัลไว้แต่ยังไม่เปิดใช้
   const [mode] = useState<"upload" | "sign">("upload");
@@ -1047,6 +1051,7 @@ export function ContractStage(props: {
         <ContractUploadStage
           influencer={props.influencer}
           readOnly={props.readOnly}
+          fileEditable={props.fileEditable}
         />
       ) : (
         <ContractSignStage {...props} />
@@ -1060,9 +1065,12 @@ export function ContractStage(props: {
 function ContractUploadStage({
   influencer,
   readOnly,
+  fileEditable,
 }: {
   influencer: InfluencerRow;
   readOnly: boolean;
+  /** true = เปลี่ยน/ลบไฟล์สัญญาได้ (เคสยังไม่ปิดงาน) — ดูคำอธิบายที่ props ของ ContractStage */
+  fileEditable: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -1072,6 +1080,8 @@ function ContractUploadStage({
   const [downloadingTpl, setDownloadingTpl] = useState<string | null>(null);
   const [downloadingSigned, setDownloadingSigned] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const contractUploaded = !!influencer.contract_file_path;
@@ -1171,12 +1181,65 @@ function ContractUploadStage({
     }
     log({
       action: "upload",
+      entity: "contract",
       entityId: influencer.id,
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
-      summary: `${oldPath ? "เปลี่ยน" : "อัปโหลด"}ไฟล์สัญญาที่เซนแล้ว: ${file.name}${
-        influencer.contract_start ? "" : " — เริ่มนับอายุสัญญา"
+      summary: oldPath
+        ? `เปลี่ยนไฟล์สัญญาที่เซนแล้ว: "${
+            influencer.contract_file_name || "(ไม่มีชื่อไฟล์)"
+          }" → "${file.name}"`
+        : `อัปโหลดไฟล์สัญญาที่เซนแล้ว: ${file.name}${
+            influencer.contract_start ? "" : " — เริ่มนับอายุสัญญา"
+          }`,
+      meta: { file_path: path, replaced_path: oldPath },
+    });
+    router.refresh();
+  };
+
+  /** ลบ/ถอนไฟล์สัญญาที่อัพไว้ (เช่นอัพผิดไฟล์ หรือยกเลิกฉบับที่เซน)
+      — ล้างวันเริ่มนับอายุสัญญาไปด้วย เพราะวันเริ่มถูกตั้งตอนอัพไฟล์:
+      ไม่มีไฟล์สัญญา = ยังไม่เริ่มนับ; อัพไฟล์ใหม่แล้วระบบตั้งวันเริ่มให้ใหม่จากวันรับบริการ */
+  const removeSigned = async () => {
+    const oldPath = influencer.contract_file_path;
+    if (!oldPath || removing) return;
+    setRemoving(true);
+    setError(null);
+    const { error: e } = await supabase
+      .from("influencers")
+      .update({
+        contract_file_path: null,
+        contract_file_name: null,
+        contract_uploaded_at: null,
+        contract_start: null,
+      })
+      .eq("id", influencer.id);
+    if (e) {
+      setRemoving(false);
+      setError(`ลบไฟล์สัญญาไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    // ลบไฟล์จริงใน storage หลังล้างแถวแล้ว (best effort — ล้มก็แค่เหลือไฟล์กำพร้าที่ไม่มีอะไรชี้ถึง)
+    try {
+      await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
+    } catch {
+      // เพิกเฉย
+    }
+    setRemoving(false);
+    log({
+      action: "delete",
+      entity: "contract",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ลบไฟล์สัญญาที่เซนแล้ว: ${
+        influencer.contract_file_name || "(ไม่มีชื่อไฟล์)"
+      }${
+        influencer.contract_start
+          ? ` — ล้างวันเริ่มสัญญา (${formatDate(influencer.contract_start)})`
+          : ""
       }`,
+      meta: { file_path: oldPath, contract_start: influencer.contract_start },
     });
     router.refresh();
   };
@@ -1249,20 +1312,36 @@ function ContractUploadStage({
                 <Download size={13} />
                 ดาวน์โหลด
               </Button>
-              {!readOnly && (
-                <Button
-                  variant="ghost"
-                  onClick={() => fileInputRef.current?.click()}
-                  loading={uploading}
-                  className="!px-2.5 !py-1 !text-xs"
-                >
-                  <Upload size={13} />
-                  เปลี่ยนไฟล์
-                </Button>
+              {fileEditable && (
+                <>
+                  <Button
+                    variant="ghost"
+                    onClick={() => fileInputRef.current?.click()}
+                    loading={uploading}
+                    title="เลือกไฟล์ใหม่มาแทนไฟล์สัญญาเดิม (ไฟล์เดิมจะถูกลบออกจากระบบ)"
+                    className="!px-2.5 !py-1 !text-xs"
+                  >
+                    <Upload size={13} />
+                    เปลี่ยนไฟล์
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      setError(null);
+                      setRemoveOpen(true);
+                    }}
+                    loading={removing}
+                    title="ถอนไฟล์ที่อัพผิด/ยกเลิกฉบับที่เซน — ลบไฟล์ออกจากระบบและล้างวันเริ่มสัญญา"
+                    className="!px-2.5 !py-1 !text-xs"
+                  >
+                    <Trash2 size={13} />
+                    ลบไฟล์
+                  </Button>
+                </>
               )}
             </div>
           </div>
-        ) : readOnly ? (
+        ) : !fileEditable ? (
           <p className="text-xs text-stone-400">ยังไม่มีไฟล์</p>
         ) : (
           <button
@@ -1277,7 +1356,15 @@ function ContractUploadStage({
               : "กดเพื่ออัพโหลดไฟล์สัญญาที่เซนแล้ว (PDF / รูปภาพ / Word)"}
           </button>
         )}
-        {!readOnly && (
+        {/* stage ผ่านไปแล้วแต่ยังแก้ไฟล์ได้ — บอกให้ชัดว่าเปลี่ยน/ลบไฟล์ไม่กระทบ stage ของเคส */}
+        {readOnly && fileEditable && contractUploaded && (
+          <p className="mt-2.5 text-[11px] leading-5 text-stone-400">
+            Stage นี้ผ่านไปแล้ว — ยังเปลี่ยนหรือลบไฟล์สัญญาได้ (เช่นอัพผิดไฟล์
+            หรือได้ฉบับที่เซนจริงมาทีหลัง) โดยไม่กระทบ stage ปัจจุบันของเคส
+            แต่การลบจะล้างวันเริ่มสัญญาด้วย
+          </p>
+        )}
+        {fileEditable && (
           <input
             ref={fileInputRef}
             type="file"
@@ -1317,6 +1404,41 @@ function ContractUploadStage({
             : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน จึงจะปิดขั้นนี้ไปตามงานได้"}
         </p>
       )}
+
+      <ConfirmDialog
+        open={removeOpen}
+        title="ลบไฟล์สัญญาที่เซนแล้ว?"
+        message={
+          <>
+            ไฟล์ &quot;{influencer.contract_file_name || "ไฟล์สัญญา"}&quot;
+            จะถูกลบออกจากระบบถาวร — กู้คืนไม่ได้
+            <br />
+            <span className="text-amber-700">
+              วันเริ่มนับอายุสัญญาจะถูกล้างด้วย
+              {influencer.contract_start
+                ? ` (ตอนนี้เริ่มนับ ${formatDate(influencer.contract_start)})`
+                : ""}{" "}
+              — อัพไฟล์ฉบับที่ถูกต้องเข้ามาใหม่
+              ระบบจะตั้งวันเริ่มให้ใหม่จากวันรับบริการ
+            </span>
+            {influencer.stage > INFLU_STAGE.contractService && (
+              <>
+                <br />
+                <span className="text-amber-700">
+                  เคสนี้เดินเลยขั้นสัญญาไปแล้ว —
+                  ลบแล้วเคสจะไม่มีไฟล์สัญญาและหายจากหน้าอายุสัญญา
+                  จนกว่าจะอัพไฟล์ใหม่
+                </span>
+              </>
+            )}
+            <br />
+            การลบถูกบันทึกไว้ในประวัติการใช้งาน (ใครลบ เมื่อไหร่ ไฟล์ชื่ออะไร)
+          </>
+        }
+        confirmLabel="ลบไฟล์"
+        onConfirm={() => void removeSigned()}
+        onClose={() => setRemoveOpen(false)}
+      />
     </div>
   );
 }
