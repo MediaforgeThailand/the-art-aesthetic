@@ -43,9 +43,10 @@ import { NewCaseModal } from "../influencers/new-case-modal";
 import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
 import { profileName } from "../influencers/profile-form";
 import {
+  type ContactPatch,
   followupOverdue,
-  type NewContactInput,
   ProspectDetailModal,
+  todayBangkok,
 } from "./prospect-detail";
 import { ProspectFormModal, RatingStars } from "./prospect-form";
 
@@ -127,6 +128,12 @@ export function HuntingClient({
     () => new Map(people.map((p) => [p.id, p.name])),
     [people]
   );
+  /** ผู้รับผิดชอบ = เจ้าของรายชื่อ ไม่มีก็ตกไปที่คนสร้าง (ผู้ใช้ 2026-08-19:
+      "ผู้รับผิดชอบให้คนสร้างแสดงอัตโนมัติ" — ไม่มีช่องให้เลือกเอง) */
+  const ownerNameOf = (p: InfluProspectRow) =>
+    (p.owner_id ? peopleById.get(p.owner_id) : null) ??
+    (p.created_by ? peopleById.get(p.created_by) : null) ??
+    null;
   const contactsByProspect = useMemo(() => {
     const m = new Map<string, InfluProspectContactRow[]>();
     for (const c of contactItems) {
@@ -134,6 +141,13 @@ export function HuntingClient({
       if (list) list.push(c);
       else m.set(c.prospect_id, [c]);
     }
+    // เรียงใหม่ล่าสุดอยู่บน — แก้วันที่แบบ optimistic แล้วลำดับต้องขยับทันที
+    for (const list of m.values())
+      list.sort((a, b) =>
+        a.contacted_on === b.contacted_on
+          ? b.created_at.localeCompare(a.created_at)
+          : b.contacted_on.localeCompare(a.contacted_on)
+      );
     return m;
   }, [contactItems]);
 
@@ -165,7 +179,6 @@ export function HuntingClient({
         p.nickname ?? "",
         p.phone ?? "",
         p.occupation ?? "",
-        p.source ?? "",
         p.interested_services ?? "",
         ...p.channels.map((c) => `${c.platform} ${c.value}`),
       ]
@@ -211,15 +224,17 @@ export function HuntingClient({
     });
   };
 
-  const addContact = async (p: InfluProspectRow, input: NewContactInput) => {
+  /** ปุ่มลัด "โทร/ทัก" — บันทึกการติดต่อของวันนี้ทันที (ผู้ใช้ 2026-08-19:
+      ไม่มีฟอร์มให้กรอกก่อนแล้ว; วัน/โน้ตแก้ทีหลังบนแถวได้) */
+  const addContact = async (p: InfluProspectRow, channel: string) => {
     setSavingContact(true);
+    const contactedOn = todayBangkok();
     const { data, error } = await supabase
       .from("influ_prospect_contacts")
       .insert({
         prospect_id: p.id,
-        contacted_on: input.contactedOn,
-        channel: input.channel || null,
-        note: input.note || null,
+        contacted_on: contactedOn,
+        channel,
         created_by: me.id,
       })
       .select("*")
@@ -231,18 +246,54 @@ export function HuntingClient({
     }
     setContacts((prev) => [data as InfluProspectContactRow, ...prev]);
     // จดว่าติดต่อแล้ว + สถานะยัง "ยังไม่ติดต่อ" = เลื่อนเป็น "ทักแล้ว รอตอบ" ให้เอง
-    const patch: Partial<InfluProspectRow> = {};
-    if (input.nextFollowupOn) patch.next_followup_on = input.nextFollowupOn;
-    if (p.status === "new") patch.status = "contacted";
-    if (Object.keys(patch).length > 0) void patchProspect(p.id, patch);
+    if (p.status === "new") void patchProspect(p.id, { status: "contacted" });
     else router.refresh();
     logInflu(supabase, actor, {
       action: "update",
       entity: "prospect",
       entityId: p.id,
       influencerName: p.name,
-      summary: `Hunting: จดการติดต่อ ${p.name} (${input.contactedOn}${input.channel ? ` · ${input.channel}` : ""})`,
+      summary: `Hunting: บันทึกการติดต่อ ${p.name} (${channel} · ${contactedOn})`,
       meta: { prospect_id: p.id, contact_id: data.id },
+    });
+  };
+
+  /** แก้วันที่/โน้ตของบันทึกการติดต่อที่จดไว้แล้ว (แก้ inline บนแถว) */
+  const updateContact = async (
+    p: InfluProspectRow,
+    contactId: string,
+    patch: ContactPatch
+  ) => {
+    setContacts((prev) =>
+      prev.map((c) => (c.id === contactId ? { ...c, ...patch } : c))
+    );
+    const { error } = await supabase
+      .from("influ_prospect_contacts")
+      .update(patch)
+      .eq("id", contactId);
+    if (error) alert(`บันทึกไม่สำเร็จ: ${error.message}`);
+    else
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "prospect_contact",
+        entityId: contactId,
+        influencerName: p.name,
+        summary: `Hunting: แก้บันทึกการติดต่อของ ${p.name}${patch.contacted_on ? ` (วันที่ ${patch.contacted_on})` : ""}`,
+        meta: { prospect_id: p.id, contact_id: contactId, patch },
+      });
+    router.refresh();
+  };
+
+  /** โน้ตรวม — พิมพ์ในโมดัลรายละเอียดได้เลย (บันทึกตอนคลิกออกจากกล่อง) */
+  const setNote = (p: InfluProspectRow, note: string) => {
+    void patchProspect(p.id, { note: note || null });
+    logInflu(supabase, actor, {
+      action: "update",
+      entity: "prospect",
+      entityId: p.id,
+      influencerName: p.name,
+      summary: `Hunting: แก้โน้ตของ ${p.name}`,
+      meta: { prospect_id: p.id },
     });
   };
 
@@ -510,9 +561,7 @@ export function HuntingClient({
                       key={p.id}
                       prospect={p}
                       lastContact={contactsByProspect.get(p.id)?.[0] ?? null}
-                      ownerName={
-                        p.owner_id ? (peopleById.get(p.owner_id) ?? null) : null
-                      }
+                      ownerName={ownerNameOf(p)}
                       onOpen={() => setDetailId(p.id)}
                     />
                   ))}
@@ -545,9 +594,7 @@ export function HuntingClient({
         <ProspectDetailModal
           prospect={detail}
           contacts={contactsByProspect.get(detail.id) ?? []}
-          ownerName={
-            detail.owner_id ? (peopleById.get(detail.owner_id) ?? null) : null
-          }
+          ownerName={ownerNameOf(detail)}
           canEdit={me.canEdit}
           canDelete={me.canManage || (me.id !== null && detail.owner_id === me.id)}
           savingContact={savingContact}
@@ -562,7 +609,11 @@ export function HuntingClient({
           }
           onAccept={() => void acceptProspect(detail)}
           onDelete={() => void deleteProspect(detail)}
-          onAddContact={(input) => void addContact(detail, input)}
+          onSetNote={(note) => setNote(detail, note)}
+          onAddContact={(channel) => void addContact(detail, channel)}
+          onUpdateContact={(cid, patch) =>
+            void updateContact(detail, cid, patch)
+          }
           onDeleteContact={(cid) => void deleteContact(detail, cid)}
           onCreateCase={() => {
             const profile = detail.profile_id
