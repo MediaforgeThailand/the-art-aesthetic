@@ -352,6 +352,13 @@ export const SALES_ASSISTANT_URL = "https://the-art-sales-assistant.vercel.app/"
 /** ค่า `?from=` ที่แอปขายส่งมา — ใช้ตัดสินว่าจะโชว์ปุ่มกลับไหม */
 export const SALES_ASSISTANT_FROM = "sales";
 
+/**
+ * Sales Operation — ระบบงานฝ่ายขาย (แอปแยกอีกตัว ยังไม่เปิดใช้งาน ณ 2026-08-19)
+ * หน้าประตูรวมช่องทาง (root `/`) เตรียมการ์ดไว้แล้ว — พอระบบพร้อมให้ใส่ URL
+ * ที่นี่จุดเดียว การ์ดจะเปลี่ยนจากป้าย "เร็วๆ นี้" เป็นลิงก์จริงเอง
+ */
+export const SALES_OPERATION_URL: string | null = null;
+
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
 /** ประเภทแหล่งไฟล์ — key เก็บลง DB, ระบบเดาอัตโนมัติจาก URL ได้ */
