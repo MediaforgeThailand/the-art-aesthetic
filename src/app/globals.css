@@ -196,10 +196,27 @@
   }
 }
 
-/* พื้นหลังไล่เฉด rose gold ทั้งแอป — ให้เอฟเฟกต์กระจกมีสีลอดผ่าน */
+/* พื้นหลังไล่เฉด rose gold ทั้งแอป — ให้เอฟเฟกต์กระจกมีสีลอดผ่าน
+   สีพื้นที่นี่เป็นแค่สีรองพื้น (โผล่ตอนดึงเกินขอบ/overscroll) ตัวไล่เฉดจริงอยู่ที่ body::before */
 body {
   color: var(--foreground);
   font-family: var(--font-sans);
+  background-color: #fdfaf6;
+}
+
+/* ตัวไล่เฉดจริง = เลเยอร์ fixed หลังทุกอย่าง (ไม่ใช่ background ของ body)
+   เหตุผล (bug ที่ผู้ใช้เจอ 2026-08-20 บนหน้าประตู `/`): ถ้าใส่เป็น background ของ body
+   กล่องอ้างอิงของไล่เฉดคือ <html> ซึ่งถูกตั้ง h-full = สูงแค่ 1 จอ — พอหน้าไหน
+   "เลื่อนทั้งเอกสาร" แล้วยาวกว่าจอ (หน้าประตู `/`, `/price-list`) พื้นที่ส่วนเกิน
+   จะถูกวาดด้วยไล่เฉด "รอบใหม่" (background-repeat ค่าเริ่มต้น) เห็นเป็นเส้นคาดขวางจอ
+   แล้วสีสว่างวืดกลับมาใหม่. เลเยอร์ fixed ยึดกับ viewport จึงไม่มีวันซ้ำ/ไม่ยืดตามความยาวหน้า
+   ใช้ position:fixed (ไม่ใช่ background-attachment:fixed) เพราะ iOS Safari เลื่อนแล้วสั่น */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(
       1100px 700px at 88% -5%,
@@ -217,8 +234,6 @@ body {
       transparent 60%
     ),
     linear-gradient(158deg, #fdfaf6 0%, #f8ece4 48%, #f2dcd1 100%);
-  /* ไม่ใช้ background-attachment: fixed — layout ให้ scroll ภายใน main อยู่แล้ว
-     และ fixed+backdrop-filter ทำให้ Chromium repaint หนัก */
 }
 
 ::selection {
