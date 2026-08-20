@@ -3,7 +3,6 @@
 import {
   Archive,
   CheckCircle2,
-  ClipboardList,
   FileSignature,
   ListChecks,
   Repeat,
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Card, EmptyState } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
   contractEndDate,
@@ -171,20 +170,6 @@ export function InfluGalleryClient({
 
   return (
     <>
-      <PageHeader
-        title="โปรไฟล์ Influencer"
-        description="ภาพรวม Influencer ทั้งหมด — รูป ยอดผู้ติดตาม ระดับ อายุสัญญา และจำนวนคอนเทนต์ที่ทำ · คนที่เข้ามาทำหลายรอบถูกรวมเป็นการ์ดเดียว (โปรไฟล์ต่อคน) · คลิกการ์ดเพื่อดูรายละเอียด"
-        action={
-          <Link
-            href="/influencers"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-          >
-            <ClipboardList size={16} />
-            ไปหน้าเดินงาน (Pipeline)
-          </Link>
-        }
-      />
-
       {loadError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError}

@@ -33,7 +33,7 @@ import {
   YAxis,
 } from "recharts";
 import { HeroCard } from "@/components/report-viz";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Card, EmptyState } from "@/components/ui";
 import {
   formatCurrency,
   formatDate,
@@ -234,27 +234,6 @@ export function DashboardClient({
 
   return (
     <div>
-      <PageHeader
-        title="Influ Dashboard"
-        description="ภาพรวมงาน Influencer — สถานะ pipeline · ต้นทุนค่าบริการ · คิวและสัญญาที่ต้องตาม"
-        action={
-          <span className="flex gap-2">
-            <Link
-              href="/influencers"
-              className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-white hover:text-brand-700"
-            >
-              <Sparkles size={13} /> เคสดำเนินงาน
-            </Link>
-            <Link
-              href="/influ-cost"
-              className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-white hover:text-brand-700"
-            >
-              <Wallet size={13} /> Influencer Cost
-            </Link>
-          </span>
-        }
-      />
-
       {loadError && (
         <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
           โหลดข้อมูลไม่สำเร็จ: {loadError}

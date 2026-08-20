@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
-import { PageContainer, PageHeader } from "@/components/ui";
+import { PageContainer } from "@/components/ui";
 import { canManageInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
@@ -28,10 +28,6 @@ export default async function InfluDoctorsPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="จัดการหมอ"
-        description="ทะเบียนแพทย์ที่ใช้เป็นตัวเลือก 'แพทย์ที่รับเคส' ทั้งในหน้าเดินงานและปฏิทินคิว"
-      />
       <DoctorManagerPanel doctors={(doctors ?? []) as DoctorRow[]} />
     </PageContainer>
   );

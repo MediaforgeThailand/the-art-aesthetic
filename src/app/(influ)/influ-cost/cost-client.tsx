@@ -19,7 +19,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { HeroCard } from "@/components/report-viz";
-import { Badge, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Card, EmptyState, Input, Select } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   COST_USAGE_META,
@@ -245,11 +245,6 @@ export function CostClient({
 
   return (
     <div>
-      <PageHeader
-        title="Influencer Cost"
-        description="ต้นทุนค่าบริการของ influencer รายโปรแกรม — แก้ราคา/ติ๊ก support ได้จากหน้านี้ ส่วนเพิ่ม-ลบรายการทำที่ Stage 2 ของแต่ละเคส"
-      />
-
       {loadError && (
         <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
