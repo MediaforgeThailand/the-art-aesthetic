@@ -699,13 +699,16 @@ export function InfluencersClient({
             ล้างตัวกรอง
           </button>
         )}
-        {/* ทางเข้าอื่นทั้งหมด (ปฏิทินคิว · สัญญา · จัดการหมอ) อยู่บนแถบเมนูของระบบแล้ว
+        {/* ปุ่มงานหลัก — ย้ายลงมาจากหัวหน้า (ผู้ใช้ 2026-08-20)
+            ทางเข้าอื่น (ปฏิทินคิว · สัญญา · จัดการหมอ) อยู่บนแถบเมนูของระบบแล้ว
             หน้านี้จึงเหลือปุ่มลงมือทำงานปุ่มเดียว ชิดขวาท้ายแถบเครื่องมือ */}
         {me.canEdit && (
-          <Button className="ml-auto" onClick={() => setCaseOpen(true)}>
-            <Plus size={16} />
-            สร้างนัดใหม่
-          </Button>
+          <div className="sm:ml-auto">
+            <Button onClick={() => setCaseOpen(true)}>
+              <Plus size={16} />
+              สร้างนัดใหม่
+            </Button>
+          </div>
         )}
       </div>
 
