@@ -239,6 +239,8 @@ export const INFLU_CALENDAR_KINDS: Record<
     dot: string;
     /** ขอบซ้ายเข้มของชิปในช่องวัน — แยกประเภทด้วยสีขอบให้กวาดตาเจอเร็ว */
     edge: string;
+    /** แท่งสีทึบตัวหนังสือขาว (ชิปคิวบนกริดปฏิทินแบบ TimeTree) — เลือกเฉดที่ contrast พอ */
+    solid: string;
   }
 > = {
   service: {
@@ -247,6 +249,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-brand-100 text-brand-800 border-brand-200",
     dot: "bg-brand-500",
     edge: "border-l-brand-500",
+    solid: "bg-brand-500",
   },
   shoot: {
     label: "ถ่ายทำ / ถ่ายคอนเทนต์",
@@ -254,6 +257,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-violet-100 text-violet-700 border-violet-200",
     dot: "bg-violet-500",
     edge: "border-l-violet-500",
+    solid: "bg-violet-500",
   },
   post: {
     label: "คิวโพสต์ / ลงคลิป",
@@ -261,6 +265,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-sky-100 text-sky-700 border-sky-200",
     dot: "bg-sky-500",
     edge: "border-l-sky-500",
+    solid: "bg-sky-600",
   },
   meeting: {
     label: "นัดคุย / ประชุม",
@@ -268,6 +273,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-amber-100 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
     edge: "border-l-amber-500",
+    solid: "bg-amber-600",
   },
   followup: {
     label: "ติดตามงาน / ส่งภาพอัปเดต",
@@ -275,6 +281,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
     dot: "bg-emerald-500",
     edge: "border-l-emerald-500",
+    solid: "bg-emerald-600",
   },
   other: {
     label: "อื่นๆ",
@@ -282,6 +289,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-stone-100 text-stone-600 border-stone-200",
     dot: "bg-stone-400",
     edge: "border-l-stone-400",
+    solid: "bg-stone-500",
   },
 };
 

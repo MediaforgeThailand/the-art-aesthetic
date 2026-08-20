@@ -4,13 +4,19 @@ import { isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env
 
 export default async function proxy(request: NextRequest) {
   // หน้า Price List สาธารณะ — เปิดดูได้โดยไม่ต้องล็อกอิน (แชร์ให้ลูกค้า/ทีมภายนอก)
+  // "/" = หน้าประตูรวมช่องทาง สาธารณะเหมือนกัน (ทุกคนเปิดโดเมนหลักแล้วเจอหน้านี้ก่อน
+  // — โชว์แค่ชื่อระบบ ไม่มีข้อมูลภายใน; ระบบข้างในยังบังคับล็อกอินของตัวเองตามเดิม)
   // /api/warm = endpoint อุ่นเครื่องที่ pg_cron ยิง ไม่มี session ต้องปล่อยผ่านเหมือนกัน
   if (
+    request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname === "/price-list" ||
     request.nextUrl.pathname === "/api/warm" ||
     // PWA: เบราว์เซอร์ดึง manifest แบบไม่ส่ง cookie — ไม่ปล่อยผ่านจะโดนเด้งไป /login
     // แล้วติดตั้งลงหน้าจอโฮมไม่ได้ (matcher ข้างล่างยกเว้นแค่นามสกุลรูป ไม่ครอบคลุมอันนี้)
-    request.nextUrl.pathname === "/manifest.webmanifest"
+    request.nextUrl.pathname === "/manifest.webmanifest" ||
+    // ปลายทางที่ Supabase ส่งกลับหลังยืนยันตัวตนกับ Google — ตอนถูกเรียกยังไม่มี session
+    // (route handler เป็นคนแลก code เป็นคุกกี้เอง) ไม่ปล่อยผ่าน = เด้งกลับ /login วนไม่จบ
+    request.nextUrl.pathname === "/auth/callback"
   ) {
     return NextResponse.next({ request });
   }
@@ -61,7 +67,9 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (claims && isLoginPage) {
-    return redirectTo("/dashboard");
+    // /start เลือกหน้าแรกตามสิทธิ์ — ชี้ /dashboard ตายตัวไม่ได้ เพราะทีมที่ไม่มีสิทธิ์
+    // data จะเจอ "ไม่มีสิทธิ์เข้าถึง" ทันทีที่ล็อกอิน
+    return redirectTo("/start");
   }
 
   return response;

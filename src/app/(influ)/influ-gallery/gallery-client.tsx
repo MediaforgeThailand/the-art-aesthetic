@@ -200,7 +200,7 @@ export function InfluGalleryClient({
           <input
             type="search"
             placeholder="ค้นหาชื่อ หรือหัตถการ..."
-            className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-sm text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 sm:text-sm placeholder:text-stone-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -213,7 +213,7 @@ export function InfluGalleryClient({
                 key={chip.key}
                 type="button"
                 onClick={() => setContractFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
+                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] max-sm:min-h-11 ${
                   active
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"

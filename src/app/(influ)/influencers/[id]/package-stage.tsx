@@ -277,7 +277,7 @@ export function PackageStage({
               value={newDue}
               onChange={(e) => setNewDue(e.target.value)}
               title="กำหนดวัน (ไม่ใส่ก็ได้ — ข้อที่ไม่มีกำหนดจะไม่ถูกเตือน)"
-              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-base text-stone-700 sm:text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
             <Button loading={adding} onClick={() => void addItem()}>
               <Plus size={15} />
@@ -310,13 +310,18 @@ export function PackageStage({
                       disabled={readOnly}
                       onClick={() => void toggleDone(t)}
                       title={t.done ? "ยกเลิกติ๊ก" : "ติ๊กว่าทำแล้ว"}
-                      className={`mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all active:scale-90 disabled:cursor-default ${
-                        t.done
-                          ? "border-emerald-500 bg-emerald-500 text-white"
-                          : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
-                      }`}
-                    >
-                      <Check size={13} strokeWidth={3} />
+                      className="mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center active:scale-90 disabled:cursor-default max-sm:-mx-2.5 max-sm:-mb-2.5 max-sm:-mt-2 max-sm:h-11 max-sm:w-11"
+                >
+                  {/* วงที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
+                      t.done
+                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                  </span>
                     </button>
 
                     <div className="min-w-0 flex-1">
@@ -338,13 +343,13 @@ export function PackageStage({
                                   setEditingId(null);
                                 }
                               }}
-                              className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-sm font-medium text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                              className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-base font-medium sm:text-sm text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                             />
                             <button
                               type="button"
                               onClick={() => void saveTitle(t)}
                               title="บันทึกชื่อ"
-                              className="cursor-pointer rounded-md p-1 text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90"
+                              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90 sm:h-7 sm:w-7"
                             >
                               <Check size={14} />
                             </button>
@@ -352,7 +357,7 @@ export function PackageStage({
                               type="button"
                               onClick={() => setEditingId(null)}
                               title="ยกเลิก"
-                              className="cursor-pointer rounded-md p-1 text-stone-400 transition-all hover:bg-stone-100 active:scale-90"
+                              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-stone-100 active:scale-90 sm:h-7 sm:w-7"
                             >
                               <X size={14} />
                             </button>
@@ -366,7 +371,7 @@ export function PackageStage({
                               setTitleDraft(t.title);
                             }}
                             title={readOnly ? undefined : "แก้ไขชื่อเงื่อนไข"}
-                            className={`rounded-md px-1 py-0.5 text-left text-sm font-medium transition-colors ${
+                            className={`rounded-md px-1 py-0.5 text-left text-sm font-medium transition-colors max-sm:min-h-11 ${
                               t.done
                                 ? "text-stone-400 line-through"
                                 : "text-stone-900"
@@ -417,7 +422,7 @@ export function PackageStage({
                             drafts[t.id] ?? t.description ?? ""
                           )
                         }
-                        className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-base sm:text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                       />
                       {t.done && t.done_at && (
                         <p className="mt-1 text-[11px] text-emerald-600">
@@ -433,13 +438,13 @@ export function PackageStage({
                           value={t.due_date ?? ""}
                           onChange={(e) => void saveDue(t, e.target.value)}
                           title="กำหนดวันของข้อนี้ (ล้างค่า = ไม่มีกำหนด ไม่ถูกเตือน)"
-                          className="rounded-md border border-stone-200 bg-white/70 px-2 py-1 text-xs text-stone-600 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                          className="rounded-md border border-stone-200 bg-white/70 px-2 py-1 text-base text-stone-600 sm:text-xs focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                         />
                         <button
                           type="button"
                           onClick={() => setConfirmDelete(t)}
                           title="ลบข้อนี้"
-                          className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90"
+                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90 sm:h-7 sm:w-7"
                         >
                           <Trash2 size={14} />
                         </button>
