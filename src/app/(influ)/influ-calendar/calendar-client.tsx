@@ -25,7 +25,6 @@ import { createPortal } from "react-dom";
 import {
   Badge,
   Button,
-  Card,
   Input,
   Label,
   Select,
@@ -218,8 +217,8 @@ function EventChip({ event }: { event: CalendarEvent }) {
       title={`${calendarTimeLabel(event.start_time, event.end_time)} · ${meta.label}${
         nameOf(event.influencer) ? ` · ${nameOf(event.influencer)}` : ""
       }${event.doctor_name ? ` · ${event.doctor_name}` : ""}`}
-      // lg บีบ py ลงครึ่งหนึ่ง — โหมดเต็มจอช่องวันเตี้ยลงตามจอ ชิปผอมลงให้ใส่ได้มากขึ้น
-      className={`flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] leading-tight text-white shadow-sm lg:py-0.5 ${meta.solid} ${
+      // ≥lg ตัวใหญ่ขึ้น (ผู้ใช้ 2026-08-20 รอบสาม: ชิปคิวต้องเด่นกว่าเลขวัน) — เวลาตัวหนานำหน้า
+      className={`flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] leading-tight text-white shadow-sm lg:text-xs ${meta.solid} ${
         event.done ? "opacity-45 line-through" : ""
       }`}
     >
@@ -1121,8 +1120,8 @@ export function CalendarClient({
     if (!el) return;
     const measure = () => {
       const cellH = el.clientHeight / rowCount;
-      // 34 = แถวเลขวัน + ช่องไฟ, 22 = ชิปแบบ lg:py-0.5 + ช่องไฟ (ดู EventChip)
-      setChipCapacity(Math.min(4, Math.max(1, Math.floor((cellH - 34) / 22))));
+      // 26 = แถวเลขวัน (≥lg ย่อเหลือ h-5) + ช่องไฟ, 27 = ชิป text-xs py-1 + ช่องไฟ (ดู EventChip)
+      setChipCapacity(Math.min(4, Math.max(1, Math.floor((cellH - 26) / 27))));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1330,12 +1329,13 @@ export function CalendarClient({
 
       {/* ---- แถบเครื่องมือแบบ TimeTree: วันนี้ · ‹ › · ชื่อเดือน · เดือน/สัปดาห์ · ค้นหา · ตัวกรอง
            จอเล็กยุบเหลือ 2 แถวกะทัดรัด (ผู้ใช้ 2026-08-20: toolbar เดิมกินจอมือถือเกือบ 20%) ---- */}
-      <div className="mb-3 flex shrink-0 flex-col gap-2 animate-fade-in-up sm:flex-row sm:flex-wrap sm:items-center">
+      {/* ≥lg ย่อทุกชิ้น + ชิดบน (ผู้ใช้ 2026-08-20 รอบสาม: header กินพื้นที่ปฏิทินบนคอม) */}
+      <div className="mb-3 flex shrink-0 flex-col gap-2 animate-fade-in-up sm:flex-row sm:flex-wrap sm:items-center lg:mb-1.5">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="secondary"
             onClick={goToday}
-            className="shrink-0 px-3 py-1.5 max-sm:min-h-11"
+            className="shrink-0 px-3 py-1.5 max-sm:min-h-11 lg:py-1"
           >
             วันนี้
           </Button>
@@ -1344,7 +1344,7 @@ export function CalendarClient({
               type="button"
               onClick={() => goStep(-1)}
               aria-label={view === "week" ? "สัปดาห์ก่อนหน้า" : "เดือนก่อนหน้า"}
-              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
+              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8 lg:h-6 lg:w-7"
             >
               <ChevronLeft size={18} />
             </button>
@@ -1352,12 +1352,12 @@ export function CalendarClient({
               type="button"
               onClick={() => goStep(1)}
               aria-label={view === "week" ? "สัปดาห์ถัดไป" : "เดือนถัดไป"}
-              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
+              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8 lg:h-6 lg:w-7"
             >
               <ChevronRight size={18} />
             </button>
           </div>
-          <h2 className="min-w-0 truncate text-lg font-bold text-stone-900 sm:text-xl">
+          <h2 className="min-w-0 truncate text-lg font-bold text-stone-900 sm:text-xl lg:text-base">
             {view === "week"
               ? weekLabel(weekDays)
               : monthLabel(cursor.year, cursor.month)}
@@ -1377,7 +1377,7 @@ export function CalendarClient({
                 key={v.key}
                 type="button"
                 onClick={() => setView(v.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-1 text-sm font-medium transition-all max-sm:min-h-10 ${
+                className={`cursor-pointer rounded-full px-3.5 py-1 text-sm font-medium transition-all max-sm:min-h-10 lg:px-3 lg:py-0.5 lg:text-xs ${
                   view === v.key
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
                     : "text-stone-500 hover:text-brand-700"
@@ -1396,7 +1396,7 @@ export function CalendarClient({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหา"
-              className="py-1.5 pl-9"
+              className="py-1.5 pl-9 lg:py-1"
             />
           </div>
           <button
@@ -1404,7 +1404,7 @@ export function CalendarClient({
             onClick={() => setFiltersOpen((v) => !v)}
             aria-label="ตัวกรองปฏิทิน"
             title="ตัวกรอง: ประเภทคิว / แพทย์ / วันรับบริการจากเคส"
-            className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 ${
+            className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 lg:h-8 lg:w-8 ${
               filtersOpen
                 ? "border-brand-300 bg-brand-50 text-brand-700"
                 : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
@@ -1437,12 +1437,14 @@ export function CalendarClient({
            จอ ≥lg: กางสูงเต็มพื้นที่ที่เหลือ (หน้าไม่มี scroll — ดู container ใน page.tsx) ---- */}
       <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         {view === "month" && (
-          <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          // ไม่มีกรอบ Card ครอบแล้ว (ผู้ใช้ 2026-08-20 รอบสาม: กรอบ+padding ทำให้ใช้พื้นที่
+          // ไม่คุ้ม) — กริดมีเส้นขอบมนของตัวเองอยู่แล้ว ให้กินพื้นที่เต็มความกว้าง/สูง
+          <div className="animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <div className="grid shrink-0 grid-cols-7">
               {WEEKDAYS.map((w, idx) => (
                 <div
                   key={w}
-                  className={`pb-2 text-center text-xs font-semibold sm:text-sm ${
+                  className={`pb-1.5 text-center text-xs font-semibold sm:text-sm lg:pb-1 lg:text-xs ${
                     idx === 6 ? "text-rose-500" : "text-stone-500"
                   }`}
                 >
@@ -1499,10 +1501,11 @@ export function CalendarClient({
                           : "bg-white/85"
                     } hover:bg-brand-50/80`}
                   >
-                    {/* เลขวันกลางช่องแบบ TimeTree — วันนี้เป็นวงกลมทึบ, อาทิตย์สีแดง */}
+                    {/* เลขวันกลางช่องแบบ TimeTree — วันนี้เป็นวงกลมทึบ, อาทิตย์สีแดง
+                        ≥lg เลขเล็กลง (ผู้ใช้ 2026-08-20 รอบสาม) คืนพื้นที่ให้ชิปคิว */}
                     <span className="flex justify-center">
                       <span
-                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm ${
+                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm lg:h-5 lg:min-w-5 lg:text-[11px] ${
                           isToday
                             ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
                             : sunday
@@ -1519,7 +1522,7 @@ export function CalendarClient({
                       {dayEvents.slice(0, 3).map((e) => (
                         <span
                           key={e.id}
-                          className={`w-full truncate rounded-sm px-1 py-px text-[9px] font-medium leading-3 text-white ${
+                          className={`w-full truncate rounded-sm px-1 py-px text-[10px] font-medium leading-3.5 text-white ${
                             INFLU_CALENDAR_KINDS[e.kind].solid
                           } ${e.done ? "opacity-40" : ""}`}
                         >
@@ -1529,7 +1532,7 @@ export function CalendarClient({
                       {dayServices.slice(0, 1).map((s) => (
                         <span
                           key={s.id}
-                          className="w-full truncate rounded-sm border border-dashed border-brand-400 px-1 py-px text-[9px] font-medium leading-3 text-brand-600"
+                          className="w-full truncate rounded-sm border border-dashed border-brand-400 px-1 py-px text-[10px] font-medium leading-3.5 text-brand-600"
                         >
                           {nickOf(s)}
                         </span>
@@ -1549,12 +1552,16 @@ export function CalendarClient({
                       {svShown.map((s) => (
                         <span
                           key={s.id}
-                          title={`วันรับบริการจากเคส: ${nameOf(s)}${
+                          title={`วันรับบริการจากเคส (ยังไม่เคาะเวลา — สร้างคิวจริงได้ในแผงข้าง): ${nameOf(s)}${
                             s.doctor_name ? ` · ${s.doctor_name}` : ""
                           }`}
-                          className="flex w-full items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-[11px] leading-tight text-brand-600 lg:py-0.5"
+                          className="flex w-full items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-[11px] leading-tight text-brand-600 lg:text-xs"
                         >
-                          <Sparkles size={11} className="shrink-0" />
+                          {/* ป้าย "จากเคส" อยู่ตำแหน่งเดียวกับเวลาบนชิปคิวจริง —
+                              บอกตรงๆ ว่าใบนี้ยังไม่มีเวลานัด (service_date เป็นแค่วัน) */}
+                          <span className="shrink-0 text-[10px] font-semibold lg:text-[11px]">
+                            จากเคส
+                          </span>
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {nickOf(s)}
                           </span>
@@ -1570,12 +1577,12 @@ export function CalendarClient({
                 );
               })}
             </div>
-          </Card>
+          </div>
         )}
 
         {/* ---- มุมมองสัปดาห์: จอใหญ่เป็น 7 คอลัมน์ / จอเล็กเป็นลิสต์ไล่วัน (อ่านชื่อ+เวลาชัด) ---- */}
         {view === "week" && (
-          <Card className="overflow-hidden p-2 sm:p-3 animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <div className="animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {/* จอ ≥sm: คอลัมน์ต่อวัน โชว์คิวครบทุกใบ — ≥lg สูงเต็มพื้นที่ (แถวเดียวกาง 1fr) */}
             <div className="hidden grid-cols-7 gap-px overflow-hidden rounded-lg border border-stone-200/70 bg-stone-200/70 sm:grid lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]">
               {weekDays.map((iso, idx) => {
@@ -1637,12 +1644,14 @@ export function CalendarClient({
                           key={s.id}
                           type="button"
                           onClick={() => openDate(iso)}
-                          title={`วันรับบริการจากเคส: ${nameOf(s)}${
+                          title={`วันรับบริการจากเคส (ยังไม่เคาะเวลา — สร้างคิวจริงได้ในแผงข้าง): ${nameOf(s)}${
                             s.doctor_name ? ` · ${s.doctor_name}` : ""
                           }`}
-                          className="flex w-full cursor-pointer items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-left text-[11px] leading-tight text-brand-600 transition-colors hover:bg-brand-50"
+                          className="flex w-full cursor-pointer items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-left text-[11px] leading-tight text-brand-600 transition-colors hover:bg-brand-50 lg:text-xs"
                         >
-                          <Sparkles size={11} className="shrink-0" />
+                          <span className="shrink-0 text-[10px] font-semibold lg:text-[11px]">
+                            จากเคส
+                          </span>
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {nickOf(s)}
                           </span>
@@ -1745,7 +1754,7 @@ export function CalendarClient({
                 );
               })}
             </div>
-          </Card>
+          </div>
         )}
       </div>
 

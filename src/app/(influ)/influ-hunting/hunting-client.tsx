@@ -32,6 +32,7 @@ import {
   UserRoundCheck,
   UserRoundPlus,
   Users,
+  X,
 } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -41,7 +42,6 @@ import { formatDate } from "@/lib/format";
 import {
   INFLU_CONTACT_QUICK,
   INFLU_PROSPECT_ACTIVE,
-  INFLU_PROSPECT_COLUMNS,
   INFLU_PROSPECT_STATUS_ORDER,
   INFLU_PROSPECT_STATUSES,
   tierFromFollowers,
@@ -56,6 +56,15 @@ import type {
   InfluProspectStatus,
   InfluServiceRow,
 } from "@/lib/types";
+import {
+  DEFAULT_HUNT_FILTERS,
+  huntFilterChips,
+  huntStatusGroups,
+  HuntFilterButton,
+  matchHuntFilters,
+  platformOptionsOf,
+  type HuntFilters,
+} from "./hunting-filters";
 import { NewCaseModal } from "../influencers/new-case-modal";
 import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
 import { ProfileFormModal, profileName } from "../influencers/profile-form";
@@ -137,9 +146,9 @@ export function HuntingClient({
 
   // UI state
   const [query, setQuery] = useState("");
-  const [showDeclined, setShowDeclined] = useState(false);
-  const [mineOnly, setMineOnly] = useState(false);
-  const [dueOnly, setDueOnly] = useState(false);
+  /** ตัวกรองทั้งหมดรวมเป็นก้อนเดียว หลังปุ่ม "ตัวกรอง" (ผู้ใช้ 2026-08-20) —
+      แทนชิป รายชื่อของฉัน/ถึงกำหนดตาม/ปฏิเสธ ที่เคยอยู่บนแถบเครื่องมือ */
+  const [filters, setFilters] = useState<HuntFilters>(DEFAULT_HUNT_FILTERS);
   /** แผงข้างขวา — สร้างใหม่ หรือเปิดรายชื่อเดิม (แก้ inline ในแผง) */
   const [panel, setPanel] = useState<
     { mode: "create" } | { mode: "edit"; id: string } | null
@@ -191,15 +200,7 @@ export function HuntingClient({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((p) => {
-      if (mineOnly && p.owner_id !== me.id) return false;
-      if (
-        dueOnly &&
-        !(
-          INFLU_PROSPECT_ACTIVE.includes(p.status) &&
-          followupOverdue(p.next_followup_on)
-        )
-      )
-        return false;
+      if (!matchHuntFilters(p, filters, me.id)) return false;
       if (!q) return true;
       const hay = [
         p.name,
@@ -213,9 +214,21 @@ export function HuntingClient({
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [items, query, mineOnly, dueOnly, me.id]);
+  }, [items, query, filters, me.id]);
 
-  const declinedCount = items.filter((p) => p.status === "declined").length;
+  /** จำนวนต่อสถานะสำหรับเมนูตัวกรอง — นับจากข้อมูลทั้งหมด ไม่ผูกตัวกรองอื่น */
+  const statusCounts = useMemo(() => {
+    const out = Object.fromEntries(
+      INFLU_PROSPECT_STATUS_ORDER.map((s) => [s, 0])
+    ) as Record<InfluProspectStatus, number>;
+    for (const p of items) out[p.status] += 1;
+    return out;
+  }, [items]);
+  const platformOptions = useMemo(() => platformOptionsOf(items), [items]);
+  const filterChips = useMemo(
+    () => huntFilterChips(filters, peopleById),
+    [filters, peopleById]
+  );
   const detail =
     panel?.mode === "edit"
       ? (items.find((p) => p.id === panel.id) ?? null)
@@ -428,17 +441,8 @@ export function HuntingClient({
 
   /* ---------- render ---------- */
 
-  const chipCls = (active: boolean) =>
-    `inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-[0.97] sm:min-h-0 sm:text-xs ${
-      active
-        ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-        : "border-stone-200 bg-white/70 text-stone-500 hover:border-stone-300"
-    }`;
-
-  // กลุ่ม = สถานะ (แบบหมวดหมู่ของ my-tasks) — ชิป "ปฏิเสธ" สลับไปดูกลุ่ม declined แทน
-  const groupStatuses: InfluProspectStatus[] = showDeclined
-    ? ["declined"]
-    : INFLU_PROSPECT_COLUMNS;
+  // กลุ่ม = สถานะ (แบบหมวดหมู่ของ my-tasks) — ไม่เลือกสถานะในตัวกรอง = 4 สถานะที่ยังเดินอยู่
+  const groupStatuses = huntStatusGroups(filters);
 
   return (
     <div>
@@ -458,27 +462,15 @@ export function HuntingClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          className={chipCls(mineOnly)}
-        >
-          รายชื่อของฉัน
-        </button>
-        <button
-          type="button"
-          onClick={() => setDueOnly((v) => !v)}
-          className={chipCls(dueOnly)}
-        >
-          ถึงกำหนดตาม ({overdueList.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowDeclined((v) => !v)}
-          className={chipCls(showDeclined)}
-        >
-          ปฏิเสธ ({declinedCount})
-        </button>
+        <HuntFilterButton
+          filters={filters}
+          onChange={setFilters}
+          people={people}
+          meId={me.id}
+          platformOptions={platformOptions}
+          statusCounts={statusCounts}
+          overdueCount={overdueList.length}
+        />
         {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้ว
             ขึ้นโปรไฟล์ที่นี่ก่อน แล้วค่อยไปสร้างนัดที่บอร์ดเคส */}
         {me.canEdit && (
@@ -499,13 +491,39 @@ export function HuntingClient({
         )}
       </div>
 
+      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ต้องเห็นเสมอว่ากำลังซ่อนอะไรอยู่
+          (บทเรียน my-tasks: ตัวกรองซ่อนของหมดแล้วผู้ใช้คิดว่าข้อมูลหาย) */}
+      {filterChips.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-stone-400">กรองอยู่:</span>
+          {filterChips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setFilters(c.next)}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100 active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm"
+            >
+              {c.label}
+              <X size={12} />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFilters(DEFAULT_HUNT_FILTERS)}
+            className="cursor-pointer text-xs text-stone-500 underline-offset-2 hover:text-brand-700 hover:underline max-sm:min-h-11 max-sm:text-sm"
+          >
+            ล้างทั้งหมด
+          </button>
+        </div>
+      )}
+
       {loadError && (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </p>
       )}
 
-      {overdueList.length > 0 && !dueOnly && (
+      {overdueList.length > 0 && filters.followup !== "overdue" && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 animate-fade-in">
           <CalendarClock size={15} className="text-amber-600" />
           <p className="text-sm text-amber-800">
@@ -513,7 +531,7 @@ export function HuntingClient({
           </p>
           <button
             type="button"
-            onClick={() => setDueOnly(true)}
+            onClick={() => setFilters((f) => ({ ...f, followup: "overdue" }))}
             className="inline-flex cursor-pointer items-center text-sm font-medium text-amber-700 underline-offset-2 hover:underline max-sm:min-h-11"
           >
             ดูเฉพาะที่ถึงกำหนด
@@ -578,7 +596,10 @@ export function HuntingClient({
 
                     {rows.length === 0 ? (
                       <p className="px-4 py-4 text-xs text-stone-300">
-                        ไม่มีรายชื่อในสถานะนี้{query ? " (ตามคำค้น/ตัวกรอง)" : ""}
+                        ไม่มีรายชื่อในสถานะนี้
+                        {query || filterChips.length > 0
+                          ? " (ตามคำค้น/ตัวกรอง)"
+                          : ""}
                       </p>
                     ) : (
                       rows.map((p) => (

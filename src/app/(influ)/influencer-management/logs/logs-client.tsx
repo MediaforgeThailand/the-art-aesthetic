@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowLeft, History, Search, X } from "lucide-react";
+import { History, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Badge, Card, EmptyState, Input, PageHeader } from "@/components/ui";
+import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import {
   INFLU_LOG_ACTION_ORDER,
@@ -59,22 +59,6 @@ export function LogsClient({
 
   return (
     <>
-      <PageHeader
-        title="ประวัติการใช้งาน (Log)"
-        description={`บันทึกทุกการเปลี่ยนแปลงในระบบ Influencer — แสดง ${formatNumber(
-          logs.length
-        )} รายการล่าสุด (สูงสุด ${formatNumber(limit)})`}
-        action={
-          <Link
-            href="/influencer-management"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-          >
-            <ArrowLeft size={16} />
-            กลับหน้ารวม
-          </Link>
-        }
-      />
-
       {loadError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดประวัติไม่สำเร็จ: {loadError}
@@ -192,6 +176,14 @@ export function LogsClient({
             })}
           </ul>
         </Card>
+      )}
+
+      {/* หัวข้อ/คำอธิบายหน้าถูกถอดออกแล้ว — แต่ต้องบอกว่าลิสต์ถูกตัดที่ N รายการ
+          ไม่งั้นคนอ่านจะนึกว่านี่คือประวัติทั้งหมดที่มี */}
+      {logs.length >= limit && (
+        <p className="mt-3 text-center text-xs text-stone-400">
+          แสดง {formatNumber(limit)} รายการล่าสุดเท่านั้น
+        </p>
       )}
     </>
   );

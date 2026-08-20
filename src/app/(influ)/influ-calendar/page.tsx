@@ -41,7 +41,7 @@ export default async function InfluCalendarPage() {
   return (
     // ไม่ใช้ PageContainer: จอ ≥lg หน้านี้ต้องสูงพอดีจอ ไม่มี scroll ทั้งหน้า (คำสั่งผู้ใช้
     // 2026-08-20 — ปฏิทินกางเต็มความสูงที่เหลือแบบ TimeTree) ส่วนจอเล็กยังเลื่อนปกติ
-    <div className="h-full overflow-y-auto px-3 py-4 sm:px-6 sm:py-5 lg:flex lg:flex-col lg:overflow-hidden">
+    <div className="h-full overflow-y-auto px-3 py-4 sm:px-6 sm:py-5 lg:flex lg:flex-col lg:overflow-hidden lg:px-2.5 lg:py-2">
       <CalendarClient
         events={(events ?? []) as unknown as CalendarEvent[]}
         influencers={(influencers ?? []) as CalendarInflu[]}
