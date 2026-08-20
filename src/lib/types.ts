@@ -61,6 +61,8 @@ export type {
   InfluLinkRow,
   InfluPostKind,
   InfluPostLinkRow,
+  InfluPostPlatform,
+  InfluPostQuotas,
   InfluLogAction,
   InfluActivityLogRow,
   InfluDeletedBackupRow,

@@ -12,31 +12,14 @@ import { ExternalLink, Link2, MessageCircle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, Card, Input } from "@/components/ui";
-import { INFLU_POST_KIND_ORDER, INFLU_POST_KINDS } from "@/lib/influ-constants";
+import {
+  INFLU_POST_KIND_ORDER,
+  INFLU_POST_KINDS,
+  postPlatformLabel,
+} from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluPostKind, InfluPostLinkRow } from "@/lib/types";
 import { normalizeUrl } from "../influ-links";
-
-/** ชื่อแพลตฟอร์มจาก hostname ของลิงก์ — ไม่รู้จักคืน hostname ตรงๆ (ตัด www.) */
-function platformLabel(url: string): string {
-  let host: string;
-  try {
-    host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
-  } catch {
-    return url;
-  }
-  const names: [RegExp, string][] = [
-    [/(^|\.)tiktok\.com$/, "TikTok"],
-    [/(^|\.)(facebook\.com|fb\.watch|fb\.com)$/, "Facebook"],
-    [/(^|\.)instagram\.com$/, "Instagram"],
-    [/(^|\.)(youtube\.com|youtu\.be)$/, "YouTube"],
-    [/(^|\.)lemon8-app\.com$/, "Lemon8"],
-    [/(^|\.)(x\.com|twitter\.com)$/, "X (Twitter)"],
-    [/(^|\.)line\.me$/, "LINE"],
-  ];
-  for (const [re, name] of names) if (re.test(host)) return name;
-  return host;
-}
 
 export function PostLinksCard({
   influencerId,
@@ -154,7 +137,7 @@ export function PostLinksCard({
                     {meta.label}
                   </span>
                   <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{platformLabel(l.url)}</span>
+                    <span className="font-medium">{postPlatformLabel(l.url)}</span>
                     {l.note && (
                       <span className="text-stone-500"> — {l.note}</span>
                     )}
@@ -165,7 +148,7 @@ export function PostLinksCard({
                   <button
                     type="button"
                     title="ลบลิงก์นี้"
-                    aria-label={`ลบลิงก์ ${meta.label} ${platformLabel(l.url)}`}
+                    aria-label={`ลบลิงก์ ${meta.label} ${postPlatformLabel(l.url)}`}
                     onClick={() => remove(l.id)}
                     className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90 sm:h-8 sm:w-8"
                   >

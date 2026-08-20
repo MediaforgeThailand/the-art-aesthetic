@@ -354,6 +354,9 @@ export type InfluencerRow = {
   completed: boolean;
   contract_start: string | null;
   contract_months: number;
+  /** เป้าจำนวนโพสต่อช่องทางตามสัญญา (0084) — null = ยังไม่ตั้งเป้า;
+      ยอดที่ลงจริงไม่เก็บซ้ำ นับจาก influ_post_links (kind='post') แยกช่องทางจาก hostname */
+  post_quotas: InfluPostQuotas | null;
   note: string | null;
   /** โหมด checklist ของขั้นตามงาน — สลับได้ในหน้านั้น (ข้อของอีกโหมดถูกซ่อน ไม่ถูกลบ) */
   followup_mode: InfluFollowupMode;
@@ -661,6 +664,22 @@ export type InfluLinkRow = {
 
 /** ชนิดของลิงก์ผลงานที่ influencer ลงจริง — โพส/คลิป หรือคอมเมนต์รีวิว */
 export type InfluPostKind = "post" | "comment";
+
+/** ช่องทางโซเชียลของโพส — แยกจาก hostname ของลิงก์ผ่าน postPlatformOf() (influ-constants)
+    ชุดเดียวกับคีย์ใน influencers.post_quotas (migration 0084) */
+export type InfluPostPlatform =
+  | "tiktok"
+  | "instagram"
+  | "facebook"
+  | "youtube"
+  | "lemon8"
+  | "x"
+  | "line"
+  | "other";
+
+/** เป้าจำนวนโพสต่อช่องทางตามสัญญา (influencers.post_quotas — migration 0084)
+    เช่น {"tiktok": 6, "instagram": 6} — null/ไม่มีคีย์ = ช่องทางนั้นไม่ได้ตั้งเป้า */
+export type InfluPostQuotas = Partial<Record<InfluPostPlatform, number>>;
 
 /** ลิงก์โพส/คอมเมนต์ที่ influencer ลงจริง (ขั้นตามงาน — migration 0066)
     แปะได้หลายลิงก์ต่อคน: โพสหลัก/โพสเสริม และคอมเมนต์รีวิว + โน้ตกำกับ */

@@ -3,6 +3,7 @@ import type {
   InfluCalendarKind,
   InfluFollowupMode,
   InfluPostKind,
+  InfluPostPlatform,
   InfluProductTeam,
   InfluProspectStatus,
   InfluSizeGroup,
@@ -456,6 +457,109 @@ export const INFLU_POST_KINDS: Record<
 };
 
 export const INFLU_POST_KIND_ORDER: InfluPostKind[] = ["post", "comment"];
+
+/* ---------- ช่องทางโซเชียลของโพส + เป้าโพสตามสัญญา (migration 0084) ----------
+   คีย์ชุดนี้ = คีย์ใน influencers.post_quotas — ยอดที่ลงจริงไม่เก็บซ้ำ
+   นับจาก influ_post_links (kind='post') โดยแยกช่องทางจาก hostname ของลิงก์ */
+
+export const INFLU_POST_PLATFORMS: Record<
+  InfluPostPlatform,
+  { label: string; short: string; chip: string }
+> = {
+  // short = ป้ายย่อบนชิปตาราง (เลียนแบบ Ig1/Fb2/Tk3 ในไฟล์ติดตามของทีม branding เดิม)
+  tiktok: {
+    label: "TikTok",
+    short: "TK",
+    chip: "border-stone-300 bg-stone-800 text-white",
+  },
+  instagram: {
+    label: "Instagram",
+    short: "IG",
+    chip: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+  },
+  facebook: {
+    label: "Facebook",
+    short: "FB",
+    chip: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  youtube: {
+    label: "YouTube",
+    short: "YT",
+    chip: "border-rose-200 bg-rose-50 text-rose-600",
+  },
+  lemon8: {
+    label: "Lemon8",
+    short: "L8",
+    chip: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  x: {
+    label: "X (Twitter)",
+    short: "X",
+    chip: "border-stone-200 bg-stone-100 text-stone-700",
+  },
+  line: {
+    label: "LINE",
+    short: "LN",
+    chip: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  other: {
+    label: "อื่นๆ",
+    short: "อื่น",
+    chip: "border-stone-200 bg-stone-50 text-stone-500",
+  },
+};
+
+/** ลำดับช่องทาง — 3 ช่องแรกคือช่องหลักตามสัญญา (ตรงกับไฟล์ทีม branding: IG/FB/Tiktok) */
+export const INFLU_POST_PLATFORM_ORDER: InfluPostPlatform[] = [
+  "tiktok",
+  "instagram",
+  "facebook",
+  "youtube",
+  "lemon8",
+  "x",
+  "line",
+  "other",
+];
+
+/** ช่องทางหลักที่ฟอร์มตั้งเป้าโชว์ให้เสมอ (ช่องอื่นโผล่เมื่อมีเป้า/มีโพสจริง) */
+export const INFLU_POST_PLATFORM_PRIMARY: InfluPostPlatform[] = [
+  "tiktok",
+  "instagram",
+  "facebook",
+];
+
+/** แยกช่องทางจาก hostname ของลิงก์โพส — ไม่รู้จัก/ลิงก์เพี้ยน = 'other' */
+export function postPlatformOf(url: string): InfluPostPlatform {
+  let host: string;
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "other";
+  }
+  const rules: [RegExp, InfluPostPlatform][] = [
+    [/(^|\.)tiktok\.com$/, "tiktok"],
+    [/(^|\.)instagram\.com$/, "instagram"],
+    [/(^|\.)(facebook\.com|fb\.watch|fb\.com)$/, "facebook"],
+    [/(^|\.)(youtube\.com|youtu\.be)$/, "youtube"],
+    [/(^|\.)lemon8-app\.com$/, "lemon8"],
+    [/(^|\.)(x\.com|twitter\.com)$/, "x"],
+    [/(^|\.)line\.me$/, "line"],
+  ];
+  for (const [re, key] of rules) if (re.test(host)) return key;
+  return "other";
+}
+
+/** ชื่อช่องทางไว้แสดงผลจากลิงก์ — ช่องที่ไม่รู้จักคืน hostname ตรงๆ (ตัด www.)
+    ให้คนอ่านยังรู้ว่าลิงก์ไปไหน แทนที่จะเหมารวมเป็น "อื่นๆ" */
+export function postPlatformLabel(url: string): string {
+  const key = postPlatformOf(url);
+  if (key !== "other") return INFLU_POST_PLATFORMS[key].label;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 /* ---------- ขั้น Follow up: checklist ติดตามงาน Influencer (ตามเอกสารแนบท้ายสัญญาของโรงพยาบาล) ----------
    แบ่ง 5 หมวด เรียงตามเอกสารจริง
