@@ -346,8 +346,14 @@ export const PROMO_ENDING_SOON_DAYS = 30;
  * แอปนั้นมีปุ่ม "Price-List" ที่ลิงก์มา `/price-list?from=sales` และหน้านี้ตอบกลับด้วย
  * ปุ่ม "กลับแอปขาย" ที่ชี้กลับมาที่นี่ — สัญญาระหว่าง 2 repo คือ query `?from=sales`
  * ตัวเดียว ห้ามโชว์ปุ่มนี้กับคนทั่วไป เพราะ /price-list เป็นลิงก์ที่แชร์ให้ลูกค้าดูด้วย
+ *
+ * ย้ายจาก `the-art-sales-assistant.vercel.app` มาโดเมนบริษัทเมื่อ 2026-08-20 —
+ * **ค่านี้มี path ต่อท้าย (`/salestool/`) ไม่ใช่แค่ origin ห้ามตัดทิ้ง** เพราะแอปขายถูก
+ * serve ใต้ base path นั้น (ตัดแล้วกดปุ่มไปเจอ 404). ส่วนปุ่ม "กลับแอปขาย" เทียบ
+ * `document.referrer` กับ `.origin` ของค่านี้ (= https://sales.theartbb.com) จึงยัง
+ * ทำงานถูกแม้ค่าจะมี path ต่อท้าย — ไม่ต้องแก้ logic ตรงนั้น
  */
-export const SALES_ASSISTANT_URL = "https://the-art-sales-assistant.vercel.app/";
+export const SALES_ASSISTANT_URL = "https://sales.theartbb.com/salestool/";
 
 /** ค่า `?from=` ที่แอปขายส่งมา — ใช้ตัดสินว่าจะโชว์ปุ่มกลับไหม */
 export const SALES_ASSISTANT_FROM = "sales";
