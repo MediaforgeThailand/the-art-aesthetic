@@ -3,7 +3,6 @@
 import {
   BellRing,
   CalendarClock,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -11,7 +10,6 @@ import {
   Clock3,
   Eye,
   EyeOff,
-  FileSignature,
   LayoutGrid,
   Plus,
   Search,
@@ -21,7 +19,6 @@ import {
   UserRoundPlus,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -31,7 +28,6 @@ import {
   ConfirmDialog,
   EmptyState,
   Input,
-  PageHeader,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
@@ -786,56 +782,6 @@ export function InfluencersClient({
 
   return (
     <>
-      <PageHeader
-        title="เคสดำเนินงาน"
-        description="เคสของ influ ที่ตอบรับแล้ว — เดินงาน Memo → เซนสัญญา → ตามงาน (งานก่อนตอบรับอยู่ที่บอร์ด Hunting)"
-        action={
-          <div className="flex flex-wrap gap-2">
-            {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
-            {me.canManage && (
-              <button
-                type="button"
-                onClick={() => setDoctorsOpen(true)}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-              >
-                <Stethoscope size={16} />
-                จัดการหมอ
-              </button>
-            )}
-            <Link
-              href="/influ-calendar"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-            >
-              <CalendarDays size={16} />
-              ปฏิทินคิว
-            </Link>
-            <Link
-              href="/influencers/contracts"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-            >
-              <FileSignature size={16} />
-              อายุสัญญา & Campaign
-            </Link>
-            {me.canEdit && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(true)}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-                >
-                  <UserRoundPlus size={16} />
-                  เพิ่มโปรไฟล์
-                </button>
-                <Button onClick={() => setCaseOpen(true)}>
-                  <Plus size={16} />
-                  สร้างนัดใหม่
-                </Button>
-              </>
-            )}
-          </div>
-        }
-      />
-
       {/* ระดับ "ดูเฉยๆ" — บอกให้ชัดตั้งแต่ต้นว่าทำไมไม่มีปุ่มแก้ */}
       {!me.canEdit && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-stone-200 bg-white/70 px-4 py-2.5 text-sm text-stone-600 animate-fade-in">
@@ -916,130 +862,167 @@ export function InfluencersClient({
         </div>
       )}
 
-      {/* ค้นหา + กรอง stage — เฉพาะแท็บบอร์ด (คิว Memo ต้องเห็นครบเสมอ ไม่ผูกตัวกรอง) */}
-      {tab === "board" && (
+      {/* แถวเครื่องมือ: ค้นหา/ตัวกรอง (เฉพาะแท็บบอร์ด — คิว Memo ต้องเห็นครบเสมอ
+          ไม่ผูกตัวกรอง) + ปุ่มงานหลักชิดขวา
+          หัวข้อหน้า + คำอธิบายถูกถอดออก 2026-08-20 ตามคำสั่งผู้ใช้ (ชื่อหน้าอยู่บนเมนู
+          ของระบบอยู่แล้ว) ปุ่ม "สร้างนัดใหม่" จึงย้ายลงมาอยู่แถวเดียวกับตัวกรอง —
+          แถวนี้ต้อง render ทุกแท็บ ไม่งั้นแท็บ "รอทำ Memo" จะสร้างนัดไม่ได้ */}
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
-        <div className="relative min-w-56 flex-1 sm:max-w-xs">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-          />
-          <Input
-            type="search"
-            placeholder="ค้นหาชื่อ รหัส Influ ID เบอร์ หรือหัตถการ..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {stageChips.map((chip) => {
-            const active = stageFilter === chip.key;
-            const count = countFor(chip.key);
-            // ขั้นติดต่อ/รายละเอียดย้ายไปบอร์ด Hunting แล้ว (0081) — เคสใหม่เริ่มที่ Memo
-            // ชิป 2 ขั้นแรกจึงซ่อนเมื่อว่าง (เคสเก่าที่ถูกย้อน stage ลงมายังโผล่ได้)
-            if (
-              typeof chip.key === "number" &&
-              chip.key <= INFLU_STAGE.caseDetail &&
-              count === 0 &&
-              !active
-            )
-              return null;
-            return (
-              <button
-                key={String(chip.key)}
-                type="button"
-                onClick={() => setStageFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
-                  active
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                    : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-                }`}
-              >
-                {chip.label}
-                <span className={active ? "opacity-80" : "text-stone-400"}>
-                  {" "}
-                  ({count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {/* ตัวกรองเตือน: ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ปุ่มเรืองแสงเมื่อมีเคสค้าง */}
-        <button
-          type="button"
-          onClick={() =>
-            setStageFilter(bookingAlertActive ? "all" : "needbooking")
-          }
-          title="เคสที่ผ่าน Stage 3 (Memo) แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
-            bookingAlertActive
-              ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
-              : bookingAlertIds.size > 0
-                ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-glow-amber"
-                : "border-brand-200 bg-white/70 text-stone-500 hover:border-brand-300 hover:bg-brand-50"
-          }`}
-        >
-          <CalendarClock size={14} />
-          รอลงคิวหมอ
-          <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              bookingAlertActive
-                ? "bg-white/25 text-white"
-                : bookingAlertIds.size > 0
-                  ? "bg-amber-200 text-amber-900"
-                  : "bg-stone-100 text-stone-400"
-            }`}
-          >
-            {bookingAlertIds.size}
-          </span>
-        </button>
-        {/* เคสของฉัน — ผู้รับผิดชอบ (owner_id) คือคนที่สร้างการ์ดนั้น */}
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          title="ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ (คนที่สร้างการ์ด)"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
-            mineOnly
-              ? "border-brand-400 bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-              : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-          }`}
-        >
-          <UserRound size={14} />
-          เคสของฉัน
-          <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              mineOnly ? "bg-white/25 text-cream" : "bg-stone-100 text-stone-500"
-            }`}
-          >
-            {items.filter((i) => i.owner_id === me.id).length}
-          </span>
-        </button>
-        <InfluExcludeFilter
-          excluded={excluded}
-          onChange={setExcluded}
-          countOf={(s) => items.filter((i) => influStatusOf(i) === s).length}
-        />
-        {(search !== "" ||
-          stageFilter !== "all" ||
-          mineOnly ||
-          !excludedIsDefault) && (
+        {tab === "board" && (
+          <>
+          <div className="relative min-w-56 flex-1 sm:max-w-xs">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+            />
+            <Input
+              type="search"
+              placeholder="ค้นหาชื่อ รหัส Influ ID เบอร์ หรือหัตถการ..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {stageChips.map((chip) => {
+              const active = stageFilter === chip.key;
+              const count = countFor(chip.key);
+              // ขั้นติดต่อ/รายละเอียดย้ายไปบอร์ด Hunting แล้ว (0081) — เคสใหม่เริ่มที่ Memo
+              // ชิป 2 ขั้นแรกจึงซ่อนเมื่อว่าง (เคสเก่าที่ถูกย้อน stage ลงมายังโผล่ได้)
+              if (
+                typeof chip.key === "number" &&
+                chip.key <= INFLU_STAGE.caseDetail &&
+                count === 0 &&
+                !active
+              )
+                return null;
+              return (
+                <button
+                  key={String(chip.key)}
+                  type="button"
+                  onClick={() => setStageFilter(chip.key)}
+                  className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
+                    active
+                      ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                      : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
+                  }`}
+                >
+                  {chip.label}
+                  <span className={active ? "opacity-80" : "text-stone-400"}>
+                    {" "}
+                    ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* ตัวกรองเตือน: ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ปุ่มเรืองแสงเมื่อมีเคสค้าง */}
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setStageFilter("all");
-              setMineOnly(false);
-              setExcluded(new Set(DEFAULT_EXCLUDED));
-            }}
-            className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
+            onClick={() =>
+              setStageFilter(bookingAlertActive ? "all" : "needbooking")
+            }
+            title="เคสที่ผ่าน Stage 3 (Memo) แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
+              bookingAlertActive
+                ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
+                : bookingAlertIds.size > 0
+                  ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-glow-amber"
+                  : "border-brand-200 bg-white/70 text-stone-500 hover:border-brand-300 hover:bg-brand-50"
+            }`}
           >
-            <X size={14} />
-            ล้างตัวกรอง
+            <CalendarClock size={14} />
+            รอลงคิวหมอ
+            <span
+              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                bookingAlertActive
+                  ? "bg-white/25 text-white"
+                  : bookingAlertIds.size > 0
+                    ? "bg-amber-200 text-amber-900"
+                    : "bg-stone-100 text-stone-400"
+              }`}
+            >
+              {bookingAlertIds.size}
+            </span>
           </button>
+          {/* เคสของฉัน — ผู้รับผิดชอบ (owner_id) คือคนที่สร้างการ์ดนั้น */}
+          <button
+            type="button"
+            onClick={() => setMineOnly((v) => !v)}
+            title="ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ (คนที่สร้างการ์ด)"
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
+              mineOnly
+                ? "border-brand-400 bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
+                : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
+            }`}
+          >
+            <UserRound size={14} />
+            เคสของฉัน
+            <span
+              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                mineOnly ? "bg-white/25 text-cream" : "bg-stone-100 text-stone-500"
+              }`}
+            >
+              {items.filter((i) => i.owner_id === me.id).length}
+            </span>
+          </button>
+          <InfluExcludeFilter
+            excluded={excluded}
+            onChange={setExcluded}
+            countOf={(s) => items.filter((i) => influStatusOf(i) === s).length}
+          />
+          {(search !== "" ||
+            stageFilter !== "all" ||
+            mineOnly ||
+            !excludedIsDefault) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStageFilter("all");
+                setMineOnly(false);
+                setExcluded(new Set(DEFAULT_EXCLUDED));
+              }}
+              className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
+            >
+              <X size={14} />
+              ล้างตัวกรอง
+            </button>
+          )}
+          </>
         )}
+        {/* ปุ่มงานหลัก — ย้ายลงมาจากหัวหน้า (ผู้ใช้ 2026-08-20)
+            ทางเข้าอื่น (ปฏิทินคิว / สัญญา) อยู่บนเมนูของระบบแล้ว จึงไม่ทำปุ่มซ้ำที่นี่ */}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {/* ทะเบียนหมอ = งานผู้ดูแลระบบ (กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม) */}
+          {me.canManage && (
+            <button
+              type="button"
+              onClick={() => setDoctorsOpen(true)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            >
+              <Stethoscope size={16} />
+              จัดการหมอ
+            </button>
+          )}
+          {me.canEdit && (
+            <>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+              >
+                <UserRoundPlus size={16} />
+                เพิ่มโปรไฟล์
+              </button>
+              <Button onClick={() => setCaseOpen(true)}>
+                <Plus size={16} />
+                สร้างนัดใหม่
+              </Button>
+            </>
+          )}
+        </div>
       </div>
-      )}
 
       {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
