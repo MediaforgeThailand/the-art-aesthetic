@@ -171,16 +171,14 @@ export const INFLU_PROSPECT_ACTIVE: InfluProspectStatus[] = [
   "negotiating",
 ];
 
-/** ช่องทางแนะนำตอนบันทึก log การติดต่อ (text อิสระ — พิมพ์เองได้) */
-export const INFLU_CONTACT_CHANNELS = [
-  "Instagram DM",
-  "TikTok",
-  "Facebook / Messenger",
-  "Line",
-  "โทรศัพท์",
-  "อีเมล",
-  "นัดเจอ",
-  "อื่นๆ",
+/** ปุ่มบันทึกการติดต่อแบบกดครั้งเดียวบนโมดัล Hunting (ผู้ใช้ 2026-08-19:
+    "ให้เป็นแค่ปุ่ม กดว่าโทร/ทัก พอกดแล้วบันทึกว่าวันไหนที่โทรไป")
+    กดปุ่ม = insert influ_prospect_contacts ของวันนี้ทันที ไม่มีฟอร์มให้กรอกก่อน;
+    channel เป็น text อิสระในตาราง ข้อมูลเก่าที่พิมพ์เองไว้ (เช่น "Instagram DM")
+    ยังแสดงบนลิสต์ได้ตามเดิม — ตารางนี้คุมแค่ "ปุ่มลัดที่มีให้กด" */
+export const INFLU_CONTACT_QUICK = [
+  { channel: "โทร", label: "โทร", icon: "phone" },
+  { channel: "ทัก", label: "ทัก", icon: "message" },
 ] as const;
 
 /* ---------- กลุ่มขนาดบนบอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
