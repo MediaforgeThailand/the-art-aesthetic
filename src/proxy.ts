@@ -13,7 +13,10 @@ export default async function proxy(request: NextRequest) {
     request.nextUrl.pathname === "/api/warm" ||
     // PWA: เบราว์เซอร์ดึง manifest แบบไม่ส่ง cookie — ไม่ปล่อยผ่านจะโดนเด้งไป /login
     // แล้วติดตั้งลงหน้าจอโฮมไม่ได้ (matcher ข้างล่างยกเว้นแค่นามสกุลรูป ไม่ครอบคลุมอันนี้)
-    request.nextUrl.pathname === "/manifest.webmanifest"
+    request.nextUrl.pathname === "/manifest.webmanifest" ||
+    // ปลายทางที่ Supabase ส่งกลับหลังยืนยันตัวตนกับ Google — ตอนถูกเรียกยังไม่มี session
+    // (route handler เป็นคนแลก code เป็นคุกกี้เอง) ไม่ปล่อยผ่าน = เด้งกลับ /login วนไม่จบ
+    request.nextUrl.pathname === "/auth/callback"
   ) {
     return NextResponse.next({ request });
   }
