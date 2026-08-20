@@ -32,6 +32,46 @@ type ShellNavItem = {
 };
 
 /**
+ * แถบเมนูของระบบ — ใช้ตัวเดียวกันทั้ง 2 เลย์เอาต์ (บรรทัดเดียวกับชื่อระบบที่ ≥lg
+ * / แถวล่างแยกที่จอเล็ก) ต่างกันแค่ className ที่ส่งเข้ามา จึงไม่มีเมนูสองชุดให้หลุดกัน
+ */
+function ShellNav({
+  items,
+  activeHref,
+  className = "",
+}: {
+  items: ShellNavItem[];
+  activeHref: string | null;
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="เมนูระบบ Influencer"
+      className={`gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}
+    >
+      {items.map(({ href, label, icon: Icon }) => {
+        const active = href === activeHref;
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 active:scale-[0.97] max-sm:min-h-11 xl:px-3 ${
+              active
+                ? "bg-white text-brand-700 shadow-sm ring-1 ring-brand-100"
+                : "text-stone-500 hover:bg-white/70 hover:text-brand-800"
+            }`}
+          >
+            <Icon size={15} className={active ? "text-brand-600" : ""} />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
  * โครงหน้าของ **ระบบ Influencer** — แยกขาดจากแถบเมนูของแอปทีม (`Sidebar`)
  *
  * ทีมอื่นเข้ามาใช้ระบบนี้โดยไม่ได้ทำงานในแอปทีม การเอาเมนูของทีม (Task/แดชบอร์ด/ราคา/ไฟล์)
@@ -150,30 +190,48 @@ export function InfluShell({
       {/* ---------- แถบบนของระบบ Influencer ----------
            pt-safe = เผื่อ status bar ตอนติดตั้งเป็น PWA (standalone ไม่มีแถบเบราว์เซอร์) */}
       <header className="shrink-0 border-b border-white/60 bg-white/60 pt-safe backdrop-blur-xl">
-        <div className="flex items-center gap-2 px-3 py-2 sm:px-4">
+        {/* ≥lg = แถวเดียว: [ชื่อระบบ] │ [เมนู] │ [ปุ่มบัญชี] — คั่นด้วยเส้นแบ่งให้เห็น
+            สัดส่วนชัด (ผู้ใช้ 2026-08-20); จอเล็กกว่านั้นเมนูลงแถวล่างเหมือนเดิม */}
+        <div className="flex items-center gap-2 px-3 py-2 sm:px-4 lg:gap-3">
           <Link
             href={canView ? "/influencers" : "/influ-gallery"}
-            className="flex min-w-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-80"
+            className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-80"
           >
             <LogoMark className="h-9 w-9 shrink-0" />
             <span className="min-w-0">
               <span className="block truncate font-display text-sm font-semibold tracking-wide text-stone-800">
                 Influencer System
               </span>
-              <span className="block truncate text-[10px] leading-tight text-stone-400">
+              {/* บรรทัดรองมีเฉพาะเลย์เอาต์ 2 แถว — แถวเดียวต้องเก็บพื้นที่ไว้ให้เมนู */}
+              <span className="block truncate text-[10px] leading-tight text-stone-400 lg:hidden">
                 The ART — Aesthetic
               </span>
             </span>
           </Link>
 
           {levelLabel && levelBadge && (
+            // ซ่อนช่วง lg (แถวเดียวแต่ยังแคบ) แล้วกลับมาโชว์ที่ xl ขึ้นไป
             <span
-              className={`hidden shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${levelBadge}`}
+              className={`hidden shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium sm:inline-flex lg:hidden xl:inline-flex ${levelBadge}`}
               title="ระดับสิทธิ์ของบัญชีนี้ในระบบ Influencer"
             >
               <Sparkles size={11} /> {levelLabel}
             </span>
           )}
+
+          <span
+            aria-hidden
+            className="hidden h-7 w-px shrink-0 bg-stone-200/90 lg:block"
+          />
+          <ShellNav
+            items={visibleNav}
+            activeHref={activeHref}
+            className="hidden min-w-0 flex-1 lg:flex"
+          />
+          <span
+            aria-hidden
+            className="hidden h-7 w-px shrink-0 bg-stone-200/90 lg:block"
+          />
 
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <Link
@@ -206,30 +264,13 @@ export function InfluShell({
           </div>
         </div>
 
-        {/* แถบเมนูของระบบนี้ — จอเล็กเลื่อนแนวนอน (ห้ามตัดบรรทัดจนแถบสูงกินพื้นที่เนื้อหา) */}
-        <nav
-          aria-label="เมนูระบบ Influencer"
-          className="flex gap-1 overflow-x-auto px-2 pb-1.5 [scrollbar-width:none] sm:px-3 [&::-webkit-scrollbar]:hidden"
-        >
-          {visibleNav.map(({ href, label, icon: Icon }) => {
-            const active = href === activeHref;
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? "page" : undefined}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200 active:scale-[0.97] max-sm:min-h-11 ${
-                  active
-                    ? "bg-white text-brand-700 shadow-sm"
-                    : "text-stone-500 hover:bg-white/70 hover:text-brand-800"
-                }`}
-              >
-                <Icon size={15} className={active ? "text-brand-600" : ""} />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* จอเล็กกว่า lg = เมนูอยู่แถวล่าง เลื่อนแนวนอน
+            (ห้ามตัดบรรทัดจนแถบสูงกินพื้นที่เนื้อหา) */}
+        <ShellNav
+          items={visibleNav}
+          activeHref={activeHref}
+          className="flex px-2 pb-1.5 sm:px-3 lg:hidden"
+        />
       </header>
 
       {/* แต่ละหน้าคุม scroll เอง (PageContainer) — pb-safe เพราะระบบนี้ไม่มีแถบเมนูล่างมาช่วย

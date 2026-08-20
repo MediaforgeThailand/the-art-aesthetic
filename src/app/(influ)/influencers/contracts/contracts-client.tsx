@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeft,
   CalendarRange,
   FileSignature,
   Megaphone,
@@ -18,7 +17,6 @@ import {
   Input,
   Label,
   Modal,
-  PageHeader,
   Textarea,
 } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
@@ -99,20 +97,6 @@ export function ContractsClient({
 
   return (
     <>
-      <PageHeader
-        title="อายุสัญญา Influencer & Sub Campaign"
-        description="สัญญาใช้คอนเทนต์ 6 เดือนนับจากวันเซนครบ — เรียกร่วม campaign ได้เฉพาะคนที่สัญญายังไม่หมด"
-        action={
-          <Link
-            href="/influencers"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-          >
-            <ArrowLeft size={16} />
-            กลับหน้ารายชื่อ
-          </Link>
-        }
-      />
-
       {rows.length === 0 ? (
         <Card>
           <EmptyState
