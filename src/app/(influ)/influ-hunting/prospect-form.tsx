@@ -4,8 +4,11 @@
  * ฟอร์มเพิ่ม/แก้รายชื่อบนบอร์ด Hunting (influ_prospects — migration 0081)
  *
  * จดได้ตั้งแต่ยังรู้แค่ชื่อช่อง: ชื่อ + ช่องทางโซเชียล + ดาวความน่าสนใจ +
- * แหล่งที่มา + หัตถการที่น่าจะเสนอ + นัดตามครั้งถัดไป — ทุกอย่างนอกจากชื่อไม่บังคับ
+ * หัตถการที่น่าจะเสนอ + นัดตามครั้งถัดไป — ทุกอย่างนอกจากชื่อไม่บังคับ
  * (ตอนตอบรับค่อยเก็บข้อมูลจริงจังผ่านการแปลงเป็นโปรไฟล์)
+ *
+ * ช่อง "เจอมาจากไหน" ถูกถอดออกจากฟอร์ม 2026-08-19 (ผู้ใช้: ไม่จำเป็นต้องมี) —
+ * คอลัมน์ influ_prospects.source ยังอยู่ในตารางและไม่ถูกเขียนทับตอนแก้ข้อมูล
  *
  * seed ค่าด้วย key-remount (กติกาเดียวกับ ProfileFormModal — ห้าม sync ด้วย effect)
  */
@@ -105,7 +108,6 @@ function ProspectFormInner({
   const [followers, setFollowers] = useState(
     prospect?.followers != null ? String(prospect.followers) : ""
   );
-  const [source, setSource] = useState(prospect?.source ?? "");
   const [rating, setRating] = useState(prospect?.rating ?? 0);
   const [interested, setInterested] = useState(
     prospect?.interested_services ?? ""
@@ -145,7 +147,6 @@ function ProspectFormInner({
       phone: phone.trim() || null,
       occupation: occupation.trim() || null,
       followers: parseFollowers(followers),
-      source: source.trim() || null,
       rating,
       interested_services: interested.trim() || null,
       note: note.trim() || null,
@@ -246,16 +247,6 @@ function ProspectFormInner({
               placeholder="เช่น 150000"
             />
           </div>
-          <div>
-            <Label htmlFor="pr-source">เจอมาจากไหน</Label>
-            <Input
-              id="pr-source"
-              disabled={saving}
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="เช่น ค้น TikTok / มีคนแนะนำ / ทักมาเอง"
-            />
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -334,7 +325,7 @@ function ProspectFormInner({
             type="button"
             disabled={saving}
             onClick={() => setRows((prev) => [...prev, { ...EMPTY_CHANNEL }])}
-            className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 active:scale-[0.97]"
+            className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Plus size={14} />
             เพิ่มช่องทาง

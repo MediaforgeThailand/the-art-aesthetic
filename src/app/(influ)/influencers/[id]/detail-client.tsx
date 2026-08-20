@@ -15,6 +15,7 @@ import {
   LayoutList,
   Link2,
   ListChecks,
+  MessageCircleQuestion,
   MessageSquarePlus,
   PenLine,
   PhoneCall,
@@ -432,7 +433,7 @@ function CaseInfoEditModal({
             onChange={setDoctorName}
           />
           <p className="mt-1 text-[11px] text-stone-400">
-            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
+            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
           </p>
         </div>
         {err && (
@@ -696,7 +697,7 @@ export function InfluDetailClient({
               type="button"
               onClick={() => setNameOpen(true)}
               title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
-              className="cursor-pointer rounded-md p-1.5 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
             >
               <PenLine size={15} />
             </button>
@@ -727,6 +728,24 @@ export function InfluDetailClient({
         {influencer.completed && (
           <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
             <CheckCircle2 size={12} /> จบงานแล้ว
+          </Badge>
+        )}
+        {/* ติ๊ก "ส่ง Memo แล้ว" (ติ๊กที่ขั้น Memo) — โชว์บนหัวด้วย จะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู */}
+        {influencer.docs_sent_at && (
+          <span
+            title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
+              influencer.docs_sent_at
+            )}`}
+          >
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+            </Badge>
+          </span>
+        )}
+        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่ Stage 2) */}
+        {influencer.consult_only && !influencer.procedure_text && (
+          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+            <MessageCircleQuestion size={12} /> รอปรึกษา
           </Badge>
         )}
         {/* follow-up ที่เหลือ (เฉพาะขั้นตามงาน) */}
@@ -761,7 +780,7 @@ export function InfluDetailClient({
             type="button"
             onClick={() => setNewRoundOpen(true)}
             title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่ม Stage 1 เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Repeat size={14} />
             เปิดรอบใหม่
@@ -1290,7 +1309,7 @@ function OverviewPanel({
                 type="button"
                 onClick={() => setCaseInfoOpen(true)}
                 title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส"
-                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:min-h-11"
               >
                 <PenLine size={13} />
                 แก้วัน/แพทย์
@@ -1298,12 +1317,26 @@ function OverviewPanel({
             )}
           </div>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
-            <Field label="หัตถการที่รับ" value={influencer.procedure_text} />
+            <Field
+              label="หัตถการที่รับ"
+              value={
+                influencer.procedure_text ||
+                (influencer.consult_only ? "รอปรึกษาแพทย์ (ยังไม่ระบุ)" : null)
+              }
+            />
             <Field
               label="มูลค่าเคส"
               value={
                 influencer.case_value != null
                   ? formatCurrency(influencer.case_value)
+                  : null
+              }
+            />
+            <Field
+              label="ค่าตัว"
+              value={
+                influencer.talent_fee != null
+                  ? formatCurrency(influencer.talent_fee)
                   : null
               }
             />
@@ -1457,7 +1490,7 @@ function OverviewPanel({
               <button
                 type="button"
                 onClick={onEditProfile}
-                className="ml-auto cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 active:scale-[0.97]"
+                className="ml-auto cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 active:scale-[0.97] max-sm:min-h-11"
               >
                 แก้โปรไฟล์
               </button>
@@ -1835,6 +1868,12 @@ function CaseDetailStage({
   const [caseValue, setCaseValue] = useState(
     influencer.case_value != null ? String(influencer.case_value) : ""
   );
+  /** เคส "รอปรึกษา" (ติ๊กมาตั้งแต่ตอนสร้างนัด) — ธงเดียวที่อนุญาตให้ไม่มีหัตถการ
+      เอาติ๊กออกเมื่อปรึกษาแพทย์แล้วเคาะโปรแกรมได้ (ต้องมีรายการอย่างน้อย 1 ก่อน) */
+  const [consultOnly, setConsultOnly] = useState(influencer.consult_only);
+  const [talentFee, setTalentFee] = useState(
+    influencer.talent_fee != null ? String(influencer.talent_fee) : ""
+  );
   const [followers, setFollowers] = useState(
     influencer.followers != null ? String(influencer.followers) : ""
   );
@@ -1852,8 +1891,11 @@ function CaseDetailStage({
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
+  // เคส "รอปรึกษา" = ยกเว้นข้อบังคับเรื่องหัตถการ (ยังไม่รู้ว่าจะทำอะไรจนกว่าจะเจอแพทย์)
   const canProceed =
-    occupation.trim() !== "" && items.length > 0 && followersNum > 0;
+    occupation.trim() !== "" &&
+    (items.length > 0 || consultOnly) &&
+    followersNum > 0;
 
   const upload = async (
     file: File,
@@ -1907,8 +1949,13 @@ function CaseDetailStage({
     // (บอกให้รู้ว่าขาดอะไร ดีกว่าปล่อยให้ล้างค่าทิ้งเงียบๆ หรือกดปุ่มไม่ได้โดยไม่บอกเหตุผล)
     if (!canProceed) {
       setError(
-        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ"
+        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ (หรือติ๊ก 'รอปรึกษา')"
       );
+      return;
+    }
+    const feeNum = talentFee.trim() === "" ? null : Number(talentFee);
+    if (feeNum !== null && (!Number.isFinite(feeNum) || feeNum < 0)) {
+      setError("ค่าตัวต้องเป็นตัวเลขไม่ติดลบ");
       return;
     }
     setBusy(true);
@@ -1922,6 +1969,9 @@ function CaseDetailStage({
         service_date: serviceDate === "" ? null : serviceDate,
         doctor_name: doctorName.trim() || null,
         case_value: caseValue === "" ? null : Number(caseValue),
+        // มีรายการหัตถการแล้ว = ไม่ใช่เคสรอปรึกษาอีกต่อไป (ธงค้างไว้จะทำให้การ์ดขึ้นชิปผิด)
+        consult_only: items.length > 0 ? false : consultOnly,
+        talent_fee: feeNum,
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
         tier,
@@ -1974,7 +2024,30 @@ function CaseDetailStage({
             </div>
           </div>
           <div>
-            <Label>โปรแกรม/หัตถการที่รับ * (Influencer Cost)</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="!mb-0">
+                โปรแกรม/หัตถการที่รับ {items.length > 0 || !consultOnly ? "*" : ""}{" "}
+                (Influencer Cost)
+              </Label>
+              {/* ติ๊กนี้ค้างอยู่จากตอนสร้างนัด — พอเพิ่มรายการแล้วระบบเอาออกให้เองตอนบันทึก */}
+              {items.length === 0 && (
+                <label
+                  className={`flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800 ${
+                    readOnly ? "opacity-60" : "cursor-pointer"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={consultOnly}
+                    disabled={readOnly}
+                    onChange={(e) => setConsultOnly(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer accent-[#a96a58] disabled:cursor-default"
+                  />
+                  รอปรึกษา (ยังไม่ระบุหัตถการ)
+                </label>
+              )}
+            </div>
+            <div className="mt-1.5" />
             <ProcedureItemsEditor
               influencerId={influencer.id}
               items={items}
@@ -2010,6 +2083,22 @@ function CaseDetailStage({
                 placeholder="78200"
               />
             </div>
+            <div>
+              <Label htmlFor="d-fee">ค่าตัว (บาท)</Label>
+              <Input
+                id="d-fee"
+                type="number"
+                min="0"
+                step="any"
+                disabled={readOnly}
+                value={talentFee}
+                onChange={(e) => setTalentFee(e.target.value)}
+                placeholder="เว้นว่าง = ไม่มีค่าตัว"
+              />
+              <p className="mt-1 text-[11px] text-stone-400">
+                เคสที่ influ คิดเงิน — ขึ้นเป็นบรรทัด &quot;ค่าตัว&quot; ในข้อความ Memo
+              </p>
+            </div>
           </div>
           <div>
             <Label htmlFor="d-doc">แพทย์ที่รับเคส</Label>
@@ -2021,7 +2110,7 @@ function CaseDetailStage({
               onChange={setDoctorName}
             />
             <p className="mt-1 text-[11px] text-stone-400">
-              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่ปุ่ม &quot;จัดการหมอ&quot; หน้าเคสดำเนินงาน
+              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2622,7 +2711,7 @@ function FollowupStage({
                 type="button"
                 disabled={readOnly || switching}
                 onClick={() => void switchMode(m)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 max-sm:min-h-11 ${
                   readOnly || switching
                     ? "cursor-default"
                     : "cursor-pointer active:scale-[0.97]"
@@ -2821,13 +2910,18 @@ function StandardChecklist({
                   disabled={readOnly}
                   onClick={() => void onToggleDone(t)}
                   title={t.done ? "ยกเลิกติ๊ก" : "ติ๊กว่า follow up แล้ว"}
-                  className={`mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all active:scale-90 disabled:cursor-default ${
-                    t.done
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
-                  }`}
+                  className="mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center active:scale-90 disabled:cursor-default max-sm:-mx-2.5 max-sm:-mb-2.5 max-sm:-mt-2 max-sm:h-11 max-sm:w-11"
                 >
-                  <Check size={13} strokeWidth={3} />
+                  {/* วงที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
+                      t.done
+                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                  </span>
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -2848,13 +2942,13 @@ function StandardChecklist({
                               onCancelEditTitle();
                             }
                           }}
-                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-sm font-medium text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-base font-medium sm:text-sm text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                         />
                         <button
                           type="button"
                           onClick={() => void onSaveTitle(t)}
                           title="บันทึกชื่อ"
-                          className="cursor-pointer rounded-md p-1 text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90"
+                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90 sm:h-7 sm:w-7"
                         >
                           <Check size={14} />
                         </button>
@@ -2862,7 +2956,7 @@ function StandardChecklist({
                           type="button"
                           onClick={onCancelEditTitle}
                           title="ยกเลิก"
-                          className="cursor-pointer rounded-md p-1 text-stone-400 transition-all hover:bg-stone-100 active:scale-90"
+                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-stone-100 active:scale-90 sm:h-7 sm:w-7"
                         >
                           <X size={14} />
                         </button>
@@ -2883,7 +2977,7 @@ function StandardChecklist({
                             type="button"
                             onClick={() => onStartEditTitle(t)}
                             title="แก้ไขชื่อรายการ"
-                            className="cursor-pointer rounded-md p-1 text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90"
+                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
                           >
                             <PenLine size={13} />
                           </button>
@@ -2933,7 +3027,7 @@ function StandardChecklist({
                         type="button"
                         onClick={() => void onCopyScript(t)}
                         title="คัดลอก script"
-                        className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-all active:scale-90 ${
+                        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all active:scale-90 sm:h-7 sm:w-7 ${
                           copiedId === t.id
                             ? "text-emerald-600"
                             : "text-stone-400 hover:bg-brand-50 hover:text-brand-600"
@@ -2954,7 +3048,7 @@ function StandardChecklist({
                     placeholder="+ เพิ่มหมายเหตุ เช่น ส่งไฟล์แล้ว รอทีมตรวจ..."
                     onChange={(e) => onDraftChange(t.id, e.target.value)}
                     onBlur={() => void onSaveDescription(t)}
-                    className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-base sm:text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   />
                   {t.done && t.done_at && (
                     <p className="mt-1 text-[11px] text-emerald-600">

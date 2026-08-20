@@ -581,7 +581,7 @@ function ProfileFormInner({
             type="button"
             disabled={saving}
             onClick={() => setRows((prev) => [...prev, { ...EMPTY_CHANNEL }])}
-            className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 active:scale-[0.97]"
+            className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Plus size={14} />
             เพิ่มช่องทาง

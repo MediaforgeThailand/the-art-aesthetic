@@ -45,6 +45,10 @@ function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
+/** ข้อความแทนหัตถการของเคส "รอปรึกษา" — ข้อความนี้ถูกคัดลอกไปลงเอกสารจริง จึงต้องบอก
+    ผู้อนุมัติให้ชัดว่าตั้งใจเว้น ไม่ใช่ลืมกรอก (กติกาเดียวกับ "(ยังไม่กำหนด)" ของวันที่) */
+const CONSULT_ONLY_TEXT = "(รอปรึกษาแพทย์ — ยังไม่ระบุหัตถการ)";
+
 /** ชื่อเคสที่ไปโผล่ในประวัติการใช้งาน (ชุดเดียวกับ logNameOf ใน detail-client) */
 function logNameOf(
   i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname">
@@ -247,28 +251,39 @@ function MemoCopyStage({
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [markingReady, setMarkingReady] = useState(false);
+  const [markingSent, setMarkingSent] = useState(false);
   const memoInputRef = useRef<HTMLInputElement>(null);
   const photo = useSignedUrl(influencer.photo_path);
   const channel = useSignedUrl(influencer.channel_photo_path);
 
   const memoUploaded = !!influencer.memo_file_path;
-  const memoReady = !!influencer.memo_ready_at;
+  const memoSent = !!influencer.docs_sent_at;
 
-  /** ติ๊ก/ยกเลิก "ข้อมูลพร้อมทำ Memo" — ติ๊กแล้วรายนี้ไปโผล่ในแท็บ "รอทำ Memo" ของหน้าบอร์ด
-      (หลุดจากแท็บเองเมื่ออัพโหลดไฟล์ Memo แล้ว — ไม่ต้องมายกเลิกติ๊กเอง) */
-  const toggleMemoReady = async () => {
+  /** ติ๊ก/ยกเลิก "ส่ง Memo แล้ว" — ป้ายยืนยันว่ายื่นเอกสารไปขออนุมัติแล้ว (กันทีมส่งซ้ำ)
+      โชว์เป็นติ๊กถูกเล็กๆ บนการ์ดบอร์ดด้วย · คนละเรื่องกับ "ไฟล์ Memo ที่อนุมัติแล้ว"
+      ซึ่งเป็นขาขากลับ (อัพไฟล์ = ผ่านขั้นนี้ไปขั้นสัญญาเลย) */
+  const toggleMemoSent = async () => {
     setError(null);
-    setMarkingReady(true);
+    setMarkingSent(true);
+    const next = memoSent ? null : new Date().toISOString();
     const { error: e } = await supabase
       .from("influencers")
-      .update({ memo_ready_at: memoReady ? null : new Date().toISOString() })
+      .update({ docs_sent_at: next })
       .eq("id", influencer.id);
-    setMarkingReady(false);
+    setMarkingSent(false);
     if (e) {
       setError(`บันทึกสถานะไม่สำเร็จ: ${e.message}`);
       return;
     }
+    log({
+      action: "status",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: next
+        ? "ติ๊กว่าส่ง Memo ขออนุมัติแล้ว"
+        : 'ยกเลิกการติ๊ก "ส่ง Memo แล้ว"',
+    });
     router.refresh();
   };
 
@@ -288,12 +303,19 @@ function MemoCopyStage({
     "",
     `ชื่อ-นามสกุล : ${nameWithNick}`,
     `อาชีพ : ${influencer.occupation || "-"}`,
-    `หัตถการที่รับบริการ : ${influencer.procedure_text || "-"}`,
+    `หัตถการที่รับบริการ : ${
+      influencer.procedure_text ||
+      (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")
+    }`,
     `มูลค่า : ${
       influencer.case_value != null
         ? formatCurrency(influencer.case_value)
         : "-"
     }`,
+    // ค่าตัว = เคสที่ต้องจ่ายเงินให้ influ — บรรทัดนี้โผล่เฉพาะเคสที่กรอกไว้
+    ...(influencer.talent_fee != null
+      ? [`ค่าตัว : ${formatCurrency(influencer.talent_fee)}`]
+      : []),
     // วันที่ไม่บังคับกรอก — บอกให้ชัดว่ายังไม่เคาะวัน ไม่ใช่ลืมกรอก (ข้อความนี้ถูกก๊อปไปลงเอกสารจริง)
     `วันที่ทำหัตถการ : ${
       influencer.service_date
@@ -420,59 +442,54 @@ function MemoCopyStage({
         แล้วเคสจะไปขั้น &quot;เซนสัญญา + วันรับบริการ&quot; ให้อัตโนมัติ
       </p>
 
-      {/* ติ๊กว่าข้อมูลครบ พร้อมให้ influ manager ลงมือทำ Memo — รายที่ติ๊กจะไปรวมกันใน
-          แท็บ "รอทำ Memo" หน้าบอร์ด; ซ่อนการ์ดเมื่ออัพโหลด Memo แล้ว (คิวจบไปเองแล้ว) */}
-      {!memoUploaded && (
-        <Card className="p-5">
-          <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
-            <ClipboardCheck size={14} />
-            สถานะข้อมูลสำหรับทำ Memo
-          </p>
-          {memoReady ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
-              <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-stone-800">
-                  ข้อมูลพร้อมทำ Memo แล้ว
-                </p>
-                <p className="text-xs text-stone-500">
-                  ติ๊กเมื่อ {formatDateTime(influencer.memo_ready_at!)} ·
-                  รายนี้อยู่ในแท็บ “รอทำ Memo” บนหน้าบอร์ดแล้ว
-                </p>
-              </div>
-              {!readOnly && (
-                <Button
-                  variant="ghost"
-                  onClick={() => void toggleMemoReady()}
-                  loading={markingReady}
-                  className="!px-2.5 !py-1 !text-xs"
-                >
-                  <Undo2 size={13} />
-                  ยกเลิกติ๊ก
-                </Button>
-              )}
-            </div>
-          ) : readOnly ? (
-            <p className="text-xs text-stone-400">ยังไม่ได้ติ๊กว่าข้อมูลพร้อม</p>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 flex-1 text-xs text-stone-500">
-                ข้อมูลครบพร้อมทำ Memo แล้วให้ติ๊กที่นี่ —
-                รายนี้จะไปแสดงในแท็บ “รอทำ Memo” บนหน้าบอร์ด
-                ให้ influ manager เห็นว่ามีเคสรออยู่
+      {/* ติ๊ก "ส่ง Memo แล้ว" — ป้ายยืนยันว่ายื่นขออนุมัติไปแล้ว (ทีมเห็นบนการ์ดบอร์ดด้วย)
+          ไม่ซ่อนตัวเองแม้อัพไฟล์ Memo แล้ว เพราะเป็นบันทึกว่าเคยส่งเมื่อไหร่ */}
+      <Card className="p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <ClipboardCheck size={14} />
+          สถานะการส่ง Memo
+        </p>
+        {memoSent ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-stone-800">ส่ง Memo แล้ว</p>
+              <p className="text-xs text-stone-500">
+                ติ๊กเมื่อ {formatDateTime(influencer.docs_sent_at!)} ·
+                การ์ดบนบอร์ดขึ้นติ๊กถูกให้ทีมเห็นแล้ว
               </p>
-              <Button
-                variant="secondary"
-                onClick={() => void toggleMemoReady()}
-                loading={markingReady}
-              >
-                <ClipboardCheck size={16} />
-                ติ๊กว่าข้อมูลพร้อมทำ Memo
-              </Button>
             </div>
-          )}
-        </Card>
-      )}
+            {fileEditable && (
+              <Button
+                variant="ghost"
+                onClick={() => void toggleMemoSent()}
+                loading={markingSent}
+                className="!px-2.5 !py-1 !text-xs"
+              >
+                <Undo2 size={13} />
+                ยกเลิกติ๊ก
+              </Button>
+            )}
+          </div>
+        ) : !fileEditable ? (
+          <p className="text-xs text-stone-400">ยังไม่ได้ติ๊กว่าส่ง Memo</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 flex-1 text-xs text-stone-500">
+              ส่ง Memo ไปขออนุมัติแล้วให้ติ๊กที่นี่ —
+              การ์ดบนบอร์ดจะขึ้นติ๊กถูกว่า “ส่ง Memo แล้ว” กันทีมส่งซ้ำ
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => void toggleMemoSent()}
+              loading={markingSent}
+            >
+              <ClipboardCheck size={16} />
+              ติ๊กว่าส่ง Memo แล้ว
+            </Button>
+          </div>
+        )}
+      </Card>
 
       <Card className="space-y-4 p-5">
         <CopyBox label="เรื่อง" text={subjectText} />
@@ -864,7 +881,10 @@ export function MemoFormStage({
             </p>
             <p>
               หัตถการที่รับบริการ :{" "}
-              <Line>{influencer.procedure_text || "-"}</Line>
+              <Line>
+                {influencer.procedure_text ||
+                  (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")}
+              </Line>
             </p>
             <p>
               มูลค่า :{" "}
@@ -874,6 +894,11 @@ export function MemoFormStage({
                   : "-"}
               </Line>
             </p>
+            {influencer.talent_fee != null && (
+              <p>
+                ค่าตัว : <Line>{formatCurrency(influencer.talent_fee)}</Line>
+              </p>
+            )}
             <p>
               วันที่ทำหัตถการ :{" "}
               <Line>

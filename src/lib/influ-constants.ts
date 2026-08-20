@@ -171,16 +171,14 @@ export const INFLU_PROSPECT_ACTIVE: InfluProspectStatus[] = [
   "negotiating",
 ];
 
-/** ช่องทางแนะนำตอนบันทึก log การติดต่อ (text อิสระ — พิมพ์เองได้) */
-export const INFLU_CONTACT_CHANNELS = [
-  "Instagram DM",
-  "TikTok",
-  "Facebook / Messenger",
-  "Line",
-  "โทรศัพท์",
-  "อีเมล",
-  "นัดเจอ",
-  "อื่นๆ",
+/** ปุ่มบันทึกการติดต่อแบบกดครั้งเดียวบนโมดัล Hunting (ผู้ใช้ 2026-08-19:
+    "ให้เป็นแค่ปุ่ม กดว่าโทร/ทัก พอกดแล้วบันทึกว่าวันไหนที่โทรไป")
+    กดปุ่ม = insert influ_prospect_contacts ของวันนี้ทันที ไม่มีฟอร์มให้กรอกก่อน;
+    channel เป็น text อิสระในตาราง ข้อมูลเก่าที่พิมพ์เองไว้ (เช่น "Instagram DM")
+    ยังแสดงบนลิสต์ได้ตามเดิม — ตารางนี้คุมแค่ "ปุ่มลัดที่มีให้กด" */
+export const INFLU_CONTACT_QUICK = [
+  { channel: "โทร", label: "โทร", icon: "phone" },
+  { channel: "ทัก", label: "ทัก", icon: "message" },
 ] as const;
 
 /* ---------- กลุ่มขนาดบนบอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
@@ -241,6 +239,8 @@ export const INFLU_CALENDAR_KINDS: Record<
     dot: string;
     /** ขอบซ้ายเข้มของชิปในช่องวัน — แยกประเภทด้วยสีขอบให้กวาดตาเจอเร็ว */
     edge: string;
+    /** แท่งสีทึบตัวหนังสือขาว (ชิปคิวบนกริดปฏิทินแบบ TimeTree) — เลือกเฉดที่ contrast พอ */
+    solid: string;
   }
 > = {
   service: {
@@ -249,6 +249,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-brand-100 text-brand-800 border-brand-200",
     dot: "bg-brand-500",
     edge: "border-l-brand-500",
+    solid: "bg-brand-500",
   },
   shoot: {
     label: "ถ่ายทำ / ถ่ายคอนเทนต์",
@@ -256,6 +257,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-violet-100 text-violet-700 border-violet-200",
     dot: "bg-violet-500",
     edge: "border-l-violet-500",
+    solid: "bg-violet-500",
   },
   post: {
     label: "คิวโพสต์ / ลงคลิป",
@@ -263,6 +265,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-sky-100 text-sky-700 border-sky-200",
     dot: "bg-sky-500",
     edge: "border-l-sky-500",
+    solid: "bg-sky-600",
   },
   meeting: {
     label: "นัดคุย / ประชุม",
@@ -270,6 +273,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-amber-100 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
     edge: "border-l-amber-500",
+    solid: "bg-amber-600",
   },
   followup: {
     label: "ติดตามงาน / ส่งภาพอัปเดต",
@@ -277,6 +281,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-emerald-100 text-emerald-700 border-emerald-200",
     dot: "bg-emerald-500",
     edge: "border-l-emerald-500",
+    solid: "bg-emerald-600",
   },
   other: {
     label: "อื่นๆ",
@@ -284,6 +289,7 @@ export const INFLU_CALENDAR_KINDS: Record<
     chip: "bg-stone-100 text-stone-600 border-stone-200",
     dot: "bg-stone-400",
     edge: "border-l-stone-400",
+    solid: "bg-stone-500",
   },
 };
 

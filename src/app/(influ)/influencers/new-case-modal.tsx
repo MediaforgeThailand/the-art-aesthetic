@@ -84,6 +84,10 @@ export function NewCaseModal({
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [influCode, setInfluCode] = useState("");
   const [procedures, setProcedures] = useState<PickedProcedure[]>([]);
+  /** รอปรึกษา = ยังไม่รู้ว่าจะทำอะไร ต้องให้แพทย์ดูก่อน — ทางออกเดียวที่เปิดเคสได้โดยไม่มีหัตถการ */
+  const [consultOnly, setConsultOnly] = useState(false);
+  /** ค่าตัว (บาท) — เคสที่ influ คิดเงิน ต้องขึ้นเป็นบรรทัดหนึ่งใน Memo ให้ผู้อนุมัติเห็น */
+  const [talentFee, setTalentFee] = useState("");
   const [serviceDate, setServiceDate] = useState("");
   const [doctorName, setDoctorName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -94,6 +98,8 @@ export function NewCaseModal({
     setProfileQuery("");
     setInfluCode("");
     setProcedures([]);
+    setConsultOnly(false);
+    setTalentFee("");
     setServiceDate("");
     setDoctorName("");
     setErr(null);
@@ -118,8 +124,15 @@ export function NewCaseModal({
       setErr("เลือกโปรไฟล์ Influencer ก่อน — ถ้ายังไม่มีให้กด 'สร้างโปรไฟล์ใหม่'");
       return;
     }
-    if (procedures.length === 0) {
-      setErr("เลือกหัตถการที่จะเข้ารับอย่างน้อย 1 รายการ");
+    if (procedures.length === 0 && !consultOnly) {
+      setErr(
+        "เลือกหัตถการที่จะเข้ารับอย่างน้อย 1 รายการ — ถ้ายังไม่รู้ว่าจะทำอะไร ให้ติ๊ก 'รอปรึกษา'"
+      );
+      return;
+    }
+    const feeNum = talentFee.trim() === "" ? null : Number(talentFee);
+    if (feeNum !== null && (!Number.isFinite(feeNum) || feeNum < 0)) {
+      setErr("ค่าตัวต้องเป็นตัวเลขไม่ติดลบ");
       return;
     }
     setSaving(true);
@@ -156,6 +169,12 @@ export function NewCaseModal({
         // ขั้นติดต่อ+รายละเอียดจบตอนทำโปรไฟล์/ฟอร์มนี้แล้ว — เริ่มที่ Memo เลย
         stage: INFLU_STAGE.memo,
         influ_code: influCode.trim() || null,
+        // รอปรึกษา = ทำ Memo ได้ทั้งที่ยังไม่มีหัตถการ (Stage 2 เอาติ๊กออกได้เมื่อเคาะแล้ว)
+        // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
+        consult_only: consultOnly && procedures.length === 0,
+        talent_fee: feeNum,
+        // สร้างจากฟอร์มนี้ = ข้อมูลครบพร้อมทำ Memo ทันที (ไม่มีคิว "รอทำ Memo" ให้ติ๊กเองแล้ว)
+        memo_ready_at: new Date().toISOString(),
         service_date: serviceDate || null,
         doctor_name: doctorName.trim() || null,
         owner_id: me.id,
@@ -177,18 +196,20 @@ export function NewCaseModal({
     }
 
     // หัตถการที่เลือก → influ_procedure_items (ราคาอ้างอิง = ต้นทุนตั้งต้น, แยก product team)
-    const { error: itemsError } = await supabase
-      .from("influ_procedure_items")
-      .insert(
-        procedures.map((p, idx) => ({
-          influencer_id: created.id,
-          name: p.name,
-          price: p.price,
-          price_item_id: p.priceItemId,
-          product_team: p.team,
-          position: idx + 1,
-        }))
-      );
+    // เคส "รอปรึกษา" ยังไม่มีรายการ — ข้ามไปเลย (ไม่ยิง insert ด้วยลิสต์ว่าง)
+    const { error: itemsError } =
+      procedures.length > 0
+        ? await supabase.from("influ_procedure_items").insert(
+            procedures.map((p, idx) => ({
+              influencer_id: created.id,
+              name: p.name,
+              price: p.price,
+              price_item_id: p.priceItemId,
+              product_team: p.team,
+              position: idx + 1,
+            }))
+          )
+        : { error: null };
 
     // รูปโปรไฟล์ copy เข้าโฟลเดอร์เคสใหม่ (best effort) — ห้ามชี้ path ข้ามเคส
     // เพราะลบเคส = ลบโฟลเดอร์ influencers/{id}/ ของเคสนั้น (กติกา 0073)
@@ -216,11 +237,17 @@ export function NewCaseModal({
       influencerName: name,
       summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name}${
         influCode.trim() ? ` (รหัส ${influCode.trim()})` : ""
-      } — หัตถการ: ${procedureSummaryText(procedures)}`,
+      } — ${
+        procedures.length > 0
+          ? `หัตถการ: ${procedureSummaryText(procedures)}`
+          : "รอปรึกษา (ยังไม่ระบุหัตถการ)"
+      }${feeNum !== null ? ` · ค่าตัว ${formatNumber(feeNum)} บาท` : ""}`,
       meta: {
         person_id: selected.id,
         round_no: roundNo,
         procedures: procedures.length,
+        consult_only: consultOnly,
+        talent_fee: feeNum,
       },
     });
 
@@ -358,15 +385,56 @@ export function NewCaseModal({
             </p>
           </div>
           <div>
-            <Label>หัตถการที่รับ *</Label>
-            <ProcedurePicker
-              picked={procedures}
-              onChange={setProcedures}
-              catalog={priceCatalog}
-              services={services}
-              onServiceCreated={onServiceCreated}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="!mb-0">
+                หัตถการที่รับ {consultOnly ? "" : "*"}
+              </Label>
+              {/* ทางออกเดียวที่เปิดเคสได้โดยไม่มีหัตถการ — ติ๊กแล้วเขียน Memo ไปปรึกษาก่อน */}
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                <input
+                  type="checkbox"
+                  checked={consultOnly}
+                  disabled={saving}
+                  onChange={(e) => setConsultOnly(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer accent-[#a96a58]"
+                />
+                รอปรึกษา (ยังไม่ระบุหัตถการ)
+              </label>
+            </div>
+            <div className="mt-1.5">
+              <ProcedurePicker
+                picked={procedures}
+                onChange={setProcedures}
+                catalog={priceCatalog}
+                services={services}
+                onServiceCreated={onServiceCreated}
+                disabled={saving}
+              />
+            </div>
+            {consultOnly && (
+              <p className="mt-1 text-xs text-amber-700">
+                เคสรอปรึกษา = ทำ Memo ได้เลยโดยยังไม่ระบุหัตถการ —
+                เมื่อปรึกษาแพทย์แล้วให้กลับมาเพิ่มหัตถการและเอาติ๊กนี้ออกที่ Stage 2
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
+            <Input
+              id="nc-fee"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
               disabled={saving}
+              value={talentFee}
+              onChange={(e) => setTalentFee(e.target.value)}
+              placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
             />
+            <p className="mt-1 text-xs text-stone-400">
+              กรอกเฉพาะเคสที่ influ คิดเงิน — จะขึ้นเป็นบรรทัด &quot;ค่าตัว&quot;
+              ในข้อความ Memo ที่คัดลอกไปทำเอกสาร
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -414,7 +482,7 @@ export function NewCaseModal({
             <Button
               type="submit"
               loading={saving}
-              disabled={!selected || procedures.length === 0}
+              disabled={!selected || (procedures.length === 0 && !consultOnly)}
             >
               สร้างนัดและเปิดหน้าเดินงาน
             </Button>

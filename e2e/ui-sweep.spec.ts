@@ -15,8 +15,15 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/dashboard", name: "dashboard" },
   { path: "/pricing", name: "pricing" },
   { path: "/influencers", name: "influencers" },
+  { path: "/influ-hunting", name: "influ-hunting" },
+  { path: "/influ-doctors", name: "influ-doctors" },
   { path: "/influ-gallery", name: "influ-gallery" },
   { path: "/influencers/contracts", name: "influ-contracts" },
+  { path: "/influ-calendar", name: "influ-calendar" },
+  { path: "/influ-cost", name: "influ-cost" },
+  { path: "/influ-dashboard", name: "influ-dashboard" },
+  { path: "/influencer-management/logs", name: "influ-logs" },
+  { path: "/influencer-management/trash", name: "influ-trash" },
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
@@ -102,6 +109,24 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, p.path);
   }
 
+  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + แถวตัวกรองที่พับเก็บ ---------- */
+  await page.goto("/influ-calendar");
+  await settle(page, 1000);
+  await page.getByRole("button", { name: "สัปดาห์", exact: true }).click();
+  await settle(page, 500);
+  await page.screenshot({
+    path: shotPath(project, "influ-calendar-week"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
+  await page.getByRole("button", { name: "ตัวกรองปฏิทิน", exact: true }).click();
+  await settle(page, 400);
+  await page.screenshot({
+    path: shotPath(project, "influ-calendar-filters"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influ-calendar แถวตัวกรอง");
+
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
   if (mobile) {
     await page.goto("/dashboard");
@@ -112,7 +137,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        await page.getByRole("button", { name: "เปิดเมนู" }).click();
+        await page
+          .getByRole("button", { name: "เปิดเมนู", exact: true })
+          .click();
         return true;
       },
       "drawer"
@@ -134,7 +161,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        await page.getByRole("button", { name: "เปิดเมนู" }).click();
+        await page.getByRole("button", { name: "เปิดเมนู", exact: true }).click();
         await settle(page, 400);
         await page
           .locator('button[title="ตั้งค่าโปรไฟล์ (เปลี่ยนชื่อ/รูป)"]')
@@ -216,8 +243,12 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expect(panel).toBeVisible();
     await page.screenshot({ path: shotPath(project, "tasks-panel") });
     await expectNoHorizontalOverflow(page, "แผงรายละเอียดงาน");
+    // จอเล็กปุ่ม X ถูกซ่อน (ใช้แถบ "กลับ" ด้านบนแทน) — เลือกตัวที่มองเห็นจริง
     await page
-      .locator('button[aria-label="ปิดแผงรายละเอียดงาน"], button[aria-label="ปิดแผงรายละเอียด"]')
+      .locator(
+        'button[aria-label="ปิดแผงรายละเอียดงาน"], button[aria-label="ปิดแผงรายละเอียด"], button[aria-label="กลับไปที่รายการงาน"]'
+      )
+      .locator("visible=true")
       .first()
       .click();
     await settle(page, 400);
@@ -228,7 +259,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/pricing", label: "เพิ่มรายการ", name: "pricing-add-item" },
     { path: "/files", label: "เพิ่มลิงก์", name: "files-add-link" },
     { path: "/accounts", label: "เพิ่มบัญชี", name: "accounts-add-user" },
-    { path: "/influencers", label: "เพิ่ม Influencer", name: "influ-add" },
+    { path: "/influencers", label: "สร้างนัดใหม่", name: "influ-new-case" },
+    { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
+    { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
   ];
   for (const a of ADD_BUTTONS) {
@@ -255,7 +288,13 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     .first();
   if ((await influCard.count()) > 0) {
     await influCard.click();
-    await page.waitForURL("**/influencers/**", { timeout: 15_000 });
+    try {
+      await page.waitForURL("**/influencers/**", { timeout: 15_000 });
+    } catch {
+      // click แรกอาจยิงก่อน hydration ผูก handler เสร็จ (แพตเทิร์นเดียวกับ login)
+      await influCard.click();
+      await page.waitForURL("**/influencers/**", { timeout: 30_000 });
+    }
     await settle(page, 1200);
     await page.screenshot({
       path: shotPath(project, "influ-detail"),

@@ -3,8 +3,16 @@
 /**
  * โมดัลรายละเอียดรายชื่อบนบอร์ด Hunting
  *
- * ศูนย์รวมการทำงานต่อคน: เปลี่ยนสถานะ (pill), จด log การติดต่อรายครั้ง,
+ * ศูนย์รวมการทำงานต่อคน: เปลี่ยนสถานะ (pill), บันทึกการติดต่อ, โน้ตรวม,
  * ตั้งนัดตามครั้งถัดไป, ตอบรับ → เข้าระบบ (สร้างโปรไฟล์), ปฏิเสธ, ลบ
+ *
+ * ลดการกรอกลงตามคำสั่งผู้ใช้ 2026-08-19 ("ใช้งานยากมาก ลดการบันทึกที่ไม่จำเป็น"):
+ *   - ประวัติการติดต่อ = **ปุ่มลัด "โทร/ทัก" กดครั้งเดียวบันทึกวันนี้ให้เลย**
+ *     (ไม่มีฟอร์มวันที่/ช่องทาง/นัดตาม ให้กรอกก่อนอีกต่อไป) แล้วค่อยกดวันที่บนแถว
+ *     เพื่อแก้วัน หรือพิมพ์โน้ตต่อท้ายแถวนั้นทีหลังได้
+ *   - "เจอมาจาก" ถูกถอดออกทั้งฟอร์มและหน้านี้ (ข้อมูลที่ไม่ได้ใช้ต่อ)
+ *   - ผู้รับผิดชอบ = คนสร้างรายชื่อ แสดงให้อัตโนมัติ (ไม่ต้องเลือกเอง)
+ *   - โน้ตรวม = กล่องพิมพ์ในหน้านี้เลย บันทึกตอนคลิกออก (ไม่ต้องเปิดโมดัลแก้ข้อมูล)
  *
  * mutation จริงทั้งหมดอยู่ที่ hunting-client (optimistic list) — ตัวนี้เป็นหน้าตา + ฟอร์มย่อย
  */
@@ -12,25 +20,18 @@
 import {
   CalendarClock,
   Link2,
+  MessageCircle,
   Pencil,
   Phone,
-  Plus,
   Trash2,
   UserRoundCheck,
   Users,
 } from "lucide-react";
-import { useId, useState } from "react";
-import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  Input,
-  Label,
-  Modal,
-} from "@/components/ui";
+import { useState } from "react";
+import { Badge, Button, ConfirmDialog, Modal } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
-  INFLU_CONTACT_CHANNELS,
+  INFLU_CONTACT_QUICK,
   INFLU_PROSPECT_STATUS_ORDER,
   INFLU_PROSPECT_STATUSES,
 } from "@/lib/influ-constants";
@@ -51,6 +52,12 @@ export function followupOverdue(nextOn: string | null): boolean {
   return nextOn !== null && nextOn < todayBangkok();
 }
 
+/** ไอคอนของปุ่มลัด — ตาราง constants เก็บได้แค่คีย์ (เป็นไฟล์ .ts ไม่มี JSX) */
+const QUICK_ICONS = { phone: Phone, message: MessageCircle } as const;
+
+/** แก้ไขได้เฉพาะ 2 ช่องนี้บนแถวประวัติ (วันที่ + โน้ตต่อท้าย) */
+export type ContactPatch = { contacted_on?: string; note?: string | null };
+
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -61,14 +68,6 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
     </div>
   );
 }
-
-export type NewContactInput = {
-  contactedOn: string;
-  channel: string;
-  note: string;
-  /** ตั้งนัดตามครั้งถัดไปพร้อมกัน (ไม่กรอก = ไม่แตะ next_followup_on) */
-  nextFollowupOn: string;
-};
 
 export function ProspectDetailModal({
   prospect,
@@ -81,14 +80,17 @@ export function ProspectDetailModal({
   onEdit,
   onSetStatus,
   onSetNextFollowup,
+  onSetNote,
   onAccept,
   onDelete,
   onAddContact,
+  onUpdateContact,
   onDeleteContact,
   onCreateCase,
 }: {
   prospect: InfluProspectRow;
   contacts: InfluProspectContactRow[];
+  /** ผู้รับผิดชอบ = เจ้าของรายชื่อ ไม่มีก็ใช้คนสร้าง (parent เลือกให้แล้ว) */
   ownerName: string | null;
   canEdit: boolean;
   /** ผู้ดูแล หรือเจ้าของรายชื่อ */
@@ -98,15 +100,18 @@ export function ProspectDetailModal({
   onEdit: () => void;
   onSetStatus: (status: InfluProspectStatus) => void;
   onSetNextFollowup: (date: string | null) => void;
+  /** โน้ตรวมของรายชื่อนี้ (บันทึกตอนคลิกออกจากกล่อง) */
+  onSetNote: (note: string) => void;
   /** ตอบรับ → สร้างโปรไฟล์เข้าระบบ (parent ทำ flow ทั้งหมด) */
   onAccept: () => void;
   onDelete: () => void;
-  onAddContact: (input: NewContactInput) => void;
+  /** กดปุ่มลัด = บันทึกการติดต่อของวันนี้ทันที (channel = "โทร" / "ทัก") */
+  onAddContact: (channel: string) => void;
+  onUpdateContact: (contactId: string, patch: ContactPatch) => void;
   onDeleteContact: (contactId: string) => void;
   /** เปิด NewCaseModal จากโปรไฟล์ที่ตอบรับแล้ว */
   onCreateCase: () => void;
 }) {
-  const channelListId = useId();
   const overdue =
     followupOverdue(prospect.next_followup_on) &&
     prospect.status !== "accepted" &&
@@ -116,25 +121,10 @@ export function ProspectDetailModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editNext, setEditNext] = useState(false);
 
-  // ฟอร์มจด log การติดต่อ
-  const [cOn, setCOn] = useState(() => todayBangkok());
-  const [cChannel, setCChannel] = useState("");
-  const [cNote, setCNote] = useState("");
-  const [cNext, setCNext] = useState("");
-
-  const submitContact = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (savingContact || !cOn) return;
-    onAddContact({
-      contactedOn: cOn,
-      channel: cChannel.trim(),
-      note: cNote.trim(),
-      nextFollowupOn: cNext,
-    });
-    setCChannel("");
-    setCNote("");
-    setCNext("");
-  };
+  // ปุ่มลัดที่เพิ่งกด (โชว์สปินเนอร์เฉพาะปุ่มนั้น) — ล้างเองตอน parent บันทึกเสร็จ
+  // ด้วยแพตเทิร์น adjust-state-during-render ตามที่ใช้ทั้งหน้านี้ ไม่ใช่ effect sync
+  const [pendingQuick, setPendingQuick] = useState<string | null>(null);
+  if (pendingQuick !== null && !savingContact) setPendingQuick(null);
 
   return (
     <Modal open onClose={onClose} title={prospect.name} wide>
@@ -207,7 +197,7 @@ export function ProspectDetailModal({
             <button
               type="button"
               onClick={() => setEditNext(true)}
-              className="cursor-pointer text-xs font-medium text-brand-700 underline-offset-2 hover:underline"
+              className="inline-flex cursor-pointer items-center text-xs font-medium text-brand-700 underline-offset-2 hover:underline max-sm:min-h-11"
             >
               {prospect.next_followup_on ? "เปลี่ยนวัน" : "ตั้งวัน"}
             </button>
@@ -227,7 +217,7 @@ export function ProspectDetailModal({
               <button
                 type="button"
                 onClick={() => setEditNext(false)}
-                className="cursor-pointer text-xs text-stone-400 hover:text-stone-600"
+                className="inline-flex cursor-pointer items-center text-xs text-stone-400 hover:text-stone-600 max-sm:min-h-11"
               >
                 ยกเลิก
               </button>
@@ -264,8 +254,6 @@ export function ProspectDetailModal({
           <InfoRow label="อาชีพ / แนวคอนเทนต์">
             {prospect.occupation || "—"}
           </InfoRow>
-          <InfoRow label="เจอมาจาก">{prospect.source || "—"}</InfoRow>
-          <InfoRow label="ผู้รับผิดชอบ">{ownerName || "—"}</InfoRow>
           <InfoRow label="ความน่าสนใจ">
             {prospect.rating > 0 ? (
               <RatingStars value={prospect.rating} size={14} />
@@ -273,7 +261,12 @@ export function ProspectDetailModal({
               "ยังไม่ให้คะแนน"
             )}
           </InfoRow>
-          <InfoRow label="เพิ่มเมื่อ">{formatDate(prospect.created_at)}</InfoRow>
+          <InfoRow label="ผู้รับผิดชอบ">
+            {ownerName || "—"}
+            <span className="ml-1.5 text-xs text-stone-400">
+              · เพิ่ม {formatDate(prospect.created_at)}
+            </span>
+          </InfoRow>
         </div>
 
         {/* ช่องทางโซเชียล */}
@@ -319,142 +312,112 @@ export function ProspectDetailModal({
           </div>
         )}
 
-        {(prospect.interested_services || prospect.note) && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {prospect.interested_services && (
-              <div className="rounded-xl border border-stone-200 bg-white/60 p-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
-                  หัตถการที่น่าจะเสนอ
-                </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-700">
-                  {prospect.interested_services}
-                </p>
-              </div>
-            )}
-            {prospect.note && (
-              <div className="rounded-xl border border-stone-200 bg-white/60 p-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
-                  โน้ต
-                </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-700">
-                  {prospect.note}
-                </p>
-              </div>
-            )}
+        {prospect.interested_services && (
+          <div className="rounded-xl border border-stone-200 bg-white/60 p-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
+              หัตถการที่น่าจะเสนอ
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-700">
+              {prospect.interested_services}
+            </p>
           </div>
         )}
 
-        {/* ประวัติการติดต่อ */}
+        {/* โน้ตรวม — พิมพ์ได้ตรงนี้เลย ไม่ต้องเปิดโมดัลแก้ข้อมูล */}
         <div>
-          <p className="mb-2 text-sm font-semibold text-stone-700">
-            ประวัติการติดต่อ{" "}
-            <span className="font-normal text-stone-400">
-              ({contacts.length} ครั้ง)
-            </span>
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+            โน้ตรวมของคนนี้
           </p>
-          {canEdit && (
-            <form
-              onSubmit={submitContact}
-              className="mb-3 space-y-2 rounded-xl border border-dashed border-stone-300 bg-white/50 p-3"
-            >
-              <datalist id={channelListId}>
-                {INFLU_CONTACT_CHANNELS.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div>
-                  <Label htmlFor="ct-on">วันที่ติดต่อ</Label>
-                  <Input
-                    id="ct-on"
-                    type="date"
-                    required
-                    disabled={savingContact}
-                    value={cOn}
-                    onChange={(e) => setCOn(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ct-channel">ช่องทาง</Label>
-                  <Input
-                    id="ct-channel"
-                    list={channelListId}
-                    disabled={savingContact}
-                    value={cChannel}
-                    onChange={(e) => setCChannel(e.target.value)}
-                    placeholder="เช่น Instagram DM"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ct-next">นัดตามครั้งถัดไป (ถ้ามี)</Label>
-                  <Input
-                    id="ct-next"
-                    type="date"
-                    disabled={savingContact}
-                    value={cNext}
-                    onChange={(e) => setCNext(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex items-end gap-2">
-                <div className="min-w-0 flex-1">
-                  <Label htmlFor="ct-note">คุยว่าอะไร / ผลลัพธ์</Label>
-                  <Input
-                    id="ct-note"
-                    disabled={savingContact}
-                    value={cNote}
-                    onChange={(e) => setCNote(e.target.value)}
-                    placeholder="เช่น ทักไปแนะนำตัว รอตอบ / ตอบแล้ว ขอดูรายละเอียด"
-                  />
-                </div>
-                <Button type="submit" loading={savingContact}>
-                  <Plus size={14} />
-                  จดไว้
-                </Button>
-              </div>
-            </form>
-          )}
-          {contacts.length === 0 ? (
-            <p className="text-sm text-stone-400">
-              ยังไม่มีบันทึกการติดต่อ — จดไว้ทุกครั้งจะได้รู้ว่าตามถึงไหนแล้ว
+          {canEdit ? (
+            <textarea
+              // remount เมื่อค่าจริงเปลี่ยน (บันทึกจากที่นี่/โมดัลแก้ข้อมูล) — uncontrolled
+              // จึงไม่รับค่าใหม่เองถ้าไม่รีเซ็ต; ตอนนั้นโฟกัสออกไปแล้วไม่กระตุก
+              key={prospect.note ?? ""}
+              rows={3}
+              defaultValue={prospect.note ?? ""}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (prospect.note ?? "")) onSetNote(v);
+              }}
+              placeholder="จดอะไรก็ได้เกี่ยวกับคนนี้ — เงื่อนไขที่คุยไว้ / ข้อสังเกต (บันทึกอัตโนมัติเมื่อคลิกออก)"
+              className="w-full rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-base leading-6 text-stone-700 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+            />
+          ) : prospect.note ? (
+            <p className="whitespace-pre-wrap rounded-xl border border-stone-200 bg-white/60 p-3 text-sm leading-6 text-stone-700">
+              {prospect.note}
             </p>
           ) : (
-            <ul className="space-y-1.5">
-              {contacts.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex items-start gap-2 rounded-lg border border-stone-200 bg-white/60 px-3 py-2"
-                >
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                  <div className="min-w-0 flex-1 text-sm">
-                    <span className="font-medium text-stone-700">
-                      {formatDate(c.contacted_on)}
-                    </span>
-                    {c.channel && (
-                      <Badge className="ml-2 border border-stone-200 bg-stone-50 text-stone-500">
-                        {c.channel}
-                      </Badge>
-                    )}
-                    {c.note && (
-                      <p className="mt-0.5 whitespace-pre-wrap leading-5 text-stone-600">
-                        {c.note}
-                      </p>
-                    )}
-                  </div>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      aria-label="ลบบันทึกนี้"
-                      onClick={() => onDeleteContact(c.id)}
-                      className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 sm:h-7 sm:w-7"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <p className="text-sm text-stone-400">—</p>
           )}
+        </div>
+
+        {/* ประวัติการติดต่อ — ปุ่มลัดกดครั้งเดียวบันทึกวันนี้ */}
+        <div>
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+            <p className="text-sm font-semibold text-stone-700">
+              ประวัติการติดต่อ{" "}
+              <span className="font-normal text-stone-400">
+                ({contacts.length} ครั้ง)
+              </span>
+            </p>
+            {canEdit && (
+              <p className="text-xs text-stone-400">
+                กดปุ่มแล้วบันทึกวันนี้ให้ทันที — กดวันที่บนแถวเพื่อแก้ / พิมพ์โน้ตต่อท้ายได้
+              </p>
+            )}
+          </div>
+
+          {canEdit && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {INFLU_CONTACT_QUICK.map((q) => {
+                const Icon = QUICK_ICONS[q.icon];
+                return (
+                  <Button
+                    key={q.channel}
+                    variant="secondary"
+                    disabled={savingContact}
+                    loading={savingContact && pendingQuick === q.channel}
+                    onClick={() => {
+                      setPendingQuick(q.channel);
+                      onAddContact(q.channel);
+                    }}
+                    className="border-brand-200 px-4 text-brand-700 hover:bg-brand-50"
+                  >
+                    {!(savingContact && pendingQuick === q.channel) && (
+                      <Icon size={16} />
+                    )}
+                    {q.label}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* กล่องประวัติสูงคงที่ — ให้ที่ทางกับงานที่ทำบ่อยสุดของหน้านี้ */}
+          <div className="min-h-56 rounded-xl border border-stone-200/80 bg-white/40 p-2">
+            {contacts.length === 0 ? (
+              <div className="flex min-h-52 flex-col items-center justify-center gap-1 px-4 text-center">
+                <p className="text-sm text-stone-400">ยังไม่มีบันทึกการติดต่อ</p>
+                <p className="text-xs text-stone-400">
+                  {canEdit
+                    ? "โทรหรือทักไปแล้วกดปุ่มด้านบน — ระบบจดวันให้เอง"
+                    : "ยังไม่มีใครจดว่าติดต่อไปแล้ว"}
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-1.5">
+                {contacts.map((c) => (
+                  <ContactRow
+                    key={c.id}
+                    contact={c}
+                    canEdit={canEdit}
+                    onUpdate={(patch) => onUpdateContact(c.id, patch)}
+                    onDelete={() => onDeleteContact(c.id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         {/* ปุ่มการทำงาน */}
@@ -513,5 +476,88 @@ export function ProspectDetailModal({
         onConfirm={onDelete}
       />
     </Modal>
+  );
+}
+
+/* ---------- แถวประวัติการติดต่อ (แก้วัน + พิมพ์โน้ตต่อท้ายได้ในแถว) ---------- */
+
+function ContactRow({
+  contact: c,
+  canEdit,
+  onUpdate,
+  onDelete,
+}: {
+  contact: InfluProspectContactRow;
+  canEdit: boolean;
+  onUpdate: (patch: ContactPatch) => void;
+  onDelete: () => void;
+}) {
+  const [editDate, setEditDate] = useState(false);
+
+  return (
+    <li className="flex items-start gap-2 rounded-lg border border-stone-200 bg-white/70 px-3 py-2">
+      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          {canEdit && editDate ? (
+            <input
+              type="date"
+              autoFocus
+              defaultValue={c.contacted_on}
+              onChange={(e) => {
+                if (e.target.value) onUpdate({ contacted_on: e.target.value });
+                setEditDate(false);
+              }}
+              onBlur={() => setEditDate(false)}
+              className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-base max-sm:min-h-11 sm:text-sm"
+            />
+          ) : (
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={() => setEditDate(true)}
+              title={canEdit ? "กดเพื่อแก้วันที่" : undefined}
+              className="inline-flex items-center border-b border-dashed border-stone-300 text-sm font-medium text-stone-700 transition-colors cursor-pointer hover:border-brand-400 hover:text-brand-700 disabled:cursor-default disabled:border-transparent max-sm:min-h-11"
+            >
+              {formatDate(c.contacted_on)}
+            </button>
+          )}
+          {c.channel && (
+            <Badge className="border border-stone-200 bg-stone-50 text-stone-500">
+              {c.channel}
+            </Badge>
+          )}
+        </div>
+        {canEdit ? (
+          <input
+            // uncontrolled + remount เมื่อค่าจริงเปลี่ยน (แพตเทิร์นเดียวกับโน้ตรวม)
+            key={c.note ?? ""}
+            defaultValue={c.note ?? ""}
+            placeholder="เพิ่มโน้ต (ถ้ามี) — เช่น ทักไปแล้ว รอตอบ"
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v !== (c.note ?? "")) onUpdate({ note: v || null });
+            }}
+            className="mt-0.5 w-full rounded-lg border border-transparent bg-transparent px-1 py-1 text-base leading-5 text-stone-600 placeholder:text-stone-300 hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none max-sm:min-h-11 sm:text-sm"
+          />
+        ) : (
+          c.note && (
+            <p className="mt-0.5 whitespace-pre-wrap px-1 text-sm leading-5 text-stone-600">
+              {c.note}
+            </p>
+          )
+        )}
+      </div>
+      {canEdit && (
+        <button
+          type="button"
+          aria-label="ลบบันทึกนี้"
+          onClick={onDelete}
+          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 sm:h-7 sm:w-7"
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </li>
   );
 }

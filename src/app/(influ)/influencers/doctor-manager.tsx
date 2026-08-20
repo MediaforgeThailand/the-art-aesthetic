@@ -3,7 +3,7 @@
 import { Camera, Eye, EyeOff, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, Input, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, Input } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { DoctorRow } from "@/lib/types";
@@ -14,7 +14,9 @@ function sanitizeFileName(fileName: string): string {
 }
 
 /**
- * โมดัล "จัดการหมอ" — ทะเบียนแพทย์สำหรับตัวเลือก "แพทย์ที่รับเคส"
+ * หน้า "จัดการหมอ" — ทะเบียนแพทย์สำหรับตัวเลือก "แพทย์ที่รับเคส"
+ * (เดิมเป็นโมดัลบนหัวบอร์ดเคส — ย้ายมาเป็นหน้าของตัวเองที่ /influ-doctors เมื่อ 2026-08-19
+ * ตามผู้ใช้: ทางเข้าอื่นบนหัวบอร์ดย้ายไปแถบเมนูบนสุดให้หมด เหลือแค่ปุ่ม "สร้างนัดใหม่")
  * เพิ่ม/เปลี่ยนชื่อ/ใส่รูป/ซ่อนจากตัวเลือก/ลบ — ข้อมูลจริงมาจาก server props (doctors)
  * ทุก mutation จบด้วย router.refresh() ให้ทุกจุดที่ใช้ทะเบียนอัพเดทตาม
  *
@@ -22,15 +24,7 @@ function sanitizeFileName(fileName: string): string {
  * ที่สะกดตรงกับชื่อเดิมให้ทั้งหมด; เปลี่ยนเป็นชื่อที่มีอยู่แล้วในทะเบียน = รวมเป็นคนเดียวกัน
  * (ย้ายเคสทั้งหมดไปชื่อนั้นแล้วลบชื่อเดิมทิ้ง — ไว้เก็บกวาดชื่อสะกดเพี้ยนจากข้อมูลเก่า)
  */
-export function DoctorManagerModal({
-  open,
-  onClose,
-  doctors,
-}: {
-  open: boolean;
-  onClose: () => void;
-  doctors: DoctorRow[];
-}) {
+export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [newName, setNewName] = useState("");
@@ -179,7 +173,7 @@ export function DoctorManagerModal({
     });
 
   return (
-    <Modal open={open} onClose={onClose} title="จัดการหมอ">
+    <Card className="p-5">
       <div className="space-y-4">
         {/* เพิ่มหมอใหม่ */}
         <form
@@ -206,7 +200,7 @@ export function DoctorManagerModal({
         )}
 
         {/* รายชื่อในทะเบียน */}
-        <div className="max-h-[55dvh] space-y-1 overflow-y-auto pr-1">
+        <div className="space-y-1">
           {sorted.length === 0 && (
             <p className="py-6 text-center text-sm text-stone-400">
               ยังไม่มีหมอในทะเบียน — เพิ่มชื่อแรกด้านบน
@@ -245,13 +239,13 @@ export function DoctorManagerModal({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                   />
-                  <Button type="submit" loading={busy} className="shrink-0 px-2.5 py-1.5 text-xs">
+                  <Button type="submit" loading={busy} className="shrink-0 px-2.5 py-1.5 text-xs max-sm:min-h-11">
                     บันทึก
                   </Button>
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                    className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 sm:h-7 sm:w-7"
                   >
                     <X size={14} />
                   </button>
@@ -334,6 +328,6 @@ export function DoctorManagerModal({
         }}
         onClose={() => setConfirmDelete(null)}
       />
-    </Modal>
+    </Card>
   );
 }

@@ -330,6 +330,10 @@ export type InfluencerRow = {
   procedure_text: string | null;
   procedure_history: ProcedureChange[];
   case_value: number | null;
+  /** true = เคส "รอปรึกษา" — เปิดเคส/ทำ Memo ได้โดยยังไม่ระบุหัตถการ (ปกติบังคับต้องมี) */
+  consult_only: boolean;
+  /** ค่าตัวที่ต้องจ่ายให้ influencer (บาท) — null = เคสแลกหัตถการไม่มีค่าตัว */
+  talent_fee: number | null;
   service_date: string | null;
   doctor_name: string | null;
   photo_path: string | null;
@@ -337,9 +341,9 @@ export type InfluencerRow = {
   memo_file_path: string | null;
   memo_file_name: string | null;
   memo_uploaded_at: string | null;
-  /** เวลาที่ติ๊กว่าข้อมูลสำหรับทำ memo ครบแล้ว (null = ยังไม่ติ๊ก) — แท็บ "รอทำ Memo" ใช้กรอง */
+  /** เวลาที่ถือว่าข้อมูลพร้อมทำ Memo (null = ยังไม่พร้อม) — เคสที่สร้างจาก "สร้างนัดใหม่" ตั้งให้ทันที */
   memo_ready_at: string | null;
-  /** เวลาที่ติ๊กว่า "ส่งเอกสารแล้ว" ในคิวรอทำ Memo (null = ยังไม่ส่ง) — กันทีมทำงานซ้ำ */
+  /** เวลาที่ติ๊กว่า "ส่ง Memo แล้ว" (null = ยังไม่ส่ง) — ติ๊กในหน้าเคส, โชว์ติ๊กถูกบนการ์ดบอร์ด */
   docs_sent_at: string | null;
   /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดในขั้น "เซนสัญญา + วันรับบริการ") */
   contract_file_path: string | null;
