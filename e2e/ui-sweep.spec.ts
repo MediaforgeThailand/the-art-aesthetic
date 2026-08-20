@@ -109,6 +109,24 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, p.path);
   }
 
+  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + แถวตัวกรองที่พับเก็บ ---------- */
+  await page.goto("/influ-calendar");
+  await settle(page, 1000);
+  await page.getByRole("button", { name: "สัปดาห์", exact: true }).click();
+  await settle(page, 500);
+  await page.screenshot({
+    path: shotPath(project, "influ-calendar-week"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
+  await page.getByRole("button", { name: "ตัวกรองปฏิทิน", exact: true }).click();
+  await settle(page, 400);
+  await page.screenshot({
+    path: shotPath(project, "influ-calendar-filters"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influ-calendar แถวตัวกรอง");
+
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
   if (mobile) {
     await page.goto("/dashboard");

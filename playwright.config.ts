@@ -5,7 +5,9 @@ import { defineConfig } from "@playwright/test";
  * ต้องตั้ง env ก่อนรัน: E2E_EMAIL / E2E_PASSWORD (บัญชีทดสอบที่มีสิทธิ์ครบ + admin)
  * server เทสต์เปิดเองที่พอร์ต 3100 (ไม่ชนกับ dev ปกติที่ 3000)
  */
-const PORT = 3100;
+// E2E_PORT override: ผู้ใช้รันหลาย session/worktree ขนานกัน — reuseExistingServer บนพอร์ต
+// เดียวกันเคยไปเกาะ dev server ของ checkout อื่น (โค้ดคนละรุ่น หน้า 404 ทั้ง sweep)
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 
 export default defineConfig({
   testDir: "./e2e",
