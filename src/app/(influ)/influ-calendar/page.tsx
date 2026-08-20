@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
-import { PageContainer } from "@/components/ui";
 import { canEditInflu, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
@@ -40,7 +39,9 @@ export default async function InfluCalendarPage() {
   if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
-    <PageContainer>
+    // ไม่ใช้ PageContainer: จอ ≥lg หน้านี้ต้องสูงพอดีจอ ไม่มี scroll ทั้งหน้า (คำสั่งผู้ใช้
+    // 2026-08-20 — ปฏิทินกางเต็มความสูงที่เหลือแบบ TimeTree) ส่วนจอเล็กยังเลื่อนปกติ
+    <div className="h-full overflow-y-auto px-3 py-4 sm:px-6 sm:py-5 lg:flex lg:flex-col lg:overflow-hidden">
       <CalendarClient
         events={(events ?? []) as unknown as CalendarEvent[]}
         influencers={(influencers ?? []) as CalendarInflu[]}
@@ -50,6 +51,6 @@ export default async function InfluCalendarPage() {
         canEdit={canEditInflu(access)}
         loadError={error?.message ?? null}
       />
-    </PageContainer>
+    </div>
   );
 }
