@@ -189,7 +189,7 @@ export function SupportToggle({
           ? "แบรนด์สินค้า support ของ — ต้นทุนรายการนี้นับเป็น ฿0 (กดเพื่อยกเลิก)"
           : "ติ๊กเมื่อแบรนด์สินค้า support ของ (ส่งของมาให้) — ต้นทุนรายการนี้จะนับเป็น ฿0"
       }
-      className={`inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium transition-all active:scale-[0.95] disabled:cursor-default disabled:opacity-60 ${
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium transition-all active:scale-[0.95] max-sm:min-h-11 disabled:cursor-default disabled:opacity-60 ${
         on
           ? "border-pink-300 bg-pink-100 text-pink-700"
           : "border-stone-200 bg-white/70 text-stone-400 hover:border-pink-200 hover:text-pink-500"
