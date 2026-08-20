@@ -109,9 +109,21 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, p.path);
   }
 
-  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + แถวตัวกรองที่พับเก็บ ---------- */
+  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (จอใหญ่ = แถว inline, มือถือ = bottom sheet) ---------- */
   await page.goto("/influ-calendar");
   await settle(page, 1000);
+
+  // เดสก์ท็อป (≥lg): หน้าปฏิทินต้องสูงพอดีจอ ไม่มี scroll แนวตั้ง (คำสั่งผู้ใช้ 2026-08-20)
+  const expectNoVerticalScroll = async (where: string) => {
+    if (mobile) return;
+    const oy = await page.evaluate(() => {
+      const el = document.querySelector("main > div");
+      return el ? el.scrollHeight - el.clientHeight : 0;
+    });
+    expect(oy, `${where}: หน้าปฏิทินเลื่อนแนวตั้งได้ ${oy}px`).toBeLessThanOrEqual(2);
+  };
+  await expectNoVerticalScroll("/influ-calendar มุมมองเดือน");
+
   await page.getByRole("button", { name: "สัปดาห์", exact: true }).click();
   await settle(page, 500);
   await page.screenshot({
@@ -119,13 +131,16 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     fullPage: true,
   });
   await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
+  await expectNoVerticalScroll("/influ-calendar มุมมองสัปดาห์");
   await page.getByRole("button", { name: "ตัวกรองปฏิทิน", exact: true }).click();
   await settle(page, 400);
   await page.screenshot({
     path: shotPath(project, "influ-calendar-filters"),
     fullPage: true,
   });
-  await expectNoHorizontalOverflow(page, "/influ-calendar แถวตัวกรอง");
+  await expectNoHorizontalOverflow(page, "/influ-calendar ตัวกรอง");
+  await page.keyboard.press("Escape"); // ปิดตัวกรอง (มือถือเป็น bottom sheet)
+  await settle(page, 300);
 
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
   if (mobile) {

@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,7 +9,6 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
-  PageHeader,
 } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -89,20 +87,7 @@ export function TrashClient({
 
   return (
     <>
-      <PageHeader
-        title="ถังขยะ Influencer"
-        description="เคสที่ถูกลบจะถูกสำรองไว้ 30 วันก่อนล้างถาวร — กู้คืนได้ทั้งเคสพร้อม follow-up, ลายเซน, ต้นทุน, ลิงก์ และคิวในปฏิทิน"
-        action={
-          <Link
-            href="/influencer-management"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-4 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97]"
-          >
-            <ArrowLeft size={16} />
-            กลับหน้ารวม
-          </Link>
-        }
-      />
-
+      {/* เคสที่ลบถูกสำรองไว้ 30 วันก่อนล้างถาวร — คำอธิบายอยู่บนกล่องยืนยันตอนกู้/ล้าง */}
       {loadError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดถังขยะไม่สำเร็จ: {loadError}

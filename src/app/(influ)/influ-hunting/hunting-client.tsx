@@ -12,7 +12,10 @@
  * + ตารางคอลัมน์ ชื่อ/สถานะ/ช่องทาง/ผู้ติดตาม/หัตถการ/ติดต่อล่าสุด/นัดตาม/ผู้รับผิดชอบ
  * — เปลี่ยนสถานะได้จาก pill บนแถวเลย (StatusPicker เมนูลอยผ่าน useAnchoredMenu;
  * "ตอบรับแล้ว" ยังเข้าได้ทางปุ่ม/เมนู "ตอบรับ → เข้าระบบ" เท่านั้น ผ่าน ConfirmDialog)
- * จอเล็กเป็นแถวย่อ ชื่อ+ชิป กดเปิดโมดัลรายละเอียด (เปลี่ยนสถานะที่นั่น)
+ *
+ * กดแถว = เปิดแผงข้างขวา ProspectPanel (ผู้ใช้ 2026-08-20: ขอ sidebar ลอย
+ * แบบแผงงานของระบบ team แทนโมดัล) — แก้ทุกช่องในแผงได้เลย บันทึกตอน blur;
+ * ปุ่ม "เพิ่มรายชื่อ" ก็เปิดแผงเดียวกันในโหมดสร้างใหม่ (ไม่มีโมดัลฟอร์มแยกแล้ว)
  */
 
 import { useRouter } from "next/navigation";
@@ -29,6 +32,7 @@ import {
   UserRoundCheck,
   UserRoundPlus,
   Users,
+  X,
 } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -38,7 +42,6 @@ import { formatDate } from "@/lib/format";
 import {
   INFLU_CONTACT_QUICK,
   INFLU_PROSPECT_ACTIVE,
-  INFLU_PROSPECT_COLUMNS,
   INFLU_PROSPECT_STATUS_ORDER,
   INFLU_PROSPECT_STATUSES,
   tierFromFollowers,
@@ -53,16 +56,25 @@ import type {
   InfluProspectStatus,
   InfluServiceRow,
 } from "@/lib/types";
+import {
+  DEFAULT_HUNT_FILTERS,
+  huntFilterChips,
+  huntStatusGroups,
+  HuntFilterButton,
+  matchHuntFilters,
+  platformOptionsOf,
+  type HuntFilters,
+} from "./hunting-filters";
 import { NewCaseModal } from "../influencers/new-case-modal";
 import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
 import { ProfileFormModal, profileName } from "../influencers/profile-form";
 import {
   type ContactPatch,
   followupOverdue,
-  ProspectDetailModal,
+  ProspectPanel,
+  RatingStars,
   todayBangkok,
-} from "./prospect-detail";
-import { ProspectFormModal, RatingStars } from "./prospect-form";
+} from "./prospect-panel";
 
 type Me = {
   id: string | null;
@@ -134,14 +146,15 @@ export function HuntingClient({
 
   // UI state
   const [query, setQuery] = useState("");
-  const [showDeclined, setShowDeclined] = useState(false);
-  const [mineOnly, setMineOnly] = useState(false);
-  const [dueOnly, setDueOnly] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
+  /** ตัวกรองทั้งหมดรวมเป็นก้อนเดียว หลังปุ่ม "ตัวกรอง" (ผู้ใช้ 2026-08-20) —
+      แทนชิป รายชื่อของฉัน/ถึงกำหนดตาม/ปฏิเสธ ที่เคยอยู่บนแถบเครื่องมือ */
+  const [filters, setFilters] = useState<HuntFilters>(DEFAULT_HUNT_FILTERS);
+  /** แผงข้างขวา — สร้างใหม่ หรือเปิดรายชื่อเดิม (แก้ inline ในแผง) */
+  const [panel, setPanel] = useState<
+    { mode: "create" } | { mode: "edit"; id: string } | null
+  >(null);
   /** โมดัลเพิ่มโปรไฟล์ (influ_profiles) — คนที่ตกลงร่วมงานแล้วแต่ยังไม่เปิดเคส */
   const [profileOpen, setProfileOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<InfluProspectRow | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
   const [caseProfile, setCaseProfile] = useState<InfluProfileRow | null>(null);
   /** ตอบรับจากเมนูสถานะบนแถว — ยืนยันก่อนเสมอ (ทางเดียวกับปุ่มในโมดัลรายละเอียด) */
   const [acceptTarget, setAcceptTarget] = useState<InfluProspectRow | null>(null);
@@ -187,15 +200,7 @@ export function HuntingClient({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((p) => {
-      if (mineOnly && p.owner_id !== me.id) return false;
-      if (
-        dueOnly &&
-        !(
-          INFLU_PROSPECT_ACTIVE.includes(p.status) &&
-          followupOverdue(p.next_followup_on)
-        )
-      )
-        return false;
+      if (!matchHuntFilters(p, filters, me.id)) return false;
       if (!q) return true;
       const hay = [
         p.name,
@@ -209,10 +214,25 @@ export function HuntingClient({
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [items, query, mineOnly, dueOnly, me.id]);
+  }, [items, query, filters, me.id]);
 
-  const declinedCount = items.filter((p) => p.status === "declined").length;
-  const detail = detailId ? (items.find((p) => p.id === detailId) ?? null) : null;
+  /** จำนวนต่อสถานะสำหรับเมนูตัวกรอง — นับจากข้อมูลทั้งหมด ไม่ผูกตัวกรองอื่น */
+  const statusCounts = useMemo(() => {
+    const out = Object.fromEntries(
+      INFLU_PROSPECT_STATUS_ORDER.map((s) => [s, 0])
+    ) as Record<InfluProspectStatus, number>;
+    for (const p of items) out[p.status] += 1;
+    return out;
+  }, [items]);
+  const platformOptions = useMemo(() => platformOptionsOf(items), [items]);
+  const filterChips = useMemo(
+    () => huntFilterChips(filters, peopleById),
+    [filters, peopleById]
+  );
+  const detail =
+    panel?.mode === "edit"
+      ? (items.find((p) => p.id === panel.id) ?? null)
+      : null;
 
   /* ---------- mutations (optimistic + log + router.refresh) ---------- */
 
@@ -307,16 +327,17 @@ export function HuntingClient({
     router.refresh();
   };
 
-  /** โน้ตรวม — พิมพ์ในโมดัลรายละเอียดได้เลย (บันทึกตอนคลิกออกจากกล่อง) */
-  const setNote = (p: InfluProspectRow, note: string) => {
-    void patchProspect(p.id, { note: note || null });
+  /** ช่องข้อมูลที่แก้ inline ในแผงข้าง — patch + log ก้อนเดียว (log เฉพาะตอน
+      ค่าเปลี่ยนจริง เพราะแผง commit เฉพาะช่องที่ต่างจากเดิม) */
+  const patchFields = (p: InfluProspectRow, patch: Partial<InfluProspectRow>) => {
+    void patchProspect(p.id, patch);
     logInflu(supabase, actor, {
       action: "update",
       entity: "prospect",
       entityId: p.id,
-      influencerName: p.name,
-      summary: `Hunting: แก้โน้ตของ ${p.name}`,
-      meta: { prospect_id: p.id },
+      influencerName: patch.name ?? p.name,
+      summary: `Hunting: แก้ข้อมูล ${p.name}`,
+      meta: { prospect_id: p.id, fields: Object.keys(patch) },
     });
   };
 
@@ -340,7 +361,7 @@ export function HuntingClient({
   };
 
   const deleteProspect = async (p: InfluProspectRow) => {
-    setDetailId(null);
+    setPanel(null);
     setItems((prev) => prev.filter((x) => x.id !== p.id));
     const { error } = await supabase
       .from("influ_prospects")
@@ -413,24 +434,15 @@ export function HuntingClient({
       summary: `Hunting: ${p.name} ตอบรับ — สร้างโปรไฟล์เข้าระบบแล้ว`,
       meta: { prospect_id: p.id, profile_id: profile.id },
     });
-    // ปิด detail แล้วชวนสร้างนัดต่อทันที (NewCaseModal remount ด้วย key)
-    setDetailId(null);
+    // ปิดแผงแล้วชวนสร้างนัดต่อทันที (NewCaseModal remount ด้วย key)
+    setPanel(null);
     setCaseProfile(profile);
   };
 
   /* ---------- render ---------- */
 
-  const chipCls = (active: boolean) =>
-    `inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-[0.97] sm:min-h-0 sm:text-xs ${
-      active
-        ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-        : "border-stone-200 bg-white/70 text-stone-500 hover:border-stone-300"
-    }`;
-
-  // กลุ่ม = สถานะ (แบบหมวดหมู่ของ my-tasks) — ชิป "ปฏิเสธ" สลับไปดูกลุ่ม declined แทน
-  const groupStatuses: InfluProspectStatus[] = showDeclined
-    ? ["declined"]
-    : INFLU_PROSPECT_COLUMNS;
+  // กลุ่ม = สถานะ (แบบหมวดหมู่ของ my-tasks) — ไม่เลือกสถานะในตัวกรอง = 4 สถานะที่ยังเดินอยู่
+  const groupStatuses = huntStatusGroups(filters);
 
   return (
     <div>
@@ -450,27 +462,15 @@ export function HuntingClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          className={chipCls(mineOnly)}
-        >
-          รายชื่อของฉัน
-        </button>
-        <button
-          type="button"
-          onClick={() => setDueOnly((v) => !v)}
-          className={chipCls(dueOnly)}
-        >
-          ถึงกำหนดตาม ({overdueList.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowDeclined((v) => !v)}
-          className={chipCls(showDeclined)}
-        >
-          ปฏิเสธ ({declinedCount})
-        </button>
+        <HuntFilterButton
+          filters={filters}
+          onChange={setFilters}
+          people={people}
+          meId={me.id}
+          platformOptions={platformOptions}
+          statusCounts={statusCounts}
+          overdueCount={overdueList.length}
+        />
         {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้ว
             ขึ้นโปรไฟล์ที่นี่ก่อน แล้วค่อยไปสร้างนัดที่บอร์ดเคส */}
         {me.canEdit && (
@@ -483,7 +483,7 @@ export function HuntingClient({
               <IdCard size={16} />
               เพิ่มโปรไฟล์
             </button>
-            <Button onClick={() => setFormOpen(true)}>
+            <Button onClick={() => setPanel({ mode: "create" })}>
               <UserRoundPlus size={16} />
               เพิ่มรายชื่อ
             </Button>
@@ -491,13 +491,39 @@ export function HuntingClient({
         )}
       </div>
 
+      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ต้องเห็นเสมอว่ากำลังซ่อนอะไรอยู่
+          (บทเรียน my-tasks: ตัวกรองซ่อนของหมดแล้วผู้ใช้คิดว่าข้อมูลหาย) */}
+      {filterChips.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-stone-400">กรองอยู่:</span>
+          {filterChips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setFilters(c.next)}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100 active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm"
+            >
+              {c.label}
+              <X size={12} />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFilters(DEFAULT_HUNT_FILTERS)}
+            className="cursor-pointer text-xs text-stone-500 underline-offset-2 hover:text-brand-700 hover:underline max-sm:min-h-11 max-sm:text-sm"
+          >
+            ล้างทั้งหมด
+          </button>
+        </div>
+      )}
+
       {loadError && (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </p>
       )}
 
-      {overdueList.length > 0 && !dueOnly && (
+      {overdueList.length > 0 && filters.followup !== "overdue" && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 animate-fade-in">
           <CalendarClock size={15} className="text-amber-600" />
           <p className="text-sm text-amber-800">
@@ -505,7 +531,7 @@ export function HuntingClient({
           </p>
           <button
             type="button"
-            onClick={() => setDueOnly(true)}
+            onClick={() => setFilters((f) => ({ ...f, followup: "overdue" }))}
             className="inline-flex cursor-pointer items-center text-sm font-medium text-amber-700 underline-offset-2 hover:underline max-sm:min-h-11"
           >
             ดูเฉพาะที่ถึงกำหนด
@@ -520,7 +546,7 @@ export function HuntingClient({
           description="เจอ influencer ที่น่าสนใจจากไหนก็ตาม จดชื่อไว้ที่นี่ก่อน แล้วค่อยๆ ตามจนเขาตอบรับ"
           action={
             me.canEdit ? (
-              <Button onClick={() => setFormOpen(true)}>
+              <Button onClick={() => setPanel({ mode: "create" })}>
                 <UserRoundPlus size={16} />
                 เพิ่มรายชื่อแรก
               </Button>
@@ -570,7 +596,10 @@ export function HuntingClient({
 
                     {rows.length === 0 ? (
                       <p className="px-4 py-4 text-xs text-stone-300">
-                        ไม่มีรายชื่อในสถานะนี้{query ? " (ตามคำค้น/ตัวกรอง)" : ""}
+                        ไม่มีรายชื่อในสถานะนี้
+                        {query || filterChips.length > 0
+                          ? " (ตามคำค้น/ตัวกรอง)"
+                          : ""}
                       </p>
                     ) : (
                       rows.map((p) => (
@@ -581,7 +610,7 @@ export function HuntingClient({
                           ownerName={ownerNameOf(p)}
                           canEdit={me.canEdit}
                           savingContact={savingContact}
-                          onOpen={() => setDetailId(p.id)}
+                          onOpen={() => setPanel({ mode: "edit", id: p.id })}
                           onSetStatus={(s) => setStatus(p, s)}
                           onAccept={() => setAcceptTarget(p)}
                           onQuickContact={(ch) => void addContact(p, ch)}
@@ -607,49 +636,47 @@ export function HuntingClient({
           router.refresh();
         }}
       />
-      <ProspectFormModal
-        open={formOpen}
-        onClose={() => {
-          setFormOpen(false);
-          setEditTarget(null);
-        }}
-        prospect={editTarget}
-        actor={actor}
-        onSaved={(saved) =>
-          setItems((prev) =>
-            prev.some((x) => x.id === saved.id)
-              ? prev.map((x) => (x.id === saved.id ? saved : x))
-              : [saved, ...prev]
-          )
-        }
-      />
-
-      {detail && (
-        <ProspectDetailModal
+      {/* แผงข้างขวา — โหมดสร้างใหม่ หรือแก้รายชื่อเดิม (remount ด้วย key เมื่อสลับคน
+          ให้ state ในฟอร์ม seed ใหม่; โหมด edit ที่หา detail ไม่เจอ = ถูกลบไปแล้ว ไม่ render) */}
+      {panel && (panel.mode === "create" || detail) && (
+        <ProspectPanel
+          key={panel.mode === "edit" ? panel.id : "new"}
           prospect={detail}
-          contacts={contactsByProspect.get(detail.id) ?? []}
-          ownerName={ownerNameOf(detail)}
+          contacts={detail ? (contactsByProspect.get(detail.id) ?? []) : []}
+          ownerName={detail ? ownerNameOf(detail) : null}
           canEdit={me.canEdit}
-          canDelete={me.canManage || (me.id !== null && detail.owner_id === me.id)}
+          canDelete={
+            detail
+              ? me.canManage || (me.id !== null && detail.owner_id === me.id)
+              : false
+          }
           savingContact={savingContact}
-          onClose={() => setDetailId(null)}
-          onEdit={() => {
-            setEditTarget(detail);
-            setFormOpen(true);
+          actor={actor}
+          onClose={() => setPanel(null)}
+          onCreated={(saved) => setItems((prev) => [saved, ...prev])}
+          onPatchFields={(patch) => {
+            if (detail) patchFields(detail, patch);
           }}
-          onSetStatus={(s) => setStatus(detail, s)}
-          onSetNextFollowup={(d) =>
-            void patchProspect(detail.id, { next_followup_on: d })
-          }
-          onAccept={() => void acceptProspect(detail)}
-          onDelete={() => void deleteProspect(detail)}
-          onSetNote={(note) => setNote(detail, note)}
-          onAddContact={(channel) => void addContact(detail, channel)}
-          onUpdateContact={(cid, patch) =>
-            void updateContact(detail, cid, patch)
-          }
-          onDeleteContact={(cid) => void deleteContact(detail, cid)}
+          onSetStatus={(s) => {
+            if (detail) setStatus(detail, s);
+          }}
+          onAccept={() => {
+            if (detail) void acceptProspect(detail);
+          }}
+          onDelete={() => {
+            if (detail) void deleteProspect(detail);
+          }}
+          onAddContact={(channel) => {
+            if (detail) void addContact(detail, channel);
+          }}
+          onUpdateContact={(cid, patch) => {
+            if (detail) void updateContact(detail, cid, patch);
+          }}
+          onDeleteContact={(cid) => {
+            if (detail) void deleteContact(detail, cid);
+          }}
           onCreateCase={() => {
+            if (!detail) return;
             const profile = detail.profile_id
               ? (allProfiles.find((x) => x.id === detail.profile_id) ?? null)
               : null;
@@ -659,13 +686,13 @@ export function HuntingClient({
               );
               return;
             }
-            setDetailId(null);
+            setPanel(null);
             setCaseProfile(profile);
           }}
         />
       )}
 
-      {/* ยืนยันตอบรับจากเมนูสถานะบนแถว — ข้อความเดียวกับปุ่มในโมดัลรายละเอียด */}
+      {/* ยืนยันตอบรับจากเมนูสถานะบนแถว — ข้อความเดียวกับปุ่มในแผงข้าง */}
       {acceptTarget && (
         <ConfirmDialog
           open
@@ -894,7 +921,7 @@ function ProspectRow({
         </div>
       </div>
 
-      {/* ---- จอเล็ก: แถวย่อ ชื่อ + ชิป — เปลี่ยนสถานะในโมดัลรายละเอียด (ทางเดิม) ---- */}
+      {/* ---- จอเล็ก: แถวย่อ ชื่อ + ชิป — เปลี่ยนสถานะในแผงข้าง (ทางเดิม) ---- */}
       <button
         type="button"
         onClick={onOpen}
@@ -955,7 +982,7 @@ function ProspectRow({
 /**
  * เมนูลอยผ่าน portal + useAnchoredMenu (กติกากลาง — ห้ามเขียน listener เอง):
  * "ตอบรับแล้ว" ไม่อยู่ในตัวเลือกตรง — มีแถว "ตอบรับ → เข้าระบบ" แยกท้ายเมนูที่วิ่งเข้า
- * ConfirmDialog เดียวกับปุ่มในโมดัล (สร้างโปรไฟล์จริง ไม่ใช่แค่ patch สถานะ);
+ * ConfirmDialog เดียวกับปุ่มในแผงข้าง (สร้างโปรไฟล์จริง ไม่ใช่แค่ patch สถานะ);
  * แถวที่ accepted แล้ว = pill ล็อก (สถานะจบของ pipeline นี้)
  */
 function StatusPicker({

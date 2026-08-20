@@ -22,7 +22,6 @@ import {
   ConfirmDialog,
   EmptyState,
   Input,
-  PageHeader,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatNumber, todayISO } from "@/lib/format";
@@ -583,21 +582,6 @@ export function InfluencersClient({
 
   return (
     <>
-      {/* ทางเข้าอื่นทั้งหมด (ปฏิทินคิว · สัญญา · จัดการหมอ) ย้ายไปแถบเมนูบนสุดของระบบแล้ว
-          (ผู้ใช้ 2026-08-19) — หัวหน้านี้เหลือปุ่มลงมือทำงานปุ่มเดียว */}
-      <PageHeader
-        title="เคสดำเนินงาน"
-        description="เคสของ influ ที่ตอบรับแล้ว — เดินงาน Memo → เซนสัญญา → ตามงาน (งานก่อนตอบรับอยู่ที่บอร์ด Hunting)"
-        action={
-          me.canEdit ? (
-            <Button onClick={() => setCaseOpen(true)}>
-              <Plus size={16} />
-              สร้างนัดใหม่
-            </Button>
-          ) : undefined
-        }
-      />
-
       {/* ระดับ "ดูเฉยๆ" — บอกให้ชัดตั้งแต่ต้นว่าทำไมไม่มีปุ่มแก้ */}
       {!me.canEdit && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-stone-200 bg-white/70 px-4 py-2.5 text-sm text-stone-600 animate-fade-in">
@@ -714,6 +698,17 @@ export function InfluencersClient({
             <X size={14} />
             ล้างตัวกรอง
           </button>
+        )}
+        {/* ปุ่มงานหลัก — ย้ายลงมาจากหัวหน้า (ผู้ใช้ 2026-08-20)
+            ทางเข้าอื่น (ปฏิทินคิว · สัญญา · จัดการหมอ) อยู่บนแถบเมนูของระบบแล้ว
+            หน้านี้จึงเหลือปุ่มลงมือทำงานปุ่มเดียว ชิดขวาท้ายแถบเครื่องมือ */}
+        {me.canEdit && (
+          <div className="sm:ml-auto">
+            <Button onClick={() => setCaseOpen(true)}>
+              <Plus size={16} />
+              สร้างนัดใหม่
+            </Button>
+          </div>
         )}
       </div>
 
