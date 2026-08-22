@@ -12,13 +12,14 @@ export const metadata: Metadata = {
 
 /**
  * แดชบอร์ดติดตาม KPI ทีมคอนเทนต์ (migration 0085) — หัวหน้าทีมดูรายเดือนว่าแต่ละคน
- * โพสครบตามเป้าที่ตั้งไว้ใน /content-kpi หรือยัง; นับจากงานที่กด "โพสแล้ว" (tasks.posted_at)
+ * ทำครบตามเป้าที่ตั้งไว้ใน /content-kpi หรือยัง; นับจาก "วันส่งงาน"
+ * (review_submitted_at → approved_at → posted_at ตามคำสั่งผู้ใช้ 2026-08-22)
  * ภายในเดือนที่เลือก (เวลาไทย) แยกตามผู้รับผิดชอบงาน (assignee_id)
  */
 export default async function ContentTrackingPage() {
   const supabase = await createClient();
 
-  // ดึงเฉพาะงานที่เกี่ยวกับการโพส (โพสแล้ว หรือ ตรวจผ่านแล้วรอโพส) คอลัมน์เท่าที่ใช้
+  // ดึงเฉพาะงานที่เคยส่งตรวจ/ตรวจผ่าน/โพสแล้ว คอลัมน์เท่าที่ใช้
   // — ไม่โหลด join/description มาทั้งก้อนแบบหน้า /tasks
   const fetchTasks = async () => {
     const pageSize = 1000;
@@ -27,10 +28,12 @@ export default async function ContentTrackingPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "id, title, assignee_id, posted_at, approved_at, review_status, completed, content_format, content_category_id"
+          "id, title, assignee_id, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id"
         )
         .is("deleted_at", null)
-        .or("posted_at.not.is.null,review_status.eq.approved")
+        .or(
+          "posted_at.not.is.null,review_status.eq.approved,review_submitted_at.not.is.null"
+        )
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
       if (error) return { rows, error: error.message };
@@ -82,6 +85,7 @@ export default async function ContentTrackingPage() {
         isAdmin={access.isAdmin}
         initialYear={bangkokNow.getFullYear()}
         initialMonth={bangkokNow.getMonth() + 1}
+        initialDay={bangkokNow.getDate()}
         loadError={loadError}
       />
     </PageContainer>
