@@ -32,7 +32,7 @@ export default async function InfluGalleryPage() {
       .from("influencers")
       .select(INFLU_LIST_COLUMNS)
       .order("created_at", { ascending: false }),
-    // follow-up checklist ที่ยังไม่ทำ (stage 6) — is_custom ใช้ตัดข้อของโหมดที่เคสนั้นไม่ได้ใช้
+    // follow-up checklist ที่ยังไม่ทำ (ขั้นตามงาน) — is_custom ใช้ตัดข้อของโหมดที่เคสนั้นไม่ได้ใช้
     supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
     // งานคอนเทนต์ที่ผูกกับ influencer (ไม่นับงานในถังขยะ)
     supabase

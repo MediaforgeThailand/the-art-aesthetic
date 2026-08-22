@@ -8,7 +8,7 @@
  * — ติ๊ก "แบรนด์ support" ได้ทุกรายการ (ต้นทุนรายการนั้นนับเป็น 0)
  * — ทุกการแก้ไข sync ข้อความสรุปกลับ influencers.procedure_text เพื่อให้ช่องก๊อป Memo /
  *   การ์ดบอร์ด / ปฏิทิน แสดงรูปแบบเดิม (คั่นด้วย " / ")
- * ใช้ทั้งใน Stage 2 (หน้าเดินงาน) — ส่วนหน้า /influ-cost ใช้เฉพาะ SupportToggle + CostPriceInput
+ * ใช้ทั้งในแท็บรายละเอียดเคส (หน้าเดินงาน) — ส่วนหน้า /influ-cost ใช้เฉพาะ SupportToggle + CostPriceInput
  */
 
 import { Gift, Plus, Search, X } from "lucide-react";
@@ -134,7 +134,7 @@ export async function registerService(
   };
 }
 
-/** แถวชิปเลือก product team — ใช้ทั้งใน Stage 2 และตอนสร้างนัดใหม่ */
+/** แถวชิปเลือก product team — ใช้ทั้งในแท็บรายละเอียดเคสและตอนสร้างนัดใหม่ */
 export function TeamPicker({
   team,
   onChange,
@@ -254,7 +254,7 @@ export function CostPriceInput({
   );
 }
 
-/* ---------- ตัวกรอกหลัก (Stage 2) ---------- */
+/* ---------- ตัวกรอกหลัก (แท็บรายละเอียดเคส) ---------- */
 
 export function ProcedureItemsEditor({
   influencerId,

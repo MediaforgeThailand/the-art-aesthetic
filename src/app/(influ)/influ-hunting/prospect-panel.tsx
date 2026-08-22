@@ -474,7 +474,6 @@ export function ProspectPanel({
                 onChange={(e) => setName(e.target.value)}
                 onBlur={(e) => commitName(e.target.value)}
                 onKeyDown={enterBlur}
-                placeholder="เช่น มีมี่รีวิวสวย"
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -487,7 +486,6 @@ export function ProspectPanel({
                   onChange={(e) => setNickname(e.target.value)}
                   onBlur={(e) => commitNullable("nickname", e.target.value)}
                   onKeyDown={enterBlur}
-                  placeholder="เช่น มีมี่"
                 />
               </div>
               <div>
@@ -500,7 +498,6 @@ export function ProspectPanel({
                     onChange={(e) => setPhone(e.target.value)}
                     onBlur={(e) => commitNullable("phone", e.target.value)}
                     onKeyDown={enterBlur}
-                    placeholder="08x-xxx-xxxx"
                   />
                   {telHref && (
                     <a
@@ -522,7 +519,6 @@ export function ProspectPanel({
                   onChange={(e) => setOccupation(e.target.value)}
                   onBlur={(e) => commitNullable("occupation", e.target.value)}
                   onKeyDown={enterBlur}
-                  placeholder="เช่น สายบิวตี้ / รีวิวศัลยกรรม"
                 />
               </div>
               <div>
@@ -535,7 +531,6 @@ export function ProspectPanel({
                   onChange={(e) => setFollowers(e.target.value)}
                   onBlur={(e) => commitFollowers(e.target.value)}
                   onKeyDown={enterBlur}
-                  placeholder="เช่น 150000"
                 />
               </div>
             </div>
@@ -690,7 +685,6 @@ export function ProspectPanel({
                 onBlur={(e) =>
                   commitNullable("interested_services", e.target.value)
                 }
-                placeholder="เช่น Botox / Filler ปาก — ยัง confirm ไม่ได้จนกว่าจะตอบรับ"
               />
             </div>
             <div>
@@ -702,7 +696,6 @@ export function ProspectPanel({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 onBlur={(e) => commitNullable("note", e.target.value)}
-                placeholder="เงื่อนไขที่คุยไว้ / ข้อสังเกต..."
               />
             </div>
 
@@ -928,7 +921,7 @@ function ContactRow({
             // uncontrolled + remount เมื่อค่าจริงเปลี่ยน (แพตเทิร์นโน้ตของระบบนี้)
             key={c.note ?? ""}
             defaultValue={c.note ?? ""}
-            placeholder="เพิ่มโน้ต (ถ้ามี) — เช่น ทักไปแล้ว รอตอบ"
+            placeholder="เพิ่มโน้ต (ถ้ามี)"
             onBlur={(e) => {
               const v = e.target.value.trim();
               if (v !== (c.note ?? "")) onUpdate({ note: v || null });
