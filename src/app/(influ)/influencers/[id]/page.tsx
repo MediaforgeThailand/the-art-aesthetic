@@ -13,7 +13,6 @@ import type {
   DoctorRow,
   InfluencerRow,
   InfluRoundLite,
-  InfluFollowupRow,
   InfluLinkRow,
   InfluPostLinkRow,
   InfluProcedureItemRow,
@@ -49,7 +48,6 @@ export default async function InfluencerDetailPage({
   const [
     access,
     { data: influencerRaw },
-    { data: followups },
     { data: signatures },
     { data: tasks },
     { data: contentTasks },
@@ -70,11 +68,6 @@ export default async function InfluencerDetailPage({
       )
       .eq("id", id)
       .single(),
-    supabase
-      .from("influ_followups")
-      .select("*")
-      .eq("influencer_id", id)
-      .order("round", { ascending: true }),
     supabase.from("influ_signatures").select("*").eq("influencer_id", id),
     supabase
       .from("influ_tasks")
@@ -97,7 +90,7 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
-    // ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2 — ส่งราคาไปโชว์/ใส่อัตโนมัติด้วย)
+    // ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ในแท็บรายละเอียดเคส — ส่งราคาไปโชว์/ใส่อัตโนมัติด้วย)
     supabase
       .from("price_items")
       .select("id, name, price_normal, promos, search_aliases")
@@ -124,9 +117,9 @@ export default async function InfluencerDetailPage({
           .eq("id", userId)
           .single()
       : Promise.resolve({ data: null }),
-    // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ใน stage 2 / โมดัลแก้วัน-แพทย์
+    // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในแท็บรายละเอียดเคส / โมดัลแก้วัน-แพทย์
     supabase.from("doctors").select("*").order("name", { ascending: true }),
-    // เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) — ใช้ใน editor ของ Stage 2
+    // เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) — ใช้ใน editor ของแท็บรายละเอียดเคส
     supabase
       .from("influ_services")
       .select("*")
@@ -183,7 +176,6 @@ export default async function InfluencerDetailPage({
           influencer.owner?.full_name || influencer.owner?.email || null
         }
         personRounds={(personRounds ?? []) as InfluRoundLite[]}
-        followups={(followups ?? []) as InfluFollowupRow[]}
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}

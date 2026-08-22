@@ -94,16 +94,12 @@ export const effectiveSizeGroup = (i: InfluencerListRow): InfluSizeGroup =>
   i.size_group ?? sizeGroupFromFollowers(i.followers);
 
 /** สถานะรวมของ influencer หนึ่งคน — ใช้กับตัวกรอง "ยกเว้น" และโทนการ์ด
-    (ปฏิเสธชนะทุกสถานะ · จบงาน · ตอบรับ (stage ≥2) · รอตอบรับ (stage 1)) */
-export type InfluStatusKey = "waiting" | "accepted" | "done" | "declined";
+    (ปฏิเสธชนะทุกสถานะ · จบงาน · ที่เหลือ = กำลังดำเนินการ)
+    สถานะ "รอตอบรับ" ถูกถอดทิ้งที่ 0086 — ทุกเคสบนบอร์ดคือคนที่ตอบรับแล้ว
+    (งานก่อนตอบรับอยู่บอร์ด Hunting ตั้งแต่ 0081) */
+export type InfluStatusKey = "accepted" | "done" | "declined";
 export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
-  i.declined_at !== null
-    ? "declined"
-    : i.completed
-      ? "done"
-      : i.stage >= INFLU_STAGE.caseDetail
-        ? "accepted"
-        : "waiting";
+  i.declined_at !== null ? "declined" : i.completed ? "done" : "accepted";
 
 /* ---------- เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ ----------
    คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
@@ -150,11 +146,9 @@ export function NoDoctorBookingBadge({
     ทั้งที่เคสมี photo_path — เดิม render แค่ initial ตัวเดียว) */
 function InfluCardAvatar({
   influ: i,
-  accepted,
   declined,
 }: {
   influ: InfluencerListRow;
-  accepted: boolean;
   declined: boolean;
 }) {
   const { url } = useSignedUrl(i.photo_path);
@@ -173,9 +167,7 @@ function InfluCardAvatar({
   return (
     <span
       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-        accepted && !declined
-          ? "bg-brand-100 text-brand-700"
-          : "bg-stone-100 text-stone-400"
+        declined ? "bg-stone-100 text-stone-400" : "bg-brand-100 text-brand-700"
       }`}
     >
       {i.first_name.charAt(0)}
@@ -184,8 +176,7 @@ function InfluCardAvatar({
 }
 
 export const INFLU_STATUS_META: Record<InfluStatusKey, { label: string }> = {
-  waiting: { label: "ติดต่ออยู่ · รอตอบรับ" },
-  accepted: { label: "ตอบรับแล้ว" },
+  accepted: { label: "กำลังดำเนินการ" },
   done: { label: "จบงานแล้ว" },
   declined: { label: "ปฏิเสธ" },
 };
@@ -306,9 +297,7 @@ function StageTracker({
     ? "ปฏิเสธแล้ว"
     : completed
       ? "จบงานแล้ว"
-      : stage === INFLU_STAGE.contact
-        ? "ติดต่อ · รอตอบรับ"
-        : (INFLU_STAGES.find((s) => s.step === stage)?.title ?? "");
+      : (INFLU_STAGES.find((s) => s.step === stage)?.title ?? "");
 
   return (
     <div className="mt-3">
@@ -384,8 +373,9 @@ function StageTracker({
 
 /* ---------- เนื้อการ์ด ----------
    redesign 2026-08-14 (ผู้ใช้: "minimal · ดูง่าย · stage แบบแอปส่งของ")
-   · พื้นการ์ดบอกแค่ 4 สถานะแบบเบาๆ: รอตอบรับ = เส้นประจาง · กำลังทำ = ขาว · จบงาน = เขียวอ่อน · ปฏิเสธ = จาง
-   · "ตอบรับแล้ว / อยู่ขั้นไหน / จบงาน / ปฏิเสธ" ไม่ทำเป็นชิปแล้ว — อ่านจาก StageTracker แถวล่างที่เดียว
+   · พื้นการ์ดบอกสถานะแบบเบาๆ: กำลังทำ = ขาว · จบงาน = เขียวอ่อน · ปฏิเสธ = จาง+เส้นประ
+     (โทน "รอตอบรับ" ถูกถอดที่ 0086 — ทุกเคสบนบอร์ดตอบรับแล้ว งานก่อนหน้าอยู่บอร์ด Hunting)
+   · "อยู่ขั้นไหน / จบงาน / ปฏิเสธ" ไม่ทำเป็นชิปแล้ว — อ่านจาก StageTracker แถวล่างที่เดียว
    · แถวชิปกลางการ์ดเหลือเฉพาะเรื่องที่ต้องลงมือทำ (ยังไม่ลงคิวหมอ · follow up · อายุสัญญา)
    · tier ย้ายไปเป็นข้อความเงียบๆ ข้างยอดผู้ติดตาม (เดิมเป็นชิปสีคนละสีต่อ tier) */
 
@@ -418,7 +408,6 @@ export function InfluCardContent({
   onToggleDeclined?: (influ: InfluencerListRow) => void;
 }) {
   const declined = i.declined_at !== null;
-  const accepted = i.completed || i.stage >= INFLU_STAGE.caseDetail;
   const nextDueDays =
     !i.completed && i.stage === INFLU_STAGE.followup && stats?.nextDue
       ? dayDiff(stats.nextDue, today)
@@ -439,9 +428,7 @@ export function InfluCardContent({
     ? "border border-dashed border-stone-300 bg-stone-50/70 opacity-75"
     : i.completed
       ? "border border-emerald-200/80 bg-emerald-50/60"
-      : accepted
-        ? "border border-stone-200 bg-white/90"
-        : "border border-dashed border-stone-300 bg-white/50";
+      : "border border-stone-200 bg-white/90";
 
   /** ส่ง Memo ไปขออนุมัติแล้ว (ติ๊กในหน้าเคส) — ติ๊กถูกเล็กๆ กันทีมส่งซ้ำ */
   const memoSent = i.docs_sent_at !== null;
@@ -467,15 +454,11 @@ export function InfluCardContent({
     >
       {/* แถวบน: avatar + ชื่อ + ยอดผู้ติดตาม/tier/เบอร์ + ปุ่มลบ */}
       <div className="flex items-start gap-2.5">
-        <InfluCardAvatar influ={i} accepted={accepted} declined={declined} />
+        <InfluCardAvatar influ={i} declined={declined} />
         <div className="min-w-0 flex-1">
           <p
             className={`truncate text-sm font-medium ${
-              declined
-                ? "text-stone-400"
-                : accepted
-                  ? "text-stone-900"
-                  : "text-stone-600"
+              declined ? "text-stone-400" : "text-stone-900"
             }`}
           >
             {influName(i)}
@@ -569,7 +552,7 @@ export function InfluCardContent({
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {needsBooking && <NoDoctorBookingBadge serviceDate={i.service_date} />}
           {consultPending && (
-            <span title="เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ — รอปรึกษาแพทย์แล้วกลับมาเพิ่มที่ Stage 2">
+            <span title="เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ — รอปรึกษาแพทย์แล้วกลับมาเพิ่มที่แท็บรายละเอียดเคส">
               <Badge className={CHIP_WARN}>
                 <MessageCircleQuestion size={11} /> รอปรึกษา
               </Badge>

@@ -4,7 +4,7 @@
  * Influencer Cost — สรุปต้นทุนค่าบริการของ influencer รายโปรแกรม
  * — แยก "กำลังจะมา / ยังไม่เคาะวัน / ใช้บริการแล้ว" ตามการเดิน stage ของเคส
  * — แก้ต้นทุน + ติ๊ก "แบรนด์ support" ได้ตรงจากหน้านี้ (รายการ support นับเป็น ฿0)
- * — รายการถูกเพิ่ม/ลบจากหน้าเดินงาน Stage 2 ของแต่ละเคส (/influencers/[id])
+ * — รายการถูกเพิ่ม/ลบจากแท็บ "รายละเอียดเคส" ของแต่ละเคส (/influencers/[id])
  *
  * เลย์เอาต์ (redesign 2026-08-20 ตามผู้ใช้ "filter เละเทะ ใช้งานยาก ดูไม่สวย"):
  * ไม่มี PageHeader (ชื่อหน้าอยู่บนแถบเมนูของระบบแล้ว) → การ์ดสรุป 4 ใบที่ *กดเป็น
@@ -289,7 +289,7 @@ function ItemRow({
         ) : item.price_item_id ? (
           /* ผูกกับ Price List = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
           <span
-            title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (เปลี่ยนรายการได้ที่ Stage 2 ของเคส)"
+            title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (เปลี่ยนรายการได้ที่แท็บรายละเอียดเคสของเคสนั้น)"
             className="inline-flex items-center gap-1 text-sm tabular-nums text-stone-700"
           >
             <Lock size={11} className="text-stone-300" />
@@ -333,7 +333,7 @@ export function CostClient({
 
   // local copy — แก้ราคา/ติ๊ก support แบบ optimistic แล้วค่อย refresh เบื้องหลัง
   // ต้องรับค่าใหม่จาก props ด้วย ไม่งั้น router.refresh() ที่เรียกหลังบันทึกไม่มีผลอะไรเลย
-  // (ของที่คนอื่นแก้ไม่ขึ้น และรายการที่ถูกลบใน Stage 2 ยังค้างเป็นแถวผี)
+  // (ของที่คนอื่นแก้ไม่ขึ้น และรายการที่ถูกลบในแท็บรายละเอียดเคส ยังค้างเป็นแถวผี)
   const [rows, setRows] = useState<CostItem[]>(items);
   useEffect(() => setRows(items), [items]);
   const [err, setErr] = useState<string | null>(null);
@@ -673,7 +673,7 @@ export function CostClient({
           <EmptyState
             icon={<Wallet size={40} />}
             title="ยังไม่มีรายการต้นทุน"
-            description="เพิ่มโปรแกรมของแต่ละเคสได้ที่ Stage 2 ในหน้าเคสดำเนินงาน"
+            description={'เพิ่มโปรแกรมของแต่ละเคสได้ที่แท็บ "รายละเอียดเคส" ในหน้าเคสดำเนินงาน'}
           />
         )
       ) : (

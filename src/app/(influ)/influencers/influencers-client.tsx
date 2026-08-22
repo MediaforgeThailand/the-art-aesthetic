@@ -27,7 +27,6 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatNumber, todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
 import {
-  INFLU_STAGE,
   INFLU_STAGES,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
@@ -62,12 +61,7 @@ export type { InfluencerListRow } from "./influ-board";
 /* ---------- ตัวกรอง "ยกเว้น" (จำค่าใน localStorage — ใช้ร่วมทุกเครื่องที่เปิดหน้านี้) ---------- */
 
 const FILTER_STORAGE_KEY = "influ-filters-v1";
-const INFLU_STATUS_ORDER: InfluStatusKey[] = [
-  "waiting",
-  "accepted",
-  "done",
-  "declined",
-];
+const INFLU_STATUS_ORDER: InfluStatusKey[] = ["accepted", "done", "declined"];
 /** ค่าเริ่มต้น: ซ่อนคนที่ปฏิเสธออกจากบอร์ด (ดูได้จากชิป "ปฏิเสธ" หรือเอาติ๊กออก) */
 const DEFAULT_EXCLUDED: InfluStatusKey[] = ["declined"];
 
@@ -525,9 +519,7 @@ export function InfluencersClient({
       stageFilter === "done"
         ? "done"
         : typeof stageFilter === "number"
-          ? stageFilter === 1
-            ? "waiting"
-            : "accepted"
+          ? "accepted"
           : null;
     return items.filter((i) => {
       const status = influStatusOf(i);
@@ -632,7 +624,7 @@ export function InfluencersClient({
           onClick={() =>
             setStageFilter(bookingAlertActive ? "all" : "needbooking")
           }
-          title="เคสที่ผ่าน Stage 3 (Memo) แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
+          title="เคสที่ผ่านขั้น Memo แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
           className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
             bookingAlertActive
               ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
@@ -740,7 +732,7 @@ export function InfluencersClient({
             <EmptyState
               icon={<CalendarClock size={40} strokeWidth={1.5} />}
               title="ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
-              description="ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึง Stage 3 (Memo) แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+              description="ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึงขั้น Memo แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
             />
           ) : (
             <EmptyState
@@ -821,7 +813,7 @@ export function InfluencersClient({
    "ทำให้เป็น visual graphic เลือกง่ายๆ เป็นเส้นคล้ายๆ stage ใน card ไม่ต้องมีทั้งหมด"
    — หน้าตาเดียวกับ StageTracker บนการ์ด: จุดร้อยเส้น + จบงานต่อท้าย, "ปฏิเสธ" แยก
    นอกเส้น (ไม่ใช่ขั้นงาน) · กดจุด = กรองขั้นนั้น · กดซ้ำ = กลับมาดูทั้งหมด (ไม่มีปุ่ม "ทั้งหมด")
-   ขั้น 1-2 ซ่อนเมื่อว่าง — ย้ายไปบอร์ด Hunting แล้ว (0081) เคสถูกย้อน stage ลงมายังโผล่ได้ */
+   ตั้งแต่ 0086 เหลือ 3 ขั้น (Memo → สัญญา/รับบริการ → ตามงาน) จึงโชว์ครบทุกขั้นเสมอ */
 function StageFilterTracker({
   value,
   countFor,
@@ -832,12 +824,7 @@ function StageFilterTracker({
   onChange: (key: number | "all" | "done" | "declined") => void;
 }) {
   const nodes: { key: number | "done"; label: string }[] = [
-    ...INFLU_STAGES.filter(
-      (s) =>
-        s.step > INFLU_STAGE.caseDetail ||
-        countFor(s.step) > 0 ||
-        value === s.step
-    ).map((s) => ({
+    ...INFLU_STAGES.map((s) => ({
       key: s.step as number | "done",
       label: `${s.step}. ${s.short}`,
     })),

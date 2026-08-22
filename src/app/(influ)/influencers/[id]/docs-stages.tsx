@@ -110,7 +110,7 @@ export function PhotosModal({
               )
             ) : (
               <div className="flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-stone-200 text-xs text-stone-400">
-                ยังไม่ได้อัพโหลด (กลับไปอัพโหลดใน Stage 2)
+                ยังไม่ได้อัพโหลด (เพิ่มรูปได้ที่โปรไฟล์ของ influ)
               </div>
             )}
           </div>
@@ -120,7 +120,7 @@ export function PhotosModal({
   );
 }
 
-/* ---------- Stage 3: Memo ขออนุมัติ ---------- */
+/* ---------- Stage 1: Memo ขออนุมัติ ---------- */
 
 export function MemoStage({
   fileEditable,
@@ -130,7 +130,7 @@ export function MemoStage({
   signatures: InfluSignatureRow[];
   userName: string;
   readOnly: boolean;
-  /** เปลี่ยนไฟล์ Memo ได้ไหม — จริงจนกว่าเคสจะปิดงาน แม้ stage 3 ผ่านไปแล้ว
+  /** เปลี่ยนไฟล์ Memo ได้ไหม — จริงจนกว่าเคสจะปิดงาน แม้ขั้น Memo ผ่านไปแล้ว
       (ไฟล์เอกสารเป็นของเคส ไม่ใช่สถานะงาน — มัก memo ผิด/ได้ฉบับอนุมัติจริงทีหลัง) */
   fileEditable: boolean;
 }) {
@@ -570,7 +570,7 @@ function MemoCopyStage({
                 )
               ) : (
                 <div className="flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-stone-200 text-xs text-stone-400">
-                  ยังไม่ได้อัพโหลด (กลับไปอัพโหลดใน Stage 2)
+                  ยังไม่ได้อัพโหลด (เพิ่มรูปได้ที่โปรไฟล์ของ influ)
                 </div>
               )}
             </div>
@@ -613,7 +613,7 @@ function MemoCopyStage({
                 <Download size={13} />
                 ดาวน์โหลด
               </Button>
-              {/* เปลี่ยนไฟล์ได้จนกว่าเคสจะปิดงาน — แม้ stage 3 ผ่านไปแล้ว (ไฟล์เดิมถูกแทนที่+ลบทิ้ง) */}
+              {/* เปลี่ยนไฟล์ได้จนกว่าเคสจะปิดงาน — แม้ขั้น Memo ผ่านไปแล้ว (ไฟล์เดิมถูกแทนที่+ลบทิ้ง) */}
               {fileEditable && (
                 <Button
                   variant="ghost"

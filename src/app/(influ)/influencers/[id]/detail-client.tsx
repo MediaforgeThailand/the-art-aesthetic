@@ -16,9 +16,7 @@ import {
   Link2,
   ListChecks,
   MessageCircleQuestion,
-  MessageSquarePlus,
   PenLine,
-  PhoneCall,
   Repeat,
   Send,
   Undo2,
@@ -64,7 +62,6 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
-  roundLabel,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { logInflu } from "@/lib/influ-log";
@@ -74,7 +71,6 @@ import type {
   InfluencerRow,
   InfluRoundLite,
   InfluFollowupMode,
-  InfluFollowupRow,
   InfluLinkRow,
   InfluPostLinkRow,
   InfluProcedureItemRow,
@@ -356,9 +352,9 @@ function NameEditModal({
   );
 }
 
-/** แก้ "วันเข้ารับบริการ + แพทย์ที่รับเคส" ได้ทุก stage — สองช่องนี้ไม่บังคับตอน Stage 2
+/** แก้ "วันเข้ารับบริการ + แพทย์ที่รับเคส" ได้ทุก stage — สองช่องนี้ไม่บังคับตอนกรอกรายละเอียดเคส
     (influ มักยังไม่เคาะวัน / ยังไม่รู้ว่าแพทย์ท่านไหนรับเคส) แล้วมาเคาะทีหลังตอนอยู่ stage อื่น
-    ซึ่ง Stage 2 ถูกล็อก (readOnly = view < stage) ไปแล้ว — เป็นข้อมูลนัดหมาย ไม่ใช่สถานะงาน
+    — เป็นข้อมูลนัดหมาย ไม่ใช่สถานะงาน
     จึงเปิดแก้ได้เสมอแบบเดียวกับ NameEditModal */
 function CaseInfoEditModal({
   influencer,
@@ -442,7 +438,7 @@ function CaseInfoEditModal({
           </p>
         )}
         <p className="text-xs text-stone-400">
-          ข้อมูลนี้ถูกใช้ในข้อความ Memo (Stage 3) —
+          ข้อมูลนี้ถูกใช้ในข้อความ Memo ในขั้น Memo —
           เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม
         </p>
         <div className="flex justify-end gap-2 pt-1">
@@ -463,7 +459,6 @@ function CaseInfoEditModal({
 export function InfluDetailClient({
   influencer,
   personRounds,
-  followups,
   signatures,
   tasks,
   contentTasks,
@@ -483,13 +478,12 @@ export function InfluDetailClient({
   influencer: InfluencerRow;
   /** รอบงานทั้งหมดของคนเดียวกัน (person_id เดียวกัน รวมเคสนี้ + เคสเก่า archived) เรียงรอบแรก→ล่าสุด */
   personRounds: InfluRoundLite[];
-  followups: InfluFollowupRow[];
   signatures: InfluSignatureRow[];
   tasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   /** รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้ */
   procedureItems: InfluProcedureItemRow[];
-  /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ใน Stage 2) */
+  /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ในแท็บรายละเอียดเคส) */
   priceCatalog: PriceCatalogEntry[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services, 0080) */
   services: InfluServiceRow[];
@@ -514,8 +508,9 @@ export function InfluDetailClient({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const actor = useMemo(() => ({ id: userId, name: userName }), [userId, userName]);
-  // view = "overview" (หน้าสรุป) หรือเลข stage 1-5 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
-  const [view, setView] = useState<"overview" | number>("overview");
+  // view = "overview" (หน้าสรุป) · "detail" (รายละเอียดเคส — ไม่มีเลขขั้น แก้ได้เสมอ)
+  // หรือเลข stage 1-3 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
+  const [view, setView] = useState<"overview" | "detail" | number>("overview");
   // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
   // แต่ตอน mount ครั้งแรกให้อยู่ที่ภาพรวมเสมอ
   const prevStageRef = useRef(influencer.stage);
@@ -534,7 +529,7 @@ export function InfluDetailClient({
     !canManage ||
     influencer.completed ||
     (typeof view === "number" && view < influencer.stage);
-  /** แก้ข้อมูลเคสได้หรือไม่ — ใช้กับส่วนที่ปกติแก้ได้จนกว่าจะปิดงาน (Stage 2, ไฟล์, ชื่อ) */
+  /** แก้ข้อมูลเคสได้หรือไม่ — ใช้กับส่วนที่ปกติแก้ได้จนกว่าจะปิดงาน (รายละเอียดเคส, ไฟล์, ชื่อ) */
   const canEdit = canManage && !influencer.completed;
   const [nameOpen, setNameOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
@@ -579,7 +574,7 @@ export function InfluDetailClient({
   };
 
   /* ---- เปิดรอบใหม่: influ คนเดิมกลับมาทำอีกครั้ง = การ์ดใหม่ + memo/สัญญา/checklist ชุดใหม่ ----
-     สร้างแถว influencers ใหม่ person_id เดียวกัน เริ่ม Stage 1 — คัดลอกเฉพาะข้อมูลตัวบุคคล
+     สร้างแถว influencers ใหม่ person_id เดียวกัน เริ่มที่ขั้น Memo — คัดลอกเฉพาะข้อมูลตัวบุคคล
      (ชื่อ/เบอร์/อาชีพ/ผู้ติดตาม/รูป) ส่วนข้อมูลเคส (โปรแกรม/วัน/แพทย์/ไฟล์) เริ่มว่างทั้งหมด
      เปิดได้เฉพาะเมื่อรอบนี้จบแล้ว (จบงาน/ปฏิเสธ/ข้อมูลเก่า) — รอบที่ยังเดินอยู่ให้เดินต่อในการ์ดเดิม */
   const [newRoundOpen, setNewRoundOpen] = useState(false);
@@ -614,7 +609,7 @@ export function InfluDetailClient({
         follower_note: influencer.follower_note,
         tier: influencer.tier,
         // เริ่มที่ Memo เหมือน "สร้างนัดใหม่" (0080/0081) — ขั้นติดต่อ/รายละเอียดเป็นงานก่อน
-        // ตอบรับ อยู่บอร์ด Hunting แล้ว; โปรแกรมของรอบใหม่กลับไปเติมใน Stage 2 ได้เสมอ
+        // ตอบรับ อยู่บอร์ด Hunting แล้ว; โปรแกรมของรอบใหม่กลับไปเติมที่แท็บรายละเอียดเคสได้เสมอ
         stage: INFLU_STAGE.memo,
         // การ์ดรอบใหม่เป็นของคนที่กดเปิดรอบ (กติกา "ผู้รับผิดชอบ = ผู้สร้างการ์ด")
         // — รหัส Influ ID ไม่คัดลอกมา เพราะ unique ต่อการ์ด ต้องออกรหัสของรอบนี้เอง
@@ -742,7 +737,7 @@ export function InfluDetailClient({
             </Badge>
           </span>
         )}
-        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่ Stage 2) */}
+        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคส) */}
         {influencer.consult_only && !influencer.procedure_text && (
           <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
             <MessageCircleQuestion size={12} /> รอปรึกษา
@@ -779,7 +774,7 @@ export function InfluDetailClient({
           <button
             type="button"
             onClick={() => setNewRoundOpen(true)}
-            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่ม Stage 1 เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Repeat size={14} />
@@ -844,6 +839,21 @@ export function InfluDetailClient({
           <LayoutList size={15} />
           ภาพรวม
         </button>
+        {/* รายละเอียดเคส = แท็บไม่มีเลขขั้น (0086): เป็นข้อมูลเคสไม่ใช่สถานะงาน
+            เปิดแก้ได้เสมอจนกว่าจะปิดงาน จึงไม่อยู่ในเส้น stage อีกต่อไป */}
+        <button
+          type="button"
+          onClick={() => setView("detail")}
+          title="ข้อมูลเคส (โปรแกรมที่รับ / ยอดผู้ติดตาม / วัน-แพทย์ / ค่าตัว) — แก้ได้เสมอจนกว่าจะปิดงาน"
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] ${
+            view === "detail"
+              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
+              : "border border-stone-200 bg-white/60 text-stone-600 hover:bg-white"
+          }`}
+        >
+          <ClipboardList size={15} />
+          รายละเอียดเคส
+        </button>
         {INFLU_STAGES.map((s) => {
           const passed = influencer.completed || influencer.stage > s.step;
           const current = !influencer.completed && influencer.stage === s.step;
@@ -884,8 +894,9 @@ export function InfluDetailClient({
         {/* ย้อนกลับ 1 ขั้น — เคสขอเปลี่ยนโปรแกรม/เงื่อนไข หรือเอกสารขั้นก่อนหน้าผิด ต้องกลับไปทำใหม่
             เปิดให้เคสที่ปิดงานแล้วด้วย (ย้อนแล้วเคสกลับมาเป็น "กำลังดำเนินการ") — ไม่งั้นพอปิดงาน
             แล้วเจอว่าไฟล์สัญญาผิดฉบับ จะไม่เหลือทางแก้เลย
-            พื้นต่ำสุด = Stage 2 (0081): ขั้น "ติดต่อ" ย้ายไปบอร์ด Hunting แล้ว ถอยไปถึงไม่มีความหมาย */}
-        {canManage && influencer.stage > INFLU_STAGE.caseDetail && (
+            พื้นต่ำสุด = Stage 1 Memo (0086): ขั้นติดต่อย้ายไปบอร์ด Hunting และรายละเอียดเคส
+            กลายเป็นแท็บที่แก้ได้เสมอ — ไม่มีขั้นก่อน Memo ให้ถอยไปอีกแล้ว */}
+        {canManage && influencer.stage > INFLU_STAGE.memo && (
           <button
             type="button"
             onClick={() => setRollbackOpen(true)}
@@ -958,15 +969,8 @@ export function InfluDetailClient({
             onGoStage={(step) => setView(step)}
           />
         )}
-        {view === 1 && (
-          <ContactStage
-            influencer={influencer}
-            followups={followups}
-            readOnly={readOnly}
-          />
-        )}
-        {view === 2 && (
-          // Stage 2 แก้ได้เสมอจนกว่าจะปิดงาน (ไม่ใช้ readOnly รวมที่ล็อก stage ที่ผ่านแล้ว) —
+        {view === "detail" && (
+          // รายละเอียดเคสแก้ได้เสมอจนกว่าจะปิดงาน (ไม่ใช้ readOnly รวมที่ล็อก stage ที่ผ่านแล้ว) —
           // เป็นข้อมูลเคสไม่ใช่สถานะงาน มักต้องกลับมาเติมวัน/แพทย์/มูลค่าทีหลัง
           <CaseDetailStage
             influencer={influencer}
@@ -977,7 +981,7 @@ export function InfluDetailClient({
             readOnly={!canEdit}
           />
         )}
-        {view === 3 && (
+        {view === INFLU_STAGE.memo && (
           // ไฟล์ Memo แก้ได้ (เปลี่ยนไฟล์) จนกว่าเคสจะปิดงาน แม้ stage นี้ผ่านไปแล้ว —
           // เป็นเอกสารของเคส ไม่ใช่สถานะงาน; ส่วนปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม
           <MemoStage
@@ -1090,7 +1094,7 @@ export function InfluDetailClient({
             <span className="font-medium text-stone-800">คุณ{fullName}</span>{" "}
             บนบอร์ดเคสดำเนินงาน เริ่มที่ขั้น Memo —
             ใช้เมื่อคนเดิมกลับมาทำอีกครั้ง ซึ่งต้องออก Memo ขออนุมัติ
-            และเซนสัญญาชุดใหม่ทั้งหมด (โปรแกรมของรอบใหม่กลับไปเติมได้ที่ Stage 2)
+            และเซนสัญญาชุดใหม่ทั้งหมด (โปรแกรมของรอบใหม่กลับไปเติมได้ที่แท็บรายละเอียดเคส)
             <br />
             ข้อมูลตัวบุคคล (ชื่อ เบอร์ ยอดผู้ติดตาม รูป) ถูกคัดลอกไปให้ —
             ส่วนโปรแกรม/วันนัด/เอกสารของรอบนี้ไม่ถูกแตะ และไม่ติดไปกับรอบใหม่
@@ -1202,7 +1206,7 @@ function OverviewPanel({
           <span className="text-xs text-stone-400">
             {influencer.completed
               ? "จบงานแล้ว"
-              : `กำลังอยู่ขั้นที่ ${influencer.stage} จาก 6`}
+              : `กำลังอยู่ขั้นที่ ${influencer.stage} จาก ${INFLU_STAGES.length}`}
           </span>
         </div>
         <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1449,7 +1453,7 @@ function OverviewPanel({
               }
             />
             <Field
-              label="Follow-up (ขั้นที่ 6)"
+              label="Follow-up (ขั้นตามงาน)"
               value={
                 followupTotal > 0
                   ? `เหลือ ${followupLeft} / ${followupTotal} ข้อ`
@@ -1670,170 +1674,7 @@ function ContentTasksSection({ tasks }: { tasks: TaskWithAssignee[] }) {
   );
 }
 
-/* ============ Stage 1: ติดต่อ + Follow up ============ */
-
-function ContactStage({
-  influencer,
-  followups,
-  readOnly,
-}: {
-  influencer: InfluencerRow;
-  followups: InfluFollowupRow[];
-  readOnly: boolean;
-}) {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  const log = useInfluLog();
-  const [comment, setComment] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const addFollowup = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    const round =
-      followups.length > 0
-        ? Math.max(...followups.map((f) => f.round)) + 1
-        : 1;
-    const { error: e } = await supabase.from("influ_followups").insert({
-      influencer_id: influencer.id,
-      round,
-      comment: comment.trim() || null,
-    });
-    setBusy(false);
-    if (e) {
-      // คงข้อความที่พิมพ์ไว้ — ไม่ทิ้งของผู้ใช้เมื่อบันทึกล้ม
-      setError(`บันทึกไม่สำเร็จ: ${e.message}`);
-      return;
-    }
-    setComment("");
-    router.refresh();
-  };
-
-  // กันกดซ้ำระหว่างรอ DB ตอบ — เน็ตมือถือช้า ผู้ใช้มักกดรัวจนยิงซ้อนหลายครั้ง
-  const [joining, setJoining] = useState(false);
-  const confirmJoin = async () => {
-    if (joining) return;
-    setJoining(true);
-    setError(null);
-    const { error: e } = await supabase
-      .from("influencers")
-      .update({ stage: INFLU_STAGE.caseDetail })
-      .eq("id", influencer.id);
-    setJoining(false);
-    if (e) {
-      setError(`บันทึกไม่สำเร็จ: ${e.message}`);
-      return;
-    }
-    log({
-      action: "stage",
-      entityId: influencer.id,
-      influencerId: influencer.id,
-      influencerName: logNameOf(influencer),
-      summary: "influ ตอบรับแล้ว — ไปขั้นรายละเอียดเคส",
-      meta: { from: influencer.stage, to: INFLU_STAGE.caseDetail },
-    });
-    router.refresh();
-  };
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="p-5">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-900">
-          <PhoneCall size={16} className="text-brand-600" />
-          ข้อมูลติดต่อ
-        </h2>
-        <div className="space-y-1.5 text-sm text-stone-700">
-          <p>
-            ชื่อ:{" "}
-            <span className="font-medium">
-              {influencer.first_name} {influencer.last_name}
-            </span>
-          </p>
-          <p>
-            เบอร์โทร:{" "}
-            <span className="font-medium tabular-nums">
-              {influencer.phone || "-"}
-            </span>
-          </p>
-          <p className="text-xs text-stone-400">
-            เพิ่มเมื่อ {formatDateTime(influencer.created_at)}
-          </p>
-        </div>
-        {error && (
-          <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-            {error}
-          </p>
-        )}
-        {!readOnly && (
-          <Button
-            className="mt-4 w-full"
-            loading={joining}
-            onClick={() => void confirmJoin()}
-          >
-            <CheckCircle2 size={16} />
-            ยืนยันตกลงร่วมงาน — ไป Stage 2
-          </Button>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-900">
-          <MessageSquarePlus size={16} className="text-brand-600" />
-          บันทึกการติดต่อ (Follow up)
-        </h2>
-        <div className="space-y-2">
-          {followups.length === 0 && (
-            <p className="rounded-lg border-2 border-dashed border-stone-200 px-3 py-4 text-center text-xs text-stone-400">
-              ยังไม่มีบันทึก — โทร/ทักครั้งแรกแล้วกดเพิ่ม Follow up
-            </p>
-          )}
-          {followups.map((f) => (
-            <div
-              key={f.id}
-              className="rounded-lg bg-white/70 px-3 py-2 text-sm"
-            >
-              <p className="flex items-center gap-2">
-                <Badge className="bg-brand-50 text-brand-700">
-                  Follow up ครั้งที่ {f.round}
-                </Badge>
-                <span className="ml-auto text-[11px] text-stone-400">
-                  {formatDateTime(f.created_at)}
-                </span>
-              </p>
-              {f.comment && (
-                <p className="mt-1 text-stone-700">{f.comment}</p>
-              )}
-            </div>
-          ))}
-        </div>
-        {!readOnly && (
-          <div className="mt-3 flex gap-2">
-            <Input
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder={`comment ครั้งที่ ${followups.length + 1} เช่น โทรแล้วรอตอบกลับ...`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void addFollowup();
-              }}
-            />
-            <Button
-              variant="secondary"
-              loading={busy}
-              onClick={() => void addFollowup()}
-            >
-              <MessageSquarePlus size={15} />
-              เพิ่ม
-            </Button>
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-/* ============ Stage 2: รายละเอียดเคส ============ */
+/* ============ รายละเอียดเคส — แท็บไม่มีเลขขั้น (แก้ได้เสมอจนกว่าจะปิดงาน) ============ */
 
 function CaseDetailStage({
   influencer,
@@ -1943,8 +1784,8 @@ function CaseDetailStage({
     router.refresh();
   };
 
-  const save = async (thenNext: boolean) => {
-    // เคสที่เลย Stage 2 มาแล้วก็ยังต้องมีค่าบังคับครบ — แต่ห้ามปิดปุ่มบันทึกทิ้ง
+  const save = async () => {
+    // ยังต้องมีค่าบังคับครบทุกครั้ง — แต่ห้ามปิดปุ่มบันทึกทิ้ง
     // ไม่งั้นคนที่แค่อยากแก้เบอร์โทร/วันนัด จะบันทึกไม่ได้เลยเพราะช่องอื่นว่าง
     // (บอกให้รู้ว่าขาดอะไร ดีกว่าปล่อยให้ล้างค่าทิ้งเงียบๆ หรือกดปุ่มไม่ได้โดยไม่บอกเหตุผล)
     if (!canProceed) {
@@ -1975,7 +1816,6 @@ function CaseDetailStage({
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
         tier,
-        ...(thenNext ? { stage: INFLU_STAGE.memo } : {}),
       })
       .eq("id", influencer.id);
     setBusy(false);
@@ -1984,13 +1824,11 @@ function CaseDetailStage({
       return;
     }
     log({
-      action: thenNext ? "stage" : "update",
+      action: "update",
       entityId: influencer.id,
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
-      summary: thenNext
-        ? "บันทึกรายละเอียดเคส แล้วไปขั้น Memo ขออนุมัติ"
-        : `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)})`,
+      summary: `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)})`,
     });
     router.refresh();
   };
@@ -1998,7 +1836,7 @@ function CaseDetailStage({
   return (
     <Card className="p-5">
       <h2 className="mb-4 text-sm font-semibold text-stone-900">
-        รายละเอียดเคส (ใช้ generate Memo ขออนุมัติใน Stage 3 อัตโนมัติ)
+        รายละเอียดเคส (ใช้ generate ข้อความ Memo ขออนุมัติอัตโนมัติ)
       </h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-3">
@@ -2175,40 +2013,21 @@ function CaseDetailStage({
         </p>
       )}
 
-      {!readOnly &&
-        (influencer.stage > INFLU_STAGE.caseDetail ? (
-          // เลย Stage 2 มาแล้ว: แก้ข้อมูลได้แต่ห้ามมีปุ่ม "ไป Stage 3" — save(true) ตั้ง stage=3
-          // จะดึงเคสที่อยู่ขั้นสัญญา/ตามงาน ถอยหลัง
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-stone-500">
-              แก้ไขได้แม้เลยขั้นตอนนี้มาแล้ว — ข้อความ Memo ใน Stage 3
-              อัพเดทตาม แต่เอกสารที่พิมพ์/อัพโหลดไปแล้วไม่เปลี่ยน
-            </p>
-            {/* ค่าบังคับถูกเช็คใน save() แล้ว (ขึ้นข้อความบอกว่าขาดอะไร) — ไม่ปิดปุ่ม
-                เพื่อให้ยังแก้ช่องอื่นได้ตามปกติ */}
-            <Button loading={busy} onClick={() => void save(false)}>
-              บันทึกการแก้ไข
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <Button
-              variant="secondary"
-              loading={busy}
-              onClick={() => void save(false)}
-            >
-              บันทึกร่าง
-            </Button>
-            <Button
-              loading={busy}
-              disabled={!canProceed}
-              onClick={() => void save(true)}
-            >
-              <ArrowRight size={16} />
-              บันทึก + ไป Stage 3 (สร้าง Memo)
-            </Button>
-          </div>
-        ))}
+      {/* แท็บนี้ไม่มีปุ่มเดิน stage อีกแล้ว (0086) — รายละเอียดเคสเป็นข้อมูลของเคส
+          ที่แก้ได้ตลอด ไม่ใช่ขั้นตอนที่ต้อง "ผ่าน" */}
+      {!readOnly && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-stone-500">
+            แก้ไขได้ตลอดจนกว่าจะปิดงาน — ข้อความ Memo ในขั้น Memo อัพเดทตาม
+            แต่เอกสารที่พิมพ์/อัพโหลดไปแล้วไม่เปลี่ยน
+          </p>
+          {/* ค่าบังคับถูกเช็คใน save() แล้ว (ขึ้นข้อความบอกว่าขาดอะไร) — ไม่ปิดปุ่ม
+              เพื่อให้ยังแก้ช่องอื่นได้ตามปกติ */}
+          <Button loading={busy} onClick={() => void save()}>
+            บันทึกการแก้ไข
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
@@ -2334,7 +2153,7 @@ function ServiceDayStage({
           หากหน้างานมีการเปลี่ยนบริการ ให้กดแก้ไข — รายการเดิมจะถูกขีดฆ่า
           เขียนรายการใหม่ต่อ พร้อมแปะลายเซนหัวหน้างานกำกับข้างๆ
           แบบเดียวกับแก้เอกสารจริง (รายการต้นทุน Influencer Cost
-          ไม่เปลี่ยนตามการแก้หน้างาน — กลับไปปรับรายการใน Stage 2)
+          ไม่เปลี่ยนตามการแก้หน้างาน — กลับไปปรับรายการที่แท็บรายละเอียดเคส)
         </p>
 
         <div className="space-y-2 rounded-xl border border-stone-200 bg-white/80 px-4 py-3 text-sm leading-7">

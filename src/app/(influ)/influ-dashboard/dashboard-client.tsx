@@ -2,7 +2,7 @@
 
 /**
  * Influ Dashboard — ภาพรวมงาน Influencer ทั้งโมดูลในหน้าเดียว
- * — สถานะ pipeline (รอตอบรับ / กำลังดำเนินการ / จบงาน / ปฏิเสธ)
+ * — สถานะ pipeline (Hunting กำลังตาม / กำลังดำเนินการ / จบงาน / ปฏิเสธ)
  * — สรุปต้นทุนค่าบริการ (Influencer Cost) ใช้แล้ว vs กำลังจะมา
  * — คิวเข้ารับบริการ 14 วันข้างหน้า · สัญญาใกล้หมดอายุ · follow-up ค้าง
  * — กราฟจำนวนเคส + ต้นทุนย้อนหลัง 6 เดือน (ตามวันเข้ารับบริการ)
@@ -142,7 +142,7 @@ export function DashboardClient({
 
     // ---- pipeline ---- (ขั้น "ติดต่อ · รอตอบรับ" ย้ายไปบอร์ด Hunting แล้ว — 0081)
     const inProgress = active.filter(
-      (i) => !i.completed && i.stage >= INFLU_STAGE.caseDetail
+      (i) => !i.completed
     ).length;
     const done = active.filter((i) => i.completed).length;
     const declined = influencers.length - active.length;
@@ -182,7 +182,7 @@ export function DashboardClient({
       .filter((c) => c.daysLeft >= 0 && c.daysLeft <= 30)
       .sort((a, b) => a.daysLeft - b.daysLeft);
 
-    // ---- follow-up ค้าง (stage 6 ยังไม่ปิดงาน) — นับเฉพาะข้อของโหมดที่ใช้อยู่ ----
+    // ---- follow-up ค้าง (ขั้นตามงาน ยังไม่ปิดงาน) — นับเฉพาะข้อของโหมดที่ใช้อยู่ ----
     const taskLeft = new Map<string, number>();
     for (const t of tasks) {
       const inf = byId.get(t.influencer_id);

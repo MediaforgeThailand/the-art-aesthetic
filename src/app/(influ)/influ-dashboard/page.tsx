@@ -37,7 +37,7 @@ export default async function InfluDashboardPage() {
       supabase
         .from("influ_procedure_items")
         .select("id, influencer_id, price, is_supported"),
-      // งาน follow-up (stage 6) — นับข้อค้างตามโหมดของแต่ละเคส
+      // งาน follow-up (ขั้นตามงาน) — นับข้อค้างตามโหมดของแต่ละเคส
       supabase.from("influ_tasks").select("influencer_id, done, is_custom"),
       // บอร์ด Hunting (0081) — การ์ด "รอตอบรับ" เดิมนับ stage 1 ซึ่งย้ายออกไปแล้ว
       supabase.from("influ_prospects").select("status"),
