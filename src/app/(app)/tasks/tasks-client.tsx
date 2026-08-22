@@ -26,6 +26,8 @@ import {
   Textarea,
 } from "@/components/ui";
 import {
+  CONTENT_FORMAT_ORDER,
+  CONTENT_FORMATS,
   DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
   REVISION_KIND_ORDER,
@@ -36,6 +38,8 @@ import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
   AnalysisLinkRow,
+  ContentCategoryRow,
+  ContentFormat,
   InfluencerLite,
   NotificationType,
   ProfileRow,
@@ -110,6 +114,7 @@ export function TasksClient({
   defaultReviewer1bId,
   defaultReviewer2Id,
   categories: initialCategories,
+  contentCategories,
   analysisLinks,
   userId,
   isAdmin,
@@ -128,6 +133,8 @@ export function TasksClient({
   defaultReviewer2Id: string | null;
   /** หมวดหมู่งานที่จัดการได้ (task_categories) */
   categories: string[];
+  /** หมวดเนื้อหาคอนเทนต์ (content_categories) — ใช้ติดประเภทชิ้นงานตอนกดโพส + ในแผงงาน */
+  contentCategories: ContentCategoryRow[];
   /** ลิงก์ผลวิเคราะห์ (Canva) ของแท็บ "ผลวิเคราะห์" — จัดกลุ่ม/เรียงใน AnalysisList */
   analysisLinks: AnalysisLinkRow[];
   userId: string | null;
@@ -227,6 +234,13 @@ export function TasksClient({
   /** ประเภทการตีกลับ — "คำผิด" นับเป็นข้อผิดพลาดใน KPI, "เพิ่มเติม" ไม่นับ */
   const [rejectKind, setRejectKind] =
     useState<RevisionKind>(DEFAULT_REVISION_KIND);
+
+  /* ---------- ยืนยันโพส + ติดประเภทชิ้นงาน (KPI คอนเทนต์) ---------- */
+  // งานที่ยังไม่เคยระบุ content_format ตอนกด "โพสแล้ว" จะเปิดกล่องนี้ก่อน —
+  // บังคับเลือก ภาพ/วิดีโอ (หมวดเนื้อหาไม่บังคับ) แล้วค่อยบันทึกโพสทีเดียว
+  const [postTarget, setPostTarget] = useState<TaskWithAssignee | null>(null);
+  const [postFormat, setPostFormat] = useState<ContentFormat | null>(null);
+  const [postCategoryId, setPostCategoryId] = useState<string>("");
 
   /** คนที่เลือกเป็นผู้ตรวจงานได้ (ตามลำดับชื่อจาก profiles) */
   const reviewerProfiles = useMemo(
@@ -1329,9 +1343,17 @@ export function TasksClient({
   };
 
   /** สลับสถานะ "โพส/ใช้งานแล้ว" (ปุ่มใหญ่ในแท็บรอโพส + การ์ดในแท็บงานเสร็จ)
-      เก็บคนกดไว้ด้วย (posted_by) ให้รู้ว่าใครเป็นคนโพส — กดยกเลิกล้างทั้งเวลาและคนกด */
+      เก็บคนกดไว้ด้วย (posted_by) ให้รู้ว่าใครเป็นคนโพส — กดยกเลิกล้างทั้งเวลาและคนกด
+      งานที่ยังไม่ระบุประเภทชิ้นงาน (content_format) → เปิดกล่องติดประเภทก่อนค่อยบันทึกโพส
+      (จุดเดียวที่บังคับติด — งานที่ติดไว้แล้ว/กดจากแผงงานแล้ว โพสทันทีเหมือนเดิม) */
   const togglePosted = (task: TaskWithAssignee) => {
     const unposting = task.posted_at !== null;
+    if (!unposting && task.content_format === null) {
+      setPostFormat(null);
+      setPostCategoryId(task.content_category_id ?? "");
+      setPostTarget(task);
+      return;
+    }
     patchTask(task.id, {
       db: {
         posted_at: unposting ? null : new Date().toISOString(),
@@ -1339,6 +1361,21 @@ export function TasksClient({
       },
       local: { poster: unposting ? null : meProfile },
     });
+  };
+
+  /** ยืนยันจากกล่องติดประเภท — บันทึกประเภทชิ้นงาน + สถานะโพสในการแก้ครั้งเดียว */
+  const confirmMarkPosted = () => {
+    if (postTarget === null || postFormat === null) return;
+    patchTask(postTarget.id, {
+      db: {
+        content_format: postFormat,
+        content_category_id: postCategoryId === "" ? null : postCategoryId,
+        posted_at: new Date().toISOString(),
+        posted_by: userId,
+      },
+      local: { poster: meProfile },
+    });
+    setPostTarget(null);
   };
 
   /** เปลี่ยนผู้ตรวจงาน (ลำดับ 1 คนหลัก) */
@@ -1480,6 +1517,8 @@ export function TasksClient({
       approved_at: null,
       posted_at: null,
       posted_by: null,
+      content_format: null,
+      content_category_id: null,
       brief_content_type: null,
       brief_accepted_at: null,
       brief_source_id: null,
@@ -1620,6 +1659,8 @@ export function TasksClient({
       approved_at: null,
       posted_at: null,
       posted_by: null,
+      content_format: null,
+      content_category_id: null,
       brief_content_type: task.brief_content_type,
       brief_accepted_at: null,
       brief_source_id: task.id,
@@ -2448,6 +2489,7 @@ export function TasksClient({
             tasks={postQueue}
             totalPending={postQueueAll.length}
             sections={sections}
+            contentCategories={contentCategories}
             selectedId={selectedId}
             onRowClick={(t) => setSelectedId(t.id)}
             onMarkPosted={togglePosted}
@@ -2498,13 +2540,17 @@ export function TasksClient({
           }
           influencers={influencers}
           categories={categories}
+          contentCategories={contentCategories}
           briefSource={briefSource}
           linkedCreatives={linkedCreatives}
           onNavigateToTask={navigateToTask}
           onAddCategory={addCategory}
           userId={userId}
           suspendEsc={
-            confirm !== null || reviewerModalOpen || rejectTarget !== null
+            confirm !== null ||
+            reviewerModalOpen ||
+            rejectTarget !== null ||
+            postTarget !== null
           }
           onPatch={patchTask}
           onAssign={assignTask}
@@ -2782,6 +2828,84 @@ export function TasksClient({
             onClick={() => void confirmReject()}
           >
             ตีกลับ ({REVISION_KINDS[rejectKind].label})
+          </Button>
+        </div>
+      </Modal>
+
+      {/* ยืนยันโพส + ติดประเภทชิ้นงาน — เปิดเมื่อกด "โพสแล้ว" กับงานที่ยังไม่ระบุ content_format
+          (จุดเก็บข้อมูล KPI คอนเทนต์: ภาพ/วิดีโอ บังคับ, หมวดเนื้อหาไม่บังคับ) */}
+      <Modal
+        open={postTarget !== null}
+        onClose={() => setPostTarget(null)}
+        title="โพสแล้ว — ชิ้นงานนี้เป็นประเภทไหน?"
+      >
+        <p className="text-sm leading-6 text-stone-600">
+          งาน &quot;
+          <span className="font-medium text-stone-800">
+            {postTarget?.title}
+          </span>
+          &quot; ยังไม่ได้ระบุประเภทชิ้นงาน — ระบุก่อนบันทึกโพส
+          เพื่อให้นับเข้า KPI คอนเทนต์ได้
+        </p>
+        <div className="mt-4">
+          <Label htmlFor="post-format">ประเภทชิ้นงาน</Label>
+          <div id="post-format" className="mt-1.5 grid gap-2 sm:grid-cols-2">
+            {CONTENT_FORMAT_ORDER.map((f) => {
+              const meta = CONTENT_FORMATS[f];
+              const active = postFormat === f;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setPostFormat(f)}
+                  className={`cursor-pointer rounded-xl border p-3 text-left transition-all active:scale-[0.99] ${
+                    active
+                      ? "border-brand-400 bg-brand-50/70 shadow-sm"
+                      : "border-stone-200 bg-white/60 hover:border-stone-300"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${
+                        active ? "" : "opacity-40"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-semibold ${
+                        active ? "text-brand-800" : "text-stone-700"
+                      }`}
+                    >
+                      {meta.label}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-3">
+          <Label htmlFor="post-category">หมวดเนื้อหา (ไม่บังคับ)</Label>
+          <Select
+            id="post-category"
+            value={postCategoryId}
+            onChange={(e) => setPostCategoryId(e.target.value)}
+          >
+            <option value="">ไม่ระบุ</option>
+            {contentCategories
+              .filter((c) => c.active)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+          </Select>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setPostTarget(null)}>
+            ยกเลิก
+          </Button>
+          <Button disabled={postFormat === null} onClick={confirmMarkPosted}>
+            บันทึกโพสแล้ว
           </Button>
         </div>
       </Modal>

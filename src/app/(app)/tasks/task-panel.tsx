@@ -27,6 +27,8 @@ import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
   briefContentTypeLabel,
+  CONTENT_FORMAT_ORDER,
+  CONTENT_FORMATS,
   DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
   REVISION_KINDS,
@@ -42,6 +44,8 @@ import {
 } from "@/lib/upload";
 import { prepareUploadFile, prepareUploadFiles } from "@/lib/upload-prepare";
 import type {
+  ContentCategoryRow,
+  ContentFormat,
   InfluencerLite,
   NotificationType,
   TaskCommentRow,
@@ -140,6 +144,7 @@ export function TaskPanel({
   teamReviewer2,
   influencers,
   categories,
+  contentCategories,
   briefSource,
   linkedCreatives,
   onNavigateToTask,
@@ -173,6 +178,8 @@ export function TaskPanel({
   influencers: InfluencerLite[];
   /** หมวดหมู่งานที่เลือกได้ (เพิ่มได้) */
   categories: string[];
+  /** หมวดเนื้อหาคอนเทนต์ (content_categories) — ช่อง "เนื้อหา" สำหรับ KPI คอนเทนต์ */
+  contentCategories: ContentCategoryRow[];
   /** การ์ด brief ต้นทาง (เมื่องานนี้เป็น creative ที่มาจาก brief) — ใช้ทำปุ่มลิงก์ไป brief */
   briefSource: TaskWithAssignee | null;
   /** การ์ด creative ที่ถูกสร้างจาก brief นี้ (เมื่องานนี้เป็นการ์ด brief) — ปุ่มลิงก์ไปงานที่สร้าง */
@@ -1603,6 +1610,60 @@ export function TaskPanel({
                   <option value={task.category}>{task.category}</option>
                 )}
               <option value="__add__">+ เพิ่มหมวดหมู่...</option>
+            </select>
+          </FieldRow>
+
+          {/* ประเภทชิ้นงานคอนเทนต์ (ภาพ/วิดีโอ) + หมวดเนื้อหา — ใช้นับ KPI ทีมคอนเทนต์
+              ปกติถูกบังคับติดตอนกด "โพสแล้ว" — ช่องนี้ไว้ติดล่วงหน้า/แก้ทีหลัง */}
+          <FieldRow label="ชิ้นงาน" htmlFor="task-content-format">
+            <select
+              id="task-content-format"
+              value={task.content_format ?? ""}
+              onChange={(e) =>
+                onPatch(task.id, {
+                  db: {
+                    content_format:
+                      e.target.value === ""
+                        ? null
+                        : (e.target.value as ContentFormat),
+                  },
+                })
+              }
+              className={bareSelectSm}
+            >
+              <option value="">ไม่ระบุ</option>
+              {CONTENT_FORMAT_ORDER.map((f) => (
+                <option key={f} value={f}>
+                  {CONTENT_FORMATS[f].label}
+                </option>
+              ))}
+            </select>
+          </FieldRow>
+
+          <FieldRow label="เนื้อหา" htmlFor="task-content-category">
+            <select
+              id="task-content-category"
+              value={task.content_category_id ?? ""}
+              onChange={(e) =>
+                onPatch(task.id, {
+                  db: {
+                    content_category_id:
+                      e.target.value === "" ? null : e.target.value,
+                  },
+                })
+              }
+              className={bareSelectSm}
+            >
+              <option value="">ไม่ระบุ</option>
+              {contentCategories
+                .filter(
+                  (c) => c.active || c.id === task.content_category_id
+                )
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
             </select>
           </FieldRow>
         </div>

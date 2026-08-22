@@ -4,6 +4,7 @@ import { getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AnalysisLinkRow,
+  ContentCategoryRow,
   InfluencerLite,
   TaskSectionRow,
   TaskWithAssignee,
@@ -47,6 +48,7 @@ export default async function TasksPage() {
     influencersResult,
     reviewersResult,
     categoriesResult,
+    contentCategoriesResult,
     settingsResult,
     analysisResult,
   ] = await Promise.all([
@@ -71,6 +73,11 @@ export default async function TasksPage() {
       .from("task_categories")
       .select("name")
       .order("created_at", { ascending: true }),
+    // หมวดเนื้อหาคอนเทนต์ (KPI) — ใช้ในกล่องติดประเภทตอนกดโพส + ช่องในแผงงาน
+    supabase
+      .from("content_categories")
+      .select("*")
+      .order("position", { ascending: true }),
     supabase
       .from("app_settings")
       .select("key, value")
@@ -95,6 +102,8 @@ export default async function TasksPage() {
   const influencers = (influencersResult.data ?? []) as InfluencerLite[];
   const reviewerIds = (reviewersResult.data ?? []).map((r) => r.profile_id);
   const categories = (categoriesResult.data ?? []).map((c) => c.name);
+  const contentCategories = (contentCategoriesResult.data ??
+    []) as ContentCategoryRow[];
   const settingRows = settingsResult.data ?? [];
   const defaultReviewerId =
     settingRows.find((r) => r.key === "default_reviewer_id")?.value ?? null;
@@ -110,6 +119,7 @@ export default async function TasksPage() {
     influencersResult.error?.message ??
     reviewersResult.error?.message ??
     categoriesResult.error?.message ??
+    contentCategoriesResult.error?.message ??
     analysisResult.error?.message ??
     null;
 
@@ -124,6 +134,7 @@ export default async function TasksPage() {
       defaultReviewer1bId={defaultReviewer1bId}
       defaultReviewer2Id={defaultReviewer2Id}
       categories={categories}
+      contentCategories={contentCategories}
       analysisLinks={analysisLinks}
       userId={userId}
       isAdmin={access.isAdmin}

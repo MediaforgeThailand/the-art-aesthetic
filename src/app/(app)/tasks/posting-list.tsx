@@ -1,8 +1,13 @@
 "use client";
 
 import { BadgeCheck, Link2, Paperclip, Send } from "lucide-react";
+import { CONTENT_FORMATS } from "@/lib/constants";
 import { formatDateBangkok } from "@/lib/format";
-import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
+import type {
+  ContentCategoryRow,
+  TaskSectionRow,
+  TaskWithAssignee,
+} from "@/lib/types";
 import {
   AssigneeAvatar,
   CardMediaPreview,
@@ -32,6 +37,7 @@ export function PostingList({
   tasks,
   totalPending,
   sections,
+  contentCategories,
   selectedId,
   onRowClick,
   onMarkPosted,
@@ -41,6 +47,8 @@ export function PostingList({
   /** จำนวนงานค้างโพสทั้งทีม (ก่อนกรอง) — ใช้แยกข้อความ empty state */
   totalPending: number;
   sections: TaskSectionRow[];
+  /** หมวดเนื้อหาคอนเทนต์ — ใช้แปลง content_category_id เป็นชื่อบนชิป */
+  contentCategories: ContentCategoryRow[];
   selectedId: string | null;
   onRowClick: (task: TaskWithAssignee) => void;
   /** ทำเครื่องหมายว่าโพสแล้ว (ตั้ง posted_at) — การ์ดจะหายจากคิวนี้ */
@@ -48,6 +56,10 @@ export function PostingList({
 }) {
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? null;
+  const contentCategoryName = (id: string | null) =>
+    id === null
+      ? null
+      : (contentCategories.find((c) => c.id === id)?.name ?? null);
 
   if (tasks.length === 0) {
     return (
@@ -79,6 +91,7 @@ export function PostingList({
             key={task.id}
             task={task}
             section={sectionName(task.section_id)}
+            contentCategoryName={contentCategoryName(task.content_category_id)}
             selected={selectedId === task.id}
             onClick={() => onRowClick(task)}
             onMarkPosted={() => onMarkPosted(task)}
@@ -94,12 +107,15 @@ export function PostingList({
 function PostingCard({
   task,
   section,
+  contentCategoryName,
   selected,
   onClick,
   onMarkPosted,
 }: {
   task: TaskWithAssignee;
   section: string | null;
+  /** ชื่อหมวดเนื้อหาของงาน (แปลงจาก content_category_id แล้ว) — null = ไม่ได้ระบุ */
+  contentCategoryName: string | null;
   selected: boolean;
   onClick: () => void;
   onMarkPosted: () => void;
@@ -175,6 +191,19 @@ function PostingCard({
           <span className="inline-flex items-center gap-0.5 text-brand-600">
             <Paperclip size={11} />
             {files.length}
+          </span>
+        )}
+        {/* ประเภทชิ้นงาน (KPI คอนเทนต์) — ยังไม่ระบุ = แจ้งไว้ว่าตอนกดโพสจะมีกล่องถาม */}
+        {task.content_format !== null ? (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${CONTENT_FORMATS[task.content_format].chip}`}
+          >
+            {CONTENT_FORMATS[task.content_format].label}
+            {contentCategoryName !== null && ` · ${contentCategoryName}`}
+          </span>
+        ) : (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            ยังไม่ระบุประเภท
           </span>
         )}
       </div>

@@ -1,5 +1,6 @@
 import type {
   AnalysisCategory,
+  ContentFormat,
   PriceGroup,
   RevisionKind,
   TaskPriority,
@@ -470,6 +471,27 @@ export const ANALYSIS_CATEGORY_ORDER: AnalysisCategory[] = [
   "artwork",
   "other",
 ];
+
+/* ---------- KPI ทีมคอนเทนต์ (migration 0085) ----------
+   ประเภทชิ้นงานติดบนการ์ดงาน (tasks.content_format + content_category_id)
+   หมวดเนื้อหามาจากตาราง content_categories (ทีมเพิ่มเอง) — ที่นี่มีเฉพาะฟอร์แมตซึ่งเป็นค่าตายตัว */
+export const CONTENT_FORMATS: Record<
+  ContentFormat,
+  { label: string; chip: string; dot: string }
+> = {
+  image: {
+    label: "ภาพ",
+    chip: "bg-violet-100 text-violet-700",
+    dot: "bg-violet-500",
+  },
+  video: {
+    label: "วิดีโอ",
+    chip: "bg-sky-100 text-sky-700",
+    dot: "bg-sky-500",
+  },
+};
+
+export const CONTENT_FORMAT_ORDER: ContentFormat[] = ["image", "video"];
 
 /* ---------- ย่อไฟล์ก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้
