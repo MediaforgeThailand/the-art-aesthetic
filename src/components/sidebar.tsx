@@ -12,6 +12,7 @@ import {
   Settings,
   Sparkles,
   Tags,
+  Target,
   UserCog,
   Users,
   X,
@@ -80,6 +81,8 @@ const navItems: NavItem[] = [
   // (RLS ที่ list_tasks ยึด owner_id — เปิดเมนูให้ทุกคนก็ไม่มีทางเห็นลิสต์ของคนอื่น)
   { href: "/my-tasks", label: "งานของฉัน", icon: ListTodo, perm: null, short: "ของฉัน", rail: "ของฉัน" },
   { href: "/workload", label: "Team Workload", icon: Users, perm: "team", rail: "ทีม" },
+  // แดชบอร์ดติดตาม KPI ทีมคอนเทนต์ (0085) — หน้าตั้งค่า /content-kpi เข้าจากปุ่มบนหน้านี้
+  { href: "/content-tracking", label: "KPI คอนเทนต์", icon: Target, perm: "team", rail: "KPI" },
   { href: "/files", label: "คลังลิงก์ไฟล์", icon: Link2, perm: "team", short: "ไฟล์", rail: "ไฟล์" },
   { href: "/accounts", label: "จัดการบัญชี", icon: UserCog, perm: "admin", rail: "บัญชี" },
 ];
@@ -187,9 +190,11 @@ export function Sidebar({
     return permissions.includes(item.perm);
   });
 
-  /** เมนูนี้ active ไหม (ระบบ Influencer อยู่คนละโครงแล้ว — แถบนี้ไม่ถูก render ที่นั่น) */
+  /** เมนูนี้ active ไหม (ระบบ Influencer อยู่คนละโครงแล้ว — แถบนี้ไม่ถูก render ที่นั่น)
+      /content-kpi (หน้าตั้งค่า) นับเป็นเมนู KPI คอนเทนต์ด้วย — เข้าจากปุ่มบนแดชบอร์ดติดตาม */
   const isActive = (item: Pick<NavItem, "href">) =>
-    pathname.startsWith(item.href);
+    pathname.startsWith(item.href) ||
+    (item.href === "/content-tracking" && pathname.startsWith("/content-kpi"));
 
   /** เมนูของแถบล่างบนมือถือ — 4 อันแรกตาม MOBILE_NAV_ORDER ที่ผู้ใช้คนนี้มีสิทธิ์เห็น
       (ใช้ป้ายสั้น `short` เพราะช่องกว้างแค่ ~70px) */

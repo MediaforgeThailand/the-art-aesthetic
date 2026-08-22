@@ -93,6 +93,11 @@ export type TaskRow = {
   posted_at: string | null;
   /** ผู้กดปุ่ม "โพสแล้ว" (null = ยังไม่โพส หรืองานเก่าก่อนมีคอลัมน์นี้) — ล้างพร้อม posted_at ตอนกดยกเลิก */
   posted_by: string | null;
+  /** ประเภทชิ้นงานคอนเทนต์ (ภาพ|วิดีโอ) — ใช้นับ KPI ทีมคอนเทนต์; null = ยังไม่ระบุ/ไม่ใช่งานคอนเทนต์
+      (คนละช่องกับ brief_content_type ซึ่งเป็นชนิดงานที่สั่งบนการ์ด brief) — migration 0085 */
+  content_format: ContentFormat | null;
+  /** หมวดเนื้อหา (ขาย/Value/หมอ/สวย ... จากตาราง content_categories) — ใช้นับ KPI; FK SET NULL */
+  content_category_id: string | null;
   /** ถังขยะ — เวลาที่ถูกลบ (null = ยังอยู่); เก็บกู้คืนได้ 14 วันแล้วถูกลบถาวร */
   deleted_at: string | null;
   /** Brief workflow — ชนิดงานที่สั่ง (graphic|video); ตั้งบนการ์ด brief และสำเนาไปการ์ด creative */
@@ -147,6 +152,33 @@ export type TaskCategoryRow = {
   id: string;
   name: string;
   created_at: string;
+};
+
+/** ฟอร์แมตชิ้นงานคอนเทนต์ (migration 0085) — ภาพนิ่ง | วิดีโอ; label อยู่ CONTENT_FORMATS ใน constants.ts */
+export type ContentFormat = "image" | "video";
+
+/** หมวดเนื้อหาคอนเทนต์ (ขาย/Value/หมอ/สวย ...) — จัดการได้จากหน้า KPI คอนเทนต์ (migration 0085) */
+export type ContentCategoryRow = {
+  id: string;
+  name: string;
+  position: number;
+  /** false = ซ่อนจากตัวเลือกบนการ์ดงาน (หมวดเก่าที่เลิกใช้ — งานที่ติดไว้ยังแสดงชื่อได้) */
+  active: boolean;
+  created_at: string;
+};
+
+/** กติกา KPI รายคนของทีมคอนเทนต์ — เป้าจำนวนชิ้น "ต่อเดือน" (ไม่มีคอลัมน์เดือน = กติกายืน
+    แดชบอร์ดคำนวณผลของเดือนที่เลือกจาก tasks.posted_at เอง)
+    format null = ทุกฟอร์แมต, category_id null = ทุกหมวด — งานชิ้นเดียวนับได้หลายกติกาที่ตรงเงื่อนไข */
+export type ContentKpiRow = {
+  id: string;
+  profile_id: string;
+  format: ContentFormat | null;
+  category_id: string | null;
+  target: number;
+  position: number;
+  created_at: string;
+  created_by: string | null;
 };
 
 /** ตั้งค่ากลางของระบบ (key/value) เช่น default_reviewer_id */
@@ -1059,6 +1091,18 @@ export interface Database {
         Row: TaskCategoryRow;
         Insert: Partial<TaskCategoryRow> & { name: string };
         Update: Partial<TaskCategoryRow>;
+        Relationships: [];
+      };
+      content_categories: {
+        Row: ContentCategoryRow;
+        Insert: Partial<ContentCategoryRow> & { name: string };
+        Update: Partial<ContentCategoryRow>;
+        Relationships: [];
+      };
+      content_kpis: {
+        Row: ContentKpiRow;
+        Insert: Partial<ContentKpiRow> & { profile_id: string; target: number };
+        Update: Partial<ContentKpiRow>;
         Relationships: [];
       };
       app_settings: {
