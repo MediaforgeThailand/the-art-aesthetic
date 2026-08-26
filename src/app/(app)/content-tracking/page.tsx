@@ -21,6 +21,7 @@ export default async function ContentTrackingPage() {
 
   // ดึงเฉพาะงานที่เคยส่งตรวจ/ตรวจผ่าน/โพสแล้ว คอลัมน์เท่าที่ใช้
   // — ไม่โหลด join/description มาทั้งก้อนแบบหน้า /tasks
+  // embed task_files (เฉพาะ file_path) ให้ตัววิเคราะห์จำนวนชิ้นงานนับไฟล์ภาพ/วิดีโอต่อการ์ดได้
   const fetchTasks = async () => {
     const pageSize = 1000;
     const rows: TrackedTask[] = [];
@@ -28,7 +29,7 @@ export default async function ContentTrackingPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "id, title, assignee_id, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id"
+          "id, title, assignee_id, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id, files:task_files(file_path)"
         )
         .is("deleted_at", null)
         .or(
@@ -37,7 +38,7 @@ export default async function ContentTrackingPage() {
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
       if (error) return { rows, error: error.message };
-      rows.push(...((data ?? []) as TrackedTask[]));
+      rows.push(...((data ?? []) as unknown as TrackedTask[]));
       if (!data || data.length < pageSize) break;
     }
     return { rows, error: null as string | null };

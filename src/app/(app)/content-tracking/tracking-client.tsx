@@ -26,11 +26,20 @@ import {
   Button,
   Card,
   EmptyState,
+  Input,
   Modal,
   PageHeader,
   Select,
 } from "@/components/ui";
 import { CONTENT_FORMATS } from "@/lib/constants";
+import {
+  isImagePath,
+  isVideoPath,
+  MEDIA_RANGES,
+  type MediaRangeKey,
+  rangeStart,
+  thaiDayOf,
+} from "@/lib/media";
 import type {
   ContentCategoryRow,
   ContentFormat,
@@ -51,6 +60,8 @@ export type TrackedTask = {
   completed: boolean;
   content_format: ContentFormat | null;
   content_category_id: string | null;
+  /** ไฟล์ที่อัพโหลดในการ์ด (task_files) — ตัววิเคราะห์จำนวนชิ้นงานใช้นับภาพ/วิดีโอจริง */
+  files: { file_path: string }[];
 };
 
 type ProfileLite = {
@@ -112,6 +123,58 @@ function workTimeOf(t: TrackedTask): number | null {
   if (raw === null) return null;
   const ms = Date.parse(raw);
   return Number.isNaN(ms) ? null : ms;
+}
+
+/** วันส่งงานตามเวลาไทย (YYYY-MM-DD) — ตัววิเคราะห์จำนวนชิ้นงานใช้เทียบกับ filter range */
+function workDayOf(t: TrackedTask): string | null {
+  const raw = t.review_submitted_at ?? t.approved_at ?? t.posted_at;
+  return raw === null ? null : thaiDayOf(raw);
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * ยอดสะสมของตัววิเคราะห์จำนวนชิ้นงาน — แยก 2 มุมมองตามที่ผู้ใช้ขอ (2026-08-26):
+ * "การ์ด" = จำนวนงาน (แยกภาพ/วิดีโอจาก content_format) และ "ชิ้นงานไฟล์" =
+ * จำนวนไฟล์ภาพ/วิดีโอที่อัพโหลดจริงในการ์ด (การ์ด 1 ใบมีหลายภาพ = หลายชิ้น)
+ */
+type PieceAgg = {
+  cards: number;
+  cardImage: number;
+  cardVideo: number;
+  cardNone: number;
+  files: number;
+  fileImage: number;
+  fileVideo: number;
+};
+
+function emptyPieceAgg(): PieceAgg {
+  return {
+    cards: 0,
+    cardImage: 0,
+    cardVideo: 0,
+    cardNone: 0,
+    files: 0,
+    fileImage: 0,
+    fileVideo: 0,
+  };
+}
+
+/** นับงาน 1 ใบเข้ายอด — ไฟล์ที่ไม่ใช่รูป/วิดีโอ (pdf/zip ฯลฯ) ไม่นับเป็นชิ้นงาน */
+function addToPieceAgg(agg: PieceAgg, t: TrackedTask) {
+  agg.cards += 1;
+  if (t.content_format === "image") agg.cardImage += 1;
+  else if (t.content_format === "video") agg.cardVideo += 1;
+  else agg.cardNone += 1;
+  for (const f of t.files) {
+    if (isImagePath(f.file_path)) {
+      agg.fileImage += 1;
+      agg.files += 1;
+    } else if (isVideoPath(f.file_path)) {
+      agg.fileVideo += 1;
+      agg.files += 1;
+    }
+  }
 }
 
 /** งานชิ้นนี้เข้าเงื่อนไขกติกา KPI แถวนี้ไหม — null ในกติกา = ไม่จำกัด */
@@ -299,6 +362,10 @@ export function TrackingClient({
   const [chartMode, setChartMode] = useState<"day" | "week">("day");
   const [chartPerson, setChartPerson] = useState("all");
   const [noticeOpen, setNoticeOpen] = useState(false);
+  // ตัววิเคราะห์จำนวนชิ้นงาน — filter range อิสระ ไม่ผูกกับเดือนที่เลือกด้านบน
+  const [pieceRange, setPieceRange] = useState<MediaRangeKey>("1m");
+  const [pieceFrom, setPieceFrom] = useState("");
+  const [pieceTo, setPieceTo] = useState("");
 
   const isCurrentMonth = ym.year === initialYear && ym.month === initialMonth;
 
@@ -488,6 +555,45 @@ export function TrackingClient({
         })),
     [byAssignee, rulesByPerson, profileById]
   );
+
+  /* ---------- ตัววิเคราะห์จำนวนชิ้นงาน (การ์ด vs ไฟล์ที่อัพจริง) ---------- */
+
+  const todayStr = `${initialYear}-${pad2(initialMonth)}-${pad2(initialDay)}`;
+
+  const pieceStats = useMemo(() => {
+    const startStr =
+      pieceRange === "custom"
+        ? pieceFrom || null
+        : rangeStart(pieceRange, todayStr);
+    const endStr = pieceRange === "custom" ? pieceTo || null : null;
+    const total = emptyPieceAgg();
+    const perPerson = new Map<string, PieceAgg>();
+    for (const t of tasks) {
+      const day = workDayOf(t);
+      if (day === null) continue;
+      if (startStr !== null && day < startStr) continue;
+      if (endStr !== null && day > endStr) continue;
+      addToPieceAgg(total, t);
+      const key = t.assignee_id ?? "";
+      let agg = perPerson.get(key);
+      if (!agg) {
+        agg = emptyPieceAgg();
+        perPerson.set(key, agg);
+      }
+      addToPieceAgg(agg, t);
+    }
+    // เรียงคนที่ผลิตไฟล์เยอะสุดขึ้นก่อน — แถว "ไม่ระบุผู้รับผิดชอบ" ไปท้ายสุด
+    const people = [...perPerson.entries()]
+      .map(([id, agg]) => ({ id, agg }))
+      .sort(
+        (a, b) =>
+          (a.id === "" ? 1 : 0) - (b.id === "" ? 1 : 0) ||
+          b.agg.files - a.agg.files ||
+          b.agg.cards - a.agg.cards
+      );
+    const maxFiles = people.reduce((m, p) => Math.max(m, p.agg.files), 0);
+    return { total, people, maxFiles };
+  }, [tasks, pieceRange, pieceFrom, pieceTo, todayStr]);
 
   /* ---------- ข้อมูลกราฟ ---------- */
 
@@ -776,6 +882,182 @@ export function TrackingClient({
                 />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
+      {/* ---------- ตัววิเคราะห์จำนวนชิ้นงาน (การ์ด vs ไฟล์ที่อัพจริง) ---------- */}
+      <Card className="mb-5 p-4">
+        <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="text-sm font-semibold text-stone-700">
+            ตัววิเคราะห์จำนวนชิ้นงาน
+          </p>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Select
+              value={pieceRange}
+              onChange={(e) => setPieceRange(e.target.value as MediaRangeKey)}
+              className="w-auto"
+              aria-label="ช่วงเวลาของตัววิเคราะห์"
+            >
+              {MEDIA_RANGES.map((r) => (
+                <option key={r.key} value={r.key}>
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+            {pieceRange === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  value={pieceFrom}
+                  onChange={(e) => setPieceFrom(e.target.value)}
+                  className="w-auto"
+                  aria-label="ตั้งแต่วันที่"
+                />
+                <span className="text-xs text-stone-400">ถึง</span>
+                <Input
+                  type="date"
+                  value={pieceTo}
+                  onChange={(e) => setPieceTo(e.target.value)}
+                  className="w-auto"
+                  aria-label="ถึงวันที่"
+                />
+              </>
+            )}
+          </div>
+        </div>
+        <p className="mb-3 text-[11px] text-stone-500">
+          การ์ด 1 ใบใส่ได้หลายไฟล์ — เทียบ &quot;จำนวนการ์ด&quot;
+          (แยกภาพ/วิดีโอตามประเภทที่ติดไว้) กับ &quot;ชิ้นงานไฟล์&quot;
+          ที่นับจากไฟล์ภาพ/วิดีโอที่อัพโหลดจริงในการ์ด
+          (ไฟล์ชนิดอื่นและไฟล์ในแชทไม่นับ) · นับตามวันส่งงาน
+          ช่วงเวลาเลือกอิสระไม่ผูกกับเดือนด้านบน
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-stone-200/70 bg-white/70 p-3">
+            <p className="text-[11px] text-stone-500">การ์ด (จำนวนงานที่ส่ง)</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-stone-800">
+              {pieceStats.total.cards}
+              <span className="ml-1 text-xs font-normal text-stone-400">ใบ</span>
+            </p>
+            <p className="mt-0.5 text-[11px] text-stone-500">
+              ภาพ {pieceStats.total.cardImage} · วิดีโอ{" "}
+              {pieceStats.total.cardVideo}
+              {pieceStats.total.cardNone > 0 &&
+                ` · ยังไม่ระบุ ${pieceStats.total.cardNone}`}
+            </p>
+          </div>
+          <div className="rounded-xl border border-stone-200/70 bg-white/70 p-3">
+            <p className="text-[11px] text-stone-500">
+              ชิ้นงานไฟล์ (ภาพ/วิดีโอที่อัพในการ์ด)
+            </p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-stone-800">
+              {pieceStats.total.files}
+              <span className="ml-1 text-xs font-normal text-stone-400">
+                ชิ้น
+              </span>
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-stone-500">
+              <span className="inline-flex items-center gap-1">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: CHART_FORMAT_COLORS.image }}
+                />
+                ภาพ {pieceStats.total.fileImage}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: CHART_FORMAT_COLORS.video }}
+                />
+                วิดีโอ {pieceStats.total.fileVideo}
+              </span>
+              {pieceStats.total.cards > 0 && (
+                <span className="text-stone-400">
+                  เฉลี่ย ≈{" "}
+                  {(pieceStats.total.files / pieceStats.total.cards).toFixed(1)}{" "}
+                  ชิ้น/การ์ด
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {pieceStats.total.cards === 0 ? (
+          <p className="py-6 text-center text-sm text-stone-400">
+            ไม่มีงานที่ส่งในช่วงเวลานี้
+          </p>
+        ) : (
+          <div className="mt-3">
+            {pieceStats.people.map(({ id, agg }) => (
+              <div
+                key={id || "none"}
+                className="border-t border-stone-100 py-2.5"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-xs">
+                  <p className="min-w-0 flex-1 basis-36 truncate text-sm font-medium text-stone-800">
+                    {id === ""
+                      ? "ไม่ระบุผู้รับผิดชอบ"
+                      : personName(profileById.get(id))}
+                  </p>
+                  <p className="text-stone-600">
+                    การ์ด{" "}
+                    <span className="font-bold tabular-nums">{agg.cards}</span>
+                    <span className="text-stone-400">
+                      {" "}
+                      (ภาพ {agg.cardImage} · วิดีโอ {agg.cardVideo}
+                      {agg.cardNone > 0 && ` · ยังไม่ระบุ ${agg.cardNone}`})
+                    </span>
+                  </p>
+                  <p className="text-stone-600">
+                    ชิ้นงาน{" "}
+                    <span className="font-bold tabular-nums text-stone-800">
+                      {agg.files}
+                    </span>
+                    <span className="text-stone-400">
+                      {" "}
+                      (ภาพ {agg.fileImage} · วิดีโอ {agg.fileVideo})
+                    </span>
+                  </p>
+                  <p className="text-[11px] tabular-nums text-stone-400">
+                    ≈{" "}
+                    {agg.cards > 0 ? (agg.files / agg.cards).toFixed(1) : "0"}{" "}
+                    ชิ้น/การ์ด
+                  </p>
+                </div>
+                {/* แถบเทียบปริมาณไฟล์ระหว่างคน — ยาวตามสัดส่วนของคนที่มากสุด สีตามชนิดไฟล์ */}
+                {pieceStats.maxFiles > 0 && (
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+                    <div
+                      className="flex h-full"
+                      style={{
+                        width: `${Math.round((agg.files / pieceStats.maxFiles) * 100)}%`,
+                      }}
+                    >
+                      {agg.files > 0 && (
+                        <>
+                          <div
+                            className="h-full"
+                            style={{
+                              width: `${(agg.fileImage / agg.files) * 100}%`,
+                              background: CHART_FORMAT_COLORS.image,
+                            }}
+                          />
+                          <div
+                            className="h-full"
+                            style={{
+                              width: `${(agg.fileVideo / agg.files) * 100}%`,
+                              background: CHART_FORMAT_COLORS.video,
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </Card>
