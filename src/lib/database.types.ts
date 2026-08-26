@@ -167,8 +167,12 @@ export type ContentCategoryRow = {
   created_at: string;
 };
 
-/** กติกา KPI รายคนของทีมคอนเทนต์ — เป้าจำนวนชิ้น "ต่อเดือน" (ไม่มีคอลัมน์เดือน = กติกายืน
-    แดชบอร์ดคำนวณผลของเดือนที่เลือกจาก tasks.posted_at เอง)
+/** คาบของเป้า KPI คอนเทนต์ (migration 0087) — 'month' = ชิ้น/เดือน (ค่าเดิม), 'day' = ชิ้น/วัน
+    (แดชบอร์ดแปลงกติกา day เป็นเป้าทั้งเดือน = target × จำนวนวันของเดือนที่ดู) */
+export type ContentKpiPeriod = "month" | "day";
+
+/** กติกา KPI รายคนของทีมคอนเทนต์ — เป้าจำนวนชิ้นต่อคาบ (ไม่มีคอลัมน์เดือน = กติกายืน
+    แดชบอร์ดคำนวณผลของเดือนที่เลือกจาก "วันส่งงาน" ของ tasks เอง)
     format null = ทุกฟอร์แมต, category_id null = ทุกหมวด — งานชิ้นเดียวนับได้หลายกติกาที่ตรงเงื่อนไข */
 export type ContentKpiRow = {
   id: string;
@@ -176,6 +180,8 @@ export type ContentKpiRow = {
   format: ContentFormat | null;
   category_id: string | null;
   target: number;
+  /** คาบของเป้า (migration 0087) — DB default 'month' */
+  period: ContentKpiPeriod;
   position: number;
   created_at: string;
   created_by: string | null;

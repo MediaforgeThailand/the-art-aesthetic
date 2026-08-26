@@ -1,6 +1,7 @@
 import type {
   AnalysisCategory,
   ContentFormat,
+  ContentKpiPeriod,
   PriceGroup,
   RevisionKind,
   TaskPriority,
@@ -492,6 +493,18 @@ export const CONTENT_FORMATS: Record<
 };
 
 export const CONTENT_FORMAT_ORDER: ContentFormat[] = ["image", "video"];
+
+/** คาบของเป้า KPI คอนเทนต์ (migration 0087) — ใช้ทั้งหน้า /content-kpi และแดชบอร์ด /content-tracking
+ *  unit = ข้อความหน่วยเต็ม, short = ป้ายสั้นบน toggle */
+export const CONTENT_KPI_PERIODS: Record<
+  ContentKpiPeriod,
+  { label: string; unit: string; short: string }
+> = {
+  month: { label: "ต่อเดือน", unit: "ชิ้น/เดือน", short: "เดือน" },
+  day: { label: "ต่อวัน", unit: "ชิ้น/วัน", short: "วัน" },
+};
+
+export const CONTENT_KPI_PERIOD_ORDER: ContentKpiPeriod[] = ["month", "day"];
 
 /* ---------- ย่อไฟล์ก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้

@@ -190,6 +190,18 @@ function expectedByNow(target: number, elapsedDays: number, daysInMonth: number)
   return Math.floor((target * elapsedDays) / daysInMonth + 1e-9);
 }
 
+/** เป้าทั้งเดือนของกติกา — 'day' (0087) = target × จำนวนวันของเดือนนั้น, 'month' = ค่าตรงๆ */
+function monthTargetOf(rule: ContentKpiRow, daysInMonth: number) {
+  return rule.period === "day" ? rule.target * daysInMonth : rule.target;
+}
+
+/** เป้าถึงวันนี้ของกติกา — 'day' นับเต็มวัน (target × วันที่ผ่านไป), 'month' ใช้สูตร prorate */
+function expectedOf(rule: ContentKpiRow, elapsedDays: number, daysInMonth: number) {
+  return rule.period === "day"
+    ? rule.target * elapsedDays
+    : expectedByNow(rule.target, elapsedDays, daysInMonth);
+}
+
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: 12,
   border: "1px solid #e7e5e4",
@@ -206,6 +218,8 @@ const CHART_FORMAT_COLORS: Record<ContentFormat | "none", string> = {
 
 type RuleStat = {
   rule: ContentKpiRow;
+  /** เป้าทั้งเดือน (กติกา 'day' ถูกคูณจำนวนวันแล้ว) — JSX ต้องใช้ตัวนี้ ไม่ใช่ rule.target */
+  target: number;
   done: number;
   lastDone: number;
   expected: number;
@@ -333,8 +347,10 @@ function StatusPill({
  * แดชบอร์ดติดตาม KPI ทีมคอนเทนต์ — อ่านอย่างเดียว (ตั้งเป้า/หมวดที่ /content-kpi)
  * นับผลงานจาก "วันส่งงาน" (workTimeOf) ภายในเดือนที่เลือก แยกตามผู้รับผิดชอบงาน:
  * แถบสรุป → กราฟรายวัน/รายสัปดาห์ (แยกสีตามฟอร์แมต + เส้นวันนี้) → ลิสต์รายคนเทียบ
- * เป้าตามวัน (pace = target × วันที่ผ่านไป/วันทั้งเดือน) + เดือนก่อน; งานที่ยังไม่ระบุ
- * ประเภทยุบเป็นปุ่มแจ้งเตือน กดแล้วเปิดโมดัลรายชื่อ (คำสั่งผู้ใช้ 2026-08-22)
+ * เป้าตามวัน (กติกา 'month' prorate ตามวัน, กติกา 'day' = target × วันที่ผ่านไป — 0087)
+ * + เดือนก่อน; dropdown เลือกคนบนหัวกราฟเป็นตัวกรองร่วมทั้งหน้า (กราฟ + ตัววิเคราะห์
+ * + ลิสต์เป้ารายคน — ผู้ใช้ 2026-08-26) ยกเว้นแถบสรุป 4 ใบที่เป็นภาพรวมทีมเสมอ;
+ * งานที่ยังไม่ระบุประเภทยุบเป็นปุ่มแจ้งเตือน กดแล้วเปิดโมดัลรายชื่อ (2026-08-22)
  */
 export function TrackingClient({
   tasks,
@@ -360,7 +376,9 @@ export function TrackingClient({
 }) {
   const [ym, setYm] = useState({ year: initialYear, month: initialMonth });
   const [chartMode, setChartMode] = useState<"day" | "week">("day");
-  const [chartPerson, setChartPerson] = useState("all");
+  // ตัวกรอง "คน" ใช้ร่วมทั้งหน้า: กราฟ + ตัววิเคราะห์ + ลิสต์เป้ารายคน (ผู้ใช้ 2026-08-26:
+  // เลือกคนแล้ว section เป้าด้านล่างต้องเปลี่ยนตาม) — แถบสรุป 4 ใบยังเป็นภาพรวมทีมเสมอ
+  const [personFilter, setPersonFilter] = useState("all");
   const [noticeOpen, setNoticeOpen] = useState(false);
   // ตัววิเคราะห์จำนวนชิ้นงาน — filter range อิสระ ไม่ผูกกับเดือนที่เลือกด้านบน
   const [pieceRange, setPieceRange] = useState<MediaRangeKey>("1m");
@@ -402,15 +420,24 @@ export function TrackingClient({
     return list;
   }, [tasks, bounds]);
 
-  /** งานที่ส่งในเดือนก่อนหน้า — ไว้เทียบ */
-  const inPrevMonth = useMemo(() => {
+  /** ขอบเขต + จำนวนวันของเดือนก่อนหน้า — กติกา 'day' ต้องคูณด้วยจำนวนวันของเดือนนั้นเอง */
+  const prevMonthInfo = useMemo(() => {
     const prev = shiftMonth(ym.year, ym.month, -1);
     const b = monthBounds(prev.year, prev.month);
-    return tasks.filter((t) => {
-      const ms = workTimeOf(t);
-      return ms !== null && ms >= b.start && ms < b.end;
-    });
-  }, [tasks, ym]);
+    return { ...b, days: Math.round((b.end - b.start) / 86400000) };
+  }, [ym]);
+
+  /** งานที่ส่งในเดือนก่อนหน้า — ไว้เทียบ */
+  const inPrevMonth = useMemo(
+    () =>
+      tasks.filter((t) => {
+        const ms = workTimeOf(t);
+        return (
+          ms !== null && ms >= prevMonthInfo.start && ms < prevMonthInfo.end
+        );
+      }),
+    [tasks, prevMonthInfo]
+  );
 
   const byAssignee = useMemo(() => {
     const map = new Map<string, TrackedTask[]>();
@@ -467,27 +494,33 @@ export function TrackingClient({
       const prev = prevByAssignee.get(profile.id) ?? [];
       const ruleStats: RuleStat[] = rules.map((rule) => {
         const count = done.filter((t) => matchesRule(t, rule)).length;
-        const expected = expectedByNow(rule.target, elapsedDays, daysInMonth);
+        const target = monthTargetOf(rule, daysInMonth);
+        const expected = expectedOf(rule, elapsedDays, daysInMonth);
         return {
           rule,
+          target,
           done: count,
           lastDone: prev.filter((t) => matchesRule(t, rule)).length,
           expected,
           behind: Math.max(0, expected - count),
-          met: count >= rule.target,
+          met: count >= target,
         };
       });
       // เป้ารวมของคน: กติกา "ทุกฟอร์แมต·ทุกหมวด" ถ้ามี ไม่งั้นรวมกติกาที่ระบุฟอร์แมต
       // (กันนับซ้ำกับกติกาเจาะหมวดของฟอร์แมตเดียวกัน — convention เดียวกับ hint ใน /content-kpi)
+      // รวมเป็นเป้าทั้งเดือนเสมอ — กติกา 'day' ถูกคูณจำนวนวันก่อนบวก
       const anyAny = rules.find(
         (r) => r.format === null && r.category_id === null
       );
-      const fmtSum = rules
-        .filter((r) => r.format !== null && r.category_id === null)
-        .reduce((s, r) => s + r.target, 0);
-      const overallTarget =
-        anyAny?.target ??
-        (fmtSum > 0 ? fmtSum : rules.reduce((s, r) => s + r.target, 0));
+      const fmtRules = rules.filter(
+        (r) => r.format !== null && r.category_id === null
+      );
+      const overallRules =
+        anyAny !== undefined ? [anyAny] : fmtRules.length > 0 ? fmtRules : rules;
+      const overallTarget = overallRules.reduce(
+        (s, r) => s + monthTargetOf(r, daysInMonth),
+        0
+      );
       const behindRules = ruleStats.filter((r) => r.behind > 0).length;
       const allMet = ruleStats.length > 0 && ruleStats.every((r) => r.met);
       stats.push({
@@ -497,10 +530,14 @@ export function TrackingClient({
         lastTotal: prev.length,
         lastMetRules: rules.filter(
           (rule) =>
-            prev.filter((t) => matchesRule(t, rule)).length >= rule.target
+            prev.filter((t) => matchesRule(t, rule)).length >=
+            monthTargetOf(rule, prevMonthInfo.days)
         ).length,
         overallTarget,
-        expectedOverall: expectedByNow(overallTarget, elapsedDays, daysInMonth),
+        expectedOverall: overallRules.reduce(
+          (s, r) => s + expectedOf(r, elapsedDays, daysInMonth),
+          0
+        ),
         pending: pendingByAssignee.get(profile.id) ?? 0,
         status: allMet ? "done" : behindRules > 0 ? "behind" : "ontrack",
         behindRules,
@@ -520,6 +557,7 @@ export function TrackingClient({
     pendingByAssignee,
     elapsedDays,
     daysInMonth,
+    prevMonthInfo,
   ]);
 
   // งานในเดือนที่ยังไม่ระบุประเภท — ยุบเป็นปุ่มแจ้งเตือน + โมดัล (จัดกลุ่มตามคน)
@@ -547,13 +585,17 @@ export function TrackingClient({
   const peopleOffRadar = useMemo(
     () =>
       [...byAssignee.keys()]
-        .filter((id) => !rulesByPerson.has(id))
+        .filter(
+          (id) =>
+            !rulesByPerson.has(id) &&
+            (personFilter === "all" || id === personFilter)
+        )
         .map((id) => ({
           profile: profileById.get(id),
           id,
           count: byAssignee.get(id)?.length ?? 0,
         })),
-    [byAssignee, rulesByPerson, profileById]
+    [byAssignee, rulesByPerson, profileById, personFilter]
   );
 
   /* ---------- ตัววิเคราะห์จำนวนชิ้นงาน (การ์ด vs ไฟล์ที่อัพจริง) ---------- */
@@ -571,6 +613,7 @@ export function TrackingClient({
     for (const t of tasks) {
       const day = workDayOf(t);
       if (day === null) continue;
+      if (personFilter !== "all" && t.assignee_id !== personFilter) continue;
       if (startStr !== null && day < startStr) continue;
       if (endStr !== null && day > endStr) continue;
       addToPieceAgg(total, t);
@@ -593,7 +636,7 @@ export function TrackingClient({
       );
     const maxFiles = people.reduce((m, p) => Math.max(m, p.agg.files), 0);
     return { total, people, maxFiles };
-  }, [tasks, pieceRange, pieceFrom, pieceTo, todayStr]);
+  }, [tasks, personFilter, pieceRange, pieceFrom, pieceTo, todayStr]);
 
   /* ---------- ข้อมูลกราฟ ---------- */
 
@@ -605,9 +648,9 @@ export function TrackingClient({
 
   const chartData = useMemo(() => {
     const source =
-      chartPerson === "all"
+      personFilter === "all"
         ? inMonth
-        : inMonth.filter(({ t }) => t.assignee_id === chartPerson);
+        : inMonth.filter(({ t }) => t.assignee_id === personFilter);
     if (chartMode === "day") {
       const rows = Array.from({ length: daysInMonth }, (_, i) => ({
         label: String(i + 1),
@@ -637,7 +680,7 @@ export function TrackingClient({
       row[t.content_format ?? "none"] += 1;
     }
     return rows;
-  }, [inMonth, chartPerson, chartMode, daysInMonth, bounds]);
+  }, [inMonth, personFilter, chartMode, daysInMonth, bounds]);
 
   const chartTotal = useMemo(
     () => chartData.reduce((s, r) => s + r.image + r.video + r.none, 0),
@@ -659,6 +702,12 @@ export function TrackingClient({
     (s, n) => s + n,
     0
   );
+
+  // ลิสต์เป้ารายคนตามตัวกรองคนบนหัวกราฟ — แถบสรุป 4 ใบยังนับทั้งทีมเสมอ
+  const shownStats =
+    personFilter === "all"
+      ? personStats
+      : personStats.filter((s) => s.profile.id === personFilter);
 
   return (
     <>
@@ -800,10 +849,10 @@ export function TrackingClient({
               ))}
             </div>
             <Select
-              value={chartPerson}
-              onChange={(e) => setChartPerson(e.target.value)}
+              value={personFilter}
+              onChange={(e) => setPersonFilter(e.target.value)}
               className="w-auto min-w-28"
-              aria-label="เลือกคนที่จะดูกราฟ"
+              aria-label="กรองตามคน"
             >
               <option value="all">ทุกคน</option>
               {chartPeople.map((p) => (
@@ -931,7 +980,7 @@ export function TrackingClient({
           (แยกภาพ/วิดีโอตามประเภทที่ติดไว้) กับ &quot;ชิ้นงานไฟล์&quot;
           ที่นับจากไฟล์ภาพ/วิดีโอที่อัพโหลดจริงในการ์ด
           (ไฟล์ชนิดอื่นและไฟล์ในแชทไม่นับ) · นับตามวันส่งงาน
-          ช่วงเวลาเลือกอิสระไม่ผูกกับเดือนด้านบน
+          ช่วงเวลาเลือกอิสระไม่ผูกกับเดือนด้านบน · กรองตามคนที่เลือกบนหัวกราฟ
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1071,15 +1120,31 @@ export function TrackingClient({
             description='ไปที่ "ตั้งค่า KPI & หมวดเนื้อหา" เพื่อเพิ่มทีมงานและกำหนดเป้าจำนวนชิ้นต่อเดือน'
           />
         </Card>
+      ) : shownStats.length === 0 ? (
+        // กันทางตัน: เลือกคนที่ยังไม่มีเป้า — บอกตรงๆ + ปุ่มกลับไปดูทุกคน
+        <Card className="p-4">
+          <p className="text-sm text-stone-600">
+            {personName(profileById.get(personFilter))} ยังไม่ถูกตั้งเป้า KPI —
+            ตั้งได้ที่ &quot;ตั้งค่า KPI &amp; หมวดเนื้อหา&quot;
+          </p>
+          <button
+            type="button"
+            onClick={() => setPersonFilter("all")}
+            className="mt-2 min-h-11 cursor-pointer rounded-lg border border-stone-200 bg-white/70 px-3 text-sm text-stone-600 hover:bg-white sm:min-h-9"
+          >
+            ดูทุกคน
+          </button>
+        </Card>
       ) : (
         <div className="space-y-3">
           <p className="text-xs font-semibold text-stone-500">
-            รายคน — เรียงคนที่{isCurrentMonth ? "ตามหลังเป้า" : "ไม่ครบเป้า"}
-            ขึ้นก่อน
+            {personFilter === "all"
+              ? `รายคน — เรียงคนที่${isCurrentMonth ? "ตามหลังเป้า" : "ไม่ครบเป้า"}ขึ้นก่อน`
+              : `เป้าของ ${personName(profileById.get(personFilter))}`}
             {isCurrentMonth &&
               ` · ขีดบนแถบ = เป้าที่ควรถึงวันนี้ (วันที่ ${initialDay}/${daysInMonth})`}
           </p>
-          {personStats.map((stat) => {
+          {shownStats.map((stat) => {
             const overallTone: "met" | "behind" | "ontrack" =
               stat.doneTotal >= stat.overallTarget
                 ? "met"
@@ -1157,6 +1222,12 @@ export function TrackingClient({
                                 · {catLabel}
                               </span>
                             )}
+                            {rs.rule.period === "day" && (
+                              <span className="text-stone-400">
+                                {" "}
+                                · เป้า {rs.rule.target}/วัน
+                              </span>
+                            )}
                           </span>
                           {rs.met ? (
                             <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-bold text-emerald-700">
@@ -1166,7 +1237,7 @@ export function TrackingClient({
                             <span className="shrink-0 rounded-full bg-rose-100 px-1.5 py-px text-[10px] font-bold text-rose-700">
                               {isCurrentMonth
                                 ? `ตามหลัง ${rs.behind}`
-                                : `ขาด ${rs.rule.target - rs.done}`}
+                                : `ขาด ${rs.target - rs.done}`}
                             </span>
                           ) : null}
                           <span
@@ -1178,7 +1249,7 @@ export function TrackingClient({
                                   : "text-stone-700"
                             }`}
                           >
-                            {rs.done}/{rs.rule.target}
+                            {rs.done}/{rs.target}
                           </span>
                           <span className="shrink-0 text-[10px] tabular-nums text-stone-400">
                             เดือนก่อน {rs.lastDone}
@@ -1186,7 +1257,7 @@ export function TrackingClient({
                         </div>
                         <PaceBar
                           done={rs.done}
-                          target={rs.rule.target}
+                          target={rs.target}
                           tickPct={
                             isCurrentMonth
                               ? Math.round((elapsedDays / daysInMonth) * 100)
