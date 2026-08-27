@@ -374,6 +374,9 @@ export type InfluencerRow = {
   talent_fee: number | null;
   service_date: string | null;
   doctor_name: string | null;
+  /** ช่องทางที่ใช้คุยงานเคสนี้ เช่น ชื่อกลุ่มไลน์ (0089) — ต่อรอบ คนละก้อนกับ
+      influ_profile_channels ที่เป็นช่องทางระดับตัวบุคคล */
+  contact_channel: string | null;
   photo_path: string | null;
   channel_photo_path: string | null;
   memo_file_path: string | null;
@@ -680,6 +683,9 @@ export type InfluProcedureItemRow = {
   is_supported: boolean;
   /** ลิงก์ไป price_items (เลือกจาก dropdown Price List) — เพิ่มเองอิสระได้ = null */
   price_item_id: string | null;
+  /** ลิงก์ไป promo_packages (เลือกโปรที่ขึ้นหน้า /price-list จาก dropdown — 0090)
+      ล็อกราคาเหมือน price_item_id: ราคาเปลี่ยน = ลบแล้วเลือกใหม่ */
+  promo_package_id: string | null;
   /** หัตถการนี้เป็นของ product team ไหน (0080) — ของเดิมทั้งหมด = aesthetics */
   product_team: InfluProductTeam;
   position: number;

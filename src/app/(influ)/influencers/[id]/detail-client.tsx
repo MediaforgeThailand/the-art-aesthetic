@@ -88,6 +88,7 @@ import { ProfileFormModal } from "../profile-form";
 import {
   ProcedureItemsEditor,
   type PriceCatalogEntry,
+  type PromoCatalogEntry,
 } from "../procedure-items-editor";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
@@ -352,9 +353,9 @@ function NameEditModal({
   );
 }
 
-/** แก้ "วันเข้ารับบริการ + แพทย์ที่รับเคส" ได้ทุก stage — สองช่องนี้ไม่บังคับตอนกรอกรายละเอียดเคส
-    (influ มักยังไม่เคาะวัน / ยังไม่รู้ว่าแพทย์ท่านไหนรับเคส) แล้วมาเคาะทีหลังตอนอยู่ stage อื่น
-    — เป็นข้อมูลนัดหมาย ไม่ใช่สถานะงาน
+/** แก้ "วันเข้ารับบริการ + แพทย์ที่รับเคส + ช่องทางการติดต่อ" ได้ทุก stage — ช่องพวกนี้ไม่บังคับ
+    ตอนกรอกรายละเอียดเคส (influ มักยังไม่เคาะวัน / ยังไม่รู้ว่าแพทย์ท่านไหนรับเคส /
+    ยังไม่ได้เปิดกลุ่มไลน์) แล้วมาเคาะทีหลังตอนอยู่ stage อื่น — เป็นข้อมูลนัดหมาย ไม่ใช่สถานะงาน
     จึงเปิดแก้ได้เสมอแบบเดียวกับ NameEditModal */
 function CaseInfoEditModal({
   influencer,
@@ -370,6 +371,9 @@ function CaseInfoEditModal({
   const log = useInfluLog();
   const [serviceDate, setServiceDate] = useState(influencer.service_date ?? "");
   const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
+  const [contactChannel, setContactChannel] = useState(
+    influencer.contact_channel ?? ""
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -380,11 +384,13 @@ function CaseInfoEditModal({
     setErr(null);
     const nextDate = serviceDate === "" ? null : serviceDate;
     const nextDoctor = doctorName.trim() || null;
+    const nextChannel = contactChannel.trim() || null;
     const { error } = await supabase
       .from("influencers")
       .update({
         service_date: nextDate,
         doctor_name: nextDoctor,
+        contact_channel: nextChannel,
       })
       .eq("id", influencer.id);
     setBusy(false);
@@ -397,16 +403,18 @@ function CaseInfoEditModal({
       entityId: influencer.id,
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
-      summary: `แก้วันรับบริการ/แพทย์: ${
+      summary: `แก้ข้อมูลนัด: ${
         nextDate ? formatDate(nextDate) : "ยังไม่กำหนดวัน"
-      } · ${nextDoctor ?? "ยังไม่ระบุแพทย์"}`,
+      } · ${nextDoctor ?? "ยังไม่ระบุแพทย์"} · ช่องทาง ${
+        nextChannel ?? "ยังไม่ระบุ"
+      }`,
     });
     onClose();
     router.refresh();
   };
 
   return (
-    <Modal open onClose={onClose} title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส">
+    <Modal open onClose={onClose} title="แก้ไขข้อมูลนัดหมาย">
       <form onSubmit={save} className="space-y-3">
         <div>
           <Label htmlFor="ci-date">วันเข้ารับบริการ</Label>
@@ -430,6 +438,18 @@ function CaseInfoEditModal({
           />
           <p className="mt-1 text-[11px] text-stone-400">
             ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="ci-contact">ช่องทางการติดต่อ</Label>
+          <Input
+            id="ci-contact"
+            value={contactChannel}
+            onChange={(e) => setContactChannel(e.target.value)}
+            placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
+          />
+          <p className="mt-1 text-[11px] text-stone-400">
+            ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ — คนละชุดกับช่องทางในโปรไฟล์ (IG/TikTok ของ influ)
           </p>
         </div>
         {err && (
@@ -464,6 +484,7 @@ export function InfluDetailClient({
   contentTasks,
   procedureItems,
   priceCatalog,
+  promoCatalog,
   services,
   personProfile,
   profileChannels,
@@ -485,6 +506,8 @@ export function InfluDetailClient({
   procedureItems: InfluProcedureItemRow[];
   /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ในแท็บรายละเอียดเคส) */
   priceCatalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
+  promoCatalog: PromoCatalogEntry[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services, 0080) */
   services: InfluServiceRow[];
   /** โปรไฟล์ตัวบุคคล (influ_profiles — id = person_id); เคสก่อนระบบโปรไฟล์อาจไม่มีแถว */
@@ -976,6 +999,7 @@ export function InfluDetailClient({
             influencer={influencer}
             initialItems={procedureItems}
             priceCatalog={priceCatalog}
+            promoCatalog={promoCatalog}
             services={services}
             doctors={doctors}
             readOnly={!canEdit}
@@ -1312,11 +1336,11 @@ function OverviewPanel({
               <button
                 type="button"
                 onClick={() => setCaseInfoOpen(true)}
-                title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส"
+                title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส / ช่องทางการติดต่อ"
                 className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:min-h-11"
               >
                 <PenLine size={13} />
-                แก้วัน/แพทย์
+                แก้ข้อมูลนัด
               </button>
             )}
           </div>
@@ -1362,6 +1386,12 @@ function OverviewPanel({
                   />
                 ) : null
               }
+            />
+            {/* ช่องทางคุยงานของรอบนี้ (ชื่อกลุ่มไลน์) — คนละชุดกับการ์ด
+                "ช่องทางการติดต่อ (โปรไฟล์)" ที่เป็น IG/TikTok ระดับตัวบุคคล */}
+            <Field
+              label="ช่องทางการติดต่อ"
+              value={influencer.contact_channel}
             />
             <Field
               label="ต้นทุนค่าบริการ (Cost)"
@@ -1680,6 +1710,7 @@ function CaseDetailStage({
   influencer,
   initialItems,
   priceCatalog,
+  promoCatalog,
   services,
   doctors,
   readOnly,
@@ -1687,6 +1718,8 @@ function CaseDetailStage({
   influencer: InfluencerRow;
   initialItems: InfluProcedureItemRow[];
   priceCatalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
+  promoCatalog: PromoCatalogEntry[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) */
   services: InfluServiceRow[];
   doctors: DoctorRow[];
@@ -1706,8 +1739,9 @@ function CaseDetailStage({
     influencer.service_date ?? ""
   );
   const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
-  const [caseValue, setCaseValue] = useState(
-    influencer.case_value != null ? String(influencer.case_value) : ""
+  /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
+  const [contactChannel, setContactChannel] = useState(
+    influencer.contact_channel ?? ""
   );
   /** เคส "รอปรึกษา" (ติ๊กมาตั้งแต่ตอนสร้างนัด) — ธงเดียวที่อนุญาตให้ไม่มีหัตถการ
       เอาติ๊กออกเมื่อปรึกษาแพทย์แล้วเคาะโปรแกรมได้ (ต้องมีรายการอย่างน้อย 1 ก่อน) */
@@ -1730,6 +1764,10 @@ function CaseDetailStage({
 
   const followersNum = Number(followers.replace(/[^0-9]/g, "")) || 0;
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
+
+  // มูลค่าเคส (case_value) คำนวณให้เอง = Σ ราคาโปรแกรมที่เลือก + ค่าตัว — ไม่มีช่องกรอกมือแล้ว
+  const itemsTotal = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
+  const caseTotal = itemsTotal + (Number(talentFee) || 0);
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
   // เคส "รอปรึกษา" = ยกเว้นข้อบังคับเรื่องหัตถการ (ยังไม่รู้ว่าจะทำอะไรจนกว่าจะเจอแพทย์)
@@ -1809,7 +1847,10 @@ function CaseDetailStage({
         // procedure_text ไม่ต้องส่ง — ProcedureItemsEditor sync ให้เองทุกครั้งที่รายการเปลี่ยน
         service_date: serviceDate === "" ? null : serviceDate,
         doctor_name: doctorName.trim() || null,
-        case_value: caseValue === "" ? null : Number(caseValue),
+        contact_channel: contactChannel.trim() || null,
+        // มูลค่าเคสคำนวณจากรายการ + ค่าตัวที่ validate แล้ว (ไม่มีอะไรมีมูลค่า = null ไม่ใช่ 0)
+        case_value:
+          itemsTotal + (feeNum ?? 0) > 0 ? itemsTotal + (feeNum ?? 0) : null,
         // มีรายการหัตถการแล้ว = ไม่ใช่เคสรอปรึกษาอีกต่อไป (ธงค้างไว้จะทำให้การ์ดขึ้นชิปผิด)
         consult_only: items.length > 0 ? false : consultOnly,
         talent_fee: feeNum,
@@ -1891,6 +1932,7 @@ function CaseDetailStage({
               items={items}
               setItems={setItems}
               catalog={priceCatalog}
+              promos={promoCatalog}
               services={services}
               readOnly={readOnly}
             />
@@ -1910,16 +1952,13 @@ function CaseDetailStage({
               </p>
             </div>
             <div>
-              <Label htmlFor="d-value">มูลค่า (บาท)</Label>
-              <Input
-                id="d-value"
-                type="number"
-                min="0"
-                disabled={readOnly}
-                value={caseValue}
-                onChange={(e) => setCaseValue(e.target.value)}
-                placeholder="78200"
-              />
+              <Label>มูลค่าเคสรวม (บาท)</Label>
+              <div className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 text-sm font-semibold text-stone-800">
+                {caseTotal > 0 ? formatCurrency(caseTotal) : "—"}
+              </div>
+              <p className="mt-1 text-[11px] text-stone-400">
+                คำนวณให้เอง = โปรแกรมที่เลือก + ค่าตัว
+              </p>
             </div>
             <div>
               <Label htmlFor="d-fee">ค่าตัว (บาท)</Label>
@@ -1949,6 +1988,19 @@ function CaseDetailStage({
             />
             <p className="mt-1 text-[11px] text-stone-400">
               ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="d-contact">ช่องทางการติดต่อ</Label>
+            <Input
+              id="d-contact"
+              disabled={readOnly}
+              value={contactChannel}
+              onChange={(e) => setContactChannel(e.target.value)}
+              placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
+            />
+            <p className="mt-1 text-[11px] text-stone-400">
+              ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ — คนละชุดกับช่องทางในโปรไฟล์ (IG/TikTok ของ influ)
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

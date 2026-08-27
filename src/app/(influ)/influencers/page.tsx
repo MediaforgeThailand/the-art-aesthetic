@@ -17,7 +17,10 @@ import type {
 } from "@/lib/types";
 import type { InfluLinkLite } from "./influ-links";
 import { InfluencersClient, type InfluencerListRow } from "./influencers-client";
-import type { PriceCatalogEntry } from "./procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "./procedure-items-editor";
 
 export const metadata: Metadata = {
   title: "เคสดำเนินงาน",
@@ -26,10 +29,13 @@ export const metadata: Metadata = {
 // คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
 // (~10-30KB/รายการ) หน้า list ไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
 const INFLU_LIST_COLUMNS =
-  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, consult_only, talent_fee, service_date, doctor_name, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, owner_id, created_by, created_at, updated_at";
+  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, consult_only, talent_fee, service_date, doctor_name, contact_channel, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, owner_id, created_by, created_at, updated_at";
 
 export default async function InfluencersPage() {
   const supabase = await createClient();
+
+  // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
+  const todayBkk = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
@@ -40,6 +46,7 @@ export default async function InfluencersPage() {
     { data: sourceLinks },
     { data: serviceBookings },
     { data: priceCatalog },
+    { data: promoCatalog },
     { data: profiles },
     { data: influProfiles },
     { data: services },
@@ -75,6 +82,14 @@ export default async function InfluencersPage() {
         .from("price_items")
         .select("id, name, price_normal, promos, search_aliases")
         .eq("active", true)
+        .order("name", { ascending: true }),
+      // โปรที่ขึ้นหน้า /price-list (promo_packages — 0090): ราคาโปรจริงที่ขายอยู่
+      // หลายตัวไม่มีคู่ใน price_items (เช่น Botox Hutox โปร 9,900 vs ปกติ 11,900)
+      supabase
+        .from("promo_packages")
+        .select("id, name, sale_price, full_price")
+        .eq("active", true)
+        .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
         .order("name", { ascending: true }),
       // ชื่อผู้รับผิดชอบ (owner_id) — แสดงบนการ์ด + ตัวกรอง "เคสของฉัน"
       supabase.from("profiles").select("id, full_name, email"),
@@ -112,6 +127,7 @@ export default async function InfluencersPage() {
             .filter((id): id is string => id !== null)
         }
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         profiles={(influProfiles ?? []) as InfluProfileRow[]}
         services={(services ?? []) as InfluServiceRow[]}
         people={

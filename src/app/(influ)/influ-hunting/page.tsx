@@ -15,7 +15,10 @@ import type {
   InfluProspectRow,
   InfluServiceRow,
 } from "@/lib/types";
-import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "../influencers/procedure-items-editor";
 import { HuntingClient } from "./hunting-client";
 
 export const metadata: Metadata = {
@@ -25,6 +28,9 @@ export const metadata: Metadata = {
 export default async function InfluHuntingPage() {
   const supabase = await createClient();
 
+  // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
+  const todayBkk = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
     access,
@@ -33,6 +39,7 @@ export default async function InfluHuntingPage() {
     { data: influProfiles },
     { data: services },
     { data: priceCatalog },
+    { data: promoCatalog },
     { data: doctors },
     { data: profiles },
   ] = await Promise.all([
@@ -62,6 +69,13 @@ export default async function InfluHuntingPage() {
       .select("id, name, price_normal, promos, search_aliases")
       .eq("active", true)
       .order("name", { ascending: true }),
+    // โปรที่ขึ้นหน้า /price-list (promo_packages — 0090): ราคาโปรจริงที่ขายอยู่
+    supabase
+      .from("promo_packages")
+      .select("id, name, sale_price, full_price")
+      .eq("active", true)
+      .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
+      .order("name", { ascending: true }),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
     supabase.from("profiles").select("id, full_name, email"),
   ]);
@@ -77,6 +91,7 @@ export default async function InfluHuntingPage() {
         profiles={(influProfiles ?? []) as InfluProfileRow[]}
         services={(services ?? []) as InfluServiceRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         doctors={(doctors ?? []) as DoctorRow[]}
         people={(profiles ?? []).map((p) => ({
           id: p.id,

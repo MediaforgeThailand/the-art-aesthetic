@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { formatNumber } from "@/lib/format";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import {
   INFLU_STAGE,
   procedureSummaryText,
@@ -30,7 +30,10 @@ import type {
   InfluServiceRow,
 } from "@/lib/types";
 import { DoctorSelect } from "./doctor-select";
-import type { PriceCatalogEntry } from "./procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "./procedure-items-editor";
 import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
 import { ProfileFormModal, profileName } from "./profile-form";
 
@@ -44,6 +47,7 @@ export function NewCaseModal({
   profiles,
   services,
   priceCatalog,
+  promoCatalog,
   doctors,
   me,
   actor,
@@ -57,6 +61,8 @@ export function NewCaseModal({
   /** เมนูหัตถการที่ทีมเพิ่มเอง (ทุก product team) */
   services: InfluServiceRow[];
   priceCatalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages) — ค้นเจอในช่องหัตถการด้วย (0090) */
+  promoCatalog: PromoCatalogEntry[];
   doctors: DoctorRow[];
   me: { id: string | null; name: string };
   actor: InfluLogActor;
@@ -90,6 +96,8 @@ export function NewCaseModal({
   const [talentFee, setTalentFee] = useState("");
   const [serviceDate, setServiceDate] = useState("");
   const [doctorName, setDoctorName] = useState("");
+  /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
+  const [contactChannel, setContactChannel] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -102,6 +110,7 @@ export function NewCaseModal({
     setTalentFee("");
     setServiceDate("");
     setDoctorName("");
+    setContactChannel("");
     setErr(null);
   };
 
@@ -135,6 +144,10 @@ export function NewCaseModal({
       setErr("ค่าตัวต้องเป็นตัวเลขไม่ติดลบ");
       return;
     }
+    // มูลค่าเคสคำนวณให้เอง = Σ ราคาหัตถการที่เลือก + ค่าตัว (กติกาผู้ใช้ 2026-08-27)
+    // ยังไม่มีอะไรตีมูลค่าได้ (รอปรึกษา/ราคา 0 ทั้งหมด) = null ไม่ใช่ 0
+    const caseValue =
+      procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + (feeNum ?? 0);
     setSaving(true);
     setErr(null);
 
@@ -173,10 +186,12 @@ export function NewCaseModal({
         // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
         consult_only: consultOnly && procedures.length === 0,
         talent_fee: feeNum,
+        case_value: caseValue > 0 ? caseValue : null,
         // สร้างจากฟอร์มนี้ = ข้อมูลครบพร้อมทำ Memo ทันที (ไม่มีคิว "รอทำ Memo" ให้ติ๊กเองแล้ว)
         memo_ready_at: new Date().toISOString(),
         service_date: serviceDate || null,
         doctor_name: doctorName.trim() || null,
+        contact_channel: contactChannel.trim() || null,
         owner_id: me.id,
         created_by: me.id,
         // sync ข้อความสรุปตั้งแต่แรก — Memo/ปฏิทิน/ช่องค้นหาใช้ค่านี้
@@ -205,6 +220,7 @@ export function NewCaseModal({
               name: p.name,
               price: p.price,
               price_item_id: p.priceItemId,
+              promo_package_id: p.promoPackageId,
               product_team: p.team,
               position: idx + 1,
             }))
@@ -248,6 +264,7 @@ export function NewCaseModal({
         procedures: procedures.length,
         consult_only: consultOnly,
         talent_fee: feeNum,
+        contact_channel: contactChannel.trim() || null,
       },
     });
 
@@ -371,18 +388,33 @@ export function NewCaseModal({
           </div>
 
           {/* ---- ขั้น 2: ข้อมูลเคส ---- */}
-          <div>
-            <Label htmlFor="nc-code">รหัส Influ ID</Label>
-            <Input
-              id="nc-code"
-              disabled={saving}
-              value={influCode}
-              onChange={(e) => setInfluCode(e.target.value)}
-              placeholder="เช่น INF-2569-001"
-            />
-            <p className="mt-1 text-xs text-stone-400">
-              รหัสต่อเคส/รอบ ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่มีรหัส)
-            </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="nc-code">รหัส Influ ID</Label>
+              <Input
+                id="nc-code"
+                disabled={saving}
+                value={influCode}
+                onChange={(e) => setInfluCode(e.target.value)}
+                placeholder="เช่น INF-2569-001"
+              />
+              <p className="mt-1 text-xs text-stone-400">
+                รหัสต่อเคส/รอบ ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่มีรหัส)
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="nc-contact">ช่องทางการติดต่อ</Label>
+              <Input
+                id="nc-contact"
+                disabled={saving}
+                value={contactChannel}
+                onChange={(e) => setContactChannel(e.target.value)}
+                placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
+              />
+              <p className="mt-1 text-xs text-stone-400">
+                ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ (แก้ทีหลังได้ที่แท็บรายละเอียดเคส)
+              </p>
+            </div>
           </div>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -406,6 +438,7 @@ export function NewCaseModal({
                 picked={procedures}
                 onChange={setProcedures}
                 catalog={priceCatalog}
+                promos={promoCatalog}
                 services={services}
                 onServiceCreated={onServiceCreated}
                 disabled={saving}
@@ -435,6 +468,17 @@ export function NewCaseModal({
               กรอกเฉพาะเคสที่ influ คิดเงิน — จะขึ้นเป็นบรรทัด &quot;ค่าตัว&quot;
               ในข้อความ Memo ที่คัดลอกไปทำเอกสาร
             </p>
+            {(() => {
+              // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert
+              const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
+              const total =
+                procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + fee;
+              return total > 0 ? (
+                <p className="mt-1.5 text-xs font-medium text-brand-700">
+                  มูลค่าเคสรวม {formatCurrency(total)} (หัตถการที่เลือก + ค่าตัว)
+                </p>
+              ) : null;
+            })()}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>

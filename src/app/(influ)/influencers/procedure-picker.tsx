@@ -27,6 +27,7 @@ import type { InfluProductTeam, InfluServiceRow } from "@/lib/types";
 import {
   buildServiceOptions,
   type PriceCatalogEntry,
+  type PromoCatalogEntry,
   registerService,
   TeamPicker,
 } from "./procedure-items-editor";
@@ -35,6 +36,8 @@ import {
 export type PickedProcedure = {
   name: string;
   priceItemId: string | null;
+  /** เลือกจากโปรหน้า /price-list (promo_packages — 0090) */
+  promoPackageId: string | null;
   price: number;
   /** หัตถการนี้เป็นของ product team ไหน (0080) */
   team: InfluProductTeam;
@@ -44,6 +47,7 @@ export function ProcedurePicker({
   picked,
   onChange,
   catalog,
+  promos,
   services,
   onServiceCreated,
   disabled = false,
@@ -51,6 +55,8 @@ export function ProcedurePicker({
   picked: PickedProcedure[];
   onChange: (next: PickedProcedure[]) => void;
   catalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list — ค้นเจอในช่องนี้ด้วย (0090) */
+  promos: PromoCatalogEntry[];
   /** ทะเบียนหัตถการที่ทีมเพิ่มเอง (ทุก product team) — influ_services */
   services: InfluServiceRow[];
   /** พิมพ์ชื่อใหม่ = ลงทะเบียนเข้าเมนูทีมทันที — แจ้งกลับให้ parent เขียน log/อัปเดตลิสต์ */
@@ -67,8 +73,8 @@ export function ProcedurePicker({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const options = useMemo(
-    () => buildServiceOptions(catalog, [...services, ...extraServices], team),
-    [catalog, services, extraServices, team]
+    () => buildServiceOptions(catalog, promos, [...services, ...extraServices], team),
+    [catalog, promos, services, extraServices, team]
   );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,17 +89,22 @@ export function ProcedurePicker({
       .slice(0, 30);
   }, [options, query]);
 
-  const add = (name: string, priceItemId: string | null, price: number) => {
+  const add = (
+    name: string,
+    priceItemId: string | null,
+    price: number,
+    promoPackageId: string | null = null
+  ) => {
     const clean = shortenProgramName(
       name,
-      priceItemId ? 60 : PROCEDURE_NAME_MAX
+      priceItemId || promoPackageId ? 60 : PROCEDURE_NAME_MAX
     );
     if (!clean) return;
     if (picked.some((p) => p.name === clean && p.team === team)) {
       setQuery("");
       return;
     }
-    onChange([...picked, { name: clean, priceItemId, price, team }]);
+    onChange([...picked, { name: clean, priceItemId, promoPackageId, price, team }]);
     setQuery("");
     inputRef.current?.focus();
   };
@@ -205,7 +216,7 @@ export function ProcedurePicker({
             if (!q) return;
             // ตรงกับตัวเลือกแรกพอดี = หยิบตัวนั้น (ได้ราคาอ้างอิงมาด้วย)
             if (first && first.name.toLowerCase() === q.toLowerCase()) {
-              add(first.name, first.priceItemId, first.refPrice ?? 0);
+              add(first.name, first.priceItemId, first.refPrice ?? 0, first.promoPackageId);
             } else {
               void addNewToTeam(q);
             }
@@ -222,7 +233,7 @@ export function ProcedurePicker({
                 // จำลองที่มาหลัง blur ลิสต์ถูกปิดไปก่อน = แตะเลือกไม่ติด
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  add(c.name, c.priceItemId, c.refPrice ?? 0);
+                  add(c.name, c.priceItemId, c.refPrice ?? 0, c.promoPackageId);
                 }}
                 className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-brand-50"
               >
@@ -237,8 +248,18 @@ export function ProcedurePicker({
                   )}
                 </span>
                 {c.refPrice !== null && (
-                  <span className="shrink-0 text-xs tabular-nums text-stone-400">
-                    {formatCurrency(c.refPrice)}
+                  <span className="shrink-0 text-right text-xs tabular-nums text-stone-400">
+                    {c.fullPrice !== null && (
+                      <span className="mr-1 text-stone-300 line-through">
+                        {formatCurrency(c.fullPrice)}
+                      </span>
+                    )}
+                    {c.refPrice !== null ? formatCurrency(c.refPrice) : ""}
+                    {c.promoPackageId !== null && (
+                      <span className="ml-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] font-medium text-pink-600">
+                        โปร
+                      </span>
+                    )}
                   </span>
                 )}
               </button>

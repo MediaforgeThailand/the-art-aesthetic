@@ -66,7 +66,10 @@ import {
   type HuntFilters,
 } from "./hunting-filters";
 import { NewCaseModal } from "../influencers/new-case-modal";
-import type { PriceCatalogEntry } from "../influencers/procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "../influencers/procedure-items-editor";
 import { ProfileFormModal, profileName } from "../influencers/profile-form";
 import {
   type ContactPatch,
@@ -94,6 +97,7 @@ export function HuntingClient({
   profiles,
   services,
   priceCatalog,
+  promoCatalog,
   doctors,
   people,
   me,
@@ -104,6 +108,8 @@ export function HuntingClient({
   profiles: InfluProfileRow[];
   services: InfluServiceRow[];
   priceCatalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
+  promoCatalog: PromoCatalogEntry[];
   doctors: DoctorRow[];
   people: { id: string; name: string }[];
   me: Me;
@@ -724,6 +730,7 @@ export function HuntingClient({
           profiles={allProfiles}
           services={allServices}
           priceCatalog={priceCatalog}
+          promoCatalog={promoCatalog}
           doctors={doctors}
           me={{ id: me.id, name: me.name }}
           actor={actor}

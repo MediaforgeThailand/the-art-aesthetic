@@ -24,7 +24,10 @@ import type {
   ProfileRow,
   TaskWithAssignee,
 } from "@/lib/types";
-import type { PriceCatalogEntry } from "../procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "../procedure-items-editor";
 import { InfluDetailClient } from "./detail-client";
 
 export const metadata: Metadata = {
@@ -44,6 +47,9 @@ export default async function InfluencerDetailPage({
   const { data: claimsData } = await supabase.auth.getClaims();
   const userId = claimsData?.claims.sub ?? null;
 
+  // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
+  const todayBkk = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
     access,
@@ -53,6 +59,7 @@ export default async function InfluencerDetailPage({
     { data: contentTasks },
     { data: procedureItems },
     { data: priceCatalog },
+    { data: promoCatalog },
     { data: sourceLinks },
     { data: postLinks },
     { data: profile },
@@ -95,6 +102,14 @@ export default async function InfluencerDetailPage({
       .from("price_items")
       .select("id, name, price_normal, promos, search_aliases")
       .eq("active", true)
+      .order("name", { ascending: true }),
+    // โปรที่ขึ้นหน้า /price-list (promo_packages — 0090): ราคาโปรจริงที่ขายอยู่
+    // หลายตัวไม่มีคู่ใน price_items (เช่น Botox Hutox โปร 9,900 vs ปกติ 11,900)
+    supabase
+      .from("promo_packages")
+      .select("id, name, sale_price, full_price")
+      .eq("active", true)
+      .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
       .order("name", { ascending: true }),
     // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
     supabase
@@ -181,6 +196,7 @@ export default async function InfluencerDetailPage({
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
+        promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         services={(services ?? []) as InfluServiceRow[]}
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}

@@ -40,7 +40,10 @@ import type {
 } from "@/lib/types";
 import type { InfluLinkLite } from "./influ-links";
 import { NewCaseModal } from "./new-case-modal";
-import type { PriceCatalogEntry } from "./procedure-items-editor";
+import type {
+  PriceCatalogEntry,
+  PromoCatalogEntry,
+} from "./procedure-items-editor";
 import {
   boardPos,
   INFLU_STATUS_META,
@@ -220,6 +223,7 @@ export function InfluencersClient({
   sourceLinks,
   bookedInfluIds,
   priceCatalog,
+  promoCatalog,
   profiles,
   services,
   people,
@@ -235,6 +239,8 @@ export function InfluencersClient({
   bookedInfluIds: string[];
   /** ตัวเลือกหัตถการจาก Price List — เมนูหลักของทีม aesthetics */
   priceCatalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
+  promoCatalog: PromoCatalogEntry[];
   /** โปรไฟล์ตัวบุคคลทั้งหมด (influ_profiles) — ตัวเลือกตอน "สร้างนัดใหม่" */
   profiles: InfluProfileRow[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services) */
@@ -773,6 +779,7 @@ export function InfluencersClient({
         profiles={profiles}
         services={allServices}
         priceCatalog={priceCatalog}
+        promoCatalog={promoCatalog}
         doctors={doctors}
         me={{ id: me.id, name: me.name }}
         actor={actor}

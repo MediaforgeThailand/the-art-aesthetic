@@ -70,10 +70,13 @@ type SupportFilter = "all" | "supported" | "unsupported";
     จอ <sm ไม่ใช้กริดนี้ (แถวกลายเป็น flex-wrap) จะได้ไม่ต้องเลื่อนแนวนอนอ่านชื่อ */
 const GRID_COLS = "minmax(160px,1fr) 96px 160px 96px";
 
-/** "ยังไม่กรอกต้นทุน" = ไม่ support + ราคา 0 + ไม่ได้ผูก Price List
-    (แถวที่ผูก Price List ราคาอ้างอิงจากเมนูและล็อกไว้ — เป็น 0 ก็คือของแถมราคา 0 จริง) */
+/** "ยังไม่กรอกต้นทุน" = ไม่ support + ราคา 0 + ไม่ได้ผูก Price List/โปร (0090)
+    (แถวที่ผูก Price List/โปร ราคาอ้างอิงจากเมนูและล็อกไว้ — เป็น 0 ก็คือของแถมราคา 0 จริง) */
 const isUnpriced = (r: CostItem) =>
-  !r.is_supported && Number(r.price) === 0 && !r.price_item_id;
+  !r.is_supported &&
+  Number(r.price) === 0 &&
+  !r.price_item_id &&
+  !r.promo_package_id;
 
 function influName(i: CostInflu): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
@@ -272,6 +275,10 @@ function ItemRow({
           <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
             Price List
           </span>
+        ) : item.promo_package_id ? (
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
+            โปร Price List
+          </span>
         ) : (
           <span className="text-stone-400">กรอกเอง</span>
         )}
@@ -286,8 +293,8 @@ function ItemRow({
             )}
             ฿0
           </span>
-        ) : item.price_item_id ? (
-          /* ผูกกับ Price List = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
+        ) : item.price_item_id || item.promo_package_id ? (
+          /* ผูกกับ Price List/โปร = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
           <span
             title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (เปลี่ยนรายการได้ที่แท็บรายละเอียดเคสของเคสนั้น)"
             className="inline-flex items-center gap-1 text-sm tabular-nums text-stone-700"

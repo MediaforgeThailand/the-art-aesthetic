@@ -49,24 +49,40 @@ export function catalogPriceOf(entry: PriceCatalogEntry): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090): ราคาเป็น numeric ตรงๆ ไม่ใช่ text
+    ต้องโผล่ในช่องค้นหาด้วย เพราะโปรที่ขายจริงหลายตัวไม่มีคู่ใน price_items เลย
+    (เช่น "Botox Hutox (100 Unit)/Pro" 9,900 — price_items มีแต่ตัวปกติ 11,900) */
+export type PromoCatalogEntry = {
+  id: string;
+  name: string;
+  sale_price: number;
+  full_price: number | null;
+};
+
 /* ---------- เมนูหัตถการตาม product team (migration 0080) ----------
    aesthetics = price_items (เมนูหลัก) + influ_services ที่ทีมเพิ่มเอง
    ทีมอื่น    = influ_services ของทีมนั้นล้วน (ยังไม่มีเมนูกลาง) */
 
-/** ตัวเลือก 1 รายการในช่องค้นหา — มาจาก Price List หรือทะเบียนที่ทีมเพิ่มเอง */
+/** ตัวเลือก 1 รายการในช่องค้นหา — มาจาก Price List / โปรหน้า price-list / ทะเบียนที่ทีมเพิ่มเอง */
 export type ServiceOption = {
   key: string;
   name: string;
   team: InfluProductTeam;
   /** มาจาก price_items → ราคาอ้างอิงถูกล็อก (กติกา Price List เดิม) */
   priceItemId: string | null;
+  /** มาจาก promo_packages (โปรบนหน้า /price-list — 0090) → ล็อกราคาเหมือนกัน */
+  promoPackageId: string | null;
   refPrice: number | null;
+  /** ราคาเต็มของโปร (มีเฉพาะโปรที่ลดจริง) — ไว้ขีดฆ่าใน dropdown ให้เห็นว่าเป็นราคาโปร */
+  fullPrice: number | null;
   aliases: string | null;
 };
 
-/** รวมเมนูของทีมที่เลือก — price_items เฉพาะทีม aesthetics + influ_services ของทีมนั้น */
+/** รวมเมนูของทีมที่เลือก — price_items + โปร promo_packages เฉพาะทีม aesthetics
+    + influ_services ของทีมนั้น */
 export function buildServiceOptions(
   catalog: PriceCatalogEntry[],
+  promos: PromoCatalogEntry[],
   services: InfluServiceRow[],
   team: InfluProductTeam
 ): ServiceOption[] {
@@ -78,8 +94,33 @@ export function buildServiceOptions(
         name: c.name,
         team,
         priceItemId: c.id,
+        promoPackageId: null,
         refPrice: catalogPriceOf(c),
+        fullPrice: null,
         aliases: c.search_aliases,
+      });
+    }
+    for (const p of promos) {
+      const sale = Number(p.sale_price);
+      const full = p.full_price !== null ? Number(p.full_price) : null;
+      // ชื่อซ้ำเป๊ะกับ price_items และราคาไม่ได้ถูกกว่า = แถวเดียวกับเมนูกลาง ข้ามไป
+      // (ถ้าโปรถูกกว่า ให้โชว์คู่กัน — คนเลือกเห็นทั้งราคากลางและราคาโปร)
+      const dup = opts.find(
+        (o) =>
+          o.priceItemId !== null &&
+          o.name.trim().toLowerCase() === p.name.trim().toLowerCase()
+      );
+      if (dup && (dup.refPrice === null || sale >= dup.refPrice)) continue;
+      opts.push({
+        key: `pk:${p.id}`,
+        name: p.name,
+        team,
+        priceItemId: null,
+        promoPackageId: p.id,
+        refPrice: Number.isFinite(sale) && sale > 0 ? sale : null,
+        // ขีดฆ่าเฉพาะโปรที่ลดจริง — sale เท่ากับ full ไม่ต้องแปะป้ายโปรหลอก
+        fullPrice: full !== null && Number.isFinite(full) && full > sale ? full : null,
+        aliases: null,
       });
     }
   }
@@ -96,10 +137,12 @@ export function buildServiceOptions(
       name: sv.name,
       team,
       priceItemId: null,
+      promoPackageId: null,
       refPrice:
         sv.default_price !== null && Number(sv.default_price) > 0
           ? Number(sv.default_price)
           : null,
+      fullPrice: null,
       aliases: null,
     });
   }
@@ -261,6 +304,7 @@ export function ProcedureItemsEditor({
   items,
   setItems,
   catalog,
+  promos,
   services,
   readOnly,
 }: {
@@ -268,6 +312,8 @@ export function ProcedureItemsEditor({
   items: InfluProcedureItemRow[];
   setItems: React.Dispatch<React.SetStateAction<InfluProcedureItemRow[]>>;
   catalog: PriceCatalogEntry[];
+  /** โปรที่ขึ้นหน้า /price-list (promo_packages) — ต้องค้นเจอในช่องนี้ด้วย (0090) */
+  promos: PromoCatalogEntry[];
   /** ทะเบียนหัตถการที่ทีมเพิ่มเอง (ทุก product team) — มาจาก influ_services */
   services: InfluServiceRow[];
   readOnly: boolean;
@@ -285,8 +331,8 @@ export function ProcedureItemsEditor({
   const [svcList, setSvcList] = useState<InfluServiceRow[]>(services);
 
   const options = useMemo(
-    () => buildServiceOptions(catalog, svcList, team),
-    [catalog, svcList, team]
+    () => buildServiceOptions(catalog, promos, svcList, team),
+    [catalog, promos, svcList, team]
   );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -319,9 +365,13 @@ export function ProcedureItemsEditor({
   const addItem = async (
     name: string,
     priceItemId: string | null,
-    refPrice: number | null = null
+    refPrice: number | null = null,
+    promoPackageId: string | null = null
   ) => {
-    const clean = shortenProgramName(name, priceItemId ? 60 : PROCEDURE_NAME_MAX);
+    const clean = shortenProgramName(
+      name,
+      priceItemId || promoPackageId ? 60 : PROCEDURE_NAME_MAX
+    );
     if (!clean || adding) return;
     setAdding(true);
     setErr(null);
@@ -333,6 +383,7 @@ export function ProcedureItemsEditor({
         name: clean,
         price: refPrice ?? 0,
         price_item_id: priceItemId,
+        promo_package_id: promoPackageId,
         product_team: team,
         position: nextPos,
       })
@@ -487,15 +538,15 @@ export function ProcedureItemsEditor({
                     )}
                     ฿0
                   </span>
-                ) : item.price_item_id ? (
-                  /* ผูกกับ Price List = ราคาอ้างอิงจากเมนูกลาง ล็อกไว้ ห้ามกรอกเอง */
+                ) : item.price_item_id || item.promo_package_id ? (
+                  /* ผูกกับ Price List / โปรหน้า price-list = ราคาล็อกไว้ ห้ามกรอกเอง */
                   <span
                     title="ราคาอ้างอิงจาก Price List — แก้เองไม่ได้ (ถ้าราคาเปลี่ยนให้ลบแล้วเลือกใหม่)"
                     className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-2 py-1.5 text-sm tabular-nums text-brand-800"
                   >
                     {formatCurrency(Number(item.price) || 0)}
                     <span className="text-[10px] font-medium uppercase tracking-wide text-brand-400">
-                      Price List
+                      {item.promo_package_id ? "โปร Price List" : "Price List"}
                     </span>
                   </span>
                 ) : (
@@ -614,7 +665,7 @@ export function ProcedureItemsEditor({
                         key={c.key}
                         type="button"
                         onPointerDown={() =>
-                          void addItem(c.name, c.priceItemId, c.refPrice)
+                          void addItem(c.name, c.priceItemId, c.refPrice, c.promoPackageId)
                         }
                         className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
                         title={c.name}
@@ -627,8 +678,18 @@ export function ProcedureItemsEditor({
                             </span>
                           )}
                         </span>
-                        <span className="shrink-0 text-xs font-semibold tabular-nums text-brand-600">
+                        <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-brand-600">
+                          {c.fullPrice !== null && (
+                            <span className="mr-1 font-normal text-stone-300 line-through">
+                              {formatCurrency(c.fullPrice)}
+                            </span>
+                          )}
                           {c.refPrice !== null ? formatCurrency(c.refPrice) : "฿0"}
+                          {c.promoPackageId !== null && (
+                            <span className="ml-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] font-medium text-pink-600">
+                              โปร
+                            </span>
+                          )}
                         </span>
                       </button>
                     );
