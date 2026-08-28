@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluCalendarEventRow,
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
@@ -67,6 +68,7 @@ export default async function InfluencerDetailPage({
     { data: procedureItems },
     { data: priceCatalog },
     { data: promoCatalog },
+    { data: serviceBookings },
     { data: sourceLinks },
     { data: postLinks },
     { data: profile },
@@ -118,6 +120,14 @@ export default async function InfluencerDetailPage({
       .eq("active", true)
       .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
       .order("name", { ascending: true }),
+    // คิว "เข้ารับบริการ" ของเคสนี้ในปฏิทิน (kind=service) — ขั้นสัญญาบังคับให้ลงคิวก่อน
+    // ถึงจะไปขั้นตามงานได้ (เกณฑ์เดียวกับป้าย "รอลงคิวหมอ" บนบอร์ด: needsDoctorBooking)
+    supabase
+      .from("influ_calendar_events")
+      .select("*")
+      .eq("influencer_id", id)
+      .eq("kind", "service")
+      .order("event_date", { ascending: true }),
     // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
     supabase
       .from("influ_links")
@@ -204,6 +214,7 @@ export default async function InfluencerDetailPage({
         procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
+        serviceBookings={(serviceBookings ?? []) as InfluCalendarEventRow[]}
         services={(services ?? []) as InfluServiceRow[]}
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}

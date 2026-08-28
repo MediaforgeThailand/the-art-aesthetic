@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BellRing,
+  CalendarPlus,
   Check,
   CheckCircle2,
   ClipboardList,
@@ -52,6 +53,7 @@ import {
 } from "@/lib/format";
 import {
   activeFollowupTasks,
+  calendarTimeLabel,
   contractEndDate,
   contractStartFor,
   INFLU_CHECKLIST,
@@ -69,6 +71,7 @@ import { logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluCalendarEventRow,
   InfluencerRow,
   InfluRoundLite,
   InfluFollowupMode,
@@ -486,6 +489,7 @@ export function InfluDetailClient({
   procedureItems,
   priceCatalog,
   promoCatalog,
+  serviceBookings,
   services,
   personProfile,
   profileChannels,
@@ -510,6 +514,9 @@ export function InfluDetailClient({
   priceCatalog: PriceCatalogEntry[];
   /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
   promoCatalog: PromoCatalogEntry[];
+  /** คิว "เข้ารับบริการ" (kind=service) ของเคสนี้ในปฏิทิน — ขั้นสัญญาบังคับให้ลงคิวก่อน
+      ถึงจะไปขั้นตามงานได้ (เกณฑ์เดียวกับป้าย "รอลงคิวหมอ" บนบอร์ด: needsDoctorBooking) */
+  serviceBookings: InfluCalendarEventRow[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services, 0080) */
   services: InfluServiceRow[];
   /** โปรไฟล์ตัวบุคคล (influ_profiles — id = person_id); เคสก่อนระบบโปรไฟล์อาจไม่มีแถว */
@@ -1043,7 +1050,15 @@ export function InfluDetailClient({
               // (กติกาเดียวกับไฟล์ Memo) — ปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม
               fileEditable={canEdit}
             />
-            <ServiceDayStage influencer={influencer} readOnly={readOnly} />
+            <ServiceDayStage
+              influencer={influencer}
+              readOnly={readOnly}
+              bookings={serviceBookings}
+              doctors={doctors}
+              userId={userId}
+              // ลงคิวเข้าปฏิทินได้ตราบที่เคสยังไม่ปิดงาน (เป็นข้อมูลเคส ไม่ใช่การเดิน stage)
+              canBook={canEdit}
+            />
           </div>
         )}
         {view === INFLU_STAGE.followup && (
@@ -2120,12 +2135,234 @@ function CaseDetailStage({
 /* ============ ครึ่งล่างของขั้นรวม (สัญญา + วันรับบริการ): วันเข้ารับบริการ —
    แก้หัตถการหน้างานได้ + เป็นทางออกเดียวไปขั้น Follow up ============ */
 
+/* ---------- ลงคิวเข้าปฏิทิน — บังคับก่อนปิดขั้นสัญญา + วันรับบริการ ----------
+   ผู้ใช้ 2026-08-29: "มี influ บางคนที่เข้ามาแล้วแต่ในระบบไม่ได้กดลงคิว" — เดิมเคสเดินไปขั้น
+   ตามงานได้ทั้งที่ยังไม่มีคิวในปฏิทิน ทีมจึงไม่รู้ว่าวันไหนใครเข้า/หมอคนไหนรับ
+   การ์ดนี้บังคับ "วันที่ + ชื่อแพทย์" แล้วเขียนลง influ_calendar_events (kind=service) ให้เลย
+   → ป้าย "รอลงคิวหมอ" บนบอร์ดดับพร้อมกัน (needsDoctorBooking เช็คคิว service ต่อเคส) */
+function ServiceBookingCard({
+  influencer,
+  bookings,
+  doctors,
+  userId,
+  canBook,
+}: {
+  influencer: InfluencerRow;
+  bookings: InfluCalendarEventRow[];
+  doctors: DoctorRow[];
+  userId: string | null;
+  canBook: boolean;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const log = useInfluLog();
+  // ค่าตั้งต้นจากข้อมูลเคส (วันที่คุยไว้ + แพทย์ที่ระบุไว้) — แก้ก่อนกดลงคิวได้
+  const [date, setDate] = useState(influencer.service_date ?? "");
+  const [start, setStart] = useState("");
+  const [doctor, setDoctor] = useState(influencer.doctor_name ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const booked = bookings.length > 0;
+  /** เคสเดินเลยขั้นนี้ไปแล้ว (ของเก่าก่อนมีการบังคับลงคิว) — ยังลงคิวย้อนหลังได้ */
+  const passedStage =
+    influencer.completed || influencer.stage > INFLU_STAGE.contractService;
+
+  const book = async () => {
+    if (saving || !canBook) return;
+    if (!date) {
+      setError("กรุณาเลือกวันที่เข้ารับบริการ");
+      return;
+    }
+    if (!doctor.trim()) {
+      setError("กรุณาเลือกแพทย์ที่รับเคส");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const { data, error: e } = await supabase
+      .from("influ_calendar_events")
+      .insert({
+        influencer_id: influencer.id,
+        title: influencer.procedure_text?.trim() || "เข้ารับบริการ / ทำหัตถการ",
+        kind: "service",
+        doctor_name: doctor.trim(),
+        event_date: date,
+        start_time: start || null,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (e || !data) {
+      setSaving(false);
+      setError(`ลงคิวไม่สำเร็จ: ${e?.message ?? "ไม่ทราบสาเหตุ"}`);
+      return;
+    }
+    // sync วัน/แพทย์กลับเข้าเคส — การ์ดบนบอร์ด/Memo/หน้าต้นทุนอ่านจากช่องนี้
+    const patch: { service_date?: string; doctor_name?: string } = {};
+    if (influencer.service_date !== date) patch.service_date = date;
+    if ((influencer.doctor_name ?? "") !== doctor.trim())
+      patch.doctor_name = doctor.trim();
+    if (Object.keys(patch).length > 0) {
+      const { error: e2 } = await supabase
+        .from("influencers")
+        .update(patch)
+        .eq("id", influencer.id);
+      if (e2) {
+        setSaving(false);
+        setError(
+          `ลงคิวในปฏิทินแล้ว แต่บันทึกวัน/แพทย์ในเคสไม่สำเร็จ: ${e2.message}`
+        );
+        router.refresh();
+        return;
+      }
+    }
+    setSaving(false);
+    log({
+      action: "create",
+      entity: "calendar_event",
+      entityId: data.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ลงคิวเข้ารับบริการ ${formatDate(date)}${
+        start ? ` ${start} น.` : " (ยังไม่เคาะเวลา)"
+      } — แพทย์ ${doctor.trim()}`,
+    });
+    router.refresh();
+  };
+
+  // ใช้ div ธรรมดาไม่ใช่ Card — `glass` ตั้ง background เป็น gradient ทับสีพื้นของ Tailwind
+  // (bg-amber-50/bg-emerald-50 จะไม่โผล่เลย) การ์ดเตือนที่อื่นในระบบก็ใช้ div เหมือนกัน
+  if (booked)
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-[0_8px_28px_rgba(94,58,49,0.08)]">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900">
+          <CheckCircle2 size={16} className="text-emerald-600" />
+          ลงคิวเข้าปฏิทินแล้ว
+        </h2>
+        <p className="mb-3 text-xs text-stone-500">
+          คิวนี้ขึ้นบนปฏิทินคิวแล้ว — ย้ายวัน/แก้เวลา/เปลี่ยนแพทย์ได้ที่หน้าปฏิทินคิว
+        </p>
+        <ul className="space-y-2">
+          {bookings.map((b) => (
+            <li
+              key={b.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-emerald-200 bg-white/80 px-3.5 py-2.5 text-sm"
+            >
+              <span className="font-semibold text-stone-800">
+                {formatDate(b.event_date)}
+              </span>
+              <span className="text-stone-500 tabular-nums">
+                {calendarTimeLabel(b.start_time, b.end_time)}
+              </span>
+              {b.doctor_name ? (
+                <DoctorNameChip name={b.doctor_name} doctors={doctors} />
+              ) : (
+                <span className="text-xs text-amber-700">ยังไม่ระบุแพทย์</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <Link
+          href="/influ-calendar"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11"
+        >
+          เปิดปฏิทินคิว
+        </Link>
+      </div>
+    );
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-[0_8px_28px_rgba(94,58,49,0.08)]">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900">
+        <AlertTriangle size={16} className="text-amber-600" />
+        {/* เคสที่เดินเลยขั้นนี้มาแล้วแต่ไม่มีคิว (ของเก่าก่อนมีการบังคับ) — ข้อความต่างกัน
+            เพราะบอกว่า "ต้องลงคิวก่อนไปขั้นตามงาน" กับเคสที่อยู่ขั้นตามงานแล้วมันขัดกันเอง */}
+        {passedStage
+          ? "ยังไม่ได้ลงคิวเข้าปฏิทิน — เคสนี้เดินเลยขั้นนี้มาแล้ว ลงคิวย้อนหลังได้เลย"
+          : "ยังไม่ได้ลงคิวเข้าปฏิทิน — ต้องลงคิวก่อนถึงจะไปขั้นตามงานได้"}
+      </h2>
+      <p className="mb-4 text-xs leading-5 text-stone-600">
+        เคาะ<b>วันที่เข้ารับบริการ</b>กับ<b>แพทย์ที่รับเคส</b>แล้วกดลงคิว
+        — ระบบจะเขียนคิวขึ้นปฏิทินคิวให้เลย ทีมอื่นจึงเห็นว่าวันนั้นมีใครเข้า
+        (วันกับแพทย์จะถูกอัปเดตกลับเข้าเคสให้อัตโนมัติ)
+      </p>
+
+      {!canBook ? (
+        <p className="rounded-lg border border-stone-200 bg-white/70 px-3 py-2 text-xs text-stone-500">
+          {influencer.completed
+            ? "เคสนี้ปิดงานแล้ว — ลงคิวย้อนหลังได้ที่หน้าปฏิทินคิว"
+            : "บัญชีนี้ลงคิวไม่ได้ — ให้ผู้ดูแลระบบ Influencer เป็นคนลงคิวให้"}
+        </p>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label htmlFor="book-date">วันที่เข้ารับบริการ *</Label>
+              <Input
+                id="book-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="book-start">เวลาเริ่ม</Label>
+              <Input
+                id="book-start"
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-stone-400">
+                ไม่กรอก = คิวทั้งวัน
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="book-doctor">แพทย์ที่รับเคส *</Label>
+              <DoctorSelect
+                id="book-doctor"
+                doctors={doctors}
+                value={doctor}
+                onChange={setDoctor}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <Button loading={saving} onClick={() => void book()}>
+              <CalendarPlus size={16} />
+              ลงคิวเข้าปฏิทิน
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ServiceDayStage({
   influencer,
   readOnly,
+  bookings,
+  doctors,
+  userId,
+  canBook,
 }: {
   influencer: InfluencerRow;
   readOnly: boolean;
+  /** คิว kind=service ของเคสนี้ — ว่าง = ยังไม่ลงคิว (ปิดขั้นนี้ไม่ได้) */
+  bookings: InfluCalendarEventRow[];
+  doctors: DoctorRow[];
+  userId: string | null;
+  /** ลงคิวได้ไหม (เคสยังไม่ปิดงาน + สิทธิ์แก้ไข) — แยกจาก readOnly ที่ล็อกการเดิน stage */
+  canBook: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -2140,6 +2377,13 @@ function ServiceDayStage({
   const history = influencer.procedure_history ?? [];
   /** ขั้นนี้รวมสัญญาไว้ด้วย — ปิดขั้นไปตามงานได้ต่อเมื่อมีไฟล์สัญญาที่เซนแล้ว */
   const contractUploaded = !!influencer.contract_file_path;
+  /** …และต้องลงคิวเข้าปฏิทินแล้วด้วย (ผู้ใช้ 2026-08-29 — ดู ServiceBookingCard) */
+  const booked = bookings.length > 0;
+  const blockReason = !contractUploaded
+    ? "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน (ส่วนสัญญาด้านบน)"
+    : !booked
+      ? "ต้องลงคิวเข้าปฏิทิน (วันที่ + แพทย์) ก่อน — การ์ดด้านบน"
+      : null;
 
   const saveChange = async (signatureData: string) => {
     // กันกดบันทึกลายเซนซ้ำ — ไม่งั้น history โดนต่อท้ายรายการเดิม 2 รอบ
@@ -2192,7 +2436,7 @@ function ServiceDayStage({
   const [goingNext, setGoingNext] = useState(false);
   const goNext = async () => {
     if (goingNext) return;
-    if (!contractUploaded) return;
+    if (blockReason) return;
     setGoingNext(true);
     setError(null);
     // สร้างงาน follow up ก่อน — ถ้าล้ม อย่าเพิ่งข้าม stage (ไม่งั้นค้างขั้นตามงานแบบไม่มีงาน)
@@ -2230,6 +2474,14 @@ function ServiceDayStage({
 
   return (
     <div className="space-y-4">
+      <ServiceBookingCard
+        influencer={influencer}
+        bookings={bookings}
+        doctors={doctors}
+        userId={userId}
+        canBook={canBook}
+      />
+
       <Card className="p-5">
         <h2 className="mb-1 text-sm font-semibold text-stone-900">
           หัตถการที่รับบริการ (แก้ไขหน้างานได้ — ต้องมีหัวหน้างานลงนามกำกับ)
@@ -2292,19 +2544,23 @@ function ServiceDayStage({
               <PenLine size={15} />
               แก้ไขหัตถการ (ต้องลงนามหัวหน้างาน)
             </Button>
-            <Button
-              loading={goingNext}
-              disabled={!contractUploaded}
-              title={
-                contractUploaded
-                  ? undefined
-                  : "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน (ส่วนสัญญาด้านบน)"
-              }
-              onClick={() => void goNext()}
-            >
-              <ArrowRight size={16} />
-              เรียบร้อย — ไปขั้น Follow up งาน
-            </Button>
+            <div className="flex flex-col items-end gap-1.5">
+              <Button
+                loading={goingNext}
+                disabled={blockReason !== null}
+                title={blockReason ?? undefined}
+                onClick={() => void goNext()}
+              >
+                <ArrowRight size={16} />
+                เรียบร้อย — ไปขั้น Follow up งาน
+              </Button>
+              {/* บอกเหตุผลเป็นข้อความด้วย — ปุ่มจางเฉยๆ บนมือถือไม่มี hover ให้เห็น title */}
+              {blockReason && (
+                <span className="text-right text-xs text-amber-700">
+                  {blockReason}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </Card>
