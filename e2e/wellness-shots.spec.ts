@@ -13,10 +13,10 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/wellness", name: "w-home" },
   { path: "/wellness-register", name: "w-register" },
   { path: "/wellness-lab", name: "w-lab" },
-  { path: "/wellness-booking", name: "w-booking" },
+  { path: "/wellness-contact", name: "w-contact" },
+  { path: "/wellness-calendar", name: "w-calendar" },
   { path: "/wellness-clinic", name: "w-clinic" },
   { path: "/wellness-cases", name: "w-cases" },
-  { path: "/wellness-calendar", name: "w-calendar" },
 ];
 
 async function login(page: Page) {
@@ -72,7 +72,26 @@ test("wellness screenshots", async ({ page }, testInfo) => {
     expect(ox, `${p.path}: ล้นแนวนอน ${ox}px`).toBeLessThanOrEqual(2);
   }
 
+  // หน้าเคสรายคน (เปิดจากภาพรวมเคส — หน้าสุดท้ายที่ goto คือ /wellness-cases)
+  const caseRow = page.locator('a[href^="/wellness/"]').first();
+  if ((await caseRow.count()) > 0) {
+    await caseRow.click();
+    await page.waitForURL("**/wellness/**", { timeout: 30_000 });
+    // รอให้หน้าจริงมาแทน skeleton (dev server compile หน้าแรกช้า) — ไม่งั้นได้ภาพ loading
+    await page
+      .getByRole("heading", { level: 1 })
+      .first()
+      .waitFor({ state: "visible", timeout: 60_000 });
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: shot("w-case-detail"), fullPage: true });
+  }
+
   // ปฏิทิน: เปิดการ์ดคิวใบแรก → โมดัลรายละเอียด
+  await page.goto("/wellness-calendar", {
+    waitUntil: "domcontentloaded",
+    timeout: 90_000,
+  });
+  await page.waitForTimeout(1200);
   const row = page.locator('button[aria-label^="ดูรายละเอียดคิว"]').first();
   if ((await row.count()) > 0) {
     await row.click();

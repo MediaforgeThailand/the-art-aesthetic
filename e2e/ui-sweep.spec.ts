@@ -28,7 +28,7 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/wellness", name: "wellness-home" },
   { path: "/wellness-register", name: "wellness-register" },
   { path: "/wellness-lab", name: "wellness-lab" },
-  { path: "/wellness-booking", name: "wellness-booking" },
+  { path: "/wellness-contact", name: "wellness-contact" },
   { path: "/wellness-clinic", name: "wellness-clinic" },
   { path: "/wellness-cases", name: "wellness-cases" },
   { path: "/wellness-calendar", name: "wellness-calendar" },

@@ -5,7 +5,8 @@
 //      วันที่เลือก = สี่เหลี่ยมมนสีขาวตัวหนังสือสีแบรนด์ · วันที่มีคิว = จุดขาวใต้ตัวเลข
 //   2) ใต้ปฏิทินเป็น "การ์ดต่อวัน" — ซ้ายมือเป็นแถบวันที่ไล่เฉด (ชื่อวัน + เลขวัน)
 //      ขวามือเป็นรายการเวลาของวันนั้นเรียงกัน กดแถวไหน = เปิดรายละเอียดคิวนั้น
-//   3) ปุ่ม + ลอยกลางล่างจอ (เฉพาะ admin) = ลงคิวในวันที่เลือก
+//   3) ปุ่ม "ลงคิวในวันที่เลือก" เต็มความกว้างใต้ปฏิทิน (admin, จอเล็ก) — เคยเป็น
+//      ปุ่มลอยกลางล่างตามภาพอ้างอิง แต่มันไปทับชื่อลูกค้าในการ์ดคิว จึงเลิกใช้
 // จอ ≥lg แถวเดียวกันนี้กลายเป็น 2 คอลัมน์ (ปฏิทินซ้าย · การ์ดคิวขวา)
 //
 // การลงคิว/ย้ายกลับเป็น "นัดไว้" ดัก 23P01 จาก exclusion constraint = คิวชนกัน
@@ -694,12 +695,6 @@ export function WellnessCalendarClient({
     return null;
   }
 
-  const bookButton = canAdmin ? (
-    <Button variant="secondary" onClick={() => setBookingOpen(true)}>
-      <Plus size={14} /> ลงคิวในวันนี้
-    </Button>
-  ) : undefined;
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:gap-6 lg:px-6 lg:py-5">
@@ -801,6 +796,16 @@ export function WellnessCalendarClient({
 
         {/* ---------------- การ์ดคิวของวัน ---------------- */}
         <section className="mt-5 space-y-3 px-3 sm:px-6 lg:mt-0 lg:px-0">
+          {/* ปุ่มลงคิวของมือถือ — วางไว้ใต้ปฏิทินตรงๆ ไม่ใช้ปุ่มลอย
+              (ปุ่มลอยเคยทับชื่อลูกค้าในการ์ดคิว = อ่านไม่ออก) */}
+          {canAdmin && (
+            <Button
+              onClick={() => setBookingOpen(true)}
+              className="min-h-12 w-full text-[15px] lg:hidden"
+            >
+              <Plus size={18} /> ลงคิวในวันที่เลือก
+            </Button>
+          )}
           <div className="flex flex-wrap items-baseline gap-x-2 px-1">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-700">
               {selected === today ? "วันนี้" : "วันที่เลือก"}
@@ -826,7 +831,6 @@ export function WellnessCalendarClient({
             day={selected}
             appts={dayAppts}
             onOpen={setDetailId}
-            emptyAction={bookButton}
           />
 
           {nextDays.length > 0 && (
@@ -849,23 +853,9 @@ export function WellnessCalendarClient({
             </>
           )}
 
-          {/* เว้นที่ให้ปุ่มลอยบนมือถือ */}
-          <div className="h-20 lg:hidden" />
-        </section>
+                  </section>
       </div>
 
-      {/* ปุ่มลอยกลางล่าง (ตามภาพอ้างอิง) — จอเล็กเท่านั้น */}
-      {canAdmin && (
-        <button
-          type="button"
-          onClick={() => setBookingOpen(true)}
-          aria-label="ลงคิวนัดในวันที่เลือก"
-          // ยกให้พ้นแถบแท็บล่าง (~60px + safe inset) — แถบล่างเป็น footer ใน flex column
-          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-[0_10px_24px_rgba(94,58,49,0.35)] transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
-        >
-          <Plus size={26} />
-        </button>
-      )}
 
       {detailAppt && (
         <ApptDetailModal

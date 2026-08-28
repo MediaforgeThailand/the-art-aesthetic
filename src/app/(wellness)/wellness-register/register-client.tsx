@@ -95,33 +95,36 @@ export function RegisterClient({
     const appt = nextApptByCustomer.get(c.id);
     const status = wellnessStatusOf(c, !!appt);
     return (
-      <li key={c.id} className="flex items-start gap-3 px-4 py-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-sm font-semibold text-brand-800">
+      <li
+        key={c.id}
+        className="flex items-start gap-3 rounded-2xl bg-white/95 px-3.5 py-3.5 shadow-sm ring-1 ring-stone-200/70"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-base font-semibold text-brand-800">
           {(c.first_name || "?").charAt(0)}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate text-sm font-medium text-stone-800">
+            <span className="truncate text-[15px] font-semibold text-stone-800">
               {wellnessCustomerName(c)}
             </span>
             <WellnessStatusChip status={status} />
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-stone-500">
             {c.phone && (
               <span className="inline-flex items-center gap-1">
-                <Phone size={11} className="text-stone-400" />
+                <Phone size={13} className="text-stone-400" />
                 {c.phone}
               </span>
             )}
             {c.procedure_text && (
               <span className="inline-flex min-w-0 items-center gap-1">
-                <Stethoscope size={11} className="shrink-0 text-stone-400" />
+                <Stethoscope size={13} className="shrink-0 text-stone-400" />
                 <span className="truncate">{c.procedure_text}</span>
               </span>
             )}
             {appt && (
               <span className="inline-flex items-center gap-1 font-medium text-brand-700">
-                <CalendarClock size={11} />
+                <CalendarClock size={13} />
                 {formatDate(appt.appt_date)} ·{" "}
                 {apptRangeLabel(appt.start_time, appt.duration_hours)}
               </span>
@@ -131,7 +134,7 @@ export function RegisterClient({
             </span>
           </div>
           {!c.completed_at && (
-            <p className="mt-1 text-[11px] text-stone-400">
+            <p className="mt-1 text-xs text-stone-400">
               ขั้นตอนตอนนี้: {WELLNESS_STATUS[status].hint}
             </p>
           )}
@@ -154,18 +157,18 @@ export function RegisterClient({
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-4xl px-3 py-4 sm:px-6 sm:py-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:max-w-xs sm:flex-1">
             <Search
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+              size={17}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400"
             />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหา ชื่อ / เบอร์ / หัตถการ"
-              className="glass w-full rounded-full border border-white/60 py-2 pl-9 pr-4 text-base text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-300 sm:text-sm"
+              className="w-full rounded-full border border-stone-200/80 bg-white/90 py-2.5 pl-10 pr-4 text-base text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
           <Button
@@ -177,7 +180,7 @@ export function RegisterClient({
         </div>
 
         {q && filtered.length === 0 && customers.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-[15px] text-amber-800">
             ไม่พบการ์ดที่ตรงกับ “{search}” — การ์ดทั้งหมด {customers.length}{" "}
             ใบยังอยู่ครบ
             <button
@@ -191,12 +194,12 @@ export function RegisterClient({
         )}
 
         <div className="space-y-4">
-          <section className="glass overflow-hidden rounded-xl">
-            <header className="flex flex-wrap items-baseline gap-x-2 border-b border-white/60 px-4 py-3">
-              <h2 className="text-sm font-semibold text-stone-800">
+          <section>
+            <header className="mb-2 flex flex-wrap items-baseline gap-x-2 px-1">
+              <h2 className="text-base font-semibold text-stone-800">
                 เคสที่กำลังดำเนินการ
               </h2>
-              <span className="text-xs text-stone-400">{active.length} ใบ</span>
+              <span className="text-[13px] text-stone-400">{active.length} ใบ</span>
             </header>
             {active.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
@@ -204,27 +207,27 @@ export function RegisterClient({
                 <p className="text-sm text-stone-500">
                   ยังไม่มีการ์ดที่กำลังดำเนินการ
                 </p>
-                <p className="text-xs text-stone-400">
+                <p className="text-[13px] text-stone-400">
                   กด “เพิ่มการ์ดลูกค้า” หลังลูกค้าศัลยกรรมตรวจเลือดเสร็จ
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-white/60">{active.map(renderRow)}</ul>
+              <ul className="space-y-2.5">{active.map(renderRow)}</ul>
             )}
           </section>
 
           {closed.length > 0 && (
-            <section className="glass overflow-hidden rounded-xl">
-              <header className="flex flex-wrap items-baseline gap-x-2 border-b border-white/60 px-4 py-3">
-                <h2 className="text-sm font-semibold text-stone-800">
+            <section>
+              <header className="mb-2 flex flex-wrap items-baseline gap-x-2 px-1">
+                <h2 className="text-base font-semibold text-stone-800">
                   ปิดเคสแล้ว
                 </h2>
-                <span className="text-xs text-stone-400">{closed.length} ใบ</span>
-                <span className="text-xs text-stone-400">
+                <span className="text-[13px] text-stone-400">{closed.length} ใบ</span>
+                <span className="text-[13px] text-stone-400">
                   · เก็บเป็นประวัติ แก้ไขไม่ได้
                 </span>
               </header>
-              <ul className="divide-y divide-white/60">{closed.map(renderRow)}</ul>
+              <ul className="space-y-2.5">{closed.map(renderRow)}</ul>
             </section>
           )}
         </div>

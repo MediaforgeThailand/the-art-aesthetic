@@ -352,7 +352,7 @@ export function WellnessDetailClient({
               )}
             </div>
             <WellnessStageTracker status={status} className="mt-4" />
-            <p className="mt-3 text-center text-xs text-stone-500">
+            <p className="mt-3 text-center text-[13px] text-stone-500">
               {WELLNESS_STATUS[status].hint}
             </p>
           </section>
@@ -374,14 +374,14 @@ export function WellnessDetailClient({
         {/* ---------- ข้อมูลลูกค้า (ทุกบทบาทเห็น — เบอร์โทรเฉพาะคนที่ต้องใช้) ---------- */}
         <section className="glass overflow-hidden rounded-xl">
           <header className="flex items-center gap-2 border-b border-white/60 px-4 py-3">
-            <h2 className="text-sm font-semibold text-stone-800">
+            <h2 className="text-base font-semibold text-stone-800">
               ข้อมูลลูกค้า
             </h2>
           </header>
           <dl className="space-y-2.5 px-4 py-3.5 text-sm">
             {seePhone && (
               <div className="flex items-center gap-2">
-                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                <dt className="w-24 shrink-0 text-[13px] text-stone-400">
                   เบอร์โทร
                 </dt>
                 <dd className="min-w-0">
@@ -399,7 +399,7 @@ export function WellnessDetailClient({
               </div>
             )}
             <div className="flex items-start gap-2">
-              <dt className="w-24 shrink-0 text-xs text-stone-400">
+              <dt className="w-24 shrink-0 text-[13px] text-stone-400">
                 หัตถการที่ทำ
               </dt>
               <dd className="min-w-0 text-stone-700">
@@ -410,7 +410,7 @@ export function WellnessDetailClient({
             </div>
             {customer.note && (
               <div className="flex items-start gap-2">
-                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                <dt className="w-24 shrink-0 text-[13px] text-stone-400">
                   หมายเหตุ
                 </dt>
                 <dd className="min-w-0 whitespace-pre-wrap text-stone-600">
@@ -419,16 +419,16 @@ export function WellnessDetailClient({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <dt className="w-24 shrink-0 text-xs text-stone-400">
+              <dt className="w-24 shrink-0 text-[13px] text-stone-400">
                 สร้างการ์ด
               </dt>
-              <dd className="text-xs text-stone-500">
+              <dd className="text-[13px] text-stone-500">
                 {formatDateTime(customer.created_at)}
               </dd>
             </div>
             {completed && (
               <div className="flex items-center gap-2">
-                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                <dt className="w-24 shrink-0 text-[13px] text-stone-400">
                   ปิดเคสเมื่อ
                 </dt>
                 <dd className="text-xs text-emerald-700">
@@ -482,7 +482,7 @@ export function WellnessDetailClient({
                     <button
                       type="button"
                       onClick={() => void unconfirmLab()}
-                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:bg-white/70 hover:text-stone-700 max-sm:min-h-11"
+                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[13px] text-stone-500 transition-colors hover:bg-white/70 hover:text-stone-700 max-sm:min-h-11"
                     >
                       <RotateCcw size={12} /> ยกเลิกการยืนยัน
                     </button>
@@ -527,7 +527,7 @@ export function WellnessDetailClient({
           <section className="glass overflow-hidden rounded-xl">
             <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
               <ClipboardList size={16} className="text-brand-500" />
-              <h2 className="text-sm font-semibold text-stone-800">
+              <h2 className="text-base font-semibold text-stone-800">
                 คิวนัดฟังผล + ปรึกษาแพทย์
               </h2>
               {canAdmin && !completed && (
@@ -542,7 +542,7 @@ export function WellnessDetailClient({
             </header>
 
             {appointments.length === 0 ? (
-              <p className="px-4 py-5 text-xs text-stone-400">
+              <p className="px-4 py-5 text-[13px] text-stone-400">
                 ยังไม่มีคิวนัด
                 {canAdmin && !completed
                   ? " — กด “ลงคิวนัด” หลังโทรตกลงเวลากับลูกค้าแล้ว"
@@ -557,20 +557,20 @@ export function WellnessDetailClient({
                   return (
                     <li key={a.id} className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-stone-800">
+                        <span className="text-[15px] font-semibold text-stone-800">
                           {formatDate(a.appt_date)}
                         </span>
                         <span className="text-sm text-stone-600">
                           {apptRangeLabel(a.start_time, a.duration_hours)}
                         </span>
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${meta.badge}`}
                         >
                           {meta.label}
                         </span>
                       </div>
                       {a.note && (
-                        <p className="mt-1 text-xs text-stone-500">{a.note}</p>
+                        <p className="mt-1 text-[13px] text-stone-500">{a.note}</p>
                       )}
                       {canAdmin && !completed && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -579,7 +579,7 @@ export function WellnessDetailClient({
                               <button
                                 type="button"
                                 onClick={() => void setApptStatus(a.id, "done")}
-                                className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 max-sm:min-h-11"
+                                className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 max-sm:min-h-11"
                               >
                                 มาแล้ว · เสร็จ
                               </button>
@@ -588,7 +588,7 @@ export function WellnessDetailClient({
                                 onClick={() =>
                                   void setApptStatus(a.id, "cancelled")
                                 }
-                                className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
+                                className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
                               >
                                 ยกเลิกคิว
                               </button>
@@ -599,7 +599,7 @@ export function WellnessDetailClient({
                               onClick={() =>
                                 void setApptStatus(a.id, "scheduled")
                               }
-                              className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
+                              className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
                             >
                               <RotateCcw size={11} className="mr-1 inline" />
                               กลับเป็นนัดไว้
@@ -634,8 +634,8 @@ export function WellnessDetailClient({
         {/* ---------- ขั้น 4: จัดการเคส (Admin เท่านั้น) ---------- */}
         {canAdmin && (
           <section className="glass overflow-hidden rounded-xl px-4 py-3.5">
-            <h2 className="text-sm font-semibold text-stone-800">จัดการเคส</h2>
-            <p className="mt-1 text-xs text-stone-500">
+            <h2 className="text-base font-semibold text-stone-800">จัดการเคส</h2>
+            <p className="mt-1 text-[13px] text-stone-500">
               {completed
                 ? "เคสนี้ปิดแล้ว — เปิดใหม่ได้ถ้าลูกค้ากลับมาใช้บริการต่อ"
                 : "ลูกค้าฟังผล + ปรึกษาแพทย์เรียบร้อย = ปิดเคสเพื่อเก็บเป็นประวัติ"}

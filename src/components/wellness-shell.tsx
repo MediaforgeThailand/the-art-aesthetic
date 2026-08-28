@@ -1,11 +1,12 @@
 "use client";
 
 import {
+  ChevronRight,
   HeartPulse,
-  Home,
+  LayoutGrid,
   LogOut,
+  MoreHorizontal,
   Settings,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +19,9 @@ import { WELLNESS_ICONS } from "@/components/wellness/icons";
 import { createClient } from "@/lib/supabase/client";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import {
+  wellnessExtraPagesFor,
   wellnessHomeHref,
+  wellnessLabelOf,
   wellnessTabsFor,
   wellnessWorkspacesFor,
   type WellnessRoleFlags,
@@ -39,9 +42,11 @@ function roleLabelOf(flags: WellnessRoleFlags): string | null {
 function DesktopNav({
   items,
   activeHref,
+  flags,
 }: {
   items: WellnessWorkspace[];
   activeHref: string | null;
+  flags: WellnessRoleFlags;
 }) {
   return (
     <nav
@@ -57,14 +62,14 @@ function DesktopNav({
             href={w.href}
             aria-current={active ? "page" : undefined}
             title={w.detail}
-            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 active:scale-[0.97] xl:px-3 ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-200 active:scale-[0.97] xl:px-3 ${
               active
                 ? "bg-white text-brand-700 shadow-sm ring-1 ring-brand-100"
                 : "text-stone-500 hover:bg-white/70 hover:text-brand-800"
             }`}
           >
-            <Icon size={15} className={active ? "text-brand-600" : ""} />
-            {w.label}
+            <Icon size={16} className={active ? "text-brand-600" : ""} />
+            {wellnessLabelOf(w, flags).label}
           </Link>
         );
       })}
@@ -72,41 +77,52 @@ function DesktopNav({
   );
 }
 
-/** แท็บ 1 ช่องบนแถบล่าง — ไอคอนใหญ่ + ป้ายสั้น เป้านิ้วเต็มช่อง */
-function TabItem({
-  href,
+/** เนื้อในของแท็บ 1 ช่อง — ใช้ทั้งลิงก์และปุ่ม (เพิ่มเติม) ให้หน้าตาตรงกันเป๊ะ */
+function TabInner({
   label,
   active,
+  step,
   icon: Icon,
 }: {
-  href: string;
   label: string;
   active: boolean;
+  /** เลขขั้นใน flow — โชว์เป็นตัวเลขจิ๋วบนไอคอนให้เห็นลำดับงาน */
+  step?: number | null;
   icon: LucideIcon;
 }) {
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 active:scale-95"
-    >
+    <>
       <span
-        className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+        className={`relative flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
           active ? "bg-brand-100/90 text-brand-700" : "text-stone-400"
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+        <Icon size={21} strokeWidth={active ? 2.2 : 1.8} />
+        {step != null && (
+          <span
+            className={`absolute right-2.5 top-0 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold ${
+              active
+                ? "bg-brand-600 text-white"
+                : "bg-stone-200 text-stone-500"
+            }`}
+          >
+            {step}
+          </span>
+        )}
       </span>
       <span
-        className={`max-w-full truncate text-[10px] font-medium leading-none ${
-          active ? "text-brand-700" : "text-stone-400"
+        className={`max-w-full truncate text-[11px] font-medium leading-none ${
+          active ? "text-brand-700" : "text-stone-500"
         }`}
       >
         {label}
       </span>
-    </Link>
+    </>
   );
 }
+
+const TAB_CLASS =
+  "flex min-w-0 flex-1 cursor-pointer flex-col items-center justify-center gap-1 py-1.5 active:scale-95";
 
 /**
  * โครงหน้าของ **ระบบ Wellness** — หน้าตาแบบแอปมือถือ (redesign 2026-08-28 รอบสอง
@@ -163,9 +179,9 @@ export function WellnessShell({
   }, [userId]);
 
   const workspaces = wellnessWorkspacesFor(flags);
-  const tabs = wellnessTabsFor(flags);
-  // แท็บ "หน้าหลัก" โชว์เฉพาะคนที่หน้า /wellness เป็นหน้าเลือกงานจริง
-  // (บทบาทเดียว /wellness redirect เข้าหน้างานทันที — แท็บนี้จะกลายเป็นปุ่มเด้งวน)
+  const tabs = wellnessTabsFor(flags); // เรียงตาม flow: ทะเบียน → ผลแลบ → ติดต่อ → ลงคิว → คิวตรวจ
+  const extraPages = wellnessExtraPagesFor(flags);
+  // หน้าเลือกงานมีจริงเฉพาะคนหลายบทบาท/admin (บทบาทเดียว /wellness เด้งเข้าหน้างานทันที)
   const showHome = wellnessHomeHref(flags) === null;
 
   const isActive = (href: string) =>
@@ -236,7 +252,7 @@ export function WellnessShell({
           )}
 
           <span aria-hidden className="h-7 w-px shrink-0 bg-stone-200/90" />
-          <DesktopNav items={workspaces} activeHref={activeHref} />
+          <DesktopNav items={workspaces} activeHref={activeHref} flags={flags} />
           <span aria-hidden className="h-7 w-px shrink-0 bg-stone-200/90" />
 
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -267,74 +283,93 @@ export function WellnessShell({
         {children}
       </main>
 
-      {/* ---------- แถบแท็บล่างแบบแอปมือถือ: จอ <lg ---------- */}
+      {/* ---------- แถบแท็บล่างแบบแอปมือถือ: จอ <lg ----------
+           เรียงตาม flow เสมอ (ทะเบียน → ผลแลบ → ติดต่อ → ลงคิว → คิวตรวจ)
+           แล้วปิดท้ายด้วย "เพิ่มเติม" ที่รวมหน้าเครื่องมือ + บัญชี */}
       <nav
         aria-label="เมนูระบบ Wellness"
-        className="flex shrink-0 items-stretch border-t border-white/70 bg-white/90 px-1 pb-safe backdrop-blur-xl lg:hidden"
+        className="flex shrink-0 items-stretch border-t border-stone-200/80 bg-white/95 px-0.5 pb-safe backdrop-blur-xl lg:hidden"
       >
-        {showHome && (
-          <TabItem
-            href="/wellness"
-            label="หน้าหลัก"
-            active={isActive("/wellness")}
-            icon={Home}
-          />
-        )}
         {tabs.map((w) => (
-          <TabItem
+          <Link
             key={w.href}
             href={w.href}
-            label={w.short}
-            active={isActive(w.href)}
-            icon={WELLNESS_ICONS[w.icon]}
-          />
+            aria-current={isActive(w.href) ? "page" : undefined}
+            className={TAB_CLASS}
+          >
+            <TabInner
+              label={wellnessLabelOf(w, flags).short}
+              active={isActive(w.href)}
+              step={w.step}
+              icon={WELLNESS_ICONS[w.icon]}
+            />
+          </Link>
         ))}
         <button
           type="button"
           onClick={() => setAccountOpen(true)}
-          aria-label="บัญชีของฉัน"
-          className="flex min-w-0 flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 py-1.5 active:scale-95"
+          aria-label="เพิ่มเติม และบัญชีของฉัน"
+          className={TAB_CLASS}
         >
-          <span
-            className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
-              accountOpen || profileOpen ? "bg-brand-100/90" : ""
-            }`}
-          >
-            {avatarPath && avatarUrl ? (
-              avatarCircle("h-7 w-7", "text-[11px]")
-            ) : userId ? (
-              avatarCircle("h-7 w-7", "text-[11px]")
-            ) : (
-              <UserRound size={20} className="text-stone-400" />
-            )}
-          </span>
-          <span className="max-w-full truncate text-[10px] font-medium leading-none text-stone-400">
-            โปรไฟล์
-          </span>
+          <TabInner
+            label="เพิ่มเติม"
+            active={accountOpen || profileOpen}
+            icon={MoreHorizontal}
+          />
         </button>
       </nav>
 
-      {/* ---------- sheet บัญชีของฉัน (จากแท็บโปรไฟล์) ---------- */}
+      {/* ---------- sheet เพิ่มเติม + บัญชีของฉัน (จากแท็บขวาสุด) ---------- */}
       <Modal
         open={accountOpen}
         onClose={() => setAccountOpen(false)}
-        title="บัญชีของฉัน"
+        title="เพิ่มเติม"
       >
         <div className="space-y-3">
+          {(showHome || extraPages.length > 0) && (
+            <div className="space-y-1.5">
+              {showHome && (
+                <Link
+                  href="/wellness"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex min-h-12 items-center gap-3 rounded-xl bg-white/70 px-3 text-[15px] text-stone-700 transition-colors hover:bg-brand-50"
+                >
+                  <LayoutGrid size={18} className="shrink-0 text-brand-500" />
+                  หน้าเลือกงาน
+                  <ChevronRight size={16} className="ml-auto text-stone-300" />
+                </Link>
+              )}
+              {extraPages.map((w) => {
+                const Icon = WELLNESS_ICONS[w.icon];
+                return (
+                  <Link
+                    key={w.href}
+                    href={w.href}
+                    onClick={() => setAccountOpen(false)}
+                    className="flex min-h-12 items-center gap-3 rounded-xl bg-white/70 px-3 text-[15px] text-stone-700 transition-colors hover:bg-brand-50"
+                  >
+                    <Icon size={18} className="shrink-0 text-brand-500" />
+                    {wellnessLabelOf(w, flags).label}
+                    <ChevronRight size={16} className="ml-auto text-stone-300" />
+                  </Link>
+                );
+              })}
+            </div>
+          )}
           <div className="flex items-center gap-3 rounded-xl bg-white/60 px-3 py-3">
             {avatarCircle("h-11 w-11", "text-base")}
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-stone-800">
+              <p className="truncate text-[15px] font-semibold text-stone-800">
                 {displayName || "ผู้ใช้งาน"}
               </p>
-              <p className="truncate text-xs text-stone-400">{userEmail}</p>
+              <p className="truncate text-[13px] text-stone-400">{userEmail}</p>
               {jobTitle && (
-                <p className="truncate text-xs text-stone-400">{jobTitle}</p>
+                <p className="truncate text-[13px] text-stone-400">{jobTitle}</p>
               )}
             </div>
             {roleLabel && (
-              <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
-                <HeartPulse size={11} /> {roleLabel}
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                <HeartPulse size={12} /> {roleLabel}
               </span>
             )}
           </div>
@@ -345,16 +380,16 @@ export function WellnessShell({
               setAccountOpen(false);
               setProfileOpen(true);
             }}
-            className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-stone-700 transition-colors hover:bg-brand-50"
+            className="flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-[15px] text-stone-700 transition-colors hover:bg-brand-50"
           >
-            <Settings size={17} className="text-stone-400" /> ตั้งค่าโปรไฟล์
+            <Settings size={18} className="text-stone-400" /> ตั้งค่าโปรไฟล์
           </button>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-rose-600 transition-colors hover:bg-rose-50"
+            className="flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-[15px] text-rose-600 transition-colors hover:bg-rose-50"
           >
-            <LogOut size={17} /> ออกจากระบบ
+            <LogOut size={18} /> ออกจากระบบ
           </button>
         </div>
       </Modal>

@@ -16,7 +16,7 @@ export function WellnessStatusChip({
   const meta = WELLNESS_STATUS[status];
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge} ${className}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${meta.badge} ${className}`}
     >
       {meta.label}
     </span>

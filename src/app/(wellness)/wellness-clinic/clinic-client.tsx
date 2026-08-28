@@ -45,7 +45,7 @@ function ApptCard({ appt, muted }: { appt: ClinicAppt; muted?: boolean }) {
       }`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-stone-800">
+        <span className="inline-flex items-center gap-1.5 text-base font-semibold text-stone-800">
           <Clock size={14} className="text-brand-500" />
           {apptRangeLabel(appt.start_time, appt.duration_hours)}
         </span>
@@ -55,16 +55,16 @@ function ApptCard({ appt, muted }: { appt: ClinicAppt; muted?: boolean }) {
             : "(การ์ดลูกค้าถูกลบ)"}
         </span>
         <span
-          className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}
+          className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${meta.badge}`}
         >
           {meta.label}
         </span>
       </div>
 
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-stone-500">
         {appt.customer?.procedure_text && (
           <span className="inline-flex min-w-0 items-center gap-1">
-            <Stethoscope size={11} className="shrink-0 text-stone-400" />
+            <Stethoscope size={13} className="shrink-0 text-stone-400" />
             <span className="truncate">{appt.customer.procedure_text}</span>
           </span>
         )}
@@ -72,14 +72,14 @@ function ApptCard({ appt, muted }: { appt: ClinicAppt; muted?: boolean }) {
       </div>
 
       <div className="mt-2 border-t border-white/70 pt-2">
-        <p className="text-[11px] font-medium text-stone-500">
+        <p className="text-xs font-medium text-stone-500">
           ผลตรวจเลือด ({files.length} ไฟล์)
           {appt.customer && !appt.customer.lab_confirmed_at && (
             <span className="ml-1 text-amber-700">· ทีม Lab ยังไม่ยืนยันผล</span>
           )}
         </p>
         {files.length === 0 ? (
-          <p className="mt-1 text-xs text-stone-400">ยังไม่มีไฟล์ผลตรวจ</p>
+          <p className="mt-1 text-[13px] text-stone-400">ยังไม่มีไฟล์ผลตรวจ</p>
         ) : (
           <ul className="mt-0.5 divide-y divide-white/70">
             {files.map((f) => (
@@ -114,16 +114,16 @@ function ApptGroup({
   return (
     <section className="glass overflow-hidden rounded-xl">
       <header className="flex flex-wrap items-baseline gap-x-2 border-b border-white/60 px-4 py-3">
-        <h2 className="text-sm font-semibold text-stone-800">{title}</h2>
-        <span className="text-xs text-stone-400">{items.length} คิว</span>
+        <h2 className="text-base font-semibold text-stone-800">{title}</h2>
+        <span className="text-[13px] text-stone-400">{items.length} คิว</span>
         {hint && (
-          <span className="basis-full text-xs text-stone-400 sm:basis-auto sm:before:mx-1 sm:before:content-['·']">
+          <span className="basis-full text-[13px] text-stone-400 sm:basis-auto sm:before:mx-1 sm:before:content-['·']">
             {hint}
           </span>
         )}
       </header>
       {items.length === 0 ? (
-        <p className="px-4 py-5 text-xs text-stone-400">{emptyText}</p>
+        <p className="px-4 py-5 text-[13px] text-stone-400">{emptyText}</p>
       ) : groupByDate ? (
         <div className="space-y-3 px-3 py-3">
           {days.map((d) => (
@@ -206,18 +206,18 @@ export function ClinicClient({
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:max-w-xs sm:flex-1">
             <Search
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+              size={17}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400"
             />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาชื่อคนไข้"
-              className="glass w-full rounded-full border border-white/60 py-2 pl-9 pr-4 text-base text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-300 sm:text-sm"
+              className="w-full rounded-full border border-stone-200/80 bg-white/90 py-2.5 pl-10 pr-4 text-base text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
           <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 sm:ml-auto">
@@ -226,7 +226,7 @@ export function ClinicClient({
         </div>
 
         {q && matched.length === 0 && appointments.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-[15px] text-amber-800">
             ไม่พบคิวที่ตรงกับ “{search}”
             <button
               type="button"
