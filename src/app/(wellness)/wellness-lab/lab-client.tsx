@@ -233,7 +233,8 @@ export function LabQueueClient({
               <span className="text-[13px] text-stone-400">
                 {confirmed.length} ราย
               </span>
-              <span className="ml-auto text-xs text-stone-400">
+              {/* คำใบ้ยาว ซ่อนบนจอเล็ก — ไม่งั้นหัวข้อโดนบีบจนตัดบรรทัดกลางคำ */}
+              <span className="ml-auto hidden text-xs text-stone-400 sm:inline">
                 กดเพื่อ{showConfirmed ? "ซ่อน" : "เปิดดู"} — อัพผิดยังแก้ได้
               </span>
             </button>
