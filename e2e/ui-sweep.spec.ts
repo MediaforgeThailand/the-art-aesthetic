@@ -29,6 +29,10 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
+  // KPI คอนเทนต์ — ปฏิทินรายคน / ภาพรวมทีม / หน้าตั้งค่าเป้า
+  { path: "/content-tracking", name: "content-tracking" },
+  { path: "/content-tracking/overview", name: "content-overview" },
+  { path: "/content-kpi", name: "content-kpi" },
   { path: "/files", name: "files" },
   { path: "/accounts", name: "accounts" },
 ];
@@ -81,13 +85,15 @@ async function login(page: Page) {
   await password.waitFor({ state: "visible", timeout: 15_000 });
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
-  // waitUntil "commit" — แค่ URL เปลี่ยนถึง /dashboard ก็พอ ไม่รอ load (กติกาเดียวกับ gotoPage)
+  // waitUntil "commit" — แค่ URL เปลี่ยนถึง /start ก็พอ ไม่รอ load (กติกาเดียวกับ gotoPage)
+  // /start ไม่ใช่ /dashboard: login-client push ไป /start (เลือกหน้าแรกตามสิทธิ์) ตั้งแต่
+  // ตอนย้าย logic ออกจาก root — เทสต์ที่ยังรอ **/dashboard จะ timeout แม้ล็อกอินสำเร็จ
   try {
-    await page.waitForURL("**/dashboard", { timeout: 15_000, waitUntil: "commit" });
+    await page.waitForURL("**/start", { timeout: 15_000, waitUntil: "commit" });
   } catch {
     // click แรกอาจยิงก่อน handler ผูกเสร็จ (จังหวะ hydration) — ส่งซ้ำอีกครั้ง
     await page.locator('form button[type="submit"]').click();
-    await page.waitForURL("**/dashboard", { timeout: 30_000, waitUntil: "commit" });
+    await page.waitForURL("**/start", { timeout: 30_000, waitUntil: "commit" });
   }
 }
 
