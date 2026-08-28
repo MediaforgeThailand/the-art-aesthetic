@@ -11,8 +11,8 @@ import { wellnessRoleFlags } from "@/lib/wellness-constants";
  *
  * ทีมที่ใช้ระบบนี้ (BC / Lab / Admin / แพทย์ wellness) ไม่ได้ทำงานในแอปทีม
  * จึงมีแถบบนของตัวเอง — `(wellness)` เป็น route group URL จริงคือ
- * /wellness, /wellness/[id], /wellness-register, /wellness-lab,
- * /wellness-contact, /wellness-calendar, /wellness-clinic, /wellness-cases
+ * /wellness, /wellness/[id], /wellness/register, /wellness/lab,
+ * /wellness/contact, /wellness/calendar, /wellness/clinic, /wellness/cases
  *
  * เมนูบนแถบนี้ขึ้นกับ **บทบาทที่ติ๊กไว้จริง** ของบัญชี (ดู wellnessWorkspacesFor)
  */

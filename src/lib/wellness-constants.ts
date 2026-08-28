@@ -231,7 +231,7 @@ export type WellnessWorkspace = {
 export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   {
     id: "register",
-    href: "/wellness-register",
+    href: "/wellness/register",
     label: "ทะเบียนลูกค้า",
     short: "ทะเบียน",
     detail:
@@ -243,7 +243,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "lab",
-    href: "/wellness-lab",
+    href: "/wellness/lab",
     label: "อัพผลแลบ",
     short: "ผลแลบ",
     detail:
@@ -255,7 +255,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "contact",
-    href: "/wellness-contact",
+    href: "/wellness/contact",
     label: "ข้อมูลติดต่อ",
     short: "ติดต่อ",
     detail:
@@ -267,7 +267,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "calendar",
-    href: "/wellness-calendar",
+    href: "/wellness/calendar",
     label: "ลงคิวนัด",
     short: "ลงคิว",
     detail: "ปฏิทินคิวทั้งเดือน — กดวันแล้วลงคิวเข้าพบแพทย์ (1–3 ชม.)",
@@ -280,7 +280,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "clinic",
-    href: "/wellness-clinic",
+    href: "/wellness/clinic",
     label: "คิวตรวจของแพทย์",
     short: "คิวตรวจ",
     detail: "คิวที่ต้องตรวจวันนี้และวันถัดไป พร้อมเปิดผลเลือดของแต่ละคน",
@@ -291,7 +291,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "cases",
-    href: "/wellness-cases",
+    href: "/wellness/cases",
     label: "ภาพรวมเคส",
     short: "เคส",
     detail: "การ์ดทั้งหมดในระบบ แยกตามขั้นตอน — ใช้ตามงานที่ค้าง",

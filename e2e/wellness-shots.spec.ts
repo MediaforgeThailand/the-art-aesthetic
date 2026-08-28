@@ -11,12 +11,12 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
 const PAGES: { path: string; name: string }[] = [
   { path: "/wellness", name: "w-home" },
-  { path: "/wellness-register", name: "w-register" },
-  { path: "/wellness-lab", name: "w-lab" },
-  { path: "/wellness-contact", name: "w-contact" },
-  { path: "/wellness-calendar", name: "w-calendar" },
-  { path: "/wellness-clinic", name: "w-clinic" },
-  { path: "/wellness-cases", name: "w-cases" },
+  { path: "/wellness/register", name: "w-register" },
+  { path: "/wellness/lab", name: "w-lab" },
+  { path: "/wellness/contact", name: "w-contact" },
+  { path: "/wellness/calendar", name: "w-calendar" },
+  { path: "/wellness/clinic", name: "w-clinic" },
+  { path: "/wellness/cases", name: "w-cases" },
 ];
 
 async function login(page: Page) {
@@ -72,8 +72,8 @@ test("wellness screenshots", async ({ page }, testInfo) => {
     expect(ox, `${p.path}: ล้นแนวนอน ${ox}px`).toBeLessThanOrEqual(2);
   }
 
-  // หน้าเคสรายคน (เปิดจากภาพรวมเคส — หน้าสุดท้ายที่ goto คือ /wellness-cases)
-  const caseRow = page.locator('a[href^="/wellness/"]').first();
+  // หน้าเคสรายคน (เปิดจากภาพรวมเคส — หน้าสุดท้ายที่ goto คือ /wellness/cases)
+  const caseRow = page.locator(String.raw`a[aria-label^="เปิดเคสของ"]`).first();
   if ((await caseRow.count()) > 0) {
     await caseRow.click();
     await page.waitForURL("**/wellness/**", { timeout: 30_000 });
@@ -87,7 +87,7 @@ test("wellness screenshots", async ({ page }, testInfo) => {
   }
 
   // ปฏิทิน: เปิดการ์ดคิวใบแรก → โมดัลรายละเอียด
-  await page.goto("/wellness-calendar", {
+  await page.goto("/wellness/calendar", {
     waitUntil: "domcontentloaded",
     timeout: 90_000,
   });

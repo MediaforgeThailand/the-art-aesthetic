@@ -35,7 +35,7 @@ export type ScheduledApptLite = Pick<
  * ภาพรวมเคสของ Admin — การ์ดลูกค้าจัดกลุ่มตามขั้นของ flow
  *
  * **หน้านี้ไม่มีปุ่มลงมือทำ** โดยตั้งใจ — เป็นหน้า "ดูว่าค้างตรงไหน" แล้วกดเข้าไป
- * ทำงานที่หน้าเคส/หน้าขั้นนั้น (เพิ่มการ์ด = /wellness-register, โทร = /wellness-contact)
+ * ทำงานที่หน้าเคส/หน้าขั้นนั้น (เพิ่มการ์ด = /wellness/register, โทร = /wellness/contact)
  *
  * ดีไซน์ (ผู้ใช้ 2026-08-28: "fonts เล็กจนอ่านยาก · แต่ละบรรทัดดูไม่มีมิติ · เว้นว่างเยอะ"):
  * แถว = **การ์ดขาวมีเงา+ขอบ** ไม่ใช่บรรทัดในตารางแบน, ตัวหนังสือหลัก 15px/เมตา 13px,
@@ -158,6 +158,9 @@ export function WellnessCasesClient({
                     <li key={c.id}>
                       <Link
                         href={`/wellness/${c.id}`}
+                        // aria-label นี้เป็น selector ของ e2e — หน้าเคสอยู่ใต้ /wellness/<id>
+                        // ซึ่งเป็น prefix เดียวกับเมนู (/wellness/register ฯลฯ) จับด้วย href ไม่ได้แล้ว
+                        aria-label={`เปิดเคสของ ${wellnessCustomerName(c)}`}
                         className="flex items-center gap-3 rounded-2xl bg-white/95 px-3.5 py-3.5 shadow-sm ring-1 ring-stone-200/70 transition-all duration-200 hover:shadow-md hover:ring-brand-300 active:scale-[0.99]"
                       >
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-base font-semibold text-brand-800">

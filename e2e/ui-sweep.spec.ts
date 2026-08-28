@@ -26,12 +26,12 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influencer-management/trash", name: "influ-trash" },
   // Wellness — 1 บทบาท = 1 หน้า (บัญชีเทสต์เป็น admin จึงเห็นครบทุกหน้า)
   { path: "/wellness", name: "wellness-home" },
-  { path: "/wellness-register", name: "wellness-register" },
-  { path: "/wellness-lab", name: "wellness-lab" },
-  { path: "/wellness-contact", name: "wellness-contact" },
-  { path: "/wellness-clinic", name: "wellness-clinic" },
-  { path: "/wellness-cases", name: "wellness-cases" },
-  { path: "/wellness-calendar", name: "wellness-calendar" },
+  { path: "/wellness/register", name: "wellness-register" },
+  { path: "/wellness/lab", name: "wellness-lab" },
+  { path: "/wellness/contact", name: "wellness-contact" },
+  { path: "/wellness/clinic", name: "wellness-clinic" },
+  { path: "/wellness/cases", name: "wellness-cases" },
+  { path: "/wellness/calendar", name: "wellness-calendar" },
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
@@ -318,7 +318,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
     {
-      path: "/wellness-register",
+      path: "/wellness/register",
       label: "เพิ่มการ์ดลูกค้า",
       name: "wellness-add-customer",
     },
@@ -366,11 +366,11 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   /* ---------- Wellness: การ์ดลูกค้าใบแรก (ภาพรวมเคสของ admin → หน้ารายละเอียด) ---------- */
-  await gotoPage(page, "/wellness-cases");
+  await gotoPage(page, "/wellness/cases");
   await settle(page, 1000);
-  await expectNot404(page, "/wellness-cases (ก่อนเปิดการ์ดลูกค้า)");
-  // แถวลูกค้าเป็น <Link href="/wellness/{id}"> — เมนู shell ลิงก์ "/wellness" เฉยๆ ไม่ติด selector นี้
-  const wellnessRow = page.locator('a[href^="/wellness/"]').first();
+  await expectNot404(page, "/wellness/cases (ก่อนเปิดการ์ดลูกค้า)");
+  // แถวลูกค้าจับด้วย aria-label — ตั้งแต่ย้าย URL มาอยู่ใต้ /wellness/ เมนูก็ prefix เดียวกัน
+  const wellnessRow = page.locator(String.raw`a[aria-label^="เปิดเคสของ"]`).first();
   if ((await wellnessRow.count()) > 0) {
     await wellnessRow.click();
     try {
@@ -390,7 +390,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   /* ---------- Wellness: ปฏิทิน — เลือกวันแล้วดูการ์ดคิวข้างล่าง + เปิดโมดัลรายละเอียด ---------- */
-  await gotoPage(page, "/wellness-calendar");
+  await gotoPage(page, "/wellness/calendar");
   await settle(page, 1000);
   const wellnessDays = page.locator('button[aria-label^="เปิดคิววันที่"]');
   // ปฏิทินเดือนมีช่องวันเสมอ (≥28) — assert แข็งๆ กันหน้า crash แล้ว sweep ผ่านเงียบๆ

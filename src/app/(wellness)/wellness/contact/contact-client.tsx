@@ -277,7 +277,7 @@ export function ContactClient({
             รอโทรนัด {toCall.length} ราย
           </span>
           <Link
-            href="/wellness-calendar"
+            href="/wellness/calendar"
             className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white/80 px-3 py-1.5 text-[13px] font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700"
           >
             <CalendarClock size={14} /> ดูปฏิทินก่อนนัด
