@@ -16,7 +16,6 @@ import { Badge, Card, EmptyState } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
   contractEndDate,
-  INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
 } from "@/lib/influ-constants";
@@ -395,7 +394,8 @@ function InfluCard({
             <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
               <Sparkles size={11} /> คอนเทนต์ {formatNumber(contentTasks)} งาน
             </Badge>
-            {i.stage === INFLU_STAGE.followup &&
+            {/* 0092: ไม่มีขั้นตามงานแล้ว — เริ่มนับสัญญา = อยู่ระหว่างติดตาม */}
+            {i.contract_start !== null &&
               !i.completed &&
               (followupLeft > 0 ? (
                 <Badge className="border border-amber-200 bg-amber-50 text-amber-700">

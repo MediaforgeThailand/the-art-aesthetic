@@ -31,6 +31,7 @@ import {
   caseHashtags,
   INFLU_STAGE_LAST,
   INFLU_STAGES,
+  isLaterSection,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
@@ -66,7 +67,7 @@ import {
 export { influName } from "./influ-board";
 export type { InfluencerListRow } from "./influ-board";
 
-/** หัตถการของเคส (ย่อ) — ใช้สร้างแฮชแท็ก #หัตถการ/#โปรโมชัน บนการ์ด (0092) */
+/** หัตถการของเคส (ย่อ) — ใช้สร้างแฮชแท็ก #หัตถการ/#โปรโมชัน บนการ์ด (0093) */
 export type CaseProcedureLite = {
   influencer_id: string;
   product_team: InfluProductTeam;
@@ -248,9 +249,9 @@ export function InfluencersClient({
   influencers: InfluencerListRow[];
   tasks: InfluTaskLite[];
   doctors: DoctorRow[];
-  /** แคมเปญทั้งหมด (0092) — ส่งต่อให้ฟอร์มสร้างนัดเลือก + แปลงเป็นแฮชแท็กบนการ์ด */
+  /** แคมเปญทั้งหมด (0093) — ส่งต่อให้ฟอร์มสร้างนัดเลือก + แปลงเป็นแฮชแท็กบนการ์ด */
   campaigns: InfluCampaignDefRow[];
-  /** หัตถการของทุกเคส — ที่มาของแฮชแท็ก #หัตถการ (ทีมสินค้า) และ #โปรโมชัน (0092) */
+  /** หัตถการของทุกเคส — ที่มาของแฮชแท็ก #หัตถการ (ทีมสินค้า) และ #โปรโมชัน (0093) */
   procedureItems: CaseProcedureLite[];
   /** ลิงก์ไฟล์ source (Google Drive) ทั้งหมด — ปุ่มเปิดเร็วบนการ์ด */
   sourceLinks: InfluLinkLite[];
@@ -316,7 +317,7 @@ export function InfluencersClient({
     [router]
   );
 
-  /* แฮชแท็กบังคับต่อเคส (0092) — คำนวณครั้งเดียวที่นี่แล้วส่งเป็น Map ให้การ์ด
+  /* แฮชแท็กบังคับต่อเคส (0093) — คำนวณครั้งเดียวที่นี่แล้วส่งเป็น Map ให้การ์ด
      ประกอบจาก 4 แหล่ง: รหัสเคส · เลขใบ ปว. ของหมอ (จับคู่ด้วยชื่อ) · แท็กแคมเปญ ·
      product team + โปรของหัตถการในเคส */
   const licenseByDoctor = useMemo(() => {
@@ -546,11 +547,18 @@ export function InfluencersClient({
   };
 
   /* ข้อ checklist ของโหมดที่แต่ละเคสไม่ได้ใช้ถูกซ่อนไว้ใน DB — ต้องตัดออกก่อนนับ
-     ไม่งั้นชิปเตือนบนการ์ดจะนับข้อของโหมดที่มองไม่เห็นด้วย */
+     ไม่งั้นชิปเตือนบนการ์ดจะนับข้อของโหมดที่มองไม่เห็นด้วย
+
+     + ตัด "งานรอง" (หมวด 4 รูปติดตามผล 7 งวด) ออกจากตัวเตือนบนการ์ดด้วย —
+     ผู้ใช้ 2026-08-29: "priority ตอนนี้คือการตามให้ตัว influ โพสคลิป ส่วนที่ไม่ต้องโฟกัสมาก
+     อย่างเช่นตามให้ส่งภาพผลลัพ" ⇒ 7 งวด × ทุกเคสเคยทำให้การ์ดขึ้น "เลยกำหนด" กันหมด
+     จนกลบสัญญาณของงานที่ต้องตามจริง (ข้อพวกนั้นยังอยู่ครบและติ๊กได้ที่หน้า Follow Up) */
   const activeTasks = useMemo(() => {
     const modeById = new Map(items.map((i) => [i.id, i.followup_mode]));
     return tasks.filter(
-      (t) => t.is_custom === (modeById.get(t.influencer_id) === "custom")
+      (t) =>
+        t.is_custom === (modeById.get(t.influencer_id) === "custom") &&
+        (t.is_custom || !isLaterSection(t.section))
     );
   }, [tasks, items]);
 

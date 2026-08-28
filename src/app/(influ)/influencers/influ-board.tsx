@@ -68,7 +68,13 @@ export function influName(i: InfluencerListRow): string {
 
 export type InfluTaskLite = Pick<
   InfluTaskRow,
-  "influencer_id" | "due_date" | "done" | "done_at" | "is_custom"
+  | "influencer_id"
+  | "due_date"
+  | "done"
+  | "done_at"
+  | "is_custom"
+  // section — แยกงานรอง (รูปติดตามผล หมวด 4) ออกจากตัวเตือน (ผู้ใช้ 2026-08-29)
+  | "section"
 >;
 
 /** สถิติ follow up ต่อ influ: งานเกินกำหนด, กำหนดถัดไป, follow ล่าสุด */
@@ -403,7 +409,7 @@ export function InfluCardContent({
   ownerName?: string | null;
   /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
   links?: InfluLinkLite[];
-  /** แฮชแท็กบังคับของเคส (0092) — undefined = หน้าที่เรียกไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
+  /** แฮชแท็กบังคับของเคส (0093) — undefined = หน้าที่เรียกไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
   hashtags?: CaseHashtag[];
   deleting?: boolean;
   /** ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ติดป้ายเรืองแสง (ดู needsDoctorBooking) */
@@ -413,8 +419,11 @@ export function InfluCardContent({
   onToggleDeclined?: (influ: InfluencerListRow) => void;
 }) {
   const declined = i.declined_at !== null;
+  // ตั้งแต่ 0092 ไม่มีขั้น "ตามงาน" แล้ว — เคสที่เริ่มนับสัญญา (contract_start) คือเคสที่
+  // เข้าสู่การติดตามที่หน้า Follow Up ⇒ ใช้ค่านี้แทนการเทียบเลข stage
+  const inFollowup = i.contract_start !== null;
   const nextDueDays =
-    !i.completed && i.stage === INFLU_STAGE.followup && stats?.nextDue
+    !i.completed && inFollowup && stats?.nextDue
       ? dayDiff(stats.nextDue, today)
       : null;
   const daysSinceDone =
@@ -423,7 +432,7 @@ export function InfluCardContent({
       : null;
   const showFollowedChip =
     !i.completed &&
-    i.stage === INFLU_STAGE.followup &&
+    inFollowup &&
     (nextDueDays === null || nextDueDays > 14) &&
     daysSinceDone !== null;
   const movedManually =
@@ -599,7 +608,7 @@ export function InfluCardContent({
         </div>
       )}
 
-      {/* แฮชแท็กบังคับของเคส (0092) — influ ต้องติดชุดนี้ในโพส ทีมจึงต้องเห็นบนการ์ด
+      {/* แฮชแท็กบังคับของเคส (0093) — influ ต้องติดชุดนี้ในโพส ทีมจึงต้องเห็นบนการ์ด
           แท็กที่ยังขาดข้อมูลขึ้นเป็นชิปเหลืองพร้อมบอกว่าต้องไปเติมที่ไหน */}
       {hashtags && hashtags.length > 0 && !declined && (
         <CardHashtags tags={hashtags} />
@@ -668,7 +677,7 @@ function SortableInfluCard({
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
   links: InfluLinkLite[] | undefined;
-  /** แฮชแท็กบังคับของเคสนี้ (0092) — undefined = หน้าที่ไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
+  /** แฮชแท็กบังคับของเคสนี้ (0093) — undefined = หน้าที่ไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
   hashtags?: CaseHashtag[];
   ownerName?: string | null;
   today: string;
@@ -744,7 +753,7 @@ function BoardColumn({
   influs: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
   linksByInflu?: Map<string, InfluLinkLite[]>;
-  /** แฮชแท็กบังคับต่อเคส (0092) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
+  /** แฮชแท็กบังคับต่อเคส (0093) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
   hashtagsByInflu?: Map<string, CaseHashtag[]>;
   ownerNameById?: Map<string, string>;
   bookingAlertIds: ReadonlySet<string>;
@@ -845,7 +854,7 @@ export function InfluBoard({
   statsByInflu: Map<string, InfluStats>;
   /** ลิงก์ไฟล์ source ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด (ไม่ส่ง = ไม่มีปุ่ม) */
   linksByInflu?: Map<string, InfluLinkLite[]>;
-  /** แฮชแท็กบังคับต่อเคส (0092) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
+  /** แฮชแท็กบังคับต่อเคส (0093) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
   hashtagsByInflu?: Map<string, CaseHashtag[]>;
   /** ชื่อผู้รับผิดชอบต่อ uid — แปลง owner_id เป็นชื่อบนการ์ด */
   ownerNameById?: Map<string, string>;

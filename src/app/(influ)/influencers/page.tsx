@@ -14,8 +14,8 @@ import type {
   InfluCampaignDefRow,
   InfluProfileRow,
   InfluServiceRow,
-  InfluTaskRow,
 } from "@/lib/types";
+import type { InfluTaskLite } from "./influ-board";
 import type { InfluLinkLite } from "./influ-links";
 import {
   type CaseProcedureLite,
@@ -69,7 +69,7 @@ export default async function InfluencersPage() {
       // is_custom: ข้อของโหมดที่เคสนั้นไม่ได้ใช้ต้องไม่ถูกนับ (กรองด้วย activeFollowupTasks ฝั่ง client)
       supabase
         .from("influ_tasks")
-        .select("influencer_id, due_date, done, done_at, is_custom"),
+        .select("influencer_id, due_date, done, done_at, is_custom, section"),
       // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มสร้างนัด (แก้ทะเบียนที่หน้า /influ-doctors)
       supabase.from("doctors").select("*").order("name", { ascending: true }),
       // ลิงก์ไฟล์ source (Google Drive) — ปุ่มเปิดเร็วบนการ์ด
@@ -111,7 +111,7 @@ export default async function InfluencersPage() {
         .select("*")
         .eq("active", true)
         .order("name", { ascending: true }),
-      // แคมเปญ (0092) — ตัวเลือกในฟอร์มสร้างนัด + แปลงเป็นแฮชแท็กบนการ์ด
+      // แคมเปญ (0093) — ตัวเลือกในฟอร์มสร้างนัด + แปลงเป็นแฮชแท็กบนการ์ด
       supabase
         .from("influ_campaign_defs")
         .select("*")
@@ -129,12 +129,7 @@ export default async function InfluencersPage() {
     <PageContainer>
       <InfluencersClient
         influencers={(influencers ?? []) as InfluencerListRow[]}
-        tasks={
-          (tasks ?? []) as Pick<
-            InfluTaskRow,
-            "influencer_id" | "due_date" | "done" | "done_at" | "is_custom"
-          >[]
-        }
+        tasks={(tasks ?? []) as InfluTaskLite[]}
         doctors={(doctors ?? []) as DoctorRow[]}
         campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
         // embed ของ supabase ไม่มีใน Database type ที่เขียนมือ — ต้อง cast ผ่าน unknown

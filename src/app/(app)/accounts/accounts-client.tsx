@@ -133,7 +133,7 @@ function PermissionSummary({ profile }: { profile: AccountProfile }) {
   const perms = permsOf(profile);
   const isAdmin = profile.role === "admin";
   if (!isAdmin && perms.length === 0) {
-    // บัญชีที่เพิ่งสมัครเองด้วยเมลบริษัท (Google SSO — migration 0093) จะมาโผล่ตรงนี้
+    // บัญชีที่เพิ่งสมัครเองด้วยเมลบริษัท (Google SSO — migration 0094) จะมาโผล่ตรงนี้
     // ทำให้เด่นหน่อย เพราะเป็นคิวงานของผู้ดูแล ไม่ใช่แค่สถานะเฉยๆ
     return (
       <Badge className="border border-amber-200 bg-amber-50 text-amber-700">

@@ -419,10 +419,10 @@ export type InfluencerRow = {
   archived: boolean;
   /** เวลาที่ mark ว่า "ปฏิเสธ" (ไม่ร่วมงาน) — null = ไม่ได้ปฏิเสธ; ตัวกรองยกเว้นซ่อนได้ */
   declined_at: string | null;
-  /** รหัส Influ ID — ระบบออกให้อัตโนมัติเป็น INF-00001 ผ่าน RPC `next_influ_code()` (0092)
+  /** รหัส Influ ID — ระบบออกให้อัตโนมัติเป็น INF-00001 ผ่าน RPC `next_influ_code()` (0093)
       DB บังคับไม่ให้ซ้ำ (unique index บน lower(influ_code)); null = เคสเก่าที่ยังไม่ได้ออกรหัส */
   influ_code: string | null;
-  /** แคมเปญของเคสนี้ (0092) — null = ไม่ได้อยู่ในแคมเปญไหน (แฮชแท็กแคมเปญจะไม่ถูกบังคับ) */
+  /** แคมเปญของเคสนี้ (0093) — null = ไม่ได้อยู่ในแคมเปญไหน (แฮชแท็กแคมเปญจะไม่ถูกบังคับ) */
   campaign_id: string | null;
   /** ผู้รับผิดชอบเคส = คนที่สร้างการ์ด (null = บัญชีถูกลบไปแล้ว) */
   owner_id: string | null;
@@ -742,6 +742,9 @@ export type InfluPostLinkRow = {
   influencer_id: string;
   kind: InfluPostKind;
   url: string;
+  /** ช่องทางที่ทีมเลือกเองตอนแปะลิงก์ (migration 0092 — ฟอร์มบังคับให้เลือกจากเป้าที่ตั้งไว้)
+      null = แถวเก่าก่อนมีคอลัมน์นี้ → อ่านผ่าน postLinkPlatform() ซึ่งเดาจาก hostname ให้ */
+  platform: InfluPostPlatform | null;
   /** โน้ตกำกับ เช่น "คลิปรีวิวหลัก TikTok" — null = ไม่มี */
   note: string | null;
   position: number;
@@ -782,7 +785,7 @@ export type DoctorRow = {
   /** ชื่อที่แสดง — ประกอบจาก title/first_name/last_name/nickname ตอนบันทึก (doctorDisplayName())
       และเป็น "กุญแจ" ที่จับคู่กับ influencers.doctor_name / influ_calendar_events.doctor_name */
   name: string;
-  /** เลขใบประกอบวิชาชีพเวชกรรม (0092) — ห้ามซ้ำ, เป็นที่มาของแฮชแท็ก #DR<เลข> */
+  /** เลขใบประกอบวิชาชีพเวชกรรม (0093) — ห้ามซ้ำ, เป็นที่มาของแฮชแท็ก #DR<เลข> */
   license_no: string | null;
   /** คำนำหน้า เช่น นพ. / พญ. */
   title: string | null;
@@ -796,7 +799,7 @@ export type DoctorRow = {
   updated_at: string;
 };
 
-/** แคมเปญการตลาดระดับระบบ (0092) — 1 แคมเปญ = 1 แท็กที่ influ ต้องติดในโพส
+/** แคมเปญการตลาดระดับระบบ (0093) — 1 แคมเปญ = 1 แท็กที่ influ ต้องติดในโพส
     ⚠️ คนละก้อนกับ `InfluCampaignRow` (Sub Campaign รายเคสในหน้าสัญญา) */
 export type InfluCampaignDefRow = {
   id: string;
@@ -1609,12 +1612,12 @@ export interface Database {
         Args: Record<string, never>;
         Returns: number;
       };
-      /** ออกรหัส Influ ID ถัดไป (INF-00001) — ไม่ซ้ำทั้งระบบ (0092) */
+      /** ออกรหัส Influ ID ถัดไป (INF-00001) — ไม่ซ้ำทั้งระบบ (0093) */
       next_influ_code: {
         Args: Record<string, never>;
         Returns: string;
       };
-      /** ออกแท็กแคมเปญถัดไป (CMP00001) เมื่อทีมไม่อยากตั้งเอง (0092) */
+      /** ออกแท็กแคมเปญถัดไป (CMP00001) เมื่อทีมไม่อยากตั้งเอง (0093) */
       next_campaign_tag: {
         Args: Record<string, never>;
         Returns: string;

@@ -11,11 +11,11 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluCalendarEventRow,
   InfluCampaignDefRow,
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
-  InfluPostLinkRow,
   InfluProfileChannelRow,
   InfluProfileRow,
   InfluServiceRow,
@@ -70,8 +70,8 @@ export default async function InfluencerDetailPage({
     { data: procedureItems },
     { data: priceCatalog },
     { data: promoCatalog },
+    { data: serviceBookings },
     { data: sourceLinks },
-    { data: postLinks },
     { data: profile },
     { data: doctors },
     { data: services },
@@ -102,7 +102,7 @@ export default async function InfluencerDetailPage({
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     // รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้
-    // embed sku ของโปรที่ผูกไว้ด้วย — เป็นที่มาของแฮชแท็ก #โปรโมชัน (0092)
+    // embed sku ของโปรที่ผูกไว้ด้วย — เป็นที่มาของแฮชแท็ก #โปรโมชัน (0093)
     supabase
       .from("influ_procedure_items")
       .select("*, promo:promo_packages(sku)")
@@ -123,16 +123,17 @@ export default async function InfluencerDetailPage({
       .eq("active", true)
       .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
       .order("name", { ascending: true }),
+    // คิว "เข้ารับบริการ" ของเคสนี้ในปฏิทิน (kind=service) — ขั้นสัญญาบังคับให้ลงคิวก่อน
+    // ถึงจะไปขั้นตามงานได้ (เกณฑ์เดียวกับป้าย "รอลงคิวหมอ" บนบอร์ด: needsDoctorBooking)
+    supabase
+      .from("influ_calendar_events")
+      .select("*")
+      .eq("influencer_id", id)
+      .eq("kind", "service")
+      .order("event_date", { ascending: true }),
     // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
     supabase
       .from("influ_links")
-      .select("*")
-      .eq("influencer_id", id)
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true }),
-    // ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน)
-    supabase
-      .from("influ_post_links")
       .select("*")
       .eq("influencer_id", id)
       .order("position", { ascending: true })
@@ -152,7 +153,7 @@ export default async function InfluencerDetailPage({
       .select("*")
       .eq("active", true)
       .order("name", { ascending: true }),
-    // แคมเปญ (0092) — ตัวเลือกในแท็บรายละเอียดเคส + ที่มาของแฮชแท็ก #แคมเปญ
+    // แคมเปญ (0093) — ตัวเลือกในแท็บรายละเอียดเคส + ที่มาของแฮชแท็ก #แคมเปญ
     supabase
       .from("influ_campaign_defs")
       .select("*")
@@ -216,11 +217,11 @@ export default async function InfluencerDetailPage({
         }
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
+        serviceBookings={(serviceBookings ?? []) as InfluCalendarEventRow[]}
         services={(services ?? []) as InfluServiceRow[]}
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
-        postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
         userId={userId}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}

@@ -113,7 +113,7 @@ export function HuntingClient({
   /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
   promoCatalog: PromoCatalogEntry[];
   doctors: DoctorRow[];
-  /** แคมเปญทั้งหมด (0092) — ตัวเลือกในฟอร์มสร้างนัด */
+  /** แคมเปญทั้งหมด (0093) — ตัวเลือกในฟอร์มสร้างนัด */
   campaigns: InfluCampaignDefRow[];
   people: { id: string; name: string }[];
   me: Me;

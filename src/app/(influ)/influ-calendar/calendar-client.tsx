@@ -1,7 +1,18 @@
 "use client";
 
+// ปฏิทินคิว Influ — redesign 2026-08-29 ตามภาพอ้างอิงที่ผู้ใช้ส่ง (หน้าตาชุดเดียวกับปฏิทิน Wellness)
+//   1) ทั้งบล็อกปฏิทินเป็น "แผ่นไล่เฉดแบรนด์" — ตัวเลขวันเป็นพระเอก อ่านง่ายทั้งมือถือ/คอม
+//      วันที่เลือก = ช่องขาวตัวหนังสือสีแบรนด์ · วันที่มีคิว = ป้ายตัวเลขจำนวนคิวเกาะมุมเลขวัน
+//   2) ใต้ปฏิทิน (จอเล็ก) / คอลัมน์ขวา (จอ ≥lg) = การ์ดคิวรายวัน — แถบวันที่ไล่เฉดซ้ายมือ
+//      + รายการคิวของวันนั้นเรียงตามเวลาอยู่ขวามือ กดแถว = โมดัลรายละเอียด
+//   3) โหมดสัปดาห์ = แผ่นปฏิทินเหลือแถวเดียว + การ์ดคิวครบทั้ง 7 วันในคอลัมน์ agenda
+//   4) จอ ≥lg เพิ่มชิปคิวในช่องวัน (ตามความสูงช่องจริง) — กวาดตาเห็นทั้งเดือนโดยไม่ต้องกดทีละวัน
+// **state ของหน้ามีตัวเดียวคือ "วันที่เลือก"** — เดือน/สัปดาห์ที่โชว์คำนวณจากมัน จึงไม่มีทางเกิด
+// สภาพ "เลื่อนเดือนแล้วรายการข้างล่างเป็นของอีกเดือน"
+// แผงข้างลอยทับจอ (DaySidebar เดิม) ถูกถอดออก — รายละเอียด/ฟอร์มใช้ Modal ของระบบแทน
+
 import {
-  ArrowLeft,
+  CalendarDays,
   CalendarPlus,
   Check,
   ChevronLeft,
@@ -10,12 +21,12 @@ import {
   ExternalLink,
   MapPin,
   Pencil,
+  Plus,
   Search,
   SlidersHorizontal,
   Sparkles,
   Stethoscope,
   Trash2,
-  UserPlus,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,6 +38,7 @@ import {
   Button,
   Input,
   Label,
+  Modal,
   Select,
   Textarea,
 } from "@/components/ui";
@@ -81,7 +93,33 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (year: number, month: number, day: number) =>
   `${year}-${pad(month + 1)}-${pad(day)}`;
 
-/* สัปดาห์เริ่มวันจันทร์แบบ TimeTree (redesign 2026-08-20) — อาทิตย์อยู่ท้ายและเป็นสีแดง */
+/* ชื่อเดือน/วันแบบตายตัว — ไม่ใช้ toLocaleDateString กับหัวข้อ กัน SSR/CSR ได้คนละคำ */
+const THAI_MONTHS = [
+  "มกราคม",
+  "กุมภาพันธ์",
+  "มีนาคม",
+  "เมษายน",
+  "พฤษภาคม",
+  "มิถุนายน",
+  "กรกฎาคม",
+  "สิงหาคม",
+  "กันยายน",
+  "ตุลาคม",
+  "พฤศจิกายน",
+  "ธันวาคม",
+];
+
+const THAI_WEEKDAYS_FULL = [
+  "จันทร์",
+  "อังคาร",
+  "พุธ",
+  "พฤหัสบดี",
+  "ศุกร์",
+  "เสาร์",
+  "อาทิตย์",
+];
+
+/* สัปดาห์เริ่มวันจันทร์ — อาทิตย์อยู่คอลัมน์ท้ายและเป็นโทนแดง */
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
 /** Date จาก YYYY-MM-DD แบบ local — ห้าม new Date(iso) ตรงๆ (parse เป็น UTC วันเพี้ยนได้) */
@@ -91,7 +129,7 @@ const dateOf = (iso: string): Date => {
 };
 
 /** ดัชนีคอลัมน์แบบจันทร์ = 0 … อาทิตย์ = 6 */
-const mondayIndex = (d: Date) => (d.getDay() + 6) % 7;
+const mondayIndex = (iso: string) => (dateOf(iso).getDay() + 6) % 7;
 
 /** join ชื่อ influ มาด้วยทุกครั้งที่ insert/update — state ฝั่งจอต้องมีชื่อไว้แสดงบนชิป */
 const EVENT_SELECT =
@@ -123,22 +161,29 @@ const sortEvents = (a: CalendarEvent, b: CalendarEvent) => {
   return a.title.localeCompare(b.title, "th");
 };
 
-/** ช่องวันทั้งหมดของเดือน (เติมช่องว่างหน้า/หลังให้ครบสัปดาห์ เริ่มวันจันทร์)
+/** ช่องวันทั้งหมดของเดือนที่ครอบวัน anchor (เติมช่องว่างหน้า/หลังให้ครบสัปดาห์ เริ่มวันจันทร์)
     — null = ช่องว่างนอกเดือน */
-function monthCells(year: number, month: number): (number | null)[] {
-  const firstWeekday = mondayIndex(new Date(year, month, 1));
-  const days = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = Array.from({ length: firstWeekday }, () => null);
-  for (let d = 1; d <= days; d += 1) cells.push(d);
+function monthCells(anchorISO: string): (string | null)[] {
+  const [y, m] = anchorISO.split("-").map(Number);
+  const lead = mondayIndex(isoOf(y, m - 1, 1));
+  const days = new Date(y, m, 0).getDate();
+  const cells: (string | null)[] = Array.from({ length: lead }, () => null);
+  for (let d = 1; d <= days; d += 1) cells.push(isoOf(y, m - 1, d));
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
 
-const monthLabel = (year: number, month: number) =>
-  new Date(year, month, 1).toLocaleDateString("th-TH", {
-    month: "long",
-    year: "numeric",
-  });
+/** "2026-08-29" → "สิงหาคม 2569" */
+const monthTitleOf = (iso: string) => {
+  const [y, m] = iso.split("-").map(Number);
+  return `${THAI_MONTHS[m - 1]} ${y + 543}`;
+};
+
+/** "2026-08-29" → "เสาร์ที่ 29 สิงหาคม 2569" */
+const thaiDayTitle = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${THAI_WEEKDAYS_FULL[mondayIndex(iso)]}ที่ ${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
+};
 
 /** เลื่อนวันแบบ ISO */
 function addDaysISO(dateISO: string, days: number): string {
@@ -147,21 +192,28 @@ function addDaysISO(dateISO: string, days: number): string {
   return isoOf(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
 
+/** ขยับเดือนโดยคงวันที่เดิมไว้ (เดือนปลายทางสั้นกว่า = ตกมาวันสุดท้ายของเดือนนั้น)
+    — วันที่เลือกเป็น state ตัวเดียวของหน้า เดือนที่โชว์คำนวณจากมัน */
+function shiftMonth(dateISO: string, delta: number): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const daysInTarget = new Date(y, m + delta, 0).getDate();
+  const dt = new Date(y, m - 1 + delta, Math.min(d, daysInTarget));
+  return isoOf(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
+
 /** 7 วันของสัปดาห์ (จันทร์–อาทิตย์) ที่ครอบวัน anchor */
 function weekDaysOf(anchorISO: string): string[] {
-  const monday = addDaysISO(anchorISO, -mondayIndex(dateOf(anchorISO)));
+  const monday = addDaysISO(anchorISO, -mondayIndex(anchorISO));
   return Array.from({ length: 7 }, (_, i) => addDaysISO(monday, i));
 }
 
 /** หัวช่วงสัปดาห์ เช่น "17 – 23 สิงหาคม 2569" (คร่อมเดือน = "28 ก.ค. – 3 ส.ค. 2569") */
 function weekLabel(days: string[]): string {
-  const a = dateOf(days[0]);
-  const b = dateOf(days[6]);
-  if (a.getMonth() === b.getMonth())
-    return `${a.getDate()} – ${b.getDate()} ${monthLabel(b.getFullYear(), b.getMonth())}`;
-  const short = (d: Date) =>
-    d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-  return `${short(a)} – ${b.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`;
+  const [ay, am, ad] = days[0].split("-").map(Number);
+  const [by, bm, bd] = days[6].split("-").map(Number);
+  if (ay === by && am === bm) return `${ad} – ${bd} ${monthTitleOf(days[6])}`;
+  const shortM = (m: number) => THAI_MONTHS[m - 1].slice(0, 3);
+  return `${ad} ${shortM(am)} – ${bd} ${shortM(bm)} ${by + 543}`;
 }
 
 /* ---------- ฟอร์มคิว ---------- */
@@ -206,29 +258,16 @@ const formOf = (e: CalendarEvent): FormState => ({
   note: e.note ?? "",
 });
 
-/* ---------- ชิปคิวในช่องวัน ---------- */
+/* ---------- รายการของหนึ่งวัน = คิวจริง + วันรับบริการที่มาจากเคส ---------- */
 
-/** แท่งสีทึบแบบ TimeTree — เวลาเข้มชัด + ชื่อ influ (รายละเอียดเต็มอยู่ใน tooltip/แผงข้าง) */
-function EventChip({ event }: { event: CalendarEvent }) {
-  const meta = INFLU_CALENDAR_KINDS[event.kind];
-  const who = nickOf(event.influencer) || event.title;
-  return (
-    <span
-      title={`${calendarTimeLabel(event.start_time, event.end_time)} · ${meta.label}${
-        nameOf(event.influencer) ? ` · ${nameOf(event.influencer)}` : ""
-      }${event.doctor_name ? ` · ${event.doctor_name}` : ""}`}
-      // ≥lg ตัวใหญ่ขึ้น (ผู้ใช้ 2026-08-20 รอบสาม: ชิปคิวต้องเด่นกว่าเลขวัน) — เวลาตัวหนานำหน้า
-      className={`flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] leading-tight text-white shadow-sm lg:text-xs ${meta.solid} ${
-        event.done ? "opacity-45 line-through" : ""
-      }`}
-    >
-      <span className="shrink-0 font-bold tabular-nums">
-        {shortTime(event.start_time) ?? "ทั้งวัน"}
-      </span>
-      <span className="min-w-0 flex-1 truncate font-medium">{who}</span>
-    </span>
-  );
-}
+type DayItem =
+  | { type: "event"; id: string; event: CalendarEvent }
+  | { type: "service"; id: string; influ: CalendarInflu };
+
+/** สิ่งที่ผู้ใช้กำลังเปิดดูรายละเอียด (โมดัล) */
+type DetailTarget =
+  | { type: "event"; id: string }
+  | { type: "service"; id: string };
 
 /* ---------- ชุดตัวกรอง (ชิปประเภท + วันรับบริการจากเคส + แพทย์) ----------
    ใช้ร่วม 2 ที่: แถว inline ใต้ toolbar (จอ ≥sm) และ bottom sheet บนมือถือ —
@@ -307,83 +346,469 @@ function FilterControls({
   );
 }
 
-/* ---------- แผงข้างขวา: รายชื่อคิวของวันที่เลือก → รายละเอียด → ฟอร์ม ---------- */
+/* ---------- การ์ดคิวรายวัน (แถบวันที่ไล่เฉดซ้าย + รายการคิวขวา) ---------- */
 
-function DaySidebar({
+function DayCard({
   dateISO,
-  events,
-  services,
-  influencers,
+  items,
+  today,
   doctors,
-  focusEventId,
   canEdit,
-  saving,
-  error,
-  onClose,
-  onSave,
-  onDelete,
+  onOpen,
   onToggleDone,
+  onPickDay,
+  onAdd,
 }: {
   dateISO: string;
-  events: CalendarEvent[];
-  services: CalendarInflu[];
+  items: DayItem[];
+  today: string;
+  doctors: DoctorRow[];
+  canEdit: boolean;
+  onOpen: (target: DetailTarget) => void;
+  /** ติ๊ก "เสร็จแล้ว" จากลิสต์ได้เลย ไม่ต้องเปิดโมดัล (พฤติกรรมเดิมของแผงข้าง) */
+  onToggleDone: (event: CalendarEvent) => void;
+  /** กดแถบวันที่ = เลือกวันนั้นบนปฏิทิน (ใช้กับการ์ด "คิวถัดไป" / โหมดสัปดาห์) */
+  onPickDay?: () => void;
+  /** ปุ่มเพิ่มคิวของวันนั้น (โชว์ตอนวันนั้นยังว่าง) */
+  onAdd?: () => void;
+}) {
+  const dayNum = Number(dateISO.slice(8));
+  const isToday = dateISO === today;
+  const badge = (
+    <span
+      className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 px-2 py-3 text-cream sm:w-16 ${
+        isToday
+          ? "bg-gradient-to-b from-brand-600 to-brand-700"
+          : "bg-gradient-to-b from-brand-500 to-brand-600"
+      }`}
+    >
+      <span className="text-[11px] font-medium opacity-90">
+        {WEEKDAYS[mondayIndex(dateISO)]}
+      </span>
+      <span className="font-display text-2xl font-semibold leading-none">
+        {dayNum}
+      </span>
+      {isToday && <span className="text-[9px] opacity-90">วันนี้</span>}
+    </span>
+  );
+
+  return (
+    <article className="flex overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70">
+      {onPickDay ? (
+        <button
+          type="button"
+          onClick={onPickDay}
+          aria-label={`เลือก${thaiDayTitle(dateISO)}`}
+          className="flex cursor-pointer transition-opacity hover:opacity-90 active:scale-[0.98]"
+        >
+          {badge}
+        </button>
+      ) : (
+        badge
+      )}
+
+      <div className="min-w-0 flex-1 divide-y divide-stone-100">
+        {items.length === 0 ? (
+          <div className="flex flex-col items-start gap-2 px-4 py-4">
+            <p className="text-sm text-stone-400">ยังไม่มีคิวในวันนี้</p>
+            {canEdit && onAdd && (
+              <button
+                type="button"
+                onClick={onAdd}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
+              >
+                <Plus size={13} /> เพิ่มคิว
+              </button>
+            )}
+          </div>
+        ) : (
+          items.map((item) =>
+            item.type === "event" ? (
+              // แถวคิว = 2 ปุ่มเรียงกัน (ห้ามซ้อน button ใน button) — ปุ่มหลักเปิดรายละเอียด
+              // ปุ่มขวาติ๊กเสร็จ/ยังไม่เสร็จได้จากลิสต์เลย
+              <div key={item.id} className="flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => onOpen({ type: "event", id: item.id })}
+                  aria-label={`ดูรายละเอียดคิว ${calendarTimeLabel(
+                    item.event.start_time,
+                    item.event.end_time
+                  )} ${nameOf(item.event.influencer) || item.event.title}`}
+                  className={`flex min-w-0 flex-1 cursor-pointer items-start gap-3 py-3 pl-3.5 text-left transition-colors hover:bg-brand-50/60 max-sm:min-h-14 ${
+                    item.event.done ? "opacity-55" : ""
+                  }`}
+                >
+                  <span className="flex w-[4.25rem] shrink-0 flex-col">
+                    <span className="text-sm font-semibold text-stone-800 tabular-nums">
+                      {shortTime(item.event.start_time) ?? "ทั้งวัน"}
+                    </span>
+                    <span className="text-[11px] text-stone-400">
+                      {INFLU_CALENDAR_KINDS[item.event.kind].short}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          INFLU_CALENDAR_KINDS[item.event.kind].dot
+                        }`}
+                      />
+                      <span
+                        className={`truncate text-[15px] font-medium text-stone-800 ${
+                          item.event.done ? "line-through" : ""
+                        }`}
+                      >
+                        {nameOf(item.event.influencer) || item.event.title}
+                      </span>
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-stone-500">
+                      {item.event.influencer && (
+                        <span className="truncate">{item.event.title}</span>
+                      )}
+                      {item.event.doctor_name && (
+                        <DoctorNameChip
+                          name={item.event.doctor_name}
+                          doctors={doctors}
+                        />
+                      )}
+                    </span>
+                  </span>
+                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleDone(item.event)}
+                    title={
+                      item.event.done
+                        ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
+                        : "ทำเครื่องหมายว่าเสร็จแล้ว"
+                    }
+                    aria-label={`${item.event.done ? "ยกเลิกสถานะเสร็จ" : "ทำเครื่องหมายว่าเสร็จ"}: ${
+                      nameOf(item.event.influencer) || item.event.title
+                    }`}
+                    className="flex w-12 shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-brand-50/60 active:scale-90"
+                  >
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
+                        item.event.done
+                          ? "border-emerald-400 bg-emerald-400 text-white"
+                          : "border-stone-300 bg-white hover:border-brand-400"
+                      }`}
+                    >
+                      {item.event.done && <Check size={12} />}
+                    </span>
+                  </button>
+                ) : (
+                  <span className="flex w-12 shrink-0 items-center justify-center">
+                    <span
+                      title={item.event.done ? "เสร็จแล้ว" : "ยังไม่เสร็จ"}
+                      className={`flex h-5 w-5 items-center justify-center rounded border ${
+                        item.event.done
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-600"
+                          : "border-stone-200 bg-stone-50"
+                      }`}
+                    >
+                      {item.event.done && <Check size={12} />}
+                    </span>
+                  </span>
+                )}
+              </div>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onOpen({ type: "service", id: item.id })}
+                aria-label={`ดูรายละเอียดเคส ${nameOf(item.influ)}`}
+                className="flex w-full cursor-pointer items-start gap-3 bg-brand-50/40 px-3.5 py-3 text-left transition-colors hover:bg-brand-50 max-sm:min-h-14"
+              >
+                <span className="flex w-[4.25rem] shrink-0 flex-col">
+                  <span className="text-[13px] font-semibold text-brand-600">
+                    จากเคส
+                  </span>
+                  <span className="text-[11px] text-stone-400">ยังไม่ลงคิว</span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={13} className="shrink-0 text-brand-400" />
+                    <span className="truncate text-[15px] font-medium text-stone-800">
+                      {nameOf(item.influ)}
+                    </span>
+                  </span>
+                  {(item.influ.procedure_text || item.influ.doctor_name) && (
+                    <span className="mt-1 block truncate text-[13px] text-stone-500">
+                      {[item.influ.procedure_text, item.influ.doctor_name]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight
+                  size={16}
+                  className="mt-1 shrink-0 text-stone-300"
+                />
+              </button>
+            )
+          )
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* ---------- โมดัลรายละเอียดคิว ---------- */
+
+function EventDetailModal({
+  event,
+  doctors,
+  canEdit,
+  error,
+  onEdit,
+  onDelete,
+  onToggleDone,
+  onClose,
+}: {
+  event: CalendarEvent;
+  doctors: DoctorRow[];
+  canEdit: boolean;
+  error: string | null;
+  onEdit: () => void;
+  onDelete: () => Promise<void>;
+  onToggleDone: () => void;
+  onClose: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const meta = INFLU_CALENDAR_KINDS[event.kind];
+
+  return (
+    <Modal open onClose={onClose} title={thaiDayTitle(event.event_date)}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge className={`border ${meta.chip}`}>{meta.label}</Badge>
+          {event.done && (
+            <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700">
+              <Check size={11} /> เสร็จแล้ว
+            </Badge>
+          )}
+        </div>
+
+        <h3
+          className={`text-base font-semibold text-stone-900 ${
+            event.done ? "line-through opacity-60" : ""
+          }`}
+        >
+          {event.title}
+        </h3>
+
+        <dl className="space-y-2.5 text-sm">
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-xs text-stone-400">เวลา</dt>
+            <dd className="flex items-center gap-1 font-medium text-stone-700 tabular-nums">
+              <Clock3 size={13} className="text-stone-400" />
+              {calendarTimeLabel(event.start_time, event.end_time)}
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-xs text-stone-400">Influencer</dt>
+            <dd className="min-w-0 flex-1">
+              {event.influencer ? (
+                <Link
+                  href={`/influencers/${event.influencer.id}`}
+                  className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-800"
+                >
+                  {nameOf(event.influencer)}
+                  <ExternalLink size={11} />
+                </Link>
+              ) : (
+                <span className="text-stone-400">ไม่ระบุ (คิวทั่วไป)</span>
+              )}
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
+            <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
+              {event.doctor_name ? (
+                <DoctorNameChip name={event.doctor_name} doctors={doctors} />
+              ) : (
+                <>
+                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                  <span className="text-stone-400">ยังไม่ระบุ</span>
+                </>
+              )}
+            </dd>
+          </div>
+          {event.location && (
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-xs text-stone-400">สถานที่</dt>
+              <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
+                <MapPin size={13} className="shrink-0 text-stone-400" />
+                {event.location}
+              </dd>
+            </div>
+          )}
+          {event.note && (
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-xs text-stone-400">หมายเหตุ</dt>
+              <dd className="min-w-0 flex-1 whitespace-pre-wrap text-stone-600">
+                {event.note}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        {error && (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
+            {error}
+          </p>
+        )}
+
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              className="px-3 py-1.5 text-xs"
+              onClick={onToggleDone}
+            >
+              <Check size={14} />
+              {event.done ? "ยังไม่เสร็จ" : "เสร็จแล้ว"}
+            </Button>
+            <Button
+              variant="secondary"
+              className="px-3 py-1.5 text-xs"
+              onClick={onEdit}
+            >
+              <Pencil size={14} /> แก้ไข
+            </Button>
+            <Button
+              variant="danger"
+              className="px-3 py-1.5 text-xs"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 size={14} /> ลบ
+            </Button>
+          </div>
+        )}
+
+        {confirmDelete && (
+          <div className="flex flex-wrap items-center justify-end gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 animate-fade-in">
+            ลบคิวนี้ออกจากปฏิทิน?
+            <Button
+              variant="secondary"
+              className="px-2.5 py-1 text-xs"
+              onClick={() => setConfirmDelete(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="danger"
+              className="px-2.5 py-1 text-xs"
+              onClick={async () => {
+                setConfirmDelete(false);
+                await onDelete();
+              }}
+            >
+              ยืนยันลบ
+            </Button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- โมดัลรายละเอียดวันรับบริการที่มาจากเคส (อ่านอย่างเดียว) ---------- */
+
+function ServiceDetailModal({
+  influ,
+  doctors,
+  canEdit,
+  onCreateQueue,
+  onClose,
+}: {
+  influ: CalendarInflu;
+  doctors: DoctorRow[];
+  canEdit: boolean;
+  onCreateQueue: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={thaiDayTitle(influ.service_date ?? todayISO())}
+    >
+      <div className="space-y-4">
+        <Badge className="border border-dashed border-brand-300 bg-white/70 text-brand-700">
+          <Sparkles size={11} /> วันรับบริการจากเคส (ยังไม่ได้ลงคิวในปฏิทิน)
+        </Badge>
+        <h3 className="text-base font-semibold text-stone-900">
+          {nameOf(influ)}
+        </h3>
+
+        <dl className="space-y-2.5 text-sm">
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-xs text-stone-400">หัตถการ</dt>
+            <dd className="min-w-0 flex-1 text-stone-700">
+              {influ.procedure_text || (
+                <span className="text-stone-400">ยังไม่ระบุ</span>
+              )}
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
+            <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
+              {influ.doctor_name ? (
+                <DoctorNameChip name={influ.doctor_name} doctors={doctors} />
+              ) : (
+                <>
+                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
+                  <span className="text-stone-400">ยังไม่ระบุ</span>
+                </>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="flex flex-wrap gap-2">
+          {canEdit && (
+            <Button className="px-3 py-1.5 text-xs" onClick={onCreateQueue}>
+              <CalendarPlus size={14} /> สร้างคิวจากเคสนี้
+            </Button>
+          )}
+          <Link
+            href={`/influencers/${influ.id}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11"
+          >
+            เปิดเคส <ExternalLink size={12} />
+          </Link>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- โมดัลเพิ่ม/แก้คิว ---------- */
+
+function EventFormModal({
+  initial,
+  influencers,
+  doctors,
+  saving,
+  error,
+  onSave,
+  onClose,
+}: {
+  initial: FormState;
   influencers: CalendarInflu[];
   doctors: DoctorRow[];
-  /** เปิดแผงมาที่รายละเอียดคิวนี้เลย (กดจากลิสต์ "คิวที่กำลังจะถึง") */
-  focusEventId: string | null;
-  /** ระดับ "ดูเฉยๆ" = ไม่มีปุ่มเพิ่ม/แก้/ลบ/ติ๊กเสร็จเลย */
-  canEdit: boolean;
   saving: boolean;
   error: string | null;
-  onClose: () => void;
   onSave: (form: FormState) => Promise<boolean>;
-  onDelete: (id: string) => Promise<void>;
-  onToggleDone: (event: CalendarEvent) => void;
+  onClose: () => void;
 }) {
-  // state ทั้งก้อนรีเซ็ตเองเมื่อเปลี่ยนวัน — ตัวเรียกใส่ key ให้ remount
-  const [mode, setMode] = useState<"list" | "detail" | "form">(
-    focusEventId ? "detail" : "list"
-  );
-  const [activeEventId, setActiveEventId] = useState<string | null>(focusEventId);
-  const [activeServiceId, setActiveServiceId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(() => emptyForm(dateISO));
+  const [form, setForm] = useState<FormState>(initial);
   const [formError, setFormError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const activeEvent = events.find((e) => e.id === activeEventId) ?? null;
-  const activeService = services.find((s) => s.id === activeServiceId) ?? null;
-  // คิวที่เปิดดูอยู่ถูกลบไป (หรือถูกตัวกรองซ่อน) — ตกกลับมาที่รายการวันนั้น
-  const view =
-    mode === "detail" && !activeEvent && !activeService ? "list" : mode;
 
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }));
-
-  const openList = () => {
-    setMode("list");
-    setActiveEventId(null);
-    setActiveServiceId(null);
-    setConfirmDelete(false);
-  };
-
-  const openDetail = (eventId: string) => {
-    setActiveEventId(eventId);
-    setActiveServiceId(null);
-    setConfirmDelete(false);
-    setMode("detail");
-  };
-
-  const openServiceDetail = (influId: string) => {
-    setActiveServiceId(influId);
-    setActiveEventId(null);
-    setMode("detail");
-  };
-
-  /** เปิดฟอร์ม — ไม่ส่ง preset = เพิ่มคิวใหม่เปล่าๆ ของวันนี้ */
-  const openForm = (preset?: Partial<FormState>) => {
-    setForm({ ...emptyForm(dateISO), ...preset });
-    setFormError(null);
-    setMode("form");
-  };
 
   /** เลือก influencer แล้วเติมแพทย์ของเคสนั้นให้อัตโนมัติ (ถ้ายังไม่ได้กรอกเอง) */
   const pickInfluencer = (id: string) => {
@@ -412,568 +837,146 @@ function DaySidebar({
       setFormError("เวลาสิ้นสุดต้องหลังเวลาเริ่ม");
       return;
     }
-    const editingId = form.id;
     const ok = await onSave(form);
-    if (!ok) return;
-    // แก้คิวเดิมแล้วยังอยู่วันเดิม = กลับไปหน้ารายละเอียดของคิวนั้น, เพิ่มใหม่ = กลับไปลิสต์
-    if (editingId && form.date === dateISO) openDetail(editingId);
-    else openList();
+    if (ok) onClose();
   };
 
-  const dayCount = events.length + services.length;
-
   return (
-    <aside
-      aria-label={`คิววันที่ ${formatDate(dateISO)}`}
-      // แผงลอยทับปฏิทิน — เปิดเฉพาะตอนกดเลือกวัน (ปฏิทินจึงกินพื้นที่เต็มความกว้างตลอด)
-      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[27rem] flex-col border-white/70 bg-white/95 max-sm:pt-safe max-sm:pb-safe shadow-[0_0_60px_rgba(94,58,49,0.25)] backdrop-blur-2xl animate-slide-in-right sm:inset-y-3 sm:right-3 sm:rounded-2xl sm:border"
+    <Modal
+      open
+      onClose={onClose}
+      title={form.id ? "แก้ไขคิว" : "เพิ่มคิว Influ"}
     >
-      {/* ---- หัวแผง ---- */}
-      <div className="flex items-center gap-2 border-b border-brand-100/70 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-semibold text-stone-900">
-            {formatDate(dateISO)}
-          </p>
-          <p className="text-xs text-stone-400">
-            {dayCount > 0 ? `${dayCount} รายการ` : "ยังไม่มีคิว"}
+      <form onSubmit={submit} className="space-y-3">
+        <div>
+          <Label htmlFor="cal-influ">Influencer</Label>
+          <Select
+            id="cal-influ"
+            value={form.influencerId}
+            onChange={(e) => pickInfluencer(e.target.value)}
+          >
+            <option value="">— ไม่ระบุ (คิวทั่วไป) —</option>
+            {/* คนเดิมเข้ามาหลายรอบมีหลายเคส — บอกรอบกำกับ ให้คิวผูกกับเคสรอบที่ถูก
+                (ป้าย "รอลงคิวหมอ" เช็คคิว service ต่อเคส ผูกผิดรอบ = ป้ายไม่ดับ) */}
+            {influencers.map((i) => (
+              <option key={i.id} value={i.id}>
+                {nameOf(i)}
+                {i.round_no > 1 ? ` · รอบ ${i.round_no}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="cal-kind">ประเภทคิว</Label>
+          <Select
+            id="cal-kind"
+            value={form.kind}
+            onChange={(e) => patch({ kind: e.target.value as InfluCalendarKind })}
+          >
+            {INFLU_CALENDAR_KIND_ORDER.map((k) => (
+              <option key={k} value={k}>
+                {INFLU_CALENDAR_KINDS[k].label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="cal-title">รายละเอียดคิว</Label>
+          <Input
+            id="cal-title"
+            value={form.title}
+            onChange={(e) => patch({ title: e.target.value })}
+            placeholder={INFLU_CALENDAR_KINDS[form.kind].label}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="cal-doctor">แพทย์ที่รับเคส</Label>
+          <DoctorSelect
+            id="cal-doctor"
+            doctors={doctors}
+            value={form.doctor}
+            onChange={(name) => patch({ doctor: name })}
+          />
+          <p className="mt-1 text-xs text-stone-400">
+            เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
+            (เพิ่มหมอใหม่ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน)
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="ปิดแผง"
-          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
-        >
-          <X size={18} />
-        </button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        {/* error ของการลบ/ติ๊กเสร็จต้องขึ้นในแผงด้วย — บนมือถือแผงนี้เป็น overlay เต็มจอ
-            ทับแบนเนอร์ระดับหน้าไว้ ผู้ใช้เลยเห็นเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
-            (โหมดฟอร์มมีบรรทัด error ของตัวเองอยู่แล้ว จึงไม่ต้องซ้ำ) */}
-        {view !== "form" && error && (
-          <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 animate-fade-in">
-            {error}
+        <div>
+          <Label htmlFor="cal-date">วันที่</Label>
+          <Input
+            id="cal-date"
+            type="date"
+            value={form.date}
+            onChange={(e) => patch({ date: e.target.value })}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="cal-start">เวลาเริ่ม</Label>
+            <Input
+              id="cal-start"
+              type="time"
+              value={form.start}
+              onChange={(e) => patch({ start: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="cal-end">ถึงเวลา</Label>
+            <Input
+              id="cal-end"
+              type="time"
+              value={form.end}
+              onChange={(e) => patch({ end: e.target.value })}
+            />
+          </div>
+        </div>
+        <p className="-mt-1 text-xs text-stone-400">
+          ไม่กรอกเวลา = คิวทั้งวัน (ยังไม่เคาะเวลา)
+        </p>
+
+        <div>
+          <Label htmlFor="cal-location">สถานที่ / ช่องทาง</Label>
+          <Input
+            id="cal-location"
+            value={form.location}
+            onChange={(e) => patch({ location: e.target.value })}
+            placeholder="เช่น สตูดิโอชั้น 4, คลินิกชั้น 2"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="cal-note">หมายเหตุ</Label>
+          <Textarea
+            id="cal-note"
+            rows={2}
+            value={form.note}
+            onChange={(e) => patch({ note: e.target.value })}
+            placeholder="รายละเอียดเพิ่มเติม เช่น ทีมที่ดูแล, สิ่งที่ต้องเตรียม"
+          />
+        </div>
+
+        {(formError || error) && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">
+            {formError ?? error}
           </p>
         )}
-        {/* ---------- โหมด: รายชื่อคิวของวันนั้น ---------- */}
-        {view === "list" && (
-          <>
-            {events.length === 0 && services.length === 0 ? (
-              <p className="py-8 text-center text-sm text-stone-400">
-                ยังไม่มีคิวในวันนี้
-                {canEdit && (
-                  <>
-                    <br />
-                    <span className="text-xs">กดปุ่มด้านล่างเพื่อเพิ่ม Influ</span>
-                  </>
-                )}
-              </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {events.map((e) => {
-                  const meta = INFLU_CALENDAR_KINDS[e.kind];
-                  const who = nameOf(e.influencer);
-                  return (
-                    <li
-                      key={e.id}
-                      className={`flex items-start gap-2 rounded-lg border border-l-4 border-stone-200 bg-white/80 p-2 transition-colors hover:border-brand-200 ${meta.edge}`}
-                    >
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => onToggleDone(e)}
-                          title={
-                            e.done
-                              ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
-                              : "ทำเครื่องหมายว่าเสร็จแล้ว"
-                          }
-                          className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center active:scale-90 max-sm:-m-3 max-sm:-mt-2.5 max-sm:h-11 max-sm:w-11"
-                        >
-                          {/* กล่องที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
-                              e.done
-                                ? "border-emerald-400 bg-emerald-400 text-white"
-                                : "border-stone-300 bg-white hover:border-brand-400"
-                            }`}
-                          >
-                            {e.done && <Check size={12} />}
-                          </span>
-                        </button>
-                      ) : (
-                        // ดูเฉยๆ — ยังต้องเห็นว่าคิวไหนเสร็จแล้ว แต่กดเปลี่ยนไม่ได้
-                        <span
-                          title={e.done ? "เสร็จแล้ว" : "ยังไม่เสร็จ"}
-                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-                            e.done
-                              ? "border-emerald-300 bg-emerald-100 text-emerald-600"
-                              : "border-stone-200 bg-stone-50"
-                          }`}
-                        >
-                          {e.done && <Check size={12} />}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => openDetail(e.id)}
-                        title={`ดูรายละเอียดคิว: ${who || e.title}`}
-                        className="min-w-0 flex-1 cursor-pointer text-left"
-                      >
-                        <span
-                          className={`flex items-center gap-1.5 text-sm font-medium text-stone-800 ${
-                            e.done ? "line-through opacity-60" : ""
-                          }`}
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
-                          />
-                          <span className="truncate">{who || e.title}</span>
-                        </span>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-stone-500">
-                          <span className="font-semibold tabular-nums">
-                            {calendarTimeLabel(e.start_time, e.end_time)}
-                          </span>
-                          <span>· {meta.short}</span>
-                          {e.doctor_name && (
-                            <DoctorNameChip name={e.doctor_name} doctors={doctors} />
-                          )}
-                        </span>
-                      </button>
-                      <ChevronRight
-                        size={16}
-                        className="mt-1.5 shrink-0 text-stone-300"
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
 
-            {/* วันเข้ารับบริการที่มาจากเคสใน pipeline (ยังไม่ได้ตั้งเป็นคิวในปฏิทิน) */}
-            {services.length > 0 && (
-              <div className="mt-4">
-                <p className="mb-1.5 text-xs font-semibold text-brand-700">
-                  จากเคสในบอร์ดเคสดำเนินงาน (ยังไม่ได้ตั้งคิว)
-                </p>
-                <ul className="space-y-1.5">
-                  {services.map((s) => (
-                    <li key={s.id}>
-                      <button
-                        type="button"
-                        onClick={() => openServiceDetail(s.id)}
-                        title={`ดูรายละเอียดเคส: ${nameOf(s)}`}
-                        className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-2 text-left transition-colors hover:border-brand-300 hover:bg-brand-50"
-                      >
-                        <Sparkles size={13} className="shrink-0 text-brand-400" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-stone-800">
-                            {nameOf(s)}
-                          </span>
-                          {(s.procedure_text || s.doctor_name) && (
-                            <span className="block truncate text-xs text-stone-500">
-                              {[s.procedure_text, s.doctor_name]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          )}
-                        </span>
-                        <ChevronRight size={16} className="shrink-0 text-stone-300" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ---------- โหมด: รายละเอียดคิว ---------- */}
-        {view === "detail" && activeEvent && (
-          <div className="animate-fade-in">
-            <button
-              type="button"
-              onClick={openList}
-              className="mb-3 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-stone-500 transition-colors hover:text-brand-700"
-            >
-              <ArrowLeft size={13} /> กลับไปรายการของวันนี้
-            </button>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge
-                className={`border ${INFLU_CALENDAR_KINDS[activeEvent.kind].chip}`}
-              >
-                {INFLU_CALENDAR_KINDS[activeEvent.kind].label}
-              </Badge>
-              {activeEvent.done && (
-                <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700">
-                  <Check size={11} /> เสร็จแล้ว
-                </Badge>
-              )}
-            </div>
-
-            <h3
-              className={`mt-2 text-base font-semibold text-stone-900 ${
-                activeEvent.done ? "line-through opacity-60" : ""
-              }`}
-            >
-              {activeEvent.title}
-            </h3>
-
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs text-stone-400">เวลา</dt>
-                <dd className="flex items-center gap-1 font-medium text-stone-700 tabular-nums">
-                  <Clock3 size={13} className="text-stone-400" />
-                  {calendarTimeLabel(activeEvent.start_time, activeEvent.end_time)}
-                </dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs text-stone-400">Influencer</dt>
-                <dd className="min-w-0 flex-1">
-                  {activeEvent.influencer ? (
-                    <Link
-                      href={`/influencers/${activeEvent.influencer.id}`}
-                      className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-800"
-                    >
-                      {nameOf(activeEvent.influencer)}
-                      <ExternalLink size={11} />
-                    </Link>
-                  ) : (
-                    <span className="text-stone-400">ไม่ระบุ (คิวทั่วไป)</span>
-                  )}
-                </dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
-                <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  {activeEvent.doctor_name ? (
-                    <DoctorNameChip
-                      name={activeEvent.doctor_name}
-                      doctors={doctors}
-                    />
-                  ) : (
-                    <>
-                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                      <span className="text-stone-400">ยังไม่ระบุ</span>
-                    </>
-                  )}
-                </dd>
-              </div>
-              {activeEvent.location && (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-xs text-stone-400">สถานที่</dt>
-                  <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                    <MapPin size={13} className="shrink-0 text-stone-400" />
-                    {activeEvent.location}
-                  </dd>
-                </div>
-              )}
-              {activeEvent.note && (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-xs text-stone-400">หมายเหตุ</dt>
-                  <dd className="min-w-0 flex-1 whitespace-pre-wrap text-stone-600">
-                    {activeEvent.note}
-                  </dd>
-                </div>
-              )}
-            </dl>
-
-            {canEdit && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() => onToggleDone(activeEvent)}
-                >
-                  <Check size={14} />
-                  {activeEvent.done ? "ยังไม่เสร็จ" : "เสร็จแล้ว"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() => {
-                    setForm(formOf(activeEvent));
-                    setFormError(null);
-                    setMode("form");
-                  }}
-                >
-                  <Pencil size={14} /> แก้ไข
-                </Button>
-                <Button
-                  variant="danger"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2 size={14} /> ลบ
-                </Button>
-              </div>
-            )}
-
-            {confirmDelete && (
-              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 animate-fade-in">
-                ลบคิวนี้ออกจากปฏิทิน?
-                <Button
-                  variant="secondary"
-                  className="px-2.5 py-1 text-xs"
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  ยกเลิก
-                </Button>
-                <Button
-                  variant="danger"
-                  className="px-2.5 py-1 text-xs"
-                  onClick={async () => {
-                    setConfirmDelete(false);
-                    await onDelete(activeEvent.id);
-                    openList();
-                  }}
-                >
-                  ยืนยันลบ
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ---------- โหมด: รายละเอียดวันรับบริการที่มาจากเคส (อ่านอย่างเดียว) ---------- */}
-        {view === "detail" && activeService && (
-          <div className="animate-fade-in">
-            <button
-              type="button"
-              onClick={openList}
-              className="mb-3 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-stone-500 transition-colors hover:text-brand-700"
-            >
-              <ArrowLeft size={13} /> กลับไปรายการของวันนี้
-            </button>
-
-            <Badge className="border border-dashed border-brand-300 bg-white/70 text-brand-700">
-              <Sparkles size={11} /> วันรับบริการจากเคส
-            </Badge>
-            <h3 className="mt-2 text-base font-semibold text-stone-900">
-              {nameOf(activeService)}
-            </h3>
-
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs text-stone-400">หัตถการ</dt>
-                <dd className="min-w-0 flex-1 text-stone-700">
-                  {activeService.procedure_text || (
-                    <span className="text-stone-400">ยังไม่ระบุ</span>
-                  )}
-                </dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
-                <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-                  {activeService.doctor_name ? (
-                    <DoctorNameChip
-                      name={activeService.doctor_name}
-                      doctors={doctors}
-                    />
-                  ) : (
-                    <>
-                      <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                      <span className="text-stone-400">ยังไม่ระบุ</span>
-                    </>
-                  )}
-                </dd>
-              </div>
-            </dl>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {canEdit && (
-                <Button
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() =>
-                    openForm({
-                      kind: "service",
-                      influencerId: activeService.id,
-                      doctor: activeService.doctor_name ?? "",
-                      title: activeService.procedure_text ?? "",
-                    })
-                  }
-                >
-                  <CalendarPlus size={14} /> สร้างคิวจากเคสนี้
-                </Button>
-              )}
-              <Link
-                href={`/influencers/${activeService.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
-              >
-                เปิดเคส <ExternalLink size={12} />
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* ---------- โหมด: ฟอร์มเพิ่ม/แก้คิว ---------- */}
-        {view === "form" && (
-          <form onSubmit={submit} className="space-y-3 animate-fade-in">
-            <button
-              type="button"
-              onClick={() =>
-                form.id && activeEventId ? openDetail(activeEventId) : openList()
-              }
-              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-stone-500 transition-colors hover:text-brand-700"
-            >
-              <ArrowLeft size={13} /> {form.id ? "กลับไปรายละเอียด" : "กลับไปรายการ"}
-            </button>
-
-            <p className="text-sm font-semibold text-stone-800">
-              {form.id ? "แก้ไขคิว" : "เพิ่มคิว Influ"}
-            </p>
-
-            <div>
-              <Label htmlFor="cal-influ">Influencer</Label>
-              <Select
-                id="cal-influ"
-                value={form.influencerId}
-                onChange={(e) => pickInfluencer(e.target.value)}
-              >
-                <option value="">— ไม่ระบุ (คิวทั่วไป) —</option>
-                {/* คนเดิมเข้ามาหลายรอบมีหลายเคส — บอกรอบกำกับ ให้คิวผูกกับเคสรอบที่ถูก
-                    (ป้าย "รอลงคิวหมอ" เช็คคิว service ต่อเคส ผูกผิดรอบ = ป้ายไม่ดับ) */}
-                {influencers.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {nameOf(i)}
-                    {i.round_no > 1 ? ` · รอบ ${i.round_no}` : ""}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="cal-kind">ประเภทคิว</Label>
-              <Select
-                id="cal-kind"
-                value={form.kind}
-                onChange={(e) =>
-                  patch({ kind: e.target.value as InfluCalendarKind })
-                }
-              >
-                {INFLU_CALENDAR_KIND_ORDER.map((k) => (
-                  <option key={k} value={k}>
-                    {INFLU_CALENDAR_KINDS[k].label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="cal-title">รายละเอียดคิว</Label>
-              <Input
-                id="cal-title"
-                value={form.title}
-                onChange={(e) => patch({ title: e.target.value })}
-                placeholder={INFLU_CALENDAR_KINDS[form.kind].label}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="cal-doctor">แพทย์ที่รับเคส</Label>
-              <DoctorSelect
-                id="cal-doctor"
-                doctors={doctors}
-                value={form.doctor}
-                onChange={(name) => patch({ doctor: name })}
-              />
-              <p className="mt-1 text-xs text-stone-400">
-                เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
-                (เพิ่มหมอใหม่ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="cal-date">วันที่</Label>
-              <Input
-                id="cal-date"
-                type="date"
-                value={form.date}
-                onChange={(e) => patch({ date: e.target.value })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="cal-start">เวลาเริ่ม</Label>
-                <Input
-                  id="cal-start"
-                  type="time"
-                  value={form.start}
-                  onChange={(e) => patch({ start: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="cal-end">ถึงเวลา</Label>
-                <Input
-                  id="cal-end"
-                  type="time"
-                  value={form.end}
-                  onChange={(e) => patch({ end: e.target.value })}
-                />
-              </div>
-            </div>
-            <p className="-mt-1 text-xs text-stone-400">
-              ไม่กรอกเวลา = คิวทั้งวัน (ยังไม่เคาะเวลา)
-            </p>
-
-            <div>
-              <Label htmlFor="cal-location">สถานที่ / ช่องทาง</Label>
-              <Input
-                id="cal-location"
-                value={form.location}
-                onChange={(e) => patch({ location: e.target.value })}
-                placeholder="เช่น สตูดิโอชั้น 4, คลินิกชั้น 2"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="cal-note">หมายเหตุ</Label>
-              <Textarea
-                id="cal-note"
-                rows={2}
-                value={form.note}
-                onChange={(e) => patch({ note: e.target.value })}
-                placeholder="รายละเอียดเพิ่มเติม เช่น ทีมที่ดูแล, สิ่งที่ต้องเตรียม"
-              />
-            </div>
-
-            {(formError || error) && (
-              <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">
-                {formError ?? error}
-              </p>
-            )}
-
-            <div className="flex justify-end gap-2 pb-1">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  form.id && activeEventId ? openDetail(activeEventId) : openList()
-                }
-              >
-                ยกเลิก
-              </Button>
-              <Button type="submit" loading={saving}>
-                {form.id ? "บันทึก" : "เพิ่มคิว"}
-              </Button>
-            </div>
-          </form>
-        )}
-      </div>
-
-      {/* ---- ปุ่มเพิ่ม influ ประจำวันนั้น (ซ่อนตอนอยู่ในฟอร์ม/ระดับดูเฉยๆ) ---- */}
-      {view !== "form" && canEdit && (
-        <div className="border-t border-brand-100/70 px-4 py-3 pb-safe-3 sm:pb-3">
-          <Button className="w-full" onClick={() => openForm()}>
-            <UserPlus size={16} />
-            เพิ่ม Influ ในวันนี้
+        <div className="flex justify-end gap-2 pb-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            ยกเลิก
+          </Button>
+          <Button type="submit" loading={saving}>
+            {form.id ? "บันทึก" : "เพิ่มคิว"}
           </Button>
         </div>
-      )}
-    </aside>
+      </form>
+    </Modal>
   );
 }
 
@@ -1006,16 +1009,13 @@ export function CalendarClient({
   const today = todayISO();
 
   const [events, setEvents] = useState(initialEvents);
-  /** มุมมองแบบ TimeTree: รายเดือน (ค่าเริ่มต้น) / รายสัปดาห์ */
+  /** มุมมอง: รายเดือน (ค่าเริ่มต้น) / รายสัปดาห์ — แผ่นปฏิทินเหลือแถวเดียวและ agenda โชว์ครบ 7 วัน */
   const [view, setView] = useState<"month" | "week">("month");
-  /** วันอ้างอิงของมุมมอง — โหมดเดือนใช้ ปี/เดือน ของวันนี้, โหมดสัปดาห์ใช้สัปดาห์ที่ครอบวันนี้ */
-  const [anchor, setAnchor] = useState(today);
-  const [selectedDay, setSelectedDay] = useState(today);
-  /** มือถือ: แผงข้างเป็น overlay จึงเปิดเฉพาะตอนกดวัน (จอ ≥lg แสดงตลอด) */
-  const [panelOpen, setPanelOpen] = useState(false);
-  /** นับครั้งที่เปิดแผง — ใช้เป็น key ให้แผงรีเซ็ตโหมดทุกครั้งที่กดวัน/กดคิว */
-  const [panelSeq, setPanelSeq] = useState(0);
-  const [focusEventId, setFocusEventId] = useState<string | null>(null);
+  /** **state เดียวของหน้า** — เดือน/สัปดาห์ที่โชว์คำนวณจากวันที่เลือกนี้ */
+  const [selected, setSelected] = useState(today);
+  const [detail, setDetail] = useState<DetailTarget | null>(null);
+  /** ฟอร์มที่เปิดอยู่ (null = ปิด) — เก็บทั้งก้อนเพื่อ prefill ตอนแก้/สร้างจากเคส */
+  const [formState, setFormState] = useState<FormState | null>(null);
   const [search, setSearch] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
   // ประเภทที่ถูกซ่อน (กดชิปในแถวตัวกรอง — แถวนี้พับเก็บอยู่หลังปุ่ม "ตัวกรอง")
@@ -1026,11 +1026,6 @@ export function CalendarClient({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const cursor = useMemo(() => {
-    const [y, m] = anchor.split("-").map(Number);
-    return { year: y, month: m - 1 };
-  }, [anchor]);
 
   /** รายชื่อแพทย์สำหรับตัวกรองด้านบน — ทะเบียนหมอ (active) + ชื่อที่เคยใช้ในคิว/เคสเดิม */
   const doctorOptions = useMemo(() => {
@@ -1058,70 +1053,82 @@ export function CalendarClient({
     });
   }, [events, search, hiddenKinds, doctorFilter]);
 
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>();
-    for (const e of visibleEvents) {
-      const list = map.get(e.event_date);
-      if (list) list.push(e);
-      else map.set(e.event_date, [e]);
-    }
-    for (const list of map.values()) list.sort(sortEvents);
-    return map;
-  }, [visibleEvents]);
-
   /* ---- วันเข้ารับบริการจากเคส (ซ้อนแบบอ่านอย่างเดียว)
          ข้ามคนที่มีคิวประเภท "รับบริการ" ในวันเดียวกันอยู่แล้ว — กันแสดงซ้ำ ---- */
-  const servicesByDate = useMemo(() => {
-    const map = new Map<string, CalendarInflu[]>();
-    if (!showServiceDates) return map;
+  const visibleServices = useMemo(() => {
+    if (!showServiceDates) return [] as CalendarInflu[];
     const q = search.trim().toLowerCase();
-    for (const i of influencers) {
-      if (!i.service_date || i.declined_at) continue;
-      if (doctorFilter && i.doctor_name !== doctorFilter) continue;
+    return influencers.filter((i) => {
+      if (!i.service_date || i.declined_at) return false;
+      if (doctorFilter && i.doctor_name !== doctorFilter) return false;
       if (
         q !== "" &&
         !nameOf(i).toLowerCase().includes(q) &&
         !(i.doctor_name ?? "").toLowerCase().includes(q)
       )
-        continue;
+        return false;
       // เทียบกับคิวที่ "มองเห็นอยู่จริง" ไม่ใช่ events ดิบ — ไม่งั้นพอซ่อนชนิด "รับบริการ"
       // หรือกรองแพทย์ (ชื่อแพทย์ในคิวแก้แยกจากในเคสได้) คิวจะหายจากกริดแต่ยังกดทับ
       // ไม่ให้ชิปวันรับบริการโผล่ = เคสนั้นหายไปทั้งคู่
-      const dup = visibleEvents.some(
+      return !visibleEvents.some(
         (e) =>
           e.influencer_id === i.id &&
           e.event_date === i.service_date &&
           e.kind === "service"
       );
-      if (dup) continue;
-      const list = map.get(i.service_date);
-      if (list) list.push(i);
-      else map.set(i.service_date, [i]);
-    }
-    return map;
+    });
   }, [influencers, visibleEvents, showServiceDates, search, doctorFilter]);
 
-  const cells = useMemo(
-    () => monthCells(cursor.year, cursor.month),
-    [cursor.year, cursor.month]
-  );
+  /** รายการของแต่ละวัน (คิวจริงเรียงตามเวลา → วันรับบริการจากเคสต่อท้าย) */
+  const itemsByDate = useMemo(() => {
+    const map = new Map<string, DayItem[]>();
+    const evByDate = new Map<string, CalendarEvent[]>();
+    for (const e of visibleEvents) {
+      const list = evByDate.get(e.event_date);
+      if (list) list.push(e);
+      else evByDate.set(e.event_date, [e]);
+    }
+    for (const [iso, list] of evByDate) {
+      map.set(
+        iso,
+        list
+          .sort(sortEvents)
+          .map((e) => ({ type: "event", id: e.id, event: e }) as DayItem)
+      );
+    }
+    for (const i of visibleServices) {
+      const iso = i.service_date as string;
+      const item: DayItem = { type: "service", id: i.id, influ: i };
+      const list = map.get(iso);
+      if (list) list.push(item);
+      else map.set(iso, [item]);
+    }
+    return map;
+  }, [visibleEvents, visibleServices]);
 
-  /** จำนวนแถวสัปดาห์ของเดือนที่ดูอยู่ (4–6) — ใช้ทั้งคลาส lg:grid-rows-N และการวัดความสูงช่อง */
+  const itemsOf = (iso: string) => itemsByDate.get(iso) ?? [];
+
+  const monthMode = view === "month";
+  const cells = useMemo(() => monthCells(selected), [selected]);
+  /** จำนวนแถวสัปดาห์ของเดือนที่ดูอยู่ (4–6) — คุมความสูงแถวตอนกางเต็มจอ */
   const rowCount = cells.length / 7;
+  /** 7 วันของสัปดาห์ที่กำลังดู (โหมดสัปดาห์) */
+  const weekDays = useMemo(() => weekDaysOf(selected), [selected]);
+  /** ช่องที่กริดจะวาด — โหมดสัปดาห์เหลือแถวเดียว (ประกาศเป็นตัวแปรเดียวกัน ไม่ map จาก
+      union ของ array 2 ชนิด ซึ่ง TypeScript เรียก .map ไม่ได้) */
+  const gridCells: (string | null)[] = view === "week" ? weekDays : cells;
 
-  /* จอ ≥lg ปฏิทินสูงพอดีจอ ไม่มี scroll ทั้งหน้า (คำสั่งผู้ใช้ 2026-08-20) — ช่องวันเตี้ยลง
-     ตามจอจริง จึงวัดความสูงกริดแล้วคิดว่าช่องหนึ่งใส่ชิปได้กี่แถว (เกินโควตา = แถว "+N คิว")
-     จอเล็ก/กลางช่องยังมี min-height เดิม ค่าที่วัดได้ชนเพดาน 4 = จำนวนชิปเท่าพฤติกรรมเดิมพอดี */
-  const monthGridRef = useRef<HTMLDivElement | null>(null);
-  const [chipCapacity, setChipCapacity] = useState(4);
+  /* จอ ≥lg แผ่นปฏิทินสูงพอดีจอ (หน้าไม่มี scroll — กติกาผู้ใช้ 2026-08-20) ช่องวันจึงเตี้ยลง
+     ตามจอจริง — วัดความสูงกริดแล้วคิดว่าช่องหนึ่งใส่ชิปได้กี่แถว (เกินโควตา = "+N") */
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [chipCapacity, setChipCapacity] = useState(2);
   useEffect(() => {
-    if (view !== "month") return;
-    const el = monthGridRef.current;
+    const el = gridRef.current;
     if (!el) return;
     const measure = () => {
-      const cellH = el.clientHeight / rowCount;
-      // 26 = แถวเลขวัน (≥lg ย่อเหลือ h-5) + ช่องไฟ, 27 = ชิป text-xs py-1 + ช่องไฟ (ดู EventChip)
-      setChipCapacity(Math.min(4, Math.max(1, Math.floor((cellH - 26) / 27))));
+      const cellH = el.clientHeight / (view === "week" ? 1 : rowCount);
+      // 40 = แถวเลขวัน + ช่องไฟ, 20 = ชิปหนึ่งบรรทัด (text-[11px] py-0.5 + gap)
+      setChipCapacity(Math.min(4, Math.max(0, Math.floor((cellH - 40) / 20))));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1129,45 +1136,15 @@ export function CalendarClient({
     return () => ro.disconnect();
   }, [view, rowCount]);
 
-  /** 7 วันของสัปดาห์ที่กำลังดู (โหมดสัปดาห์) */
-  const weekDays = useMemo(() => weekDaysOf(anchor), [anchor]);
-
   /** เลื่อนก่อนหน้า/ถัดไป — โหมดเดือนขยับทีละเดือน โหมดสัปดาห์ขยับทีละ 7 วัน */
   const goStep = (delta: number) =>
-    setAnchor((a) => {
-      if (view === "week") return addDaysISO(a, delta * 7);
-      const [y, m] = a.split("-").map(Number);
-      const d = new Date(y, m - 1 + delta, 1);
-      return isoOf(d.getFullYear(), d.getMonth(), 1);
-    });
+    setSelected((d) => (view === "week" ? addDaysISO(d, delta * 7) : shiftMonth(d, delta)));
 
-  const goToday = () => setAnchor(today);
-
-  /** เลือกวัน → เปิดแผงลอยทับปฏิทิน; ส่ง eventId มาด้วยเพื่อเปิดรายละเอียดเลย */
-  const openDate = (dateISO: string, eventId: string | null = null) => {
-    setAnchor(dateISO);
-    setSelectedDay(dateISO);
-    setFocusEventId(eventId);
-    setPanelSeq((n) => n + 1);
-    setPanelOpen(true);
+  const openForm = (preset: Partial<FormState> = {}) => {
     setActionError(null);
+    setDetail(null);
+    setFormState({ ...emptyForm(selected), ...preset });
   };
-
-  const closePanel = () => {
-    setPanelOpen(false);
-    setFocusEventId(null);
-  };
-
-  /* Esc ปิดแผงลอย — dropdown เลือกแพทย์ดัก Esc ไว้ตั้งแต่ capture phase แล้ว
-     (stopPropagation) ตัวฟังนี้จึงไม่ไปปิดแผงทั้งบานตอนแค่อยากปิดเมนู */
-  useEffect(() => {
-    if (!panelOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPanelOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [panelOpen]);
 
   /* Esc ปิดตัวกรอง — จำเป็นกับ bottom sheet บนมือถือ (จอใหญ่ก็ได้ประโยชน์เดียวกัน) */
   useEffect(() => {
@@ -1227,8 +1204,8 @@ export function CalendarClient({
         summary: `แก้คิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
       });
       router.refresh();
-      // ย้ายคิวไปวันอื่น = ตามไปเปิดวันนั้นให้เห็นผลทันที
-      if (saved.event_date !== selectedDay) openDate(saved.event_date, saved.id);
+      // ย้ายคิวไปวันอื่น = ตามไปเลือกวันนั้นให้เห็นผลทันที
+      setSelected(saved.event_date);
       return true;
     }
 
@@ -1253,7 +1230,7 @@ export function CalendarClient({
       summary: `เพิ่มคิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
     });
     router.refresh();
-    if (saved.event_date !== selectedDay) openDate(saved.event_date);
+    setSelected(saved.event_date);
     return true;
   };
 
@@ -1272,6 +1249,7 @@ export function CalendarClient({
       setActionError(`ลบไม่สำเร็จ: ${error.message}`);
       return;
     }
+    setDetail(null);
     if (removed) {
       logInflu(supabase, actor, {
         action: "delete",
@@ -1305,122 +1283,115 @@ export function CalendarClient({
     router.refresh();
   };
 
-  /** มีตัวกรองใดถูกปรับจากค่าเริ่มต้นไหม — โชว์จุดแดงบนปุ่ม "ตัวกรอง" กันลืมว่าซ่อนของอยู่ */
+  /** มีตัวกรองใดถูกปรับจากค่าเริ่มต้นไหม — โชว์จุดบนปุ่ม "ตัวกรอง" กันลืมว่าซ่อนของอยู่ */
   const filterActive =
     hiddenKinds.size > 0 || doctorFilter !== "" || !showServiceDates;
+
+  const detailEvent =
+    detail?.type === "event"
+      ? (events.find((e) => e.id === detail.id) ?? null)
+      : null;
+  const detailService =
+    detail?.type === "service"
+      ? (influencers.find((i) => i.id === detail.id) ?? null)
+      : null;
+
+  /** การ์ด "คิวถัดไป" — วันถัดจากที่เลือกซึ่งมีคิวจริง (สูงสุด 4 ใบ) */
+  const nextDays = useMemo(
+    () =>
+      [...itemsByDate.keys()]
+        .filter((d) => d > selected)
+        .sort()
+        .slice(0, 4),
+    [itemsByDate, selected]
+  );
+
+  const selectedItems = itemsOf(selected);
 
   return (
     <>
       {loadError && (
-        <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+        <div className="mb-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </div>
       )}
       {actionError && (
-        <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+        <div className="mb-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           {actionError}
         </div>
       )}
       {!canEdit && (
-        <div className="mb-4 shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-600">
+        <div className="mb-3 shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-600">
           บัญชีนี้เป็นระดับ &ldquo;Viewer&rdquo; — เปิดดูคิวได้ทั้งหมด แต่เพิ่ม/แก้/ลบคิวไม่ได้
         </div>
       )}
 
-      {/* ---- แถบเครื่องมือแบบ TimeTree: วันนี้ · ‹ › · ชื่อเดือน · เดือน/สัปดาห์ · ค้นหา · ตัวกรอง
-           จอเล็กยุบเหลือ 2 แถวกะทัดรัด (ผู้ใช้ 2026-08-20: toolbar เดิมกินจอมือถือเกือบ 20%) ---- */}
-      {/* ≥lg ย่อทุกชิ้น + ชิดบน (ผู้ใช้ 2026-08-20 รอบสาม: header กินพื้นที่ปฏิทินบนคอม) */}
-      <div className="mb-3 flex shrink-0 flex-col gap-2 animate-fade-in-up sm:flex-row sm:flex-wrap sm:items-center lg:mb-1.5">
-        <div className="flex min-w-0 items-center gap-2">
+      {/* ---- แถบเครื่องมือแถวเดียว: เดือน|สัปดาห์ · ค้นหา · ตัวกรอง
+           (การเลื่อนเดือน/ปุ่ม "วันนี้" ย้ายไปอยู่บนแผ่นปฏิทินตามภาพอ้างอิง) ---- */}
+      <div className="mb-2.5 flex shrink-0 items-center gap-2 animate-fade-in-up lg:mb-2">
+        <div className="flex shrink-0 rounded-full border border-stone-200 bg-white/70 p-0.5">
+          {(
+            [
+              { key: "month", label: "เดือน" },
+              { key: "week", label: "สัปดาห์" },
+            ] as const
+          ).map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => setView(v.key)}
+              className={`cursor-pointer rounded-full px-3.5 py-1 text-sm font-medium transition-all max-sm:min-h-10 lg:px-3 lg:py-0.5 lg:text-xs ${
+                view === v.key
+                  ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
+                  : "text-stone-500 hover:text-brand-700"
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+          />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหา"
+            className="py-1.5 pl-9 lg:py-1"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-label="ตัวกรองปฏิทิน"
+          title="ตัวกรอง: ประเภทคิว / แพทย์ / วันรับบริการจากเคส"
+          className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 lg:h-8 lg:w-8 ${
+            filtersOpen
+              ? "border-brand-300 bg-brand-50 text-brand-700"
+              : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
+          }`}
+        >
+          <SlidersHorizontal size={16} />
+          {filterActive && (
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
+          )}
+        </button>
+        {canEdit && (
           <Button
-            variant="secondary"
-            onClick={goToday}
+            onClick={() => openForm()}
             className="shrink-0 px-3 py-1.5 max-sm:min-h-11 lg:py-1"
           >
-            วันนี้
+            <Plus size={16} />
+            <span className="max-sm:sr-only">เพิ่มคิว</span>
           </Button>
-          <div className="flex shrink-0 items-center rounded-lg border border-stone-200 bg-white/70 p-0.5">
-            <button
-              type="button"
-              onClick={() => goStep(-1)}
-              aria-label={view === "week" ? "สัปดาห์ก่อนหน้า" : "เดือนก่อนหน้า"}
-              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8 lg:h-6 lg:w-7"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => goStep(1)}
-              aria-label={view === "week" ? "สัปดาห์ถัดไป" : "เดือนถัดไป"}
-              className="flex h-10 w-11 cursor-pointer items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8 lg:h-6 lg:w-7"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-          <h2 className="min-w-0 truncate text-lg font-bold text-stone-900 sm:text-xl lg:text-base">
-            {view === "week"
-              ? weekLabel(weekDays)
-              : monthLabel(cursor.year, cursor.month)}
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-2 sm:ml-auto">
-          {/* สลับมุมมอง เดือน/สัปดาห์ (segmented pill) */}
-          <div className="flex shrink-0 rounded-full border border-stone-200 bg-white/70 p-0.5">
-            {(
-              [
-                { key: "month", label: "เดือน" },
-                { key: "week", label: "สัปดาห์" },
-              ] as const
-            ).map((v) => (
-              <button
-                key={v.key}
-                type="button"
-                onClick={() => setView(v.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-1 text-sm font-medium transition-all max-sm:min-h-10 lg:px-3 lg:py-0.5 lg:text-xs ${
-                  view === v.key
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-                    : "text-stone-500 hover:text-brand-700"
-                }`}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-          <div className="relative min-w-0 flex-1 sm:w-48 sm:flex-none md:w-56">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-            />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหา"
-              className="py-1.5 pl-9 lg:py-1"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-label="ตัวกรองปฏิทิน"
-            title="ตัวกรอง: ประเภทคิว / แพทย์ / วันรับบริการจากเคส"
-            className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 lg:h-8 lg:w-8 ${
-              filtersOpen
-                ? "border-brand-300 bg-brand-50 text-brand-700"
-                : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
-            }`}
-          >
-            <SlidersHorizontal size={16} />
-            {filterActive && (
-              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
-            )}
-          </button>
-        </div>
+        )}
       </div>
 
       {/* ---- แถวตัวกรอง inline — เฉพาะจอ ≥sm (มือถือใช้ bottom sheet ด้านล่างแทน) ---- */}
       {filtersOpen && (
-        <div className="mb-3 hidden shrink-0 flex-wrap items-center gap-1.5 animate-fade-in sm:flex">
+        <div className="mb-2.5 hidden shrink-0 flex-wrap items-center gap-1.5 animate-fade-in sm:flex">
           <FilterControls
             hiddenKinds={hiddenKinds}
             onToggleKind={toggleKind}
@@ -1433,329 +1404,278 @@ export function CalendarClient({
         </div>
       )}
 
-      {/* ---- ปฏิทิน (เต็มความกว้าง — แผงข้างเป็นแผงลอยทับ ไม่กินพื้นที่)
-           จอ ≥lg: กางสูงเต็มพื้นที่ที่เหลือ (หน้าไม่มี scroll — ดู container ใน page.tsx) ---- */}
-      <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-        {view === "month" && (
-          // ไม่มีกรอบ Card ครอบแล้ว (ผู้ใช้ 2026-08-20 รอบสาม: กรอบ+padding ทำให้ใช้พื้นที่
-          // ไม่คุ้ม) — กริดมีเส้นขอบมนของตัวเองอยู่แล้ว ให้กินพื้นที่เต็มความกว้าง/สูง
-          <div className="animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            <div className="grid shrink-0 grid-cols-7">
-              {WEEKDAYS.map((w, idx) => (
-                <div
-                  key={w}
-                  className={`pb-1.5 text-center text-xs font-semibold sm:text-sm lg:pb-1 lg:text-xs ${
-                    idx === 6 ? "text-rose-500" : "text-stone-500"
+      {/* ---- ปฏิทิน (ซ้าย) + การ์ดคิวรายวัน (ขวา บนจอ ≥lg / ใต้ปฏิทินบนจอเล็ก) ----
+           ≥lg ทั้งสองคอลัมน์สูงเท่าจอ — คอลัมน์ขวาเลื่อนในตัวเอง หน้าไม่ scroll */}
+      <div className="min-w-0 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        {/* ---------------- แผ่นปฏิทินไล่เฉด ---------------- */}
+        {/* เฉดเข้มกว่าปฏิทิน Wellness หนึ่งขั้น (500→700) — ช่องนี้มีตัวเลขเล็กเต็มไปหมด
+            เฉด 400 ที่หัวแผ่นทำให้ตัวเลข cream อ่านไม่ออก (contrast ~2:1) */}
+        <section
+          className={`flex flex-col overflow-hidden rounded-3xl bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 px-1.5 pb-2.5 pt-2 text-cream shadow-[0_12px_36px_rgba(94,58,49,0.22)] animate-fade-in-up sm:px-3 sm:pb-3 ${
+            // เดือน = กางเต็มความสูงจอ (ตารางทั้งเดือนควรใช้พื้นที่ให้คุ้ม)
+            // สัปดาห์ = แถวเดียว ปล่อยให้สูงเท่าเนื้อหา ไม่งั้นได้แผ่นไล่เฉดว่างครึ่งจอ
+            monthMode ? "lg:min-h-0" : "lg:self-start"
+          }`}
+        >
+          <header className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => goStep(-1)}
+              aria-label={view === "week" ? "สัปดาห์ก่อนหน้า" : "เดือนก่อนหน้า"}
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95 lg:h-9 lg:w-9"
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <h2 className="min-w-0 flex-1 truncate text-center text-xl font-semibold tracking-wide sm:text-2xl lg:text-xl">
+              {view === "week" ? weekLabel(weekDays) : monthTitleOf(selected)}
+            </h2>
+            <button
+              type="button"
+              onClick={() => goStep(1)}
+              aria-label={view === "week" ? "สัปดาห์ถัดไป" : "เดือนถัดไป"}
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95 lg:h-9 lg:w-9"
+            >
+              <ChevronRight size={22} />
+            </button>
+          </header>
+
+          <div className="mb-1 flex shrink-0 justify-center">
+            <button
+              type="button"
+              onClick={() => setSelected(today)}
+              className="cursor-pointer rounded-full bg-white/20 px-3.5 py-1 text-xs font-medium text-cream transition-colors hover:bg-white/30 max-sm:min-h-9"
+            >
+              วันนี้
+            </button>
+          </div>
+
+          {/* หัวคอลัมน์วัน — อาทิตย์อยู่ท้ายและจางลงเล็กน้อย */}
+          <div className="grid shrink-0 grid-cols-7">
+            {WEEKDAYS.map((w, i) => (
+              <div key={w} className="py-1 text-center">
+                <span
+                  className={`text-[11px] font-semibold sm:text-xs ${
+                    i === 6 ? "text-rose-100" : "text-cream"
                   }`}
                 >
                   {w}
-                </div>
-              ))}
-            </div>
-            <div
-              ref={monthGridRef}
-              className={`grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-stone-200/70 bg-stone-200/70 lg:min-h-0 lg:flex-1 ${
-                // แถวสัปดาห์แบ่งความสูงเท่ากันเมื่อกริดถูกกางเต็มจอ (ต้องเป็นคลาส literal ให้ Tailwind เจอ)
-                rowCount <= 4
-                  ? "lg:grid-rows-4"
-                  : rowCount === 5
-                    ? "lg:grid-rows-5"
-                    : "lg:grid-rows-6"
-              }`}
-            >
-              {cells.map((day, idx) => {
-                if (day === null)
-                  return (
-                    <div
-                      key={`blank-${idx}`}
-                      className="min-h-[92px] bg-white/40 sm:min-h-[168px] lg:min-h-0"
-                    />
-                  );
-                const iso = isoOf(cursor.year, cursor.month, day);
-                const dayEvents = eventsByDate.get(iso) ?? [];
-                const dayServices = servicesByDate.get(iso) ?? [];
-                // โควตาชิปต่อช่องตามความสูงจริง — ถ้าเกินให้เสียหนึ่งบรรทัดเป็น "+N คิว"
-                const totalChips = dayEvents.length + dayServices.length;
-                const budget =
-                  totalChips > chipCapacity
-                    ? Math.max(1, chipCapacity - 1)
-                    : chipCapacity;
-                const evShown = dayEvents.slice(0, budget);
-                const svShown = dayServices.slice(0, budget - evShown.length);
-                const hiddenChips =
-                  totalChips - evShown.length - svShown.length;
-                const isToday = iso === today;
-                const isSelected = iso === selectedDay && panelOpen;
-                const sunday = idx % 7 === 6;
-                return (
-                  <button
-                    key={iso}
-                    type="button"
-                    onClick={() => openDate(iso)}
-                    title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
-                    className={`flex min-h-[92px] cursor-pointer flex-col gap-1 p-1 text-left transition-colors sm:min-h-[168px] sm:gap-1.5 sm:p-1.5 lg:min-h-0 lg:overflow-hidden ${
-                      isSelected
-                        ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
-                        : isToday
-                          ? "bg-stone-50/90"
-                          : "bg-white/85"
-                    } hover:bg-brand-50/80`}
-                  >
-                    {/* เลขวันกลางช่องแบบ TimeTree — วันนี้เป็นวงกลมทึบ, อาทิตย์สีแดง
-                        ≥lg เลขเล็กลง (ผู้ใช้ 2026-08-20 รอบสาม) คืนพื้นที่ให้ชิปคิว */}
-                    <span className="flex justify-center">
-                      <span
-                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm lg:h-5 lg:min-w-5 lg:text-[11px] ${
-                          isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-                            : sunday
-                              ? "text-rose-500"
-                              : "text-stone-700"
-                        }`}
-                      >
-                        {day}
-                      </span>
-                    </span>
-
-                    {/* จอเล็ก: แท่งสีจิ๋วพร้อมชื่อ (แบบ TimeTree บนมือถือ) */}
-                    <span className="flex w-full min-w-0 flex-col gap-0.5 sm:hidden">
-                      {dayEvents.slice(0, 3).map((e) => (
-                        <span
-                          key={e.id}
-                          className={`w-full truncate rounded-sm px-1 py-px text-[10px] font-medium leading-3.5 text-white ${
-                            INFLU_CALENDAR_KINDS[e.kind].solid
-                          } ${e.done ? "opacity-40" : ""}`}
-                        >
-                          {nickOf(e.influencer) || e.title}
-                        </span>
-                      ))}
-                      {dayServices.slice(0, 1).map((s) => (
-                        <span
-                          key={s.id}
-                          className="w-full truncate rounded-sm border border-dashed border-brand-400 px-1 py-px text-[10px] font-medium leading-3.5 text-brand-600"
-                        >
-                          {nickOf(s)}
-                        </span>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <span className="text-[9px] leading-none text-stone-400">
-                          +{dayEvents.length - 3}
-                        </span>
-                      )}
-                    </span>
-
-                    {/* จอใหญ่: ชิปคิวตามโควตาความสูงช่อง (เรียงตามเวลาเริ่ม — เริ่มก่อนอยู่บน) */}
-                    <span className="hidden w-full min-w-0 flex-col gap-1 sm:flex">
-                      {evShown.map((e) => (
-                        <EventChip key={e.id} event={e} />
-                      ))}
-                      {svShown.map((s) => (
-                        <span
-                          key={s.id}
-                          title={`วันรับบริการจากเคส (ยังไม่เคาะเวลา — สร้างคิวจริงได้ในแผงข้าง): ${nameOf(s)}${
-                            s.doctor_name ? ` · ${s.doctor_name}` : ""
-                          }`}
-                          className="flex w-full items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-[11px] leading-tight text-brand-600 lg:text-xs"
-                        >
-                          {/* ป้าย "จากเคส" อยู่ตำแหน่งเดียวกับเวลาบนชิปคิวจริง —
-                              บอกตรงๆ ว่าใบนี้ยังไม่มีเวลานัด (service_date เป็นแค่วัน) */}
-                          <span className="shrink-0 text-[10px] font-semibold lg:text-[11px]">
-                            จากเคส
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {nickOf(s)}
-                          </span>
-                        </span>
-                      ))}
-                      {hiddenChips > 0 && (
-                        <span className="px-1 text-[11px] font-medium leading-tight text-stone-400">
-                          +{hiddenChips} คิว
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                </span>
+              </div>
+            ))}
           </div>
-        )}
 
-        {/* ---- มุมมองสัปดาห์: จอใหญ่เป็น 7 คอลัมน์ / จอเล็กเป็นลิสต์ไล่วัน (อ่านชื่อ+เวลาชัด) ---- */}
-        {view === "week" && (
-          <div className="animate-fade-in-up lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            {/* จอ ≥sm: คอลัมน์ต่อวัน โชว์คิวครบทุกใบ — ≥lg สูงเต็มพื้นที่ (แถวเดียวกาง 1fr) */}
-            <div className="hidden grid-cols-7 gap-px overflow-hidden rounded-lg border border-stone-200/70 bg-stone-200/70 sm:grid lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]">
-              {weekDays.map((iso, idx) => {
-                const dayEvents = eventsByDate.get(iso) ?? [];
-                const dayServices = servicesByDate.get(iso) ?? [];
-                const isToday = iso === today;
-                const isSelected = iso === selectedDay && panelOpen;
-                const d = dateOf(iso);
+          {/* ช่องวัน — ตัวเลขเป็นพระเอก, มีคิว = ป้ายตัวเลขจำนวนคิวเกาะมุมขวาบน */}
+          <div
+            ref={gridRef}
+            className={`grid min-w-0 grid-cols-7 gap-x-0.5 gap-y-1 sm:gap-x-1 ${
+              monthMode
+                ? `lg:min-h-0 lg:flex-1 ${
+                    // แถวสัปดาห์แบ่งความสูงเท่ากันตอนกางเต็มจอ (ต้องเป็นคลาส literal ให้ Tailwind เจอ)
+                    rowCount <= 4
+                      ? "lg:grid-rows-4"
+                      : rowCount === 5
+                        ? "lg:grid-rows-5"
+                        : "lg:grid-rows-6"
+                  }`
+                : ""
+            }`}
+          >
+            {gridCells.map((iso, idx) => {
+              if (iso === null)
                 return (
                   <div
-                    key={iso}
-                    className={`flex min-h-[420px] flex-col lg:min-h-0 ${
-                      isSelected
-                        ? "bg-brand-50 ring-2 ring-inset ring-brand-400"
-                        : isToday
-                          ? "bg-stone-50/90"
-                          : "bg-white/85"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => openDate(iso)}
-                      title={`ดู/เพิ่มคิววันที่ ${formatDate(iso)}`}
-                      className="flex cursor-pointer flex-col items-center gap-0.5 border-b border-stone-100 py-2 transition-colors hover:bg-brand-50/80"
-                    >
-                      <span
-                        className={`text-xs font-semibold ${
-                          idx === 6 ? "text-rose-500" : "text-stone-500"
-                        }`}
-                      >
-                        {WEEKDAYS[idx]}
-                      </span>
-                      <span
-                        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-sm font-semibold tabular-nums ${
-                          isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-                            : idx === 6
-                              ? "text-rose-500"
-                              : "text-stone-700"
-                        }`}
-                      >
-                        {d.getDate()}
-                      </span>
-                    </button>
-                    {/* ≥lg คิวเยอะกว่าความสูงคอลัมน์ = เลื่อนในคอลัมน์เอง (หน้ารวมไม่ scroll) */}
-                    <div className="flex flex-1 flex-col gap-1 p-1.5 lg:min-h-0 lg:overflow-y-auto">
-                      {dayEvents.map((e) => (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => openDate(iso, e.id)}
-                          className="w-full cursor-pointer text-left transition-transform active:scale-[0.98]"
-                        >
-                          <EventChip event={e} />
-                        </button>
-                      ))}
-                      {dayServices.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => openDate(iso)}
-                          title={`วันรับบริการจากเคส (ยังไม่เคาะเวลา — สร้างคิวจริงได้ในแผงข้าง): ${nameOf(s)}${
-                            s.doctor_name ? ` · ${s.doctor_name}` : ""
-                          }`}
-                          className="flex w-full cursor-pointer items-center gap-1 rounded-md border border-dashed border-brand-300 px-1.5 py-1 text-left text-[11px] leading-tight text-brand-600 transition-colors hover:bg-brand-50 lg:text-xs"
-                        >
-                          <span className="shrink-0 text-[10px] font-semibold lg:text-[11px]">
-                            จากเคส
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {nickOf(s)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                    key={`blank-${idx}`}
+                    className={`h-14 ${monthMode ? "lg:h-auto" : "lg:h-24"}`}
+                  />
                 );
-              })}
-            </div>
-
-            {/* จอเล็ก: agenda ไล่ทีละวัน — เวลาตัวหนา + แถบสีตามประเภท */}
-            <div className="divide-y divide-stone-100 sm:hidden">
-              {weekDays.map((iso, idx) => {
-                const dayEvents = eventsByDate.get(iso) ?? [];
-                const dayServices = servicesByDate.get(iso) ?? [];
-                const isToday = iso === today;
-                const d = dateOf(iso);
-                return (
-                  <div key={iso} className="py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => openDate(iso)}
-                      className="flex min-h-11 w-full cursor-pointer items-center gap-2.5 px-1 text-left"
+              const items = itemsOf(iso);
+              const isSelected = iso === selected;
+              const isToday = iso === today;
+              const sunday = idx % 7 === 6;
+              const shown = items.slice(0, chipCapacity);
+              const hidden = items.length - shown.length;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => setSelected(iso)}
+                  aria-label={`เปิดคิววันที่ ${formatDate(iso)}`}
+                  aria-current={isSelected ? "date" : undefined}
+                  title={`${thaiDayTitle(iso)} — ${items.length} คิว`}
+                  className={`flex h-14 min-w-0 cursor-pointer flex-col items-center gap-1 overflow-hidden rounded-xl px-0.5 py-1 transition-all active:scale-95 lg:px-1 ${
+                    monthMode ? "lg:h-auto lg:min-h-0" : "lg:h-24"
+                  } ${
+                    isSelected
+                      ? "bg-white/15 ring-1 ring-inset ring-white/70"
+                      : "hover:bg-white/10"
+                  }`}
+                >
+                  <span className="relative shrink-0">
+                    <span
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold tabular-nums transition-all sm:text-[15px] lg:h-8 lg:w-8 lg:text-sm ${
+                        isSelected
+                          ? "bg-white text-brand-700 shadow-md"
+                          : isToday
+                            ? "bg-white/35 text-cream"
+                            : sunday
+                              ? "text-rose-100"
+                              : "text-cream"
+                      }`}
                     >
+                      {Number(iso.slice(8))}
+                    </span>
+                    {items.length > 0 && (
                       <span
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums ${
-                          isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-                            : idx === 6
-                              ? "text-rose-500"
-                              : "text-stone-700"
+                        className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none shadow-sm ${
+                          isSelected
+                            ? "bg-brand-700 text-white"
+                            : "bg-white text-brand-700"
                         }`}
                       >
-                        {d.getDate()}
+                        {items.length}
                       </span>
-                      <span
-                        className={`text-xs font-semibold ${
-                          idx === 6 ? "text-rose-500" : "text-stone-500"
-                        }`}
-                      >
-                        {WEEKDAYS[idx]}
-                        {isToday && (
-                          <span className="ml-1.5 text-brand-600">· วันนี้</span>
-                        )}
-                      </span>
-                      {dayEvents.length + dayServices.length > 0 && (
-                        <span className="ml-auto text-xs text-stone-400">
-                          {dayEvents.length + dayServices.length} รายการ
-                        </span>
-                      )}
-                    </button>
-                    {dayEvents.map((e) => {
-                      const meta = INFLU_CALENDAR_KINDS[e.kind];
-                      return (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => openDate(iso, e.id)}
-                          className={`flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 pl-3 text-left transition-colors hover:bg-brand-50/60 ${
-                            e.done ? "opacity-50" : ""
-                          }`}
-                        >
+                    )}
+                  </span>
+
+                  {/* ชิปคิวในช่อง — โชว์เท่าที่ความสูงช่องรับไหว (จอเล็กช่องเตี้ย = ไม่มีชิป) */}
+                  {chipCapacity > 0 && (
+                    <span className="hidden w-full min-w-0 flex-col gap-0.5 lg:flex">
+                      {shown.map((item) =>
+                        item.type === "event" ? (
                           <span
-                            className={`w-1.5 self-stretch rounded-full ${meta.solid}`}
-                          />
-                          <span className="w-12 shrink-0 text-sm font-bold text-stone-800 tabular-nums">
-                            {shortTime(e.start_time) ?? "ทั้งวัน"}
-                          </span>
-                          <span
-                            className={`min-w-0 flex-1 truncate text-sm font-medium text-stone-800 ${
-                              e.done ? "line-through" : ""
+                            key={item.id}
+                            className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-tight text-brand-900 ${
+                              item.event.done
+                                ? "bg-white/50 line-through opacity-70"
+                                : "bg-white/90"
                             }`}
                           >
-                            {nickOf(e.influencer) || e.title}
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                INFLU_CALENDAR_KINDS[item.event.kind].dot
+                              }`}
+                            />
+                            <span className="shrink-0 font-semibold tabular-nums">
+                              {shortTime(item.event.start_time) ?? "—"}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {nickOf(item.event.influencer) || item.event.title}
+                            </span>
                           </span>
-                          <span className="shrink-0 text-xs text-stone-400">
-                            {meta.short}
+                        ) : (
+                          <span
+                            key={item.id}
+                            className="flex w-full items-center gap-1 rounded border border-dashed border-white/70 px-1 py-0.5 text-[11px] leading-tight text-cream"
+                          >
+                            <span className="shrink-0 font-semibold">จากเคส</span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {nickOf(item.influ)}
+                            </span>
                           </span>
-                        </button>
-                      );
-                    })}
-                    {dayServices.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => openDate(iso)}
-                        className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 pl-3 text-left transition-colors hover:bg-brand-50/60"
-                      >
-                        <span className="w-1.5 self-stretch rounded-full border border-dashed border-brand-400" />
-                        <span className="w-12 shrink-0 text-xs text-stone-400">
-                          จากเคส
+                        )
+                      )}
+                      {hidden > 0 && (
+                        <span className="px-1 text-left text-[10px] font-medium leading-tight text-cream/80">
+                          +{hidden} คิว
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-brand-700">
-                          {nickOf(s)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
+                      )}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </section>
+
+        {/* ---------------- การ์ดคิวรายวัน ---------------- */}
+        <section className="mt-4 space-y-2.5 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:pr-0.5">
+          {view === "month" ? (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-2 px-1">
+                <h3 className="text-sm font-semibold tracking-wide text-brand-700">
+                  {selected === today ? "วันนี้" : "วันที่เลือก"}
+                </h3>
+                <span className="text-xs text-stone-500">
+                  {thaiDayTitle(selected)}
+                </span>
+                <span className="text-xs text-stone-400">
+                  · {selectedItems.length} คิว
+                </span>
+                {/* ทางลัดเพิ่มคิวของวันที่เลือก — ปุ่มบน toolbar อยู่สุดหน้าจอ พอเลื่อนลงมา
+                    อ่านการ์ดคิวบนมือถือแล้วมันหลุดจอไปแล้ว */}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => openForm()}
+                    className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-10"
+                  >
+                    <Plus size={13} /> เพิ่มคิว
+                  </button>
+                )}
+              </div>
+
+              <DayCard
+                dateISO={selected}
+                items={selectedItems}
+                today={today}
+                doctors={doctors}
+                canEdit={canEdit}
+                onOpen={setDetail}
+                onToggleDone={(e) => void toggleDone(e)}
+                onAdd={() => openForm()}
+              />
+
+              {nextDays.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 px-1 pt-2">
+                    <CalendarDays size={13} className="text-stone-400" />
+                    <h3 className="text-xs font-semibold tracking-wide text-stone-500">
+                      คิวถัดไป
+                    </h3>
+                  </div>
+                  {nextDays.map((d) => (
+                    <DayCard
+                      key={d}
+                      dateISO={d}
+                      items={itemsOf(d)}
+                      today={today}
+                      doctors={doctors}
+                      canEdit={canEdit}
+                      onOpen={setDetail}
+                      onToggleDone={(e) => void toggleDone(e)}
+                      onPickDay={() => setSelected(d)}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-2 px-1">
+                <h3 className="text-sm font-semibold tracking-wide text-brand-700">
+                  ทั้งสัปดาห์
+                </h3>
+                <span className="text-xs text-stone-500">
+                  {weekLabel(weekDays)}
+                </span>
+              </div>
+              {weekDays.map((d) => (
+                <DayCard
+                  key={d}
+                  dateISO={d}
+                  items={itemsOf(d)}
+                  today={today}
+                  doctors={doctors}
+                  canEdit={canEdit}
+                  onOpen={setDetail}
+                  onToggleDone={(e) => void toggleDone(e)}
+                  onPickDay={() => setSelected(d)}
+                  onAdd={d === selected ? () => openForm() : undefined}
+                />
+              ))}
+            </>
+          )}
+        </section>
       </div>
 
       {/* มือถือ: ตัวกรองเป็น bottom sheet เด้งจากขอบล่าง (ผู้ใช้ 2026-08-20 — แถว inline
@@ -1805,38 +1725,54 @@ export function CalendarClient({
           document.body
         )}
 
-      {/* แผงข้าง — เปิดเฉพาะตอนกดเลือกวัน แล้วลอยทับปฏิทิน (กดฉากหลัง/Esc เพื่อปิด)
-          portal ออกไป body ตามกติกาเดียวกับ Modal: parent ที่มี backdrop-filter/transform
-          จะทำให้ position:fixed ของแผงไปยึดกับกล่องนั้นแทนทั้งจอ
-          (ปลอดภัยกับ SSR เพราะ panelOpen เริ่มเป็น false — portal เกิดหลัง hydrate เสมอ) */}
-      {panelOpen &&
-        createPortal(
-          <>
-            <button
-              type="button"
-              aria-label="ปิดแผงคิว"
-              onClick={closePanel}
-              className="fixed inset-0 z-40 cursor-default bg-stone-900/15 backdrop-blur-[2px] animate-fade-in"
-            />
-            <DaySidebar
-              key={`${selectedDay}#${panelSeq}`}
-              dateISO={selectedDay}
-              events={eventsByDate.get(selectedDay) ?? []}
-              services={servicesByDate.get(selectedDay) ?? []}
-              influencers={influencers}
-              doctors={doctors}
-              focusEventId={focusEventId}
-              canEdit={canEdit}
-              saving={saving}
-              error={actionError}
-              onClose={closePanel}
-              onSave={saveEvent}
-              onDelete={deleteEvent}
-              onToggleDone={toggleDone}
-            />
-          </>,
-          document.body
-        )}
+      {detailEvent && (
+        <EventDetailModal
+          key={detailEvent.id}
+          event={detailEvent}
+          doctors={doctors}
+          canEdit={canEdit}
+          error={actionError}
+          onEdit={() => {
+            setDetail(null);
+            setFormState(formOf(detailEvent));
+          }}
+          onDelete={() => deleteEvent(detailEvent.id)}
+          onToggleDone={() => void toggleDone(detailEvent)}
+          onClose={() => setDetail(null)}
+        />
+      )}
+
+      {detailService && (
+        <ServiceDetailModal
+          key={detailService.id}
+          influ={detailService}
+          doctors={doctors}
+          canEdit={canEdit}
+          onCreateQueue={() =>
+            openForm({
+              kind: "service",
+              date: detailService.service_date ?? selected,
+              influencerId: detailService.id,
+              doctor: detailService.doctor_name ?? "",
+              title: detailService.procedure_text ?? "",
+            })
+          }
+          onClose={() => setDetail(null)}
+        />
+      )}
+
+      {formState && (
+        <EventFormModal
+          key={formState.id ?? `new-${formState.date}`}
+          initial={formState}
+          influencers={influencers}
+          doctors={doctors}
+          saving={saving}
+          error={actionError}
+          onSave={saveEvent}
+          onClose={() => setFormState(null)}
+        />
+      )}
     </>
   );
 }

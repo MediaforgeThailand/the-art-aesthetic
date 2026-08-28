@@ -80,7 +80,7 @@ export default async function InfluHuntingPage() {
       .order("name", { ascending: true }),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
     supabase.from("profiles").select("id, full_name, email"),
-    // แคมเปญ (0092) — ตัวเลือกในฟอร์มสร้างนัดที่เปิดต่อจากปุ่ม "ตอบรับ"
+    // แคมเปญ (0093) — ตัวเลือกในฟอร์มสร้างนัดที่เปิดต่อจากปุ่ม "ตอบรับ"
     supabase
       .from("influ_campaign_defs")
       .select("*")

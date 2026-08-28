@@ -8,6 +8,7 @@ import {
   History,
   IdCard,
   LayoutGrid,
+  ListChecks,
   LogOut,
   Megaphone,
   Sparkles,
@@ -137,14 +138,13 @@ export function InfluShell({
     { href: "/influ-hunting", label: "Hunting", icon: Crosshair, show: canView },
     { href: "/influencers", label: "เคสดำเนินงาน", icon: LayoutGrid, show: canView },
     { href: "/influ-calendar", label: "ปฏิทินคิว", icon: CalendarDays, show: canView },
-    // แคมเปญ = ที่ตั้งแท็ก tracking (0092) — อยู่ก่อนแดชบอร์ดเพราะเป็นงานตั้งค่าที่ใช้บ่อยกว่า
+    // แคมเปญ = ที่ตั้งแท็ก tracking (0093) — อยู่ก่อนแดชบอร์ดเพราะเป็นงานตั้งค่าที่ใช้บ่อยกว่า
     { href: "/influ-campaigns", label: "แคมเปญ", icon: Megaphone, show: canView },
     { href: "/influ-dashboard", label: "แดชบอร์ด", icon: Gauge, show: canView },
     { href: "/influ-cost", label: "ต้นทุน", icon: Wallet, show: canView },
-    // หน้า "สัญญา & ติดตามผลงาน" ถูกถอดออกจากเมนูเพื่อเร่ง v1.0 (ผู้ใช้ 2026-08-29 —
-    // มีลิงก์โพสที่บันทึกจริงแค่ 1 รายการ) โค้ด/ข้อมูลยังอยู่ครบ เข้าได้ทาง URL ตรง
-    // และเอากลับมาได้ด้วยการปลดคอมเมนต์บรรทัดนี้:
-    // { href: "/influencers/contracts", label: "สัญญา", icon: FileSignature, show: canView },
+    // "Follow Up" = ทั้งที่ตั้งเป้าโพสและที่ติดตามผลงาน (0092 — ขั้นตามงานในหน้าเคสถูกถอด)
+    // งานหลักของทีมตอนนี้คือการตามให้ influ โพส จึงต้องอยู่ในเมนูเสมอ (ผู้ใช้ 2026-08-29)
+    { href: "/influencers/contracts", label: "Follow Up", icon: ListChecks, show: canView },
     { href: "/influ-gallery", label: "โปรไฟล์", icon: IdCard, show: canGallery },
     // ทะเบียนหมอ = งานผู้ดูแล (เดิมเป็นปุ่มบนหัวบอร์ดเคส — ย้ายมาเป็นหน้าของตัวเอง 2026-08-19)
     { href: "/influ-doctors", label: "จัดการหมอ", icon: Stethoscope, show: canManage },

@@ -39,7 +39,7 @@ export default async function StartPage() {
   if (access.isAdmin) redirect("/accounts");
 
   // ยังไม่มีสิทธิ์อะไรเลย = บัญชีที่เพิ่งสร้าง (ส่วนใหญ่มาจากเมลบริษัทที่ล็อกอินด้วย Google
-  // ตาม migration 0093) — บอกตรงๆ ว่า "รออนุมัติสิทธิ์" ไม่ใช่โยนเข้า My List เงียบๆ
+  // ตาม migration 0094) — บอกตรงๆ ว่า "รออนุมัติสิทธิ์" ไม่ใช่โยนเข้า My List เงียบๆ
   // ให้เดาเอาเองว่าทำไมไม่มีเมนูอะไรเลย (ผู้ใช้ 2026-08-29)
   if (!access.uid) redirect("/login");
   return <PendingApprovalClient email={access.name ?? ""} />;
