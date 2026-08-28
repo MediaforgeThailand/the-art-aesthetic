@@ -1,22 +1,35 @@
 "use client";
 
-// ปฏิทินคิวแพทย์ Wellness — ตารางเดือน (จันทร์เริ่มสัปดาห์ อาทิตย์ท้ายแถวสีแดง)
-// กดวัน = แผงข้างขวา list → detail (ข้อมูลลูกค้า + ไฟล์ผลแลบ) → ฟอร์มลงคิว (admin)
+// ปฏิทินคิวแพทย์ Wellness — **มือถือเป็นตัวตั้ง ตามภาพอ้างอิงที่ผู้ใช้ส่ง (2026-08-28)**:
+//   1) ทั้งบล็อกปฏิทินเป็น "แผ่นไล่เฉดแบรนด์" ตัวเลขวันเป็นสีอ่อนอยู่บนแผ่นนั้น
+//      วันที่เลือก = สี่เหลี่ยมมนสีขาวตัวหนังสือสีแบรนด์ · วันที่มีคิว = จุดขาวใต้ตัวเลข
+//   2) ใต้ปฏิทินเป็น "การ์ดต่อวัน" — ซ้ายมือเป็นแถบวันที่ไล่เฉด (ชื่อวัน + เลขวัน)
+//      ขวามือเป็นรายการเวลาของวันนั้นเรียงกัน กดแถวไหน = เปิดรายละเอียดคิวนั้น
+//   3) ปุ่ม + ลอยกลางล่างจอ (เฉพาะ admin) = ลงคิวในวันที่เลือก
+// จอ ≥lg แถวเดียวกันนี้กลายเป็น 2 คอลัมน์ (ปฏิทินซ้าย · การ์ดคิวขวา)
+//
 // การลงคิว/ย้ายกลับเป็น "นัดไว้" ดัก 23P01 จาก exclusion constraint = คิวชนกัน
 import {
-  ArrowLeft,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock,
   ExternalLink,
-  FileText,
+  Phone,
   Plus,
+  Stethoscope,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { Button, Input, Label, PageContainer, Select } from "@/components/ui";
+import { useMemo, useState } from "react";
+import { Button, Input, Label, Modal } from "@/components/ui";
+import {
+  BookingFields,
+  newBookingDraft,
+  type BookingDraft,
+} from "@/components/wellness/booking-fields";
+import { LabFileOpenLink } from "@/components/wellness/lab-files";
 import type {
   WellnessAppointmentRow,
   WellnessApptStatus,
@@ -25,12 +38,10 @@ import type {
 } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import { useSignedUrl } from "@/lib/use-signed-url";
 import {
   CALENDAR_APPT_SELECT,
   WELLNESS_APPT_STATUS,
-  WELLNESS_DURATION_OPTIONS,
-  WELLNESS_OVERLAP_MESSAGE,
+  apptErrorMessage,
   apptRangeLabel,
   formatTimeShort,
   isWellnessDoctorDay,
@@ -93,35 +104,25 @@ const THAI_WEEKDAYS_FULL = [
   "อาทิตย์",
 ];
 
-// หัวคอลัมน์ — จันทร์เริ่ม, อ./ส. = วันแพทย์เข้า (เน้น brand), อาทิตย์ท้ายแถวสีแดง
-const WEEKDAY_HEADS: { label: string; doctor: boolean; sunday: boolean }[] = [
-  { label: "จ.", doctor: false, sunday: false },
-  { label: "อ.", doctor: true, sunday: false },
-  { label: "พ.", doctor: false, sunday: false },
-  { label: "พฤ.", doctor: false, sunday: false },
-  { label: "ศ.", doctor: false, sunday: false },
-  { label: "ส.", doctor: true, sunday: false },
-  { label: "อา.", doctor: false, sunday: true },
-];
+// หัวคอลัมน์ — จันทร์เริ่ม (อ./ส. = วันแพทย์ Wellness เข้า)
+const WEEKDAY_HEADS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
-function monthTitleOf(anchorIso: string): string {
-  const [y, m] = anchorIso.split("-").map(Number);
+function monthTitleOf(dayIso: string): string {
+  const [y, m] = dayIso.split("-").map(Number);
   return `${THAI_MONTHS[m - 1]} ${y + 543}`;
 }
 
-function addMonths(anchorIso: string, delta: number): string {
-  const [y, m] = anchorIso.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return d.toISOString().slice(0, 10);
+/** ดัชนีวันในสัปดาห์แบบจันทร์=0 */
+function mondayIndex(dayIso: string): number {
+  return (new Date(`${dayIso}T00:00:00Z`).getUTCDay() + 6) % 7;
 }
 
-/** ช่องของเดือน — จันทร์คอลัมน์แรก, null = ช่องว่างหัว/ท้ายเดือน */
-function monthCells(anchorIso: string): (string | null)[] {
-  const [y, m] = anchorIso.split("-").map(Number);
-  const first = new Date(Date.UTC(y, m - 1, 1));
-  const lead = (first.getUTCDay() + 6) % 7;
+/** ช่องของเดือนที่วันนั้นอยู่ — จันทร์คอลัมน์แรก, null = ช่องว่างหัว/ท้ายเดือน */
+function monthCells(dayIso: string): (string | null)[] {
+  const [y, m] = dayIso.split("-").map(Number);
+  const lead = mondayIndex(`${dayIso.slice(0, 7)}-01`);
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const prefix = anchorIso.slice(0, 7);
+  const prefix = dayIso.slice(0, 7);
   const cells: (string | null)[] = [];
   for (let i = 0; i < lead; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++)
@@ -130,21 +131,32 @@ function monthCells(anchorIso: string): (string | null)[] {
   return cells;
 }
 
+/** ขยับเดือนโดยคงวันที่เดิมไว้ (สิ้นเดือนสั้นกว่า = ตกมาวันสุดท้ายของเดือนนั้น)
+    — state ของหน้านี้มีตัวเดียวคือ "วันที่เลือก" เดือนที่โชว์คำนวณจากมัน
+    จึงไม่มีทางเกิดสภาพ "เลื่อนเดือนแล้วรายการข้างล่างเป็นของอีกเดือน" */
+function shiftMonth(dayIso: string, delta: number): string {
+  const [y, m, d] = dayIso.split("-").map(Number);
+  const daysInTarget = new Date(Date.UTC(y, m + delta, 0)).getUTCDate();
+  const day = Math.min(d, daysInTarget);
+  const target = new Date(Date.UTC(y, m - 1 + delta, day));
+  return target.toISOString().slice(0, 10);
+}
+
 /** "2026-09-01" → "อังคารที่ 1 กันยายน 2569" */
 function thaiDayTitle(dayIso: string): string {
   const [y, m, d] = dayIso.split("-").map(Number);
-  const weekday = (new Date(`${dayIso}T00:00:00Z`).getUTCDay() + 6) % 7;
-  return `${THAI_WEEKDAYS_FULL[weekday]}ที่ ${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
+  return `${THAI_WEEKDAYS_FULL[mondayIndex(dayIso)]}ที่ ${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
 }
 
-/** ชิปคิวบนช่องวัน — แท่งสีทึบตามสถานะ */
-const APPT_CHIP_SOLID: Record<WellnessApptStatus, string> = {
-  scheduled: "bg-brand-500 text-white",
-  done: "bg-emerald-500 text-white",
-  cancelled: "bg-stone-200 text-stone-500 line-through",
+/** จุดสถานะใต้ตัวเลขวัน — บนแผ่นไล่เฉดใช้โทนขาว/อ่อนให้เห็นชัด */
+const DOT_ON_GRADIENT: Record<WellnessApptStatus, string> = {
+  scheduled: "bg-white",
+  done: "bg-emerald-200",
+  cancelled: "bg-white/40",
 };
 
-const APPT_DOT: Record<WellnessApptStatus, string> = {
+/** จุดบนพื้นขาว (ช่องวันที่ถูกเลือก = พื้นขาว ตัวหนังสือสีแบรนด์) */
+const DOT_ON_WHITE: Record<WellnessApptStatus, string> = {
   scheduled: "bg-brand-500",
   done: "bg-emerald-500",
   cancelled: "bg-stone-300",
@@ -155,45 +167,281 @@ function sortByTime(list: CalendarAppt[]): CalendarAppt[] {
 }
 
 /* ============================================================
-   ไฟล์ผลแลบ 1 แถวในแผงข้าง (แยก component เพราะ useSignedUrl เป็น hook ต่อ path)
+   การ์ดคิวต่อวัน — แถบวันที่ไล่เฉดด้านซ้าย + รายการเวลาด้านขวา (ตามภาพอ้างอิง)
    ============================================================ */
 
-function LabFileLink({ file }: { file: CalendarLabFile }) {
-  const { url, failed } = useSignedUrl(file.file_path);
-  return (
-    <li className="flex items-center gap-2 py-1.5">
-      <FileText size={15} className="shrink-0 text-brand-500" />
-      <span className="min-w-0 flex-1 truncate text-xs text-stone-700">
-        {file.file_name}
+function DayCard({
+  day,
+  appts,
+  onOpen,
+  onPickDay,
+  emptyAction,
+}: {
+  day: string;
+  appts: CalendarAppt[];
+  onOpen: (id: string) => void;
+  /** กดแถบวันที่ = เลือกวันนั้นบนปฏิทิน (ใช้กับการ์ด "คิวถัดไป") */
+  onPickDay?: () => void;
+  /** ปุ่มที่จะโชว์เมื่อวันนั้นไม่มีคิว (เช่นปุ่มลงคิวของ admin) */
+  emptyAction?: React.ReactNode;
+}) {
+  const dayNum = Number(day.slice(8));
+  const badge = (
+    <span className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 bg-gradient-to-b from-brand-500 to-brand-600 px-2 py-3 text-cream">
+      <span className="text-[11px] font-medium uppercase tracking-wide opacity-90">
+        {WEEKDAY_HEADS[mondayIndex(day)]}
       </span>
-      {failed ? (
-        <span className="shrink-0 text-[11px] text-rose-500">เปิดไม่ได้</span>
-      ) : (
-        <a
-          href={url ?? undefined}
-          target="_blank"
-          rel="noreferrer"
-          aria-disabled={!url}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11 ${
-            url ? "" : "pointer-events-none opacity-50"
-          }`}
-        >
-          <ExternalLink size={11} /> เปิดดู
-        </a>
+      <span className="font-display text-2xl font-semibold leading-none">
+        {dayNum}
+      </span>
+      {isWellnessDoctorDay(day) && (
+        <span className="text-[9px] opacity-80">วันแพทย์</span>
       )}
-    </li>
+    </span>
+  );
+
+  return (
+    <article className="flex overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70">
+      {onPickDay ? (
+        <button
+          type="button"
+          onClick={onPickDay}
+          aria-label={`เลือก${thaiDayTitle(day)}`}
+          className="flex cursor-pointer transition-opacity hover:opacity-90 active:scale-[0.98]"
+        >
+          {badge}
+        </button>
+      ) : (
+        badge
+      )}
+
+      <div className="min-w-0 flex-1 divide-y divide-stone-100">
+        {appts.length === 0 ? (
+          <div className="flex flex-col items-start gap-2 px-4 py-4">
+            <p className="text-sm text-stone-400">ยังไม่มีคิวในวันนี้</p>
+            {emptyAction}
+          </div>
+        ) : (
+          appts.map((a) => {
+            const meta = WELLNESS_APPT_STATUS[a.status];
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => onOpen(a.id)}
+                aria-label={`ดูรายละเอียดคิว ${formatTimeShort(a.start_time)} ${
+                  a.customer ? wellnessCustomerName(a.customer) : ""
+                }`}
+                className="flex w-full cursor-pointer items-start gap-3 px-3.5 py-3 text-left transition-colors hover:bg-brand-50/60 active:scale-[0.995]"
+              >
+                <span className="flex w-[4.5rem] shrink-0 flex-col">
+                  <span className="text-sm font-semibold text-stone-800">
+                    {formatTimeShort(a.start_time)}
+                  </span>
+                  <span className="text-[11px] text-stone-400">
+                    {a.duration_hours} ชม.
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate text-sm font-medium text-stone-800">
+                      {a.customer
+                        ? wellnessCustomerName(a.customer)
+                        : "(การ์ดลูกค้าถูกลบ)"}
+                    </span>
+                    {a.status !== "scheduled" && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.badge}`}
+                      >
+                        {meta.label}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-stone-400">
+                    {a.customer?.procedure_text || a.note || "ฟังผล + ปรึกษาแพทย์"}
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </article>
   );
 }
 
 /* ============================================================
-   ฟอร์มลงคิวในแผงข้าง (admin) — วันมาจากช่องที่กด เวลากรอกเอง เลือก 1/2/3 ชม.
+   โมดัลรายละเอียดคิว (bottom sheet บนมือถือ ตาม Modal ของระบบ)
    ============================================================ */
 
-function BookingForm({
+function ApptDetailModal({
+  appt,
+  canAdmin,
+  onSetStatus,
+  onClose,
+}: {
+  appt: CalendarAppt;
+  canAdmin: boolean;
+  onSetStatus: (id: string, next: WellnessApptStatus) => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const meta = WELLNESS_APPT_STATUS[appt.status];
+
+  async function changeStatus(next: WellnessApptStatus) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const msg = await onSetStatus(appt.id, next);
+    setBusy(false);
+    if (msg) {
+      setError(msg);
+      return;
+    }
+    onClose();
+  }
+
+  return (
+    <Modal open onClose={onClose} title={thaiDayTitle(appt.appt_date)}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-base font-semibold text-stone-800">
+            <Clock size={16} className="text-brand-500" />
+            {apptRangeLabel(appt.start_time, appt.duration_hours)}
+          </span>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${meta.badge}`}
+          >
+            {meta.label}
+          </span>
+        </div>
+
+        {appt.note && (
+          <p className="rounded-lg bg-white/70 px-3 py-2 text-xs text-stone-600">
+            {appt.note}
+          </p>
+        )}
+
+        {error && (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {error}
+          </p>
+        )}
+
+        {canAdmin && (
+          <div className="flex flex-wrap gap-2">
+            {appt.status === "scheduled" ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => void changeStatus("done")}
+                  disabled={busy}
+                  className="border border-emerald-200 text-emerald-700"
+                >
+                  มาแล้ว · เสร็จ
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => void changeStatus("cancelled")}
+                  disabled={busy}
+                  className="border border-stone-200 text-stone-500"
+                >
+                  ยกเลิกคิว
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => void changeStatus("scheduled")}
+                disabled={busy}
+                className="border border-brand-200 text-brand-700"
+              >
+                กลับเป็นนัดไว้
+              </Button>
+            )}
+          </div>
+        )}
+
+        {appt.customer ? (
+          <section className="rounded-xl border border-white/70 bg-white/60 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-stone-800">
+                  {wellnessCustomerName(appt.customer)}
+                </h3>
+                {appt.customer.phone ? (
+                  <a
+                    href={`tel:${appt.customer.phone.replace(/[^0-9+]/g, "")}`}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 underline-offset-2 hover:underline"
+                  >
+                    <Phone size={11} /> {appt.customer.phone}
+                  </a>
+                ) : (
+                  <p className="text-xs text-stone-400">ไม่มีเบอร์โทร</p>
+                )}
+              </div>
+              {appt.customer.lab_confirmed_at ? (
+                <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
+                  ผลแลบยืนยันแล้ว
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                  ผลแลบยังไม่ยืนยัน
+                </span>
+              )}
+            </div>
+
+            {appt.customer.procedure_text && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-stone-600">
+                <Stethoscope size={12} className="shrink-0 text-stone-400" />
+                {appt.customer.procedure_text}
+              </p>
+            )}
+
+            <div className="mt-3 border-t border-white/70 pt-2">
+              <p className="text-[11px] font-medium text-stone-500">
+                ผลตรวจเลือด ({appt.customer.lab_files.length} ไฟล์)
+              </p>
+              {appt.customer.lab_files.length === 0 ? (
+                <p className="mt-1 text-xs text-stone-400">ยังไม่มีไฟล์ผลตรวจ</p>
+              ) : (
+                <ul className="mt-1 divide-y divide-white/70">
+                  {appt.customer.lab_files.map((f) => (
+                    <LabFileOpenLink key={f.id} file={f} />
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <Link
+              href={`/wellness/${appt.customer.id}`}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
+            >
+              เปิดการ์ดลูกค้า <ExternalLink size={12} />
+            </Link>
+          </section>
+        ) : (
+          <p className="text-xs text-stone-400">การ์ดลูกค้าของคิวนี้ถูกลบไปแล้ว</p>
+        )}
+
+        <p className="text-[11px] text-stone-400">
+          ลงคิวเมื่อ {formatDateTime(appt.created_at)}
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================
+   โมดัลลงคิว (admin) — วันมาจากช่องที่กด เวลาใช้ช่องกลาง BookingFields
+   ============================================================ */
+
+function BookingModal({
   day,
   customers,
   onCreate,
-  onDone,
+  onClose,
 }: {
   day: string;
   customers: BookableCustomer[];
@@ -204,13 +452,11 @@ function BookingForm({
     duration_hours: number;
     note: string;
   }) => Promise<string | null>;
-  onDone: () => void;
+  onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [time, setTime] = useState("10:00");
-  const [duration, setDuration] = useState<number>(1);
-  const [note, setNote] = useState("");
+  const [draft, setDraft] = useState<BookingDraft>(() => newBookingDraft(day));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,464 +471,122 @@ function BookingForm({
   ).slice(0, 30);
 
   async function submit() {
-    if (!customerId || !time || saving) return;
+    if (!customerId || !draft.time || saving) return;
     setSaving(true);
     setError(null);
     const msg = await onCreate({
       customer_id: customerId,
       appt_date: day,
-      start_time: time,
-      duration_hours: duration,
-      note: note.trim(),
+      start_time: draft.time,
+      duration_hours: draft.duration,
+      note: draft.note.trim(),
     });
     setSaving(false);
     if (msg) {
       setError(msg);
       return;
     }
-    onDone();
+    onClose();
   }
 
   return (
-    <div className="space-y-4">
-      {!isWellnessDoctorDay(day) && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          แพทย์ Wellness เข้าเฉพาะ <b>วันอังคาร</b> และ <b>วันเสาร์</b> —
-          วันนี้ไม่ตรงวันแพทย์เข้า (ลงได้ถ้าเป็นเคสพิเศษ)
-        </p>
-      )}
-
-      <div>
-        <Label>ลูกค้า</Label>
-        {selected ? (
-          <div className="mt-1 flex items-center gap-2 rounded-lg border border-brand-300 bg-brand-50/70 px-3 py-2">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-stone-800">
-                {wellnessCustomerName(selected)}
-              </span>
-              <span className="block text-xs text-stone-500">
-                {selected.phone || "ไม่มีเบอร์"}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setCustomerId(null)}
-              aria-label="เปลี่ยนลูกค้า"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-white hover:text-stone-600 sm:h-8 sm:w-8"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        ) : (
-          <>
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหาชื่อ / เบอร์โทร"
-              className="mt-1"
-            />
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-stone-200/70 bg-white/70 p-1">
-              {filtered.length === 0 ? (
-                <li className="px-3 py-3 text-xs text-stone-400">
-                  ไม่พบลูกค้า — สร้างการ์ดได้ที่หน้า “การ์ดลูกค้า”
-                </li>
-              ) : (
-                filtered.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => setCustomerId(c.id)}
-                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-brand-50 max-sm:min-h-11"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-stone-700">
-                          {wellnessCustomerName(c)}
-                        </span>
-                        <span className="block text-[11px] text-stone-400">
-                          {c.phone || "ไม่มีเบอร์"}
-                        </span>
-                      </span>
-                      {c.completed_at ? (
-                        <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] text-stone-500">
-                          ปิดเคสแล้ว
-                        </span>
-                      ) : c.lab_confirmed_at ? (
-                        <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700">
-                          ผลพร้อม
-                        </span>
-                      ) : (
-                        <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                          รอผลแลบ
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
+    <Modal open onClose={onClose} title={`ลงคิว — ${thaiDayTitle(day)}`}>
+      <div className="space-y-4">
         <div>
-          <Label htmlFor="cal-book-time">เวลาเริ่ม</Label>
-          <Input
-            id="cal-book-time"
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <Label htmlFor="cal-book-duration">ระยะเวลา</Label>
-          <Select
-            id="cal-book-duration"
-            value={String(duration)}
-            onChange={(e) => setDuration(Number(e.target.value))}
-            className="mt-1"
-          >
-            {WELLNESS_DURATION_OPTIONS.map((h) => (
-              <option key={h} value={h}>
-                {h} ชั่วโมง
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="cal-book-note">หมายเหตุ (ไม่บังคับ)</Label>
-        <Input
-          id="cal-book-note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="เช่น ลูกค้าขอเลื่อนได้ / มากับญาติ"
-          className="mt-1"
-        />
-      </div>
-
-      {error && (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-          {error}
-        </p>
-      )}
-
-      <Button
-        onClick={() => void submit()}
-        loading={saving}
-        disabled={!customerId || !time}
-        className="w-full"
-      >
-        ลงคิว {formatTimeShort(time)} ({duration} ชม.)
-      </Button>
-    </div>
-  );
-}
-
-/* ============================================================
-   แผงข้างของวัน — list → detail → form (portal ไป body ตามกติกา Modal/แผงลอย)
-   ============================================================ */
-
-type PanelMode = { kind: "list" } | { kind: "detail"; id: string } | { kind: "form" };
-
-function DaySidebar({
-  day,
-  appts,
-  customers,
-  canAdmin,
-  onClose,
-  onCreate,
-  onSetStatus,
-}: {
-  day: string;
-  appts: CalendarAppt[];
-  customers: BookableCustomer[];
-  canAdmin: boolean;
-  onClose: () => void;
-  onCreate: (input: {
-    customer_id: string;
-    appt_date: string;
-    start_time: string;
-    duration_hours: number;
-    note: string;
-  }) => Promise<string | null>;
-  onSetStatus: (id: string, next: WellnessApptStatus) => Promise<string | null>;
-}) {
-  const [mode, setMode] = useState<PanelMode>({ kind: "list" });
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [statusBusy, setStatusBusy] = useState(false);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  async function changeStatus(id: string, next: WellnessApptStatus) {
-    if (statusBusy) return;
-    setStatusBusy(true);
-    setStatusError(null);
-    const msg = await onSetStatus(id, next);
-    setStatusBusy(false);
-    if (msg) setStatusError(msg);
-  }
-
-  const detailAppt =
-    mode.kind === "detail" ? (appts.find((a) => a.id === mode.id) ?? null) : null;
-
-  return createPortal(
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-stone-900/25 animate-fade-in"
-        onClick={onClose}
-      />
-      <aside className="glass fixed inset-y-0 right-0 z-50 flex w-full max-w-[26rem] flex-col shadow-2xl animate-slide-in-right">
-        <header className="flex items-center gap-2 border-b border-white/60 px-4 py-3 max-sm:pt-safe">
-          {mode.kind !== "list" && (
-            <button
-              type="button"
-              onClick={() => {
-                setStatusError(null);
-                setMode({ kind: "list" });
-              }}
-              aria-label="กลับไปรายการคิวของวัน"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-white/70 hover:text-stone-700 sm:h-8 sm:w-8"
-            >
-              <ArrowLeft size={17} />
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-stone-800">
-              {mode.kind === "form" ? "ลงคิวนัด" : thaiDayTitle(day)}
-            </h2>
-            <p className="text-[11px] text-stone-400">
-              {mode.kind === "form"
-                ? thaiDayTitle(day)
-                : isWellnessDoctorDay(day)
-                  ? "วันแพทย์ Wellness เข้า"
-                  : "ไม่ใช่วันแพทย์เข้า (อ. / ส.)"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="ปิดแผง"
-            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-white/70 hover:text-stone-600 sm:h-8 sm:w-8"
-          >
-            <X size={17} />
-          </button>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 py-4 pb-safe-4">
-          {mode.kind === "form" ? (
-            <BookingForm
-              day={day}
-              customers={customers}
-              onCreate={onCreate}
-              onDone={() => setMode({ kind: "list" })}
-            />
-          ) : mode.kind === "detail" ? (
-            !detailAppt ? (
-              <p className="text-xs text-stone-400">ไม่พบคิวนี้แล้ว</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-semibold text-stone-800">
-                    {apptRangeLabel(detailAppt.start_time, detailAppt.duration_hours)}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${WELLNESS_APPT_STATUS[detailAppt.status].badge}`}
-                  >
-                    {WELLNESS_APPT_STATUS[detailAppt.status].label}
-                  </span>
-                </div>
-
-                {detailAppt.note && (
-                  <p className="rounded-lg bg-white/60 px-3 py-2 text-xs text-stone-600">
-                    {detailAppt.note}
-                  </p>
-                )}
-
-                {statusError && (
-                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                    {statusError}
-                  </p>
-                )}
-
-                {canAdmin && (
-                  <div className="flex flex-wrap gap-2">
-                    {detailAppt.status === "scheduled" ? (
-                      <>
-                        <Button
-                          variant="ghost"
-                          onClick={() => void changeStatus(detailAppt.id, "done")}
-                          disabled={statusBusy}
-                          className="border border-emerald-200 text-emerald-700"
-                        >
-                          มาแล้ว · เสร็จ
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() =>
-                            void changeStatus(detailAppt.id, "cancelled")
-                          }
-                          disabled={statusBusy}
-                          className="border border-stone-200 text-stone-500"
-                        >
-                          ยกเลิกคิว
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          void changeStatus(detailAppt.id, "scheduled")
-                        }
-                        disabled={statusBusy}
-                        className="border border-brand-200 text-brand-700"
-                      >
-                        กลับเป็นนัดไว้
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                {detailAppt.customer ? (
-                  <section className="rounded-xl border border-white/70 bg-white/55 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-stone-800">
-                          {wellnessCustomerName(detailAppt.customer)}
-                        </h3>
-                        {detailAppt.customer.phone ? (
-                          <a
-                            href={`tel:${detailAppt.customer.phone.replace(/[^0-9+]/g, "")}`}
-                            className="text-xs font-medium text-brand-700 underline-offset-2 hover:underline"
-                          >
-                            {detailAppt.customer.phone}
-                          </a>
-                        ) : (
-                          <p className="text-xs text-stone-400">ไม่มีเบอร์โทร</p>
-                        )}
-                      </div>
-                      {detailAppt.customer.lab_confirmed_at ? (
-                        <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
-                          ผลแลบยืนยันแล้ว
-                        </span>
-                      ) : (
-                        <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                          ผลแลบยังไม่ยืนยัน
-                        </span>
-                      )}
-                    </div>
-                    {detailAppt.customer.procedure_text && (
-                      <p className="mt-2 text-xs text-stone-600">
-                        <span className="text-stone-400">หัตถการที่ทำ: </span>
-                        {detailAppt.customer.procedure_text}
-                      </p>
-                    )}
-
-                    <div className="mt-3 border-t border-white/70 pt-2">
-                      <p className="text-[11px] font-medium text-stone-500">
-                        ผลตรวจเลือด ({detailAppt.customer.lab_files.length} ไฟล์)
-                      </p>
-                      {detailAppt.customer.lab_files.length === 0 ? (
-                        <p className="mt-1 text-xs text-stone-400">
-                          ยังไม่มีไฟล์ผลตรวจ
-                        </p>
-                      ) : (
-                        <ul className="mt-1 divide-y divide-white/70">
-                          {detailAppt.customer.lab_files.map((f) => (
-                            <LabFileLink key={f.id} file={f} />
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    <Link
-                      href={`/wellness/${detailAppt.customer.id}`}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
-                    >
-                      เปิดการ์ดลูกค้า <ExternalLink size={12} />
-                    </Link>
-                  </section>
-                ) : (
-                  <p className="text-xs text-stone-400">
-                    การ์ดลูกค้าของคิวนี้ถูกลบไปแล้ว
-                  </p>
-                )}
-
-                <p className="text-[11px] text-stone-400">
-                  ลงคิวเมื่อ {formatDateTime(detailAppt.created_at)}
-                </p>
-              </div>
-            )
+          <Label>ลูกค้า</Label>
+          {selected ? (
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-brand-300 bg-brand-50/70 px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-stone-800">
+                  {wellnessCustomerName(selected)}
+                </span>
+                <span className="block text-xs text-stone-500">
+                  {selected.phone || "ไม่มีเบอร์"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setCustomerId(null)}
+                aria-label="เปลี่ยนลูกค้า"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-white hover:text-stone-600 sm:h-8 sm:w-8"
+              >
+                <X size={15} />
+              </button>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {statusError && (
-                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {statusError}
-                </p>
-              )}
-              {appts.length === 0 ? (
-                <p className="rounded-lg bg-white/50 px-3 py-5 text-center text-xs text-stone-400">
-                  ยังไม่มีคิวในวันนี้
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {appts.map((a) => (
-                    <li key={a.id}>
+            <>
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="ค้นหาชื่อ / เบอร์โทร"
+                className="mt-1"
+              />
+              <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-stone-200/70 bg-white/70 p-1">
+                {filtered.length === 0 ? (
+                  <li className="px-3 py-3 text-xs text-stone-400">
+                    ไม่พบลูกค้า — ทีม BC สร้างการ์ดที่หน้า “ทะเบียนลูกค้า”
+                  </li>
+                ) : (
+                  filtered.map((c) => (
+                    <li key={c.id}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setStatusError(null);
-                          setMode({ kind: "detail", id: a.id });
-                        }}
-                        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-white/70 bg-white/55 px-3 py-2.5 text-left transition-colors hover:border-brand-300 max-sm:min-h-11"
+                        onClick={() => setCustomerId(c.id)}
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-brand-50 max-sm:min-h-11"
                       >
-                        <span
-                          className={`h-9 w-1.5 shrink-0 rounded-full ${APPT_DOT[a.status]}`}
-                        />
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold text-stone-800">
-                            {apptRangeLabel(a.start_time, a.duration_hours)}
+                          <span className="block truncate text-sm text-stone-700">
+                            {wellnessCustomerName(c)}
                           </span>
-                          <span className="block truncate text-xs text-stone-500">
-                            {a.customer
-                              ? wellnessCustomerName(a.customer)
-                              : "(การ์ดถูกลบ)"}
+                          <span className="block text-[11px] text-stone-400">
+                            {c.phone || "ไม่มีเบอร์"}
                           </span>
                         </span>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${WELLNESS_APPT_STATUS[a.status].badge}`}
-                        >
-                          {WELLNESS_APPT_STATUS[a.status].label}
-                        </span>
+                        {c.completed_at ? (
+                          <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] text-stone-500">
+                            ปิดเคสแล้ว
+                          </span>
+                        ) : c.lab_confirmed_at ? (
+                          <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700">
+                            ผลพร้อม
+                          </span>
+                        ) : (
+                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                            รอผลแลบ
+                          </span>
+                        )}
                       </button>
                     </li>
-                  ))}
-                </ul>
-              )}
-
-              {canAdmin && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setMode({ kind: "form" })}
-                  className="w-full border border-dashed border-brand-300 text-brand-700"
-                >
-                  <Plus size={15} /> ลงคิวนัดในวันนี้
-                </Button>
-              )}
-            </div>
+                  ))
+                )}
+              </ul>
+            </>
           )}
         </div>
-      </aside>
-    </>,
-    document.body
+
+        <BookingFields
+          idPrefix="cal-book"
+          draft={draft}
+          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          lockedDate
+        />
+
+        {error && (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {error}
+          </p>
+        )}
+
+        <Button
+          onClick={() => void submit()}
+          loading={saving}
+          disabled={!customerId || !draft.time}
+          className="w-full"
+        >
+          ลงคิว {formatTimeShort(draft.time)} ({draft.duration} ชม.)
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -710,8 +614,10 @@ export function WellnessCalendarClient({
   }
 
   const today = todayBangkokISO();
-  const [anchor, setAnchor] = useState(() => `${today.slice(0, 7)}-01`);
-  const [panel, setPanel] = useState<{ day: string; seq: number } | null>(null);
+  // **state เดียวของหน้านี้คือ "วันที่เลือก"** — เดือนที่โชว์คำนวณจากมัน
+  const [selected, setSelected] = useState(today);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [bookingOpen, setBookingOpen] = useState(false);
 
   const apptsByDay = useMemo(() => {
     const map = new Map<string, CalendarAppt[]>();
@@ -724,7 +630,22 @@ export function WellnessCalendarClient({
     return map;
   }, [state.appointments]);
 
-  const cells = monthCells(anchor);
+  const cells = monthCells(selected);
+  const dayAppts = apptsByDay.get(selected) ?? [];
+
+  // การ์ด "คิวถัดไป" — วันถัดจากที่เลือกซึ่งมีคิวจริง (สูงสุด 4 ใบ) เหมือนภาพอ้างอิงที่มีหลายการ์ด
+  const nextDays = useMemo(
+    () =>
+      Array.from(apptsByDay.keys())
+        .filter((d) => d > selected)
+        .sort()
+        .slice(0, 4),
+    [apptsByDay, selected]
+  );
+
+  const detailAppt = detailId
+    ? (state.appointments.find((a) => a.id === detailId) ?? null)
+    : null;
 
   async function createAppt(input: {
     customer_id: string;
@@ -739,10 +660,7 @@ export function WellnessCalendarClient({
       .insert({ ...input, created_by: uid })
       .select(CALENDAR_APPT_SELECT)
       .single();
-    if (error || !data) {
-      if (error?.code === "23P01") return WELLNESS_OVERLAP_MESSAGE;
-      return error?.message ?? "ลงคิวไม่สำเร็จ";
-    }
+    if (error || !data) return apptErrorMessage(error, "ลงคิวไม่สำเร็จ");
     setState((s) => ({
       ...s,
       appointments: [...s.appointments, data as unknown as CalendarAppt],
@@ -770,164 +688,201 @@ export function WellnessCalendarClient({
     if (error) {
       setState((s) => ({ ...s, appointments: prev }));
       // ย้ายกลับเป็น "นัดไว้" ก็เข้า exclusion index อีกครั้ง — ชนคิวอื่นได้
-      return error.code === "23P01" ? WELLNESS_OVERLAP_MESSAGE : error.message;
+      return apptErrorMessage(error, "อัพเดตคิวไม่สำเร็จ");
     }
     router.refresh();
     return null;
   }
 
-  const panelAppts = panel ? (apptsByDay.get(panel.day) ?? []) : [];
+  const bookButton = canAdmin ? (
+    <Button variant="secondary" onClick={() => setBookingOpen(true)}>
+      <Plus size={14} /> ลงคิวในวันนี้
+    </Button>
+  ) : undefined;
 
   return (
-    <PageContainer>
-      <div className="space-y-3">
-        {/* แถบบน: วันนี้ ‹ › ชื่อเดือน + คำใบ้วันแพทย์เข้า */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAnchor(`${today.slice(0, 7)}-01`)}
-            className="cursor-pointer rounded-lg border border-stone-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11"
-          >
-            วันนี้
-          </button>
-          <div className="flex items-center">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-5xl px-3 py-3 sm:px-6 sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:gap-6">
+        {/* ---------------- แผ่นปฏิทินไล่เฉด ---------------- */}
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-600 px-2 pb-4 pt-3 text-cream shadow-[0_12px_36px_rgba(94,58,49,0.18)] sm:px-4">
+          <header className="flex items-center gap-1 px-1">
             <button
               type="button"
-              onClick={() => setAnchor((a) => addMonths(a, -1))}
+              onClick={() => setSelected((d) => shiftMonth(d, -1))}
               aria-label="เดือนก่อนหน้า"
-              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-white/70 hover:text-stone-700 sm:h-8 sm:w-8"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95"
             >
-              <ChevronLeft size={17} />
+              <ChevronLeft size={22} />
             </button>
+            <h1 className="min-w-0 flex-1 truncate text-center text-xl font-semibold tracking-wide sm:text-2xl">
+              {monthTitleOf(selected)}
+            </h1>
             <button
               type="button"
-              onClick={() => setAnchor((a) => addMonths(a, 1))}
+              onClick={() => setSelected((d) => shiftMonth(d, 1))}
               aria-label="เดือนถัดไป"
-              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-white/70 hover:text-stone-700 sm:h-8 sm:w-8"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95"
             >
-              <ChevronRight size={17} />
+              <ChevronRight size={22} />
             </button>
-          </div>
-          <h1 className="text-lg font-semibold text-stone-800">
-            {monthTitleOf(anchor)}
-          </h1>
-          <span className="ml-auto rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
-            แพทย์เข้า: อังคาร · เสาร์
-          </span>
-        </div>
+          </header>
 
-        {/* ตารางเดือน */}
-        <div className="overflow-hidden rounded-xl border border-stone-200/70">
-          <div className="grid grid-cols-7 gap-px bg-stone-200/60">
-            {WEEKDAY_HEADS.map((h) => (
+          <div className="mb-1 flex items-center justify-center gap-2 text-[11px] text-cream/80">
+            <button
+              type="button"
+              onClick={() => setSelected(today)}
+              className="cursor-pointer rounded-full bg-white/20 px-3 py-1 font-medium text-cream transition-colors hover:bg-white/30 max-sm:min-h-9"
+            >
+              วันนี้
+            </button>
+            <span>แพทย์เข้า อังคาร · เสาร์</span>
+          </div>
+
+          {/* หัวคอลัมน์วัน */}
+          <div className="grid grid-cols-7">
+            {WEEKDAY_HEADS.map((label, i) => (
               <div
-                key={h.label}
-                className={`bg-white/75 py-2 text-center text-xs font-semibold ${
-                  h.sunday
-                    ? "text-rose-500"
-                    : h.doctor
-                      ? "text-brand-700"
-                      : "text-stone-500"
+                key={label}
+                className={`py-1.5 text-center text-[11px] font-semibold ${
+                  i === 6 ? "text-cream/60" : "text-cream/80"
                 }`}
               >
-                {h.label}
-                {h.doctor && (
-                  <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-brand-400 align-middle" />
-                )}
+                {label}
               </div>
             ))}
+          </div>
+
+          {/* ช่องวัน — ตัวเลขบนแผ่นไล่เฉด, วันที่เลือก = สี่เหลี่ยมขาว */}
+          <div className="grid grid-cols-7 gap-y-1">
             {cells.map((day, i) =>
               day === null ? (
-                <div key={`blank-${i}`} className="min-h-[64px] bg-white/35 sm:min-h-[116px]" />
+                <div key={`blank-${i}`} className="h-12" />
               ) : (
                 <button
                   key={day}
                   type="button"
                   aria-label={`เปิดคิววันที่ ${day}`}
-                  onClick={() =>
-                    setPanel((p) => ({ day, seq: (p?.seq ?? 0) + 1 }))
-                  }
-                  className={`min-h-[64px] cursor-pointer p-1 text-left align-top transition-colors hover:bg-brand-50 sm:min-h-[116px] sm:p-1.5 ${
-                    isWellnessDoctorDay(day) ? "bg-brand-50/60" : "bg-white/75"
-                  }`}
+                  aria-current={day === selected ? "date" : undefined}
+                  onClick={() => setSelected(day)}
+                  className="flex h-12 cursor-pointer items-center justify-center active:scale-95"
                 >
                   <span
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs sm:h-5 sm:w-5 sm:text-[11px] ${
-                      day === today
-                        ? "bg-brand-600 font-semibold text-white"
-                        : i % 7 === 6
-                          ? "text-rose-500"
-                          : "text-stone-600"
+                    className={`flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-xl text-sm transition-all ${
+                      day === selected
+                        ? "bg-white font-semibold text-brand-700 shadow-md"
+                        : day === today
+                          ? "bg-white/25 font-semibold text-cream"
+                          : isWellnessDoctorDay(day)
+                            ? "font-medium text-cream hover:bg-white/15"
+                            : "text-cream/75 hover:bg-white/15"
                     }`}
                   >
-                    {Number(day.slice(8))}
-                  </span>
-
-                  {/* ≥sm: ชิปคิว 3 อันแรก + "+N คิว" */}
-                  <span className="mt-0.5 hidden space-y-0.5 sm:block">
-                    {(apptsByDay.get(day) ?? []).slice(0, 3).map((a) => (
-                      <span
-                        key={a.id}
-                        className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium ${APPT_CHIP_SOLID[a.status]}`}
-                        title={`${apptRangeLabel(a.start_time, a.duration_hours)} — ${
-                          a.customer ? wellnessCustomerName(a.customer) : "(การ์ดถูกลบ)"
-                        }`}
-                      >
-                        <b>{formatTimeShort(a.start_time)}</b>{" "}
-                        {a.customer?.first_name ?? "?"}
-                      </span>
-                    ))}
-                    {(apptsByDay.get(day)?.length ?? 0) > 3 && (
-                      <span className="block text-[10px] text-stone-500">
-                        +{(apptsByDay.get(day)?.length ?? 0) - 3} คิว
-                      </span>
-                    )}
-                  </span>
-
-                  {/* จอเล็ก: จุดสีตามสถานะ (สูงสุด 4) */}
-                  <span className="mt-1 flex flex-wrap gap-0.5 sm:hidden">
-                    {(apptsByDay.get(day) ?? []).slice(0, 4).map((a) => (
-                      <span
-                        key={a.id}
-                        className={`h-1.5 w-1.5 rounded-full ${APPT_DOT[a.status]}`}
-                      />
-                    ))}
+                    <span className="leading-none">{Number(day.slice(8))}</span>
+                    <span className="flex h-1.5 items-center gap-0.5">
+                      {(apptsByDay.get(day) ?? []).slice(0, 3).map((a) => (
+                        <span
+                          key={a.id}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            day === selected
+                              ? DOT_ON_WHITE[a.status]
+                              : DOT_ON_GRADIENT[a.status]
+                          }`}
+                        />
+                      ))}
+                    </span>
                   </span>
                 </button>
               )
             )}
           </div>
-        </div>
+        </section>
 
-        {/* คำอธิบายสีสถานะ */}
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-500">
-          {(Object.keys(WELLNESS_APPT_STATUS) as WellnessApptStatus[]).map(
-            (k) => (
-              <span key={k} className="inline-flex items-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${APPT_DOT[k]}`} />
-                {WELLNESS_APPT_STATUS[k].label}
-              </span>
-            )
+        {/* ---------------- การ์ดคิวของวัน ---------------- */}
+        <section className="mt-5 space-y-3 lg:mt-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 px-1">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-700">
+              {selected === today ? "วันนี้" : "วันที่เลือก"}
+            </h2>
+            <span className="text-xs text-stone-500">
+              {thaiDayTitle(selected)}
+            </span>
+            <span className="text-xs text-stone-400">
+              · {dayAppts.length} คิว
+            </span>
+            {canAdmin && (
+              <button
+                type="button"
+                onClick={() => setBookingOpen(true)}
+                className="ml-auto hidden cursor-pointer items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 lg:inline-flex"
+              >
+                <Plus size={13} /> ลงคิว
+              </button>
+            )}
+          </div>
+
+          <DayCard
+            day={selected}
+            appts={dayAppts}
+            onOpen={setDetailId}
+            emptyAction={bookButton}
+          />
+
+          {nextDays.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-1 pt-2">
+                <CalendarDays size={13} className="text-stone-400" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  คิวถัดไป
+                </h3>
+              </div>
+              {nextDays.map((d) => (
+                <DayCard
+                  key={d}
+                  day={d}
+                  appts={apptsByDay.get(d) ?? []}
+                  onOpen={setDetailId}
+                  onPickDay={() => setSelected(d)}
+                />
+              ))}
+            </>
           )}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full border border-brand-300 bg-brand-50" />
-            วันแพทย์เข้า (อ. / ส.)
-          </span>
-        </div>
+
+          {/* เว้นที่ให้ปุ่มลอยบนมือถือ */}
+          <div className="h-20 lg:hidden" />
+        </section>
       </div>
 
-      {panel && (
-        <DaySidebar
-          key={`${panel.day}#${panel.seq}`}
-          day={panel.day}
-          appts={panelAppts}
-          customers={customers}
+      {/* ปุ่มลอยกลางล่าง (ตามภาพอ้างอิง) — จอเล็กเท่านั้น */}
+      {canAdmin && (
+        <button
+          type="button"
+          onClick={() => setBookingOpen(true)}
+          aria-label="ลงคิวนัดในวันที่เลือก"
+          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-[0_10px_24px_rgba(94,58,49,0.35)] transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
+        >
+          <Plus size={26} />
+        </button>
+      )}
+
+      {detailAppt && (
+        <ApptDetailModal
+          key={detailAppt.id}
+          appt={detailAppt}
           canAdmin={canAdmin}
-          onClose={() => setPanel(null)}
-          onCreate={createAppt}
           onSetStatus={setApptStatus}
+          onClose={() => setDetailId(null)}
         />
       )}
-    </PageContainer>
+
+      {bookingOpen && (
+        <BookingModal
+          key={selected}
+          day={selected}
+          customers={customers}
+          onCreate={createAppt}
+          onClose={() => setBookingOpen(false)}
+        />
+      )}
+    </div>
   );
 }

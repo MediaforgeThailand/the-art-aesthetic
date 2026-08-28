@@ -1,23 +1,20 @@
 import { redirect } from "next/navigation";
 import { SetupNotice } from "@/components/setup-notice";
 import { WellnessShell } from "@/components/wellness-shell";
-import {
-  canViewWellness,
-  canWellnessAdmin,
-  canWellnessBc,
-  canWellnessLab,
-  getAccess,
-  hasPermission,
-} from "@/lib/access";
+import { getAccess } from "@/lib/access";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
+import { wellnessRoleFlags } from "@/lib/wellness-constants";
 
 /**
  * Layout ของ **ระบบ Wellness** — พื้นที่แยกของตัวเองแบบเดียวกับ `(influ)`
  *
  * ทีมที่ใช้ระบบนี้ (BC / Lab / Admin / แพทย์ wellness) ไม่ได้ทำงานในแอปทีม
  * จึงมีแถบบนของตัวเอง — `(wellness)` เป็น route group URL จริงคือ
- * /wellness, /wellness/[id], /wellness-calendar
+ * /wellness, /wellness/[id], /wellness-register, /wellness-lab,
+ * /wellness-booking, /wellness-clinic, /wellness-calendar, /wellness-cases
+ *
+ * เมนูบนแถบนี้ขึ้นกับ **บทบาทที่ติ๊กไว้จริง** ของบัญชี (ดู wellnessWorkspacesFor)
  */
 export default async function WellnessLayout({
   children,
@@ -61,11 +58,7 @@ export default async function WellnessLayout({
       userId={access.uid}
       userName={fullName}
       userEmail={email}
-      canView={canViewWellness(access)}
-      isBc={canWellnessBc(access)}
-      isLab={canWellnessLab(access)}
-      isAdmin={canWellnessAdmin(access)}
-      isDoctor={hasPermission(access, "wellness_doctor")}
+      flags={wellnessRoleFlags(access.permissions)}
       backHref={backHref}
     >
       {children}

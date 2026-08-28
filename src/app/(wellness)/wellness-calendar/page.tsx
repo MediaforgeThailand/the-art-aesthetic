@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
-import { canViewWellness, canWellnessAdmin, getAccess } from "@/lib/access";
+import { canWellnessAdmin, getAccess, hasPermission } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 // ⚠️ import จากไฟล์ "use client" ได้เฉพาะ component + type เท่านั้น — ค่า runtime
 // (string/ฟังก์ชัน) จะกลายเป็น client-reference proxy บน server แล้วพังตอนใช้งาน
@@ -30,7 +30,11 @@ export default async function WellnessCalendarPage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  if (!canViewWellness(access)) return <AccessNotice />;
+  // ปฏิทินเป็นเครื่องมือของ Admin (คนลงคิว) และแพทย์ (คนดูคิวตัวเอง) —
+  // BC/Lab ไม่ต้องเห็น ตามกติกา "เห็นเฉพาะงานของบทบาทตัวเอง"
+  if (!hasPermission(access, "wellness_doctor") && !canWellnessAdmin(access)) {
+    return <AccessNotice />;
+  }
 
   return (
     <WellnessCalendarClient

@@ -24,7 +24,13 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influ-dashboard", name: "influ-dashboard" },
   { path: "/influencer-management/logs", name: "influ-logs" },
   { path: "/influencer-management/trash", name: "influ-trash" },
-  { path: "/wellness", name: "wellness" },
+  // Wellness — 1 บทบาท = 1 หน้า (บัญชีเทสต์เป็น admin จึงเห็นครบทุกหน้า)
+  { path: "/wellness", name: "wellness-home" },
+  { path: "/wellness-register", name: "wellness-register" },
+  { path: "/wellness-lab", name: "wellness-lab" },
+  { path: "/wellness-booking", name: "wellness-booking" },
+  { path: "/wellness-clinic", name: "wellness-clinic" },
+  { path: "/wellness-cases", name: "wellness-cases" },
   { path: "/wellness-calendar", name: "wellness-calendar" },
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
@@ -307,7 +313,11 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
     { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
-    { path: "/wellness", label: "เพิ่มการ์ดลูกค้า", name: "wellness-add-customer" },
+    {
+      path: "/wellness-register",
+      label: "เพิ่มการ์ดลูกค้า",
+      name: "wellness-add-customer",
+    },
   ];
   for (const a of ADD_BUTTONS) {
     await gotoPage(page, a.path);
@@ -351,10 +361,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, "หน้าเดินงาน influencer");
   }
 
-  /* ---------- Wellness: การ์ดลูกค้าใบแรก (บอร์ด → หน้ารายละเอียด) ---------- */
-  await gotoPage(page, "/wellness");
+  /* ---------- Wellness: การ์ดลูกค้าใบแรก (ภาพรวมเคสของ admin → หน้ารายละเอียด) ---------- */
+  await gotoPage(page, "/wellness-cases");
   await settle(page, 1000);
-  await expectNot404(page, "/wellness (ก่อนเปิดการ์ดลูกค้า)");
+  await expectNot404(page, "/wellness-cases (ก่อนเปิดการ์ดลูกค้า)");
   // แถวลูกค้าเป็น <Link href="/wellness/{id}"> — เมนู shell ลิงก์ "/wellness" เฉยๆ ไม่ติด selector นี้
   const wellnessRow = page.locator('a[href^="/wellness/"]').first();
   if ((await wellnessRow.count()) > 0) {
@@ -375,7 +385,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, "หน้าการ์ดลูกค้า wellness");
   }
 
-  /* ---------- Wellness: ปฏิทินคิวแพทย์ — เปิดแผงคิวของวัน (เลือกวันที่มีคิวถ้ามี) ---------- */
+  /* ---------- Wellness: ปฏิทิน — เลือกวันแล้วดูการ์ดคิวข้างล่าง + เปิดโมดัลรายละเอียด ---------- */
   await gotoPage(page, "/wellness-calendar");
   await settle(page, 1000);
   const wellnessDays = page.locator('button[aria-label^="เปิดคิววันที่"]');
@@ -386,19 +396,32 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     "ปฏิทินคิวแพทย์ Wellness ต้องมีช่องวันให้กด — ไม่มีแปลว่าหน้าพัง"
   ).toBeVisible({ timeout: 15_000 });
   {
-    // วันแรกที่มีชิปคิว (span.truncate อยู่ใน DOM ทั้งจอใหญ่/จอเล็ก) — ไม่มีก็ใช้วันแรกของเดือน
+    // วันที่มีคิว = ช่องที่มีจุดใต้ตัวเลข (span ในกล่อง .h-1\.5) — ไม่มีก็ใช้วันแรกของเดือน
     const busyDay = wellnessDays
-      .filter({ has: page.locator("span.truncate") })
+      .filter({ has: page.locator("span.h-1\\.5 > span") })
       .first();
     const target = (await busyDay.count()) > 0 ? busyDay : wellnessDays.first();
+    await target.click();
+    await settle(page, 500);
+    await page.screenshot({
+      path: shotPath(project, "wellness-day-list"),
+      fullPage: true,
+    });
+    await expectNoHorizontalOverflow(page, "ปฏิทิน + คิวของวันที่เลือก");
+
+    // การ์ดคิวใบแรกของวันนั้น → โมดัลรายละเอียด (ถ้าวันนั้นมีคิว)
     await openShotClose(
       page,
       project,
       async () => {
-        await target.click();
+        const card = page
+          .locator('button[aria-label^="ดูรายละเอียดคิว"]')
+          .first();
+        if ((await card.count()) === 0) return false;
+        await card.click();
         return true;
       },
-      "wellness-day-panel"
+      "wellness-appt-detail"
     );
   }
 });

@@ -1,27 +1,20 @@
 "use client";
 
-import {
-  ArrowLeft,
-  CalendarDays,
-  HeartPulse,
-  LayoutGrid,
-  LogOut,
-} from "lucide-react";
+import { ArrowLeft, HeartPulse, LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
+import { WELLNESS_ICONS } from "@/components/wellness/icons";
 import { createClient } from "@/lib/supabase/client";
 import { useSignedUrl } from "@/lib/use-signed-url";
-
-type ShellNavItem = {
-  href: string;
-  label: string;
-  icon: typeof LayoutGrid;
-  show: boolean;
-};
+import {
+  wellnessWorkspacesFor,
+  type WellnessRoleFlags,
+  type WellnessWorkspace,
+} from "@/lib/wellness-constants";
 
 /**
  * แถบเมนูของระบบ — markup ชุดเดียวใช้ทั้ง 2 เลย์เอาต์ (แถวเดียวกับชื่อระบบที่ ≥lg
@@ -32,7 +25,7 @@ function ShellNav({
   activeHref,
   className = "",
 }: {
-  items: ShellNavItem[];
+  items: WellnessWorkspace[];
   activeHref: string | null;
   className?: string;
 }) {
@@ -41,13 +34,15 @@ function ShellNav({
       aria-label="เมนูระบบ Wellness"
       className={`gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}
     >
-      {items.map(({ href, label, icon: Icon }) => {
-        const active = href === activeHref;
+      {items.map((w) => {
+        const Icon = WELLNESS_ICONS[w.icon];
+        const active = w.href === activeHref;
         return (
           <Link
-            key={href}
-            href={href}
+            key={w.href}
+            href={w.href}
             aria-current={active ? "page" : undefined}
+            title={w.detail}
             className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 active:scale-[0.97] max-sm:min-h-11 xl:px-3 ${
               active
                 ? "bg-white text-brand-700 shadow-sm ring-1 ring-brand-100"
@@ -55,7 +50,7 @@ function ShellNav({
             }`}
           >
             <Icon size={15} className={active ? "text-brand-600" : ""} />
-            {label}
+            {w.label}
           </Link>
         );
       })}
@@ -64,44 +59,35 @@ function ShellNav({
 }
 
 /** ป้ายบทบาทสั้นๆ ข้างโลโก้ — Wellness เป็นสวิตช์อิสระ คนเดียวมีได้หลายบทบาท */
-function roleLabelOf(flags: {
-  isAdmin: boolean;
-  isBc: boolean;
-  isLab: boolean;
-  isDoctor: boolean;
-}): string | null {
-  if (flags.isAdmin) return "Admin";
+function roleLabelOf(flags: WellnessRoleFlags): string | null {
+  if (flags.admin) return "Admin";
   const parts: string[] = [];
-  if (flags.isBc) parts.push("BC");
-  if (flags.isLab) parts.push("Lab");
-  if (flags.isDoctor) parts.push("แพทย์");
+  if (flags.bc) parts.push("BC");
+  if (flags.lab) parts.push("Lab");
+  if (flags.doctor) parts.push("แพทย์");
   return parts.length > 0 ? parts.join(" + ") : null;
 }
 
 /**
  * โครงหน้าของ **ระบบ Wellness** — แยกขาดจากแถบเมนูของแอปทีม (`Sidebar`)
- * แถบบนเป็นของตัวเอง เฉพาะหน้าในระบบนี้ (URL จริงไม่เปลี่ยนเพราะ `(wellness)` เป็น route group)
+ *
+ * เมนูสร้างจาก `wellnessWorkspacesFor(flags)` — **คนหนึ่งคนเห็นเฉพาะหน้าของบทบาทตัวเอง**
+ * (BC เห็นเมนูเดียวคือทะเบียนลูกค้า, Lab เห็นเมนูอัพผลแลบ ฯลฯ) ตามกติกาผู้ใช้ 2026-08-28
+ * เพิ่มหน้าใหม่ = เพิ่มแถวใน WELLNESS_WORKSPACES ที่เดียว ไม่ต้องแก้ไฟล์นี้
  */
 export function WellnessShell({
   userId,
   userName,
   userEmail,
-  canView,
-  isBc,
-  isLab,
-  isAdmin,
-  isDoctor,
+  flags,
   backHref,
   children,
 }: {
   userId: string | null;
   userName: string;
   userEmail: string;
-  canView: boolean;
-  isBc: boolean;
-  isLab: boolean;
-  isAdmin: boolean;
-  isDoctor: boolean;
+  /** บทบาทที่ติ๊กไว้จริงของบัญชีนี้ (ดู wellnessRoleFlags) */
+  flags: WellnessRoleFlags;
   /** ปลายทางตอนกด "แอปหลัก" — เลือกตามสิทธิ์จริงของคนนั้น (ทุกคนอย่างน้อยมี /my-tasks) */
   backHref: string;
   children: React.ReactNode;
@@ -135,24 +121,15 @@ export function WellnessShell({
     };
   }, [userId]);
 
-  const navItems: ShellNavItem[] = [
-    { href: "/wellness", label: "การ์ดลูกค้า", icon: LayoutGrid, show: canView },
-    {
-      href: "/wellness-calendar",
-      label: "ปฏิทินคิวแพทย์",
-      icon: CalendarDays,
-      show: canView,
-    },
-  ];
-  const visibleNav = navItems.filter((n) => n.show);
+  const visibleNav = wellnessWorkspacesFor(flags);
 
-  // เมนู active = prefix ที่ตรงและยาวที่สุด (หน้า /wellness/[id] นับเป็น "การ์ดลูกค้า")
+  // เมนู active = prefix ที่ตรงและยาวที่สุด (หน้า /wellness/[id] ไม่ตรงเมนูไหน = ไม่ไฮไลต์)
   const activeHref =
     visibleNav
-      .filter((n) => pathname === n.href || pathname.startsWith(`${n.href}/`))
+      .filter((w) => pathname === w.href || pathname.startsWith(`${w.href}/`))
       .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
 
-  const roleLabel = roleLabelOf({ isAdmin, isBc, isLab, isDoctor });
+  const roleLabel = roleLabelOf(flags);
 
   async function handleLogout() {
     const supabase = createClient();

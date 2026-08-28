@@ -25,16 +25,15 @@ export default async function StartPage() {
     redirect("/influencers");
   if (access.permissions.includes("team")) redirect("/tasks");
   if (access.permissions.includes("pricing")) redirect("/pricing");
-  // ระบบ Wellness — แพทย์ (ดูอย่างเดียว ไม่มีสิทธิ์อื่น) เข้าปฏิทินคิวของตัวเองตรงๆ
-  // ส่วน BC/Lab/Admin เริ่มที่บอร์ดการ์ดลูกค้า
+  // ระบบ Wellness — ส่งไปหน้าแรกของระบบ แล้วที่นั่นส่งต่อไปหน้างานของบทบาทนั้นเอง
+  // (BC → ทะเบียนลูกค้า, Lab → อัพผลแลบ, แพทย์ → คิวตรวจ, Admin/หลายบทบาท → หน้าเลือกงาน)
   if (
     access.permissions.includes("wellness_bc") ||
     access.permissions.includes("wellness_lab") ||
-    access.permissions.includes("wellness_admin")
+    access.permissions.includes("wellness_admin") ||
+    access.permissions.includes("wellness_doctor")
   )
     redirect("/wellness");
-  if (access.permissions.includes("wellness_doctor"))
-    redirect("/wellness-calendar");
   // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ
   if (access.isAdmin) redirect("/accounts");
   // ผู้ใช้ใหม่ที่ admin ยังไม่เปิดสิทธิ์ให้ — อย่างน้อย My List ใช้ได้ทันทีโดยไม่ต้องรอใคร

@@ -13,15 +13,52 @@ import { prepareUploadFiles } from "@/lib/upload-prepare";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { newLabFilePath } from "@/lib/wellness-constants";
 
-/** แถวไฟล์ผลแลบ 1 ไฟล์ — แยก component เพราะ useSignedUrl เป็น hook ต่อ path */
+/** ไฟล์ผลแลบเท่าที่ต้องใช้เปิดดู — หน้าปฏิทิน/คิวแพทย์ select มาไม่ครบทุกคอลัมน์ */
+export type LabFileLite = Pick<
+  WellnessLabFileRow,
+  "id" | "file_path" | "file_name" | "created_at"
+>;
+
+/**
+ * ลิงก์เปิดไฟล์ผลแลบ 1 ไฟล์ (อ่านอย่างเดียว) — ใช้ที่ปฏิทินคิวและหน้าคิวตรวจของแพทย์
+ * แยก component เพราะ useSignedUrl เป็น hook ต่อ path
+ */
+export function LabFileOpenLink({ file }: { file: LabFileLite }) {
+  const { url, failed } = useSignedUrl(file.file_path);
+  return (
+    <li className="flex items-center gap-2 py-1.5">
+      <FileText size={15} className="shrink-0 text-brand-500" />
+      <span className="min-w-0 flex-1 truncate text-xs text-stone-700">
+        {file.file_name}
+      </span>
+      {failed ? (
+        <span className="shrink-0 text-[11px] text-rose-500">เปิดไม่ได้</span>
+      ) : (
+        <a
+          href={url ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={!url}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11 ${
+            url ? "" : "pointer-events-none opacity-50"
+          }`}
+        >
+          <ExternalLink size={11} /> เปิดดู
+        </a>
+      )}
+    </li>
+  );
+}
+
+/** แถวไฟล์ผลแลบในโหมดจัดการ (มีปุ่มลบ) */
 function LabFileRow({
   file,
-  canLab,
+  canEdit,
   onDelete,
 }: {
-  file: WellnessLabFileRow;
-  canLab: boolean;
-  onDelete: (file: WellnessLabFileRow) => void;
+  file: LabFileLite;
+  canEdit: boolean;
+  onDelete: (file: LabFileLite) => void;
 }) {
   const { url, failed } = useSignedUrl(file.file_path);
   return (
@@ -52,7 +89,7 @@ function LabFileRow({
           <ExternalLink size={12} /> เปิดดู
         </a>
       )}
-      {canLab && (
+      {canEdit && (
         <button
           type="button"
           onClick={() => onDelete(file)}
@@ -67,30 +104,34 @@ function LabFileRow({
   );
 }
 
+type PanelProps = {
+  customerId: string;
+  files: LabFileLite[];
+  /** อัพ/ลบไฟล์ได้ไหม (ทีม Lab และเคสยังไม่ปิด) */
+  canEdit: boolean;
+  uid: string | null;
+  onAdded: (rows: WellnessLabFileRow[]) => void;
+  onRemoved: (fileId: string) => void;
+  /** ข้อความตอนยังไม่มีไฟล์ — ต่างกันตามหน้า (คิว Lab vs หน้าเคส) */
+  emptyText?: string;
+};
+
 /**
- * ไฟล์ผลตรวจเลือด (PDF/รูปสแกน) ของการ์ดลูกค้า — งานของทีม Lab
+ * เนื้อในของกล่องไฟล์ผลแลบ — ปุ่มอัพโหลด + แถบความคืบหน้า + ลิสต์ไฟล์ (ไม่มีกรอบ/หัวข้อ)
+ * ใช้ซ้ำได้ทั้งในแถวคิวของหน้า "อัพผลแลบ" และในการ์ดของหน้าเคส
  *
  * อัพผิด/สลับคนได้เสมอ: ลบแล้วอัพใหม่ (กติกาผู้ใช้ — ทีม Lab ต้องแก้ไข/ลบไฟล์ได้ถ้าผิด)
  * ไฟล์จริงอยู่ bucket documents path `wellness/{customerId}/` — ลบแถว = ลบไฟล์ใน storage ด้วย
  */
-export function LabFilesCard({
+export function LabFilesPanel({
   customerId,
   files,
-  canLab,
+  canEdit,
   uid,
-  readOnly,
   onAdded,
   onRemoved,
-}: {
-  customerId: string;
-  files: WellnessLabFileRow[];
-  canLab: boolean;
-  uid: string | null;
-  /** เคสปิดแล้ว — เก็บไฟล์เป็นประวัติ ไม่ให้แก้ */
-  readOnly: boolean;
-  onAdded: (rows: WellnessLabFileRow[]) => void;
-  onRemoved: (fileId: string) => void;
-}) {
+  emptyText,
+}: PanelProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{
@@ -100,11 +141,7 @@ export function LabFilesCard({
     ratio: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<WellnessLabFileRow | null>(
-    null
-  );
-
-  const editable = canLab && !readOnly;
+  const [deleteTarget, setDeleteTarget] = useState<LabFileLite | null>(null);
 
   async function handleFiles(list: FileList | null) {
     const picked = Array.from(list ?? []);
@@ -124,7 +161,12 @@ export function LabFilesCard({
     const added: WellnessLabFileRow[] = [];
     for (let i = 0; i < prepared.length; i++) {
       const f = prepared[i];
-      setUploading({ name: f.name, index: i + 1, total: prepared.length, ratio: 0 });
+      setUploading({
+        name: f.name,
+        index: i + 1,
+        total: prepared.length,
+        ratio: 0,
+      });
       const path = newLabFilePath(customerId, f.name, i);
       const { error: upErr } = await uploadWithProgress(
         STORAGE_BUCKET_DOCUMENTS,
@@ -183,39 +225,38 @@ export function LabFilesCard({
   }
 
   return (
-    <section className="glass overflow-hidden rounded-xl">
-      <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
-        <h2 className="text-sm font-semibold text-stone-800">
-          ผลตรวจเลือด (Lab)
-        </h2>
-        <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
-        {editable && (
+    <div>
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={!!uploading}
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:cursor-default disabled:opacity-60 max-sm:min-h-11"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:cursor-default disabled:opacity-60 max-sm:min-h-11"
           >
             {uploading ? (
               <Loader2 size={13} className="animate-spin" />
             ) : (
               <Upload size={13} />
             )}
-            อัพโหลดผล
+            อัพโหลดไฟล์ผลตรวจ
           </button>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept="application/pdf,image/*"
-          className="hidden"
-          onChange={(e) => void handleFiles(e.target.files)}
-        />
-      </header>
+          <span className="text-[11px] text-stone-400">
+            PDF หรือรูปสแกน · เลือกได้หลายไฟล์
+          </span>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={(e) => void handleFiles(e.target.files)}
+          />
+        </div>
+      )}
 
       {uploading && (
-        <div className="border-b border-white/60 bg-brand-50/60 px-4 py-2.5">
+        <div className="mx-4 mt-2 rounded-lg bg-brand-50/70 px-3 py-2">
           <p className="text-xs text-brand-700">
             กำลังอัพโหลด {uploading.name} ({uploading.index}/{uploading.total})
           </p>
@@ -229,24 +270,25 @@ export function LabFilesCard({
       )}
 
       {error && (
-        <p className="border-b border-white/60 bg-rose-50/70 px-4 py-2 text-xs text-rose-700">
+        <p className="mx-4 mt-2 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2 text-xs text-rose-700">
           {error}
         </p>
       )}
 
       {files.length === 0 ? (
-        <p className="px-4 py-5 text-xs text-stone-400">
-          {editable
-            ? "ยังไม่มีไฟล์ผลตรวจ — กด “อัพโหลดผล” เพื่อแนบ PDF/รูปสแกนผลเลือด"
-            : "ยังไม่มีไฟล์ผลตรวจ — รอทีม Lab อัพโหลด"}
+        <p className="px-4 py-4 text-xs text-stone-400">
+          {emptyText ??
+            (canEdit
+              ? "ยังไม่มีไฟล์ผลตรวจ — กด “อัพโหลดไฟล์ผลตรวจ” เพื่อแนบ PDF/รูปสแกน"
+              : "ยังไม่มีไฟล์ผลตรวจ — รอทีม Lab อัพโหลด")}
         </p>
       ) : (
-        <ul className="divide-y divide-white/60">
+        <ul className="mt-1 divide-y divide-white/60">
           {files.map((f) => (
             <LabFileRow
               key={f.id}
               file={f}
-              canLab={editable}
+              canEdit={canEdit}
               onDelete={setDeleteTarget}
             />
           ))}
@@ -261,6 +303,20 @@ export function LabFilesCard({
         onConfirm={() => void confirmDelete()}
         onClose={() => setDeleteTarget(null)}
       />
+    </div>
+  );
+}
+
+/** กล่องไฟล์ผลแลบพร้อมหัวข้อ (ใช้ในหน้าเคส) */
+export function LabFilesCard(props: PanelProps & { title?: string }) {
+  const { title = "ผลตรวจเลือด (Lab)", ...panel } = props;
+  return (
+    <section className="glass overflow-hidden rounded-xl">
+      <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
+        <h2 className="text-sm font-semibold text-stone-800">{title}</h2>
+        <span className="text-xs text-stone-400">{panel.files.length} ไฟล์</span>
+      </header>
+      <LabFilesPanel {...panel} />
     </section>
   );
 }
