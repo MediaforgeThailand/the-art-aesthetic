@@ -408,8 +408,11 @@ export function InfluCardContent({
   onToggleDeclined?: (influ: InfluencerListRow) => void;
 }) {
   const declined = i.declined_at !== null;
+  // ตั้งแต่ 0092 ไม่มีขั้น "ตามงาน" แล้ว — เคสที่เริ่มนับสัญญา (contract_start) คือเคสที่
+  // เข้าสู่การติดตามที่หน้า Follow Up ⇒ ใช้ค่านี้แทนการเทียบเลข stage
+  const inFollowup = i.contract_start !== null;
   const nextDueDays =
-    !i.completed && i.stage === INFLU_STAGE.followup && stats?.nextDue
+    !i.completed && inFollowup && stats?.nextDue
       ? dayDiff(stats.nextDue, today)
       : null;
   const daysSinceDone =
@@ -418,7 +421,7 @@ export function InfluCardContent({
       : null;
   const showFollowedChip =
     !i.completed &&
-    i.stage === INFLU_STAGE.followup &&
+    inFollowup &&
     (nextDueDays === null || nextDueDays > 14) &&
     daysSinceDone !== null;
   const movedManually =

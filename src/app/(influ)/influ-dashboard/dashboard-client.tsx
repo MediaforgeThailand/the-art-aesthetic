@@ -45,7 +45,6 @@ import {
   contractEndDate,
   costUsageOf,
   INFLU_PROSPECT_ACTIVE,
-  INFLU_STAGE,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   itemEffectiveCost,
@@ -191,7 +190,8 @@ export function DashboardClient({
       taskLeft.set(t.influencer_id, (taskLeft.get(t.influencer_id) ?? 0) + 1);
     }
     const followupPending = active
-      .filter((i) => !i.completed && i.stage === INFLU_STAGE.followup)
+      // 0092: ไม่มีขั้นตามงานแล้ว — เคสที่เริ่มนับสัญญา = เคสที่อยู่ระหว่างติดตาม
+      .filter((i) => !i.completed && i.contract_start !== null)
       .map((i) => ({ influ: i, left: taskLeft.get(i.id) ?? 0 }))
       .filter((f) => f.left > 0)
       .sort((a, b) => b.left - a.left)
@@ -384,7 +384,7 @@ export function DashboardClient({
               href="/influencers/contracts"
               className="ml-auto text-xs text-brand-600 hover:underline"
             >
-              ดูสัญญาทั้งหมด
+              ไปหน้า Follow Up
             </Link>
           </div>
           {stats.contracts.length === 0 ? (

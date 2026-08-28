@@ -4,12 +4,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  BellRing,
   CalendarPlus,
   Check,
   CheckCircle2,
   ClipboardList,
-  Copy,
   FileSignature,
   FolderOpen,
   Image as ImageIcon,
@@ -20,10 +18,8 @@ import {
   MessageCircleQuestion,
   PenLine,
   Repeat,
-  Send,
   Undo2,
   UserRound,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,11 +51,6 @@ import {
   activeFollowupTasks,
   calendarTimeLabel,
   contractEndDate,
-  contractStartFor,
-  INFLU_CHECKLIST,
-  INFLU_CHECKLIST_SECTIONS,
-  INFLU_FOLLOWUP_MODE_ORDER,
-  INFLU_FOLLOWUP_MODES,
   INFLU_STAGE,
   INFLU_STAGE_LAST,
   INFLU_STAGES,
@@ -74,9 +65,7 @@ import type {
   InfluCalendarEventRow,
   InfluencerRow,
   InfluRoundLite,
-  InfluFollowupMode,
   InfluLinkRow,
-  InfluPostLinkRow,
   InfluProcedureItemRow,
   InfluProfileChannelRow,
   InfluProfileRow,
@@ -96,8 +85,6 @@ import {
 } from "../procedure-items-editor";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
-import { PackageStage } from "./package-stage";
-import { PostLinksCard } from "./post-links";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -110,43 +97,6 @@ function logNameOf(
 ): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
-}
-
-/** สร้าง checklist ติดตามงานจากเอกสาร 5 หมวด (idempotent) — คืน error message ถ้าล้ม
-    ข้อที่มีกำหนดเวลา (offsetDays) เริ่มนับจาก "วันที่เข้าสู่ขั้น Follow up" (วันนี้ ณ ตอน generate)
-    เช็คเฉพาะข้อของเทมเพลตมาตรฐาน (is_custom = false) — ข้อที่ทีมพิมพ์เองในโหมดแพ็คเกจเฉพาะ
-    ไม่ควรบล็อคการสร้างเทมเพลต ไม่งั้นเคสที่ generate ล้มแล้วไปกรอกเอง จะสร้างมาตรฐานกลับมาไม่ได้ */
-async function generateFollowupTasks(
-  supabase: ReturnType<typeof createClient>,
-  influencer: InfluencerRow
-): Promise<string | null> {
-  const { data: existing, error: exErr } = await supabase
-    .from("influ_tasks")
-    .select("id")
-    .eq("influencer_id", influencer.id)
-    .eq("is_custom", false)
-    .limit(1);
-  if (exErr) return exErr.message;
-  if (existing && existing.length > 0) return null;
-
-  const base = todayISO();
-  const addDays = (iso: string, days: number) => {
-    const d = new Date(iso);
-    d.setDate(d.getDate() + days);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-  const { error } = await supabase.from("influ_tasks").insert(
-    INFLU_CHECKLIST.map((t) => ({
-      influencer_id: influencer.id,
-      step: t.step,
-      title: t.title,
-      script: t.detail,
-      section: t.section,
-      due_date: t.offsetDays != null ? addDays(base, t.offsetDays) : null,
-    }))
-  );
-  return error?.message ?? null;
 }
 
 /** กล่องอัพโหลด/แสดงรูป — อยู่ module scope กัน remount ทุก keystroke ของฟอร์ม */
@@ -494,7 +444,6 @@ export function InfluDetailClient({
   personProfile,
   profileChannels,
   sourceLinks,
-  postLinks,
   ownerName,
   userId,
   userName,
@@ -524,8 +473,6 @@ export function InfluDetailClient({
   profileChannels: InfluProfileChannelRow[];
   /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
   sourceLinks: InfluLinkRow[];
-  /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน) */
-  postLinks: InfluPostLinkRow[];
   /** ชื่อผู้รับผิดชอบเคส (owner_id — คนที่สร้างการ์ด); null = เคสเก่าที่ยังไม่มีเจ้าของ */
   ownerName: string | null;
   /** ผู้ใช้ที่กำลังเปิดหน้านี้ — ใช้เป็น "ผู้ทำ" ของประวัติการใช้งาน (influ_activity_log) */
@@ -788,20 +735,23 @@ export function InfluDetailClient({
             <MessageCircleQuestion size={12} /> รอปรึกษา
           </Badge>
         )}
-        {/* follow-up ที่เหลือ (เฉพาะขั้นตามงาน) */}
-        {influencer.stage === INFLU_STAGE.followup &&
+        {/* เช็คลิสต์ผลลัพธ์ที่เหลือ — เคสที่เริ่มนับสัญญาแล้ว (การตามงานจริงอยู่หน้า Follow Up) */}
+        {influencer.contract_start !== null &&
           !influencer.completed &&
-          followupTotal > 0 &&
-          (followupLeft > 0 ? (
-            <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-              <ListChecks size={12} /> follow-up เหลือ {followupLeft}/
-              {followupTotal} ข้อ
-            </Badge>
-          ) : (
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> follow-up ครบทุกข้อ
-            </Badge>
-          ))}
+          followupTotal > 0 && (
+            <Link href="/influencers/contracts" title="ไปหน้า Follow Up">
+              {followupLeft > 0 ? (
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                  <ListChecks size={12} /> เช็คลิสต์เหลือ {followupLeft}/
+                  {followupTotal} ข้อ
+                </Badge>
+              ) : (
+                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                  <CheckCircle2 size={12} /> เช็คลิสต์ครบทุกข้อ
+                </Badge>
+              )}
+            </Link>
+          )}
         {/* จำนวนงานคอนเทนต์ที่ผูกกับคนนี้ */}
         {contentTasks.length > 0 && (
           <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
@@ -956,36 +906,25 @@ export function InfluDetailClient({
         )}
       </div>
 
-      {/* เดินเลยขั้นสัญญามาแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
-          — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสค้างอยู่ขั้นตามงานโดยไม่มีสัญญาแบบเงียบๆ */}
+      {/* เริ่มนับสัญญาไปแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
+          — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสไปโผล่หน้า Follow Up โดยไม่มีสัญญาแบบเงียบๆ */}
       {canManage &&
         !influencer.contract_file_path &&
-        influencer.stage > INFLU_STAGE.contractService && (
+        influencer.contract_start !== null && (
           <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 animate-fade-in">
             <AlertTriangle size={16} className="shrink-0 text-amber-600" />
             <p className="min-w-0 flex-1 text-xs leading-5 text-amber-800">
-              เคสนี้อยู่ Stage {influencer.stage} แต่<b>ยังไม่มีไฟล์สัญญา</b>ในระบบ
-              — อัพไฟล์ฉบับที่ถูกต้องได้เลยที่ขั้นสัญญา
-              หรือย้อน stage กลับไปทำขั้นนั้นใหม่
+              เคสนี้เริ่มนับสัญญาแล้ว แต่<b>ยังไม่มีไฟล์สัญญา</b>ในระบบ —
+              อัพไฟล์ฉบับที่ถูกต้องได้เลยที่ขั้นสัญญา
             </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setView(INFLU_STAGE.contractService)}
-                className="!px-3 !py-1.5 !text-xs"
-              >
-                <FileSignature size={13} />
-                ไปขั้นสัญญา
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setRollbackOpen(true)}
-                className="!px-3 !py-1.5 !text-xs"
-              >
-                <Undo2 size={13} />
-                ย้อน Stage {influencer.stage} → {influencer.stage - 1}
-              </Button>
-            </div>
+            <Button
+              variant="secondary"
+              onClick={() => setView(INFLU_STAGE.contractService)}
+              className="!px-3 !py-1.5 !text-xs"
+            >
+              <FileSignature size={13} />
+              ไปขั้นสัญญา
+            </Button>
           </div>
         )}
       {rollbackErr && (
@@ -1061,16 +1000,6 @@ export function InfluDetailClient({
             />
           </div>
         )}
-        {view === INFLU_STAGE.followup && (
-          <FollowupStage
-            influencer={influencer}
-            tasks={tasks}
-            readOnly={!canEdit}
-            postLinks={postLinks}
-            // ลิงก์โพสแก้ได้เสมอแม้เคสปิดงาน (คลังผลงานอ้างอิง) — team ดูอย่างเดียว
-            postLinksReadOnly={!canManage}
-          />
-        )}
       </div>
 
       {/* งานคอนเทนต์ที่ผูกกับ Influencer คนนี้ (จากหน้า "งาน") */}
@@ -1118,16 +1047,9 @@ export function InfluDetailClient({
               <>
                 <br />
                 <span className="text-amber-700">
-                  วันเริ่มสัญญาจะถูกล้าง และตั้งใหม่เมื่ออัพไฟล์สัญญาอีกครั้ง
-                </span>
-              </>
-            )}
-            {influencer.stage === INFLU_STAGE.followup && (
-              <>
-                <br />
-                <span className="text-amber-700">
-                  ต้นทุนของเคสนี้จะกลับไปนับเป็น &quot;กำลังจะมา&quot;
-                  (ยังไม่ผ่านขั้นรับบริการ)
+                  วันเริ่มสัญญาจะถูกล้าง และตั้งใหม่เมื่ออัพไฟล์สัญญาอีกครั้ง —
+                  เคสจะหายจากหน้า Follow Up และต้นทุนกลับไปนับเป็น
+                  &quot;กำลังจะมา&quot; จนกว่าจะอัพสัญญาใหม่
                 </span>
               </>
             )}
@@ -2133,7 +2055,8 @@ function CaseDetailStage({
 }
 
 /* ============ ครึ่งล่างของขั้นรวม (สัญญา + วันรับบริการ): วันเข้ารับบริการ —
-   แก้หัตถการหน้างานได้ + เป็นทางออกเดียวไปขั้น Follow up ============ */
+   แก้หัตถการหน้างานได้; ตั้งแต่ 0092 ไม่มีขั้นถัดไปแล้ว (อัพไฟล์สัญญา = เริ่มนับสัญญา
+   แล้วเคสไปโผล่ที่หน้า Follow Up เอง) ท้ายการ์ดจึงเป็นลิงก์ไปหน้านั้นแทนปุ่มเดิน stage ============ */
 
 /* ---------- ลงคิวเข้าปฏิทิน — บังคับก่อนปิดขั้นสัญญา + วันรับบริการ ----------
    ผู้ใช้ 2026-08-29: "มี influ บางคนที่เข้ามาแล้วแต่ในระบบไม่ได้กดลงคิว" — เดิมเคสเดินไปขั้น
@@ -2164,9 +2087,9 @@ function ServiceBookingCard({
   const [error, setError] = useState<string | null>(null);
 
   const booked = bookings.length > 0;
-  /** เคสเดินเลยขั้นนี้ไปแล้ว (ของเก่าก่อนมีการบังคับลงคิว) — ยังลงคิวย้อนหลังได้ */
-  const passedStage =
-    influencer.completed || influencer.stage > INFLU_STAGE.contractService;
+  /** เคสเข้าสู่การติดตามไปแล้ว (อัพสัญญาแล้ว — 0092 ไม่มีขั้นถัดไปให้เดินอีก)
+      แต่ยังไม่มีคิวในปฏิทิน = อาการที่ผู้ใช้เจอ "influ เข้ามาแล้วแต่ไม่ได้กดลงคิว" */
+  const contractDone = influencer.completed || !!influencer.contract_file_path;
 
   const book = async () => {
     if (saving || !canBook) return;
@@ -2276,11 +2199,10 @@ function ServiceBookingCard({
     <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-[0_8px_28px_rgba(94,58,49,0.08)]">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900">
         <AlertTriangle size={16} className="text-amber-600" />
-        {/* เคสที่เดินเลยขั้นนี้มาแล้วแต่ไม่มีคิว (ของเก่าก่อนมีการบังคับ) — ข้อความต่างกัน
-            เพราะบอกว่า "ต้องลงคิวก่อนไปขั้นตามงาน" กับเคสที่อยู่ขั้นตามงานแล้วมันขัดกันเอง */}
-        {passedStage
-          ? "ยังไม่ได้ลงคิวเข้าปฏิทิน — เคสนี้เดินเลยขั้นนี้มาแล้ว ลงคิวย้อนหลังได้เลย"
-          : "ยังไม่ได้ลงคิวเข้าปฏิทิน — ต้องลงคิวก่อนถึงจะไปขั้นตามงานได้"}
+        {/* อัพสัญญาแล้วแต่ยังไม่มีคิว = เร่งด่วนกว่า (เคสเข้าสู่การติดตามไปแล้วแต่ปฏิทินไม่มีชื่อ) */}
+        {contractDone
+          ? "เซนสัญญาแล้วแต่ยังไม่ได้ลงคิวเข้าปฏิทิน — ลงคิวให้เรียบร้อยก่อน"
+          : "ยังไม่ได้ลงคิวเข้าปฏิทิน — เคาะวันกับแพทย์แล้วลงคิวได้เลย"}
       </h2>
       <p className="mb-4 text-xs leading-5 text-stone-600">
         เคาะ<b>วันที่เข้ารับบริการ</b>กับ<b>แพทย์ที่รับเคส</b>แล้วกดลงคิว
@@ -2375,15 +2297,10 @@ function ServiceDayStage({
   const [error, setError] = useState<string | null>(null);
 
   const history = influencer.procedure_history ?? [];
-  /** ขั้นนี้รวมสัญญาไว้ด้วย — ปิดขั้นไปตามงานได้ต่อเมื่อมีไฟล์สัญญาที่เซนแล้ว */
+  /** ขั้นนี้รวมสัญญาไว้ด้วย — มีไฟล์สัญญาที่เซนแล้ว = เคสเข้าสู่การติดตามที่หน้า Follow Up */
   const contractUploaded = !!influencer.contract_file_path;
-  /** …และต้องลงคิวเข้าปฏิทินแล้วด้วย (ผู้ใช้ 2026-08-29 — ดู ServiceBookingCard) */
+  /** ลงคิวเข้าปฏิทินแล้วหรือยัง (ผู้ใช้ 2026-08-29 — ดู ServiceBookingCard) */
   const booked = bookings.length > 0;
-  const blockReason = !contractUploaded
-    ? "ต้องอัพโหลดไฟล์สัญญาที่เซนแล้วก่อน (ส่วนสัญญาด้านบน)"
-    : !booked
-      ? "ต้องลงคิวเข้าปฏิทิน (วันที่ + แพทย์) ก่อน — การ์ดด้านบน"
-      : null;
 
   const saveChange = async (signatureData: string) => {
     // กันกดบันทึกลายเซนซ้ำ — ไม่งั้น history โดนต่อท้ายรายการเดิม 2 รอบ
@@ -2433,44 +2350,6 @@ function ServiceDayStage({
     router.refresh();
   };
 
-  const [goingNext, setGoingNext] = useState(false);
-  const goNext = async () => {
-    if (goingNext) return;
-    if (blockReason) return;
-    setGoingNext(true);
-    setError(null);
-    // สร้างงาน follow up ก่อน — ถ้าล้ม อย่าเพิ่งข้าม stage (ไม่งั้นค้างขั้นตามงานแบบไม่มีงาน)
-    const genErr = await generateFollowupTasks(supabase, influencer);
-    if (genErr) {
-      setGoingNext(false);
-      setError(`สร้างงาน follow up ไม่สำเร็จ: ${genErr} — ลองกดอีกครั้ง`);
-      return;
-    }
-    const { error: e } = await supabase
-      .from("influencers")
-      .update({
-        stage: INFLU_STAGE.followup,
-        // กันเคสที่ไฟล์สัญญาถูกอัพไว้ก่อนระบบรวมขั้น (ยังไม่มีวันเริ่มสัญญา)
-        ...(influencer.contract_start
-          ? {}
-          : { contract_start: contractStartFor(influencer) }),
-      })
-      .eq("id", influencer.id);
-    setGoingNext(false);
-    if (e) {
-      setError(`บันทึกไม่สำเร็จ: ${e.message}`);
-      return;
-    }
-    log({
-      action: "stage",
-      entityId: influencer.id,
-      influencerId: influencer.id,
-      influencerName: logNameOf(influencer),
-      summary: "ปิดขั้นสัญญา + วันรับบริการ — เข้าสู่ขั้นตามงาน",
-      meta: { from: influencer.stage, to: INFLU_STAGE.followup },
-    });
-    router.refresh();
-  };
 
   return (
     <div className="space-y-4">
@@ -2533,7 +2412,7 @@ function ServiceDayStage({
         )}
 
         {!readOnly && (
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <Button
               variant="secondary"
               onClick={() => {
@@ -2544,23 +2423,31 @@ function ServiceDayStage({
               <PenLine size={15} />
               แก้ไขหัตถการ (ต้องลงนามหัวหน้างาน)
             </Button>
-            <div className="flex flex-col items-end gap-1.5">
-              <Button
-                loading={goingNext}
-                disabled={blockReason !== null}
-                title={blockReason ?? undefined}
-                onClick={() => void goNext()}
-              >
-                <ArrowRight size={16} />
-                เรียบร้อย — ไปขั้น Follow up งาน
-              </Button>
-              {/* บอกเหตุผลเป็นข้อความด้วย — ปุ่มจางเฉยๆ บนมือถือไม่มี hover ให้เห็น title */}
-              {blockReason && (
-                <span className="text-right text-xs text-amber-700">
-                  {blockReason}
-                </span>
-              )}
-            </div>
+            {/* ไม่มีขั้นถัดไปแล้ว (0092) — อัพไฟล์สัญญา = เคสเข้าสู่การติดตามที่หน้า Follow Up เอง */}
+            {contractUploaded ? (
+              <div className="flex flex-col items-end gap-1.5">
+                <Link
+                  href="/influencers/contracts"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3.5 py-2 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
+                >
+                  <ListChecks size={16} />
+                  ไปหน้า Follow Up ของเคสนี้
+                  <ArrowRight size={14} />
+                </Link>
+                {/* อัพสัญญาแล้วแต่ยังไม่มีคิวในปฏิทิน = เคสที่ผู้ใช้บอกว่า "เข้ามาแล้วแต่ไม่ได้กดลงคิว"
+                    ไม่มีปุ่มเดิน stage ให้ล็อกแล้ว (0092) จึงเตือนไว้ตรงนี้แทน */}
+                {!booked && (
+                  <span className="text-right text-xs font-medium text-amber-700">
+                    ยังไม่ได้ลงคิวเข้าปฏิทิน — ลงคิวที่การ์ดด้านบนก่อน
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="text-xs text-stone-400">
+                อัพโหลดไฟล์สัญญาที่เซนแล้ว (ส่วนสัญญาด้านบน) เพื่อเริ่มนับสัญญา
+                — เคสจะไปโผล่ที่หน้า Follow Up เอง
+              </span>
+            )}
           </div>
         )}
       </Card>
@@ -2627,612 +2514,5 @@ function ServiceDayStage({
         />
       )}
     </div>
-  );
-}
-
-/* ============ ขั้นสุดท้าย: ติดตามงาน — 2 โหมด (มาตรฐาน / แพ็คเกจเฉพาะ) ============ */
-
-function FollowupStage({
-  influencer,
-  tasks: allTasks,
-  readOnly,
-  postLinks,
-  postLinksReadOnly,
-}: {
-  influencer: InfluencerRow;
-  /** ข้อของทั้ง 2 โหมด — โหมดที่ไม่ได้ใช้ถูกซ่อน (ไม่ถูกลบ) */
-  tasks: InfluTaskRow[];
-  readOnly: boolean;
-  /** ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง — การ์ดบนสุดของขั้นนี้ */
-  postLinks: InfluPostLinkRow[];
-  /** แยกจาก readOnly เพราะลิงก์โพสยังแก้ได้แม้เคสปิดงานแล้ว (team ดูอย่างเดียว) */
-  postLinksReadOnly: boolean;
-}) {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  const log = useInfluLog();
-  const today = todayISO();
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [switching, setSwitching] = useState(false);
-
-  const mode = influencer.followup_mode;
-  const tasks = useMemo(
-    () => activeFollowupTasks(mode, allTasks),
-    [mode, allTasks]
-  );
-  const hiddenCount = allTasks.length - tasks.length;
-
-  /** step ถัดไปของข้อที่พิมพ์เอง — กันเลข 1..23 ไว้ให้เทมเพลตมาตรฐานเสมอ
-      (unique influencer_id+step: ถ้าข้อ custom ไปกินเลข 1 เทมเพลตจะ insert ทับไม่ได้) */
-  const nextCustomStep = useMemo(
-    () => Math.max(INFLU_CHECKLIST.length, 0, ...allTasks.map((t) => t.step)) + 1,
-    [allTasks]
-  );
-
-  const switchMode = async (next: InfluFollowupMode) => {
-    if (readOnly || switching || next === mode) return;
-    setSwitching(true);
-    setErr(null);
-    const { error } = await supabase
-      .from("influencers")
-      .update({ followup_mode: next })
-      .eq("id", influencer.id);
-    setSwitching(false);
-    if (error) {
-      setErr(`เปลี่ยนโหมดไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    router.refresh();
-  };
-
-  const doneCount = tasks.filter((t) => t.done).length;
-  /** จำนวนวันจากวันนี้ถึงกำหนด — ติดลบ = เลยกำหนดแล้ว */
-  const daysLeft = (due: string) =>
-    Math.round(
-      (new Date(due.slice(0, 10)).getTime() - new Date(today).getTime()) /
-        86400000
-    );
-  // แจ้งเตือนเฉพาะข้อที่มีกำหนดเวลา: เลยกำหนด หรือใกล้ถึงกำหนด (≤ 7 วัน)
-  const overdueCount = tasks.filter(
-    (t) => !t.done && t.due_date && daysLeft(t.due_date) < 0
-  ).length;
-  const soonCount = tasks.filter(
-    (t) =>
-      !t.done &&
-      t.due_date != null &&
-      daysLeft(t.due_date) >= 0 &&
-      daysLeft(t.due_date) <= 7
-  ).length;
-  // โหมดแพ็คเกจเฉพาะที่ยังไม่ได้เพิ่มข้อไหนเลย (เช่น ตกลงกันเป็น note ล้วน) ต้องปิดงานได้
-  // — ไม่งั้นเคสค้างที่ขั้นตามงานตลอดไป; โหมดมาตรฐานยังต้องมีข้อครบเหมือนเดิม
-  const allDone =
-    mode === "custom"
-      ? doneCount === tasks.length
-      : tasks.length > 0 && doneCount === tasks.length;
-
-  // จัดกลุ่มตามหมวดของเอกสาร — งานจากเทมเพลตเดิม (ไม่มีหมวด) แสดงท้ายสุด
-  const groups = useMemo(() => {
-    const gs: { section: string; rows: InfluTaskRow[] }[] = [];
-    for (const sec of INFLU_CHECKLIST_SECTIONS) {
-      const rows = tasks
-        .filter((t) => t.section === sec)
-        .sort((a, b) => a.step - b.step);
-      if (rows.length > 0) gs.push({ section: sec, rows });
-    }
-    const legacy = tasks
-      .filter(
-        (t) => !t.section || !INFLU_CHECKLIST_SECTIONS.includes(t.section)
-      )
-      .sort((a, b) => a.step - b.step);
-    if (legacy.length > 0) {
-      gs.push({ section: "รายการติดตามงาน (เทมเพลตเดิม)", rows: legacy });
-    }
-    return gs;
-  }, [tasks]);
-
-  const toggleDone = async (t: InfluTaskRow) => {
-    if (readOnly) return;
-    setErr(null);
-    const { error } = await supabase
-      .from("influ_tasks")
-      .update({
-        done: !t.done,
-        done_at: !t.done ? new Date().toISOString() : null,
-      })
-      .eq("id", t.id);
-    if (error) {
-      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    router.refresh();
-  };
-
-  const saveDescription = async (t: InfluTaskRow, value: string) => {
-    if (readOnly) return;
-    if ((t.description ?? "") === value.trim()) return;
-    setErr(null);
-    const { error } = await supabase
-      .from("influ_tasks")
-      .update({ description: value.trim() || null })
-      .eq("id", t.id);
-    if (error) {
-      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    router.refresh();
-  };
-
-  const startEditTitle = (t: InfluTaskRow) => {
-    if (readOnly) return;
-    setEditingTitleId(t.id);
-    setTitleDraft(t.title);
-  };
-
-  const saveTitle = async (t: InfluTaskRow) => {
-    if (readOnly) return;
-    const value = titleDraft.trim();
-    if (!value) {
-      setErr("ชื่อรายการห้ามเว้นว่าง");
-      return;
-    }
-    if (value === t.title) {
-      setEditingTitleId(null);
-      return;
-    }
-    setErr(null);
-    const { error } = await supabase
-      .from("influ_tasks")
-      .update({ title: value })
-      .eq("id", t.id);
-    if (error) {
-      setErr(`บันทึกไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    setEditingTitleId(null);
-    router.refresh();
-  };
-
-  /* self-heal: แถวเก่าที่หลุดมาขั้นตามงานโดยไม่มีงาน (เช่น insert ล้มกลางทาง) สร้างใหม่ได้ */
-  const regenerate = async () => {
-    if (generating) return;
-    setGenerating(true);
-    setErr(null);
-    const genErr = await generateFollowupTasks(supabase, influencer);
-    setGenerating(false);
-    if (genErr) {
-      setErr(`สร้างงานไม่สำเร็จ: ${genErr}`);
-      return;
-    }
-    router.refresh();
-  };
-
-  const copyScript = async (t: InfluTaskRow) => {
-    try {
-      await navigator.clipboard.writeText(t.script ?? "");
-      setCopiedId(t.id);
-      window.setTimeout(() => setCopiedId(null), 1500);
-    } catch {
-      window.prompt("คัดลอก script ด้วยตนเอง:", t.script ?? "");
-    }
-  };
-
-  const [finishing, setFinishing] = useState(false);
-  const finish = async () => {
-    if (finishing) return;
-    setFinishing(true);
-    setErr(null);
-    const { error } = await supabase
-      .from("influencers")
-      .update({ completed: true })
-      .eq("id", influencer.id);
-    setFinishing(false);
-    if (error) {
-      setErr(`ปิดงานไม่สำเร็จ: ${error.message}`);
-      return;
-    }
-    log({
-      action: "status",
-      entityId: influencer.id,
-      influencerId: influencer.id,
-      influencerName: logNameOf(influencer),
-      summary: "ปิดงานเคสนี้ (จบงาน)",
-    });
-    router.refresh();
-  };
-
-  const contractEnd = influencer.contract_start
-    ? contractEndDate(influencer.contract_start, influencer.contract_months)
-    : null;
-
-  return (
-    <div className="space-y-4">
-      {/* ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง — อยู่บนสุดตามที่ผู้ใช้กำหนด (2026-08-10) */}
-      <PostLinksCard
-        influencerId={influencer.id}
-        initialLinks={postLinks}
-        readOnly={postLinksReadOnly}
-      />
-
-      {/* เลือกโหมด — เคสดารา/จ่ายค่าตัว เงื่อนไขไม่เหมือนเคสแลกหัตถการ */}
-      <Card className="p-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-xs font-medium text-stone-500">
-            โหมดติดตามงาน
-          </span>
-          <div className="flex gap-1 rounded-full bg-stone-100/80 p-1">
-            {INFLU_FOLLOWUP_MODE_ORDER.map((m) => (
-              <button
-                key={m}
-                type="button"
-                disabled={readOnly || switching}
-                onClick={() => void switchMode(m)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 max-sm:min-h-11 ${
-                  readOnly || switching
-                    ? "cursor-default"
-                    : "cursor-pointer active:scale-[0.97]"
-                } ${
-                  mode === m
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                    : "text-stone-500 hover:bg-white/70 hover:text-stone-700"
-                }`}
-              >
-                {INFLU_FOLLOWUP_MODES[m].label}
-              </button>
-            ))}
-          </div>
-          <p className="min-w-0 flex-1 text-xs text-stone-400">
-            {INFLU_FOLLOWUP_MODES[mode].hint}
-          </p>
-        </div>
-        {hiddenCount > 0 && (
-          <p className="mt-2 text-[11px] text-stone-400">
-            อีกโหมดมี {hiddenCount} ข้อซ่อนอยู่ — ไม่ได้ถูกลบ
-            สลับกลับมาเมื่อไหร่ก็เห็นเหมือนเดิม
-          </p>
-        )}
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge className="bg-brand-50 text-brand-700">
-          ทำแล้ว {doneCount}/{tasks.length} ข้อ
-        </Badge>
-        {overdueCount > 0 && (
-          <Badge className="border border-rose-200 bg-rose-50 text-rose-700">
-            <BellRing size={12} /> เลยกำหนด {overdueCount} รายการ
-          </Badge>
-        )}
-        {soonCount > 0 && (
-          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-            <BellRing size={12} /> ใกล้ถึงกำหนด {soonCount} รายการ
-          </Badge>
-        )}
-        {contractEnd && (
-          <span className="text-xs text-stone-500">
-            สัญญาใช้คอนเทนต์ถึง{" "}
-            <span className="font-medium text-stone-700">
-              {formatDate(contractEnd)}
-            </span>{" "}
-            —{" "}
-            <Link
-              href="/influencers/contracts"
-              className="text-brand-600 hover:underline"
-            >
-              ดูหน้าอายุสัญญา & Campaign
-            </Link>
-          </span>
-        )}
-        {influencer.completed ? (
-          <Badge className="ml-auto border border-emerald-200 bg-emerald-50 text-emerald-700">
-            <CheckCircle2 size={12} /> ปิดงานแล้ว
-          </Badge>
-        ) : (
-          allDone &&
-          !readOnly && (
-            <Button
-              className="ml-auto"
-              loading={finishing}
-              onClick={() => void finish()}
-            >
-              <CheckCircle2 size={16} />
-              ครบทุก step — ปิดงาน
-            </Button>
-          )
-        )}
-      </div>
-
-      {err && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">
-          {err}
-        </p>
-      )}
-
-      {mode === "custom" ? (
-        <PackageStage
-          influencer={influencer}
-          tasks={tasks}
-          nextStep={nextCustomStep}
-          readOnly={readOnly}
-        />
-      ) : (
-        <StandardChecklist
-          tasks={tasks}
-          groups={groups}
-          readOnly={readOnly}
-          generating={generating}
-          today={today}
-          copiedId={copiedId}
-          editingTitleId={editingTitleId}
-          titleDraft={titleDraft}
-          setTitleDraft={setTitleDraft}
-          onCancelEditTitle={() => setEditingTitleId(null)}
-          onStartEditTitle={startEditTitle}
-          onSaveTitle={saveTitle}
-          onToggleDone={toggleDone}
-          onCopyScript={copyScript}
-          onDraftChange={(id, value) =>
-            setDrafts((d) => ({ ...d, [id]: value }))
-          }
-          onSaveDescription={(t) =>
-            saveDescription(t, drafts[t.id] ?? t.description ?? "")
-          }
-          onRegenerate={regenerate}
-        />
-      )}
-    </div>
-  );
-}
-
-/** checklist 5 หมวดตามเอกสารแนบท้ายสัญญา (โหมดมาตรฐาน) — state/handler อยู่ที่ FollowupStage
-    เพราะโหมดสลับไปมาได้ ต้องนับ done/overdue รวมที่เดียว */
-function StandardChecklist({
-  tasks,
-  groups,
-  readOnly,
-  generating,
-  today,
-  copiedId,
-  editingTitleId,
-  titleDraft,
-  setTitleDraft,
-  onCancelEditTitle,
-  onStartEditTitle,
-  onSaveTitle,
-  onToggleDone,
-  onCopyScript,
-  onDraftChange,
-  onSaveDescription,
-  onRegenerate,
-}: {
-  tasks: InfluTaskRow[];
-  groups: { section: string; rows: InfluTaskRow[] }[];
-  readOnly: boolean;
-  generating: boolean;
-  today: string;
-  copiedId: string | null;
-  editingTitleId: string | null;
-  titleDraft: string;
-  setTitleDraft: (v: string) => void;
-  onCancelEditTitle: () => void;
-  onStartEditTitle: (t: InfluTaskRow) => void;
-  onSaveTitle: (t: InfluTaskRow) => void | Promise<void>;
-  onToggleDone: (t: InfluTaskRow) => void | Promise<void>;
-  onCopyScript: (t: InfluTaskRow) => void | Promise<void>;
-  onDraftChange: (id: string, value: string) => void;
-  onSaveDescription: (t: InfluTaskRow) => void | Promise<void>;
-  onRegenerate: () => void | Promise<void>;
-}) {
-  const daysLeft = (due: string) =>
-    Math.round(
-      (new Date(due.slice(0, 10)).getTime() - new Date(today).getTime()) /
-        86400000
-    );
-
-  return (
-    <>
-      {tasks.length === 0 && !readOnly && (
-        <Card className="p-6 text-center">
-          <p className="text-sm text-stone-500">
-            ยังไม่มี checklist ติดตามงานของรายนี้ (อาจสร้างไม่สำเร็จตอนข้าม stage)
-          </p>
-          <Button
-            className="mt-3"
-            loading={generating}
-            onClick={() => void onRegenerate()}
-          >
-            สร้าง checklist ติดตามงาน (5 หมวด)
-          </Button>
-        </Card>
-      )}
-
-      <div className="space-y-4">
-        {groups.map((g) => (
-          <Card key={g.section} className="overflow-hidden">
-            {/* หัวหมวดโทนชมพูแบบเอกสารจริง */}
-            <div className="bg-gradient-to-r from-brand-500 to-brand-400 px-4 py-2.5">
-              <h3 className="text-sm font-semibold text-cream">{g.section}</h3>
-            </div>
-            <div className="divide-y divide-stone-100/80">
-              {g.rows.map((t, idx) => {
-                const dl = t.due_date ? daysLeft(t.due_date) : null;
-                return (
-                  <div
-                    key={t.id}
-                    className={`px-4 py-3 ${t.done ? "opacity-70" : ""}`}
-                  >
-              <div className="flex items-start gap-3">
-                <button
-                  type="button"
-                  disabled={readOnly}
-                  onClick={() => void onToggleDone(t)}
-                  title={t.done ? "ยกเลิกติ๊ก" : "ติ๊กว่า follow up แล้ว"}
-                  className="mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center active:scale-90 disabled:cursor-default max-sm:-mx-2.5 max-sm:-mb-2.5 max-sm:-mt-2 max-sm:h-11 max-sm:w-11"
-                >
-                  {/* วงที่มองเห็นคงขนาดเดิม — ตัวปุ่มขยายเป็นเป้านิ้ว 44px บนจอเล็ก */}
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
-                      t.done
-                        ? "border-emerald-500 bg-emerald-500 text-white"
-                        : "border-stone-300 bg-white text-transparent hover:border-emerald-400"
-                    }`}
-                  >
-                    <Check size={13} strokeWidth={3} />
-                  </span>
-                </button>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {editingTitleId === t.id ? (
-                      <span className="flex items-center gap-1">
-                        <span className="text-sm font-medium text-stone-400">
-                          {idx + 1}.
-                        </span>
-                        <input
-                          autoFocus
-                          value={titleDraft}
-                          onChange={(e) => setTitleDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void onSaveTitle(t);
-                            } else if (e.key === "Escape") {
-                              onCancelEditTitle();
-                            }
-                          }}
-                          className="min-w-[12rem] rounded-md border border-brand-300 bg-white px-2 py-1 text-base font-medium sm:text-sm text-stone-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void onSaveTitle(t)}
-                          title="บันทึกชื่อ"
-                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-emerald-600 transition-all hover:bg-emerald-50 active:scale-90 sm:h-7 sm:w-7"
-                        >
-                          <Check size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onCancelEditTitle}
-                          title="ยกเลิก"
-                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-stone-100 active:scale-90 sm:h-7 sm:w-7"
-                        >
-                          <X size={14} />
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1">
-                        <p
-                          className={`text-sm font-medium ${
-                            t.done
-                              ? "text-stone-400 line-through"
-                              : "text-stone-900"
-                          }`}
-                        >
-                          {idx + 1}. {t.title}
-                        </p>
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => onStartEditTitle(t)}
-                            title="แก้ไขชื่อรายการ"
-                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
-                          >
-                            <PenLine size={13} />
-                          </button>
-                        )}
-                      </span>
-                    )}
-                    {/* เคาน์ดาวน์เฉพาะข้อที่มีกำหนดเวลา — เตือนเมื่อเหลือ ≤ 7 วัน */}
-                    {t.due_date && dl !== null && !t.done && (
-                      dl < 0 ? (
-                        <Badge className="border border-rose-200 bg-rose-50 text-rose-700">
-                          <BellRing size={11} /> เลยกำหนด {Math.abs(dl)} วัน (
-                          {formatDate(t.due_date)})
-                        </Badge>
-                      ) : dl === 0 ? (
-                        <Badge className="border border-amber-300 bg-amber-50 text-amber-700">
-                          <BellRing size={11} /> ครบกำหนดวันนี้
-                        </Badge>
-                      ) : dl <= 7 ? (
-                        <Badge className="border border-amber-300 bg-amber-50 text-amber-700">
-                          <BellRing size={11} /> อีก {dl} วัน — กำหนด{" "}
-                          {formatDate(t.due_date)}
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-stone-100 text-stone-500">
-                          กำหนด {formatDate(t.due_date)} (อีก {dl} วัน)
-                        </Badge>
-                      )
-                    )}
-                    {t.due_date && t.done && (
-                      <Badge className="bg-stone-100 text-stone-400">
-                        กำหนด {formatDate(t.due_date)}
-                      </Badge>
-                    )}
-                    {t.channel && (
-                      <Badge className="bg-sky-50 text-sky-700">
-                        <Send size={11} /> {t.channel}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {t.script && (
-                    <div className="mt-2 flex items-start gap-2 rounded-lg bg-white/75 px-3 py-2">
-                      <p className="min-w-0 flex-1 text-xs leading-5 text-stone-600">
-                        {t.script}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void onCopyScript(t)}
-                        title="คัดลอก script"
-                        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all active:scale-90 sm:h-7 sm:w-7 ${
-                          copiedId === t.id
-                            ? "text-emerald-600"
-                            : "text-stone-400 hover:bg-brand-50 hover:text-brand-600"
-                        }`}
-                      >
-                        {copiedId === t.id ? (
-                          <Check size={14} />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                      </button>
-                    </div>
-                  )}
-
-                  <input
-                    defaultValue={t.description ?? ""}
-                    disabled={readOnly}
-                    placeholder="+ เพิ่มหมายเหตุ เช่น ส่งไฟล์แล้ว รอทีมตรวจ..."
-                    onChange={(e) => onDraftChange(t.id, e.target.value)}
-                    onBlur={() => void onSaveDescription(t)}
-                    className="mt-2 w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-base sm:text-xs text-stone-700 placeholder:text-stone-300 transition-colors hover:border-stone-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-                  />
-                  {t.done && t.done_at && (
-                    <p className="mt-1 text-[11px] text-emerald-600">
-                      ✓ ทำแล้วเมื่อ {formatDateTime(t.done_at)}
-                    </p>
-                  )}
-                </div>
-              </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {tasks.length > 0 && (
-        <p className="mt-4 text-xs text-stone-400">
-          ทั้งหมด {formatNumber(tasks.length)} ข้อ —
-          ข้อที่มีกำหนดเวลาจะเริ่มนับจากวันที่เข้าสู่ stage นี้
-          และขึ้นป้ายเตือนเมื่อใกล้ถึงกำหนด (เหลือ ≤ 7 วัน) หรือเลยกำหนด
-          ส่วนข้อที่ไม่มีกำหนดเวลาไม่มีการแจ้งเตือน
-        </p>
-      )}
-    </>
   );
 }

@@ -29,6 +29,7 @@ import {
 } from "@/lib/format";
 import {
   contractStartFor,
+  INFLU_CHECKLIST,
   INFLU_CONTRACT_TEMPLATES,
   INFLU_STAGE,
   INFLU_TIER_ORDER,
@@ -55,6 +56,46 @@ function logNameOf(
 ): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** สร้าง checklist ผลลัพธ์/ติดตาม 5 หมวดตามเอกสารแนบท้ายสัญญา (idempotent)
+    ตั้งแต่ 0092 ไม่มีขั้น "Follow up" ใน pipeline แล้ว — จุดเริ่มนับคือ
+    **ตอนอัพไฟล์สัญญาที่เซนแล้ว** (จุดเดียวกับที่ตั้ง contract_start) และรายการที่ได้
+    ไปแสดง/ติ๊กที่แผงติดตามในหน้า Follow Up ซึ่งเป็นส่วนรอง (ไม่ force)
+    เช็คเฉพาะข้อของเทมเพลตมาตรฐาน (is_custom = false) — ข้อที่ทีมพิมพ์เองในโหมด
+    แพ็คเกจเฉพาะไม่ควรบล็อคการสร้างเทมเพลต */
+async function generateFollowupTasks(
+  supabase: ReturnType<typeof createClient>,
+  influencerId: string,
+  base: string
+): Promise<string | null> {
+  const { data: existing, error: exErr } = await supabase
+    .from("influ_tasks")
+    .select("id")
+    .eq("influencer_id", influencerId)
+    .eq("is_custom", false)
+    .limit(1);
+  if (exErr) return exErr.message;
+  if (existing && existing.length > 0) return null;
+
+  const { error } = await supabase.from("influ_tasks").insert(
+    INFLU_CHECKLIST.map((t) => ({
+      influencer_id: influencerId,
+      step: t.step,
+      title: t.title,
+      script: t.detail,
+      section: t.section,
+      due_date: t.offsetDays != null ? addDays(base, t.offsetDays) : null,
+    }))
+  );
+  return error?.message ?? null;
 }
 
 /* ---------- ปุ่มดูรูปที่อัพโหลดไว้ (รูป influ + รูปช่องทาง) ---------- */
@@ -1174,6 +1215,7 @@ function ContractUploadStage({
       setError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
       return;
     }
+    const startDay = influencer.contract_start ?? contractStartFor(influencer);
     const { error: linkErr } = await supabase
       .from("influencers")
       .update({
@@ -1182,11 +1224,12 @@ function ContractUploadStage({
         contract_uploaded_at: new Date().toISOString(),
         // มีไฟล์สัญญาที่เซนแล้ว = เริ่มนับสัญญา 6 เดือน (ขั้นนี้รวมวันรับบริการไว้แล้ว
         // จึงไม่มีปุ่มยืนยันแยกอีกต่อไป) — อัพซ้ำเพื่อเปลี่ยนไฟล์ต้องไม่รีเซ็ตวันเริ่ม
-        ...(influencer.contract_start
-          ? {}
-          : { contract_start: contractStartFor(influencer) }),
+        ...(influencer.contract_start ? {} : { contract_start: startDay }),
       })
       .eq("id", influencer.id);
+    // เคสเข้าสู่การติดตามแล้ว — สร้าง checklist ผลลัพธ์ให้ครั้งเดียว (idempotent, best effort:
+    // เป็นส่วนรองที่ไม่ force จึงไม่บล็อคการอัพไฟล์ ถ้าล้มจะเห็นเป็น "ยังไม่มีเช็คลิสต์" ในแผงติดตาม)
+    if (!linkErr) await generateFollowupTasks(supabase, influencer.id, startDay);
     setUploading(false);
     if (linkErr) {
       try {
@@ -1446,12 +1489,12 @@ function ContractUploadStage({
               — อัพไฟล์ฉบับที่ถูกต้องเข้ามาใหม่
               ระบบจะตั้งวันเริ่มให้ใหม่จากวันรับบริการ
             </span>
-            {influencer.stage > INFLU_STAGE.contractService && (
+            {influencer.contract_start !== null && (
               <>
                 <br />
                 <span className="text-amber-700">
-                  เคสนี้เดินเลยขั้นสัญญาไปแล้ว —
-                  ลบแล้วเคสจะไม่มีไฟล์สัญญาและหายจากหน้าอายุสัญญา
+                  เคสนี้เริ่มนับสัญญาไปแล้ว —
+                  ลบแล้วเคสจะหายจากหน้า Follow Up (เป้าโพส/ลิงก์ที่แปะไว้ยังอยู่)
                   จนกว่าจะอัพไฟล์ใหม่
                 </span>
               </>
