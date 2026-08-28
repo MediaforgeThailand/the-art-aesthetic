@@ -1,9 +1,12 @@
 "use client";
 
-// ปฏิทินคิวแพทย์ Wellness — **มือถือเป็นตัวตั้ง** (คำสั่งผู้ใช้ 2026-08-28):
-// ตารางเดือนแบบกะทัดรัดอยู่บน (ตัวเลขวัน + จุดเล็กบอกว่าวันนั้นมีคิว)
-// แล้ว "การ์ดคิวของวันที่เลือก" ไหลอยู่ข้างล่างในหน้าเดียวกัน — ไม่มีแผงลอยทับจออีก
-// จอ ≥lg แถวเดียวกันนี้กลายเป็น 2 คอลัมน์ (ปฏิทินซ้าย · คิวของวันขวา)
+// ปฏิทินคิวแพทย์ Wellness — **มือถือเป็นตัวตั้ง ตามภาพอ้างอิงที่ผู้ใช้ส่ง (2026-08-28)**:
+//   1) ทั้งบล็อกปฏิทินเป็น "แผ่นไล่เฉดแบรนด์" ตัวเลขวันเป็นสีอ่อนอยู่บนแผ่นนั้น
+//      วันที่เลือก = สี่เหลี่ยมมนสีขาวตัวหนังสือสีแบรนด์ · วันที่มีคิว = จุดขาวใต้ตัวเลข
+//   2) ใต้ปฏิทินเป็น "การ์ดต่อวัน" — ซ้ายมือเป็นแถบวันที่ไล่เฉด (ชื่อวัน + เลขวัน)
+//      ขวามือเป็นรายการเวลาของวันนั้นเรียงกัน กดแถวไหน = เปิดรายละเอียดคิวนั้น
+//   3) ปุ่ม + ลอยกลางล่างจอ (เฉพาะ admin) = ลงคิวในวันที่เลือก
+// จอ ≥lg แถวเดียวกันนี้กลายเป็น 2 คอลัมน์ (ปฏิทินซ้าย · การ์ดคิวขวา)
 //
 // การลงคิว/ย้ายกลับเป็น "นัดไว้" ดัก 23P01 จาก exclusion constraint = คิวชนกัน
 import {
@@ -101,27 +104,23 @@ const THAI_WEEKDAYS_FULL = [
   "อาทิตย์",
 ];
 
-// หัวคอลัมน์ — จันทร์เริ่ม, อ./ส. = วันแพทย์เข้า (เน้น brand), อาทิตย์ท้ายแถวสีแดง
-const WEEKDAY_HEADS: { label: string; doctor: boolean; sunday: boolean }[] = [
-  { label: "จ", doctor: false, sunday: false },
-  { label: "อ", doctor: true, sunday: false },
-  { label: "พ", doctor: false, sunday: false },
-  { label: "พฤ", doctor: false, sunday: false },
-  { label: "ศ", doctor: false, sunday: false },
-  { label: "ส", doctor: true, sunday: false },
-  { label: "อา", doctor: false, sunday: true },
-];
+// หัวคอลัมน์ — จันทร์เริ่ม (อ./ส. = วันแพทย์ Wellness เข้า)
+const WEEKDAY_HEADS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
 function monthTitleOf(dayIso: string): string {
   const [y, m] = dayIso.split("-").map(Number);
   return `${THAI_MONTHS[m - 1]} ${y + 543}`;
 }
 
-/** ช่องของเดือนที่วันนี้อยู่ — จันทร์คอลัมน์แรก, null = ช่องว่างหัว/ท้ายเดือน */
+/** ดัชนีวันในสัปดาห์แบบจันทร์=0 */
+function mondayIndex(dayIso: string): number {
+  return (new Date(`${dayIso}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
+/** ช่องของเดือนที่วันนั้นอยู่ — จันทร์คอลัมน์แรก, null = ช่องว่างหัว/ท้ายเดือน */
 function monthCells(dayIso: string): (string | null)[] {
   const [y, m] = dayIso.split("-").map(Number);
-  const first = new Date(Date.UTC(y, m - 1, 1));
-  const lead = (first.getUTCDay() + 6) % 7;
+  const lead = mondayIndex(`${dayIso.slice(0, 7)}-01`);
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const prefix = dayIso.slice(0, 7);
   const cells: (string | null)[] = [];
@@ -146,21 +145,21 @@ function shiftMonth(dayIso: string, delta: number): string {
 /** "2026-09-01" → "อังคารที่ 1 กันยายน 2569" */
 function thaiDayTitle(dayIso: string): string {
   const [y, m, d] = dayIso.split("-").map(Number);
-  const weekday = (new Date(`${dayIso}T00:00:00Z`).getUTCDay() + 6) % 7;
-  return `${THAI_WEEKDAYS_FULL[weekday]}ที่ ${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
+  return `${THAI_WEEKDAYS_FULL[mondayIndex(dayIso)]}ที่ ${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
 }
 
-const APPT_DOT: Record<WellnessApptStatus, string> = {
+/** จุดสถานะใต้ตัวเลขวัน — บนแผ่นไล่เฉดใช้โทนขาว/อ่อนให้เห็นชัด */
+const DOT_ON_GRADIENT: Record<WellnessApptStatus, string> = {
+  scheduled: "bg-white",
+  done: "bg-emerald-200",
+  cancelled: "bg-white/40",
+};
+
+/** จุดบนพื้นขาว (ช่องวันที่ถูกเลือก = พื้นขาว ตัวหนังสือสีแบรนด์) */
+const DOT_ON_WHITE: Record<WellnessApptStatus, string> = {
   scheduled: "bg-brand-500",
   done: "bg-emerald-500",
   cancelled: "bg-stone-300",
-};
-
-/** แถบสีท้ายการ์ดคิว (ดีไซน์ตามภาพอ้างอิงของผู้ใช้ — เส้นหนาใต้การ์ด) */
-const APPT_ACCENT: Record<WellnessApptStatus, string> = {
-  scheduled: "bg-gradient-to-r from-brand-500 to-brand-300",
-  done: "bg-gradient-to-r from-emerald-500 to-emerald-300",
-  cancelled: "bg-stone-200",
 };
 
 function sortByTime(list: CalendarAppt[]): CalendarAppt[] {
@@ -168,62 +167,106 @@ function sortByTime(list: CalendarAppt[]): CalendarAppt[] {
 }
 
 /* ============================================================
-   การ์ดคิว 1 ใบในลิสต์ของวัน
+   การ์ดคิวต่อวัน — แถบวันที่ไล่เฉดด้านซ้าย + รายการเวลาด้านขวา (ตามภาพอ้างอิง)
    ============================================================ */
 
-function ApptCard({
-  appt,
+function DayCard({
+  day,
+  appts,
   onOpen,
+  onPickDay,
+  emptyAction,
 }: {
-  appt: CalendarAppt;
-  onOpen: () => void;
+  day: string;
+  appts: CalendarAppt[];
+  onOpen: (id: string) => void;
+  /** กดแถบวันที่ = เลือกวันนั้นบนปฏิทิน (ใช้กับการ์ด "คิวถัดไป") */
+  onPickDay?: () => void;
+  /** ปุ่มที่จะโชว์เมื่อวันนั้นไม่มีคิว (เช่นปุ่มลงคิวของ admin) */
+  emptyAction?: React.ReactNode;
 }) {
-  const meta = WELLNESS_APPT_STATUS[appt.status];
+  const dayNum = Number(day.slice(8));
+  const badge = (
+    <span className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 bg-gradient-to-b from-brand-500 to-brand-600 px-2 py-3 text-cream">
+      <span className="text-[11px] font-medium uppercase tracking-wide opacity-90">
+        {WEEKDAY_HEADS[mondayIndex(day)]}
+      </span>
+      <span className="font-display text-2xl font-semibold leading-none">
+        {dayNum}
+      </span>
+      {isWellnessDoctorDay(day) && (
+        <span className="text-[9px] opacity-80">วันแพทย์</span>
+      )}
+    </span>
+  );
+
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={`ดูรายละเอียดคิว ${formatTimeShort(appt.start_time)} ${
-          appt.customer ? wellnessCustomerName(appt.customer) : ""
-        }`}
-        className="w-full cursor-pointer overflow-hidden rounded-xl border border-white/70 bg-white/85 text-left shadow-sm transition-all duration-200 hover:border-brand-200 hover:shadow-md active:scale-[0.99]"
-      >
-        <span className="block px-3.5 py-3">
-          <span className="flex items-start gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-800">
-              {appt.customer
-                ? wellnessCustomerName(appt.customer)
-                : "(การ์ดลูกค้าถูกลบ)"}
-            </span>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.badge}`}
-            >
-              {meta.label}
-            </span>
-          </span>
+    <article className="flex overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70">
+      {onPickDay ? (
+        <button
+          type="button"
+          onClick={onPickDay}
+          aria-label={`เลือก${thaiDayTitle(day)}`}
+          className="flex cursor-pointer transition-opacity hover:opacity-90 active:scale-[0.98]"
+        >
+          {badge}
+        </button>
+      ) : (
+        badge
+      )}
 
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-stone-700">
-              <Clock size={14} className="text-brand-500" />
-              {apptRangeLabel(appt.start_time, appt.duration_hours)}
-            </span>
-            {appt.customer?.procedure_text && (
-              <span className="ml-auto min-w-0 max-w-[55%] truncate text-xs text-stone-400">
-                {appt.customer.procedure_text}
-              </span>
-            )}
-          </span>
-
-          {appt.note && (
-            <span className="mt-1 block truncate text-xs text-stone-400">
-              {appt.note}
-            </span>
-          )}
-        </span>
-        <span className={`block h-1 w-full ${APPT_ACCENT[appt.status]}`} />
-      </button>
-    </li>
+      <div className="min-w-0 flex-1 divide-y divide-stone-100">
+        {appts.length === 0 ? (
+          <div className="flex flex-col items-start gap-2 px-4 py-4">
+            <p className="text-sm text-stone-400">ยังไม่มีคิวในวันนี้</p>
+            {emptyAction}
+          </div>
+        ) : (
+          appts.map((a) => {
+            const meta = WELLNESS_APPT_STATUS[a.status];
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => onOpen(a.id)}
+                aria-label={`ดูรายละเอียดคิว ${formatTimeShort(a.start_time)} ${
+                  a.customer ? wellnessCustomerName(a.customer) : ""
+                }`}
+                className="flex w-full cursor-pointer items-start gap-3 px-3.5 py-3 text-left transition-colors hover:bg-brand-50/60 active:scale-[0.995]"
+              >
+                <span className="flex w-[4.5rem] shrink-0 flex-col">
+                  <span className="text-sm font-semibold text-stone-800">
+                    {formatTimeShort(a.start_time)}
+                  </span>
+                  <span className="text-[11px] text-stone-400">
+                    {a.duration_hours} ชม.
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate text-sm font-medium text-stone-800">
+                      {a.customer
+                        ? wellnessCustomerName(a.customer)
+                        : "(การ์ดลูกค้าถูกลบ)"}
+                    </span>
+                    {a.status !== "scheduled" && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.badge}`}
+                      >
+                        {meta.label}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-stone-400">
+                    {a.customer?.procedure_text || a.note || "ฟังผล + ปรึกษาแพทย์"}
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -572,7 +615,6 @@ export function WellnessCalendarClient({
 
   const today = todayBangkokISO();
   // **state เดียวของหน้านี้คือ "วันที่เลือก"** — เดือนที่โชว์คำนวณจากมัน
-  // (เลื่อนเดือน = ขยับวันที่เลือกไปเดือนนั้น ลิสต์ข้างล่างจึงตรงกับปฏิทินเสมอ)
   const [selected, setSelected] = useState(today);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -590,6 +632,17 @@ export function WellnessCalendarClient({
 
   const cells = monthCells(selected);
   const dayAppts = apptsByDay.get(selected) ?? [];
+
+  // การ์ด "คิวถัดไป" — วันถัดจากที่เลือกซึ่งมีคิวจริง (สูงสุด 4 ใบ) เหมือนภาพอ้างอิงที่มีหลายการ์ด
+  const nextDays = useMemo(
+    () =>
+      Array.from(apptsByDay.keys())
+        .filter((d) => d > selected)
+        .sort()
+        .slice(0, 4),
+    [apptsByDay, selected]
+  );
+
   const detailAppt = detailId
     ? (state.appointments.find((a) => a.id === detailId) ?? null)
     : null;
@@ -641,73 +694,69 @@ export function WellnessCalendarClient({
     return null;
   }
 
+  const bookButton = canAdmin ? (
+    <Button variant="secondary" onClick={() => setBookingOpen(true)}>
+      <Plus size={14} /> ลงคิวในวันนี้
+    </Button>
+  ) : undefined;
+
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-3 py-3 sm:px-6 sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-5">
-        {/* ---------------- ปฏิทินเดือน ---------------- */}
-        <section className="glass overflow-hidden rounded-2xl">
-          {/* แถบหัวโทนแบรนด์: ‹ เดือน ปี › + ปุ่มวันนี้ (ดีไซน์ตามภาพอ้างอิง) */}
-          <header className="flex items-center gap-1 bg-gradient-to-b from-brand-500 to-brand-600 px-2 py-2.5 text-cream">
+      <div className="mx-auto w-full max-w-5xl px-3 py-3 sm:px-6 sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:gap-6">
+        {/* ---------------- แผ่นปฏิทินไล่เฉด ---------------- */}
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-600 px-2 pb-4 pt-3 text-cream shadow-[0_12px_36px_rgba(94,58,49,0.18)] sm:px-4">
+          <header className="flex items-center gap-1 px-1">
             <button
               type="button"
               onClick={() => setSelected((d) => shiftMonth(d, -1))}
               aria-label="เดือนก่อนหน้า"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95 sm:h-9 sm:w-9"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={22} />
             </button>
-            <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold tracking-wide">
+            <h1 className="min-w-0 flex-1 truncate text-center text-xl font-semibold tracking-wide sm:text-2xl">
               {monthTitleOf(selected)}
             </h1>
             <button
               type="button"
               onClick={() => setSelected((d) => shiftMonth(d, 1))}
               aria-label="เดือนถัดไป"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95 sm:h-9 sm:w-9"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/20 active:scale-95"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={22} />
             </button>
           </header>
 
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/60 px-3 py-2">
+          <div className="mb-1 flex items-center justify-center gap-2 text-[11px] text-cream/80">
             <button
               type="button"
               onClick={() => setSelected(today)}
-              className="cursor-pointer rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
+              className="cursor-pointer rounded-full bg-white/20 px-3 py-1 font-medium text-cream transition-colors hover:bg-white/30 max-sm:min-h-9"
             >
               วันนี้
             </button>
-            <span className="text-[11px] text-stone-400">
-              จุดใต้ตัวเลข = วันที่มีคิว
-            </span>
-            <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-brand-200 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-brand-700">
-              แพทย์เข้า: อ. · ส.
-            </span>
+            <span>แพทย์เข้า อังคาร · เสาร์</span>
           </div>
 
           {/* หัวคอลัมน์วัน */}
-          <div className="grid grid-cols-7 px-1 pt-2">
-            {WEEKDAY_HEADS.map((h) => (
+          <div className="grid grid-cols-7">
+            {WEEKDAY_HEADS.map((label, i) => (
               <div
-                key={h.label}
-                className={`py-1 text-center text-[11px] font-semibold ${
-                  h.sunday
-                    ? "text-rose-400"
-                    : h.doctor
-                      ? "text-brand-600"
-                      : "text-stone-400"
+                key={label}
+                className={`py-1.5 text-center text-[11px] font-semibold ${
+                  i === 6 ? "text-cream/60" : "text-cream/80"
                 }`}
               >
-                {h.label}
+                {label}
               </div>
             ))}
           </div>
 
-          {/* ช่องวัน — ตัวเลข + จุดบอกจำนวนคิว (สูงสุด 3 จุด) */}
-          <div className="grid grid-cols-7 gap-y-0.5 px-1 pb-3">
+          {/* ช่องวัน — ตัวเลขบนแผ่นไล่เฉด, วันที่เลือก = สี่เหลี่ยมขาว */}
+          <div className="grid grid-cols-7 gap-y-1">
             {cells.map((day, i) =>
               day === null ? (
-                <div key={`blank-${i}`} className="h-12 sm:h-14" />
+                <div key={`blank-${i}`} className="h-12" />
               ) : (
                 <button
                   key={day}
@@ -715,36 +764,32 @@ export function WellnessCalendarClient({
                   aria-label={`เปิดคิววันที่ ${day}`}
                   aria-current={day === selected ? "date" : undefined}
                   onClick={() => setSelected(day)}
-                  className={`flex h-12 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl transition-colors active:scale-95 sm:h-14 ${
-                    day === selected
-                      ? ""
-                      : isWellnessDoctorDay(day)
-                        ? "hover:bg-brand-50"
-                        : "hover:bg-white/70"
-                  }`}
+                  className="flex h-12 cursor-pointer items-center justify-center active:scale-95"
                 >
                   <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors ${
+                    className={`flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-xl text-sm transition-all ${
                       day === selected
-                        ? "bg-gradient-to-b from-brand-500 to-brand-600 font-semibold text-cream shadow-sm"
+                        ? "bg-white font-semibold text-brand-700 shadow-md"
                         : day === today
-                          ? "border border-brand-300 font-semibold text-brand-700"
-                          : i % 7 === 6
-                            ? "text-rose-400"
-                            : isWellnessDoctorDay(day)
-                              ? "font-medium text-brand-700"
-                              : "text-stone-600"
+                          ? "bg-white/25 font-semibold text-cream"
+                          : isWellnessDoctorDay(day)
+                            ? "font-medium text-cream hover:bg-white/15"
+                            : "text-cream/75 hover:bg-white/15"
                     }`}
                   >
-                    {Number(day.slice(8))}
-                  </span>
-                  <span className="flex h-1.5 items-center gap-0.5">
-                    {(apptsByDay.get(day) ?? []).slice(0, 3).map((a) => (
-                      <span
-                        key={a.id}
-                        className={`h-1.5 w-1.5 rounded-full ${APPT_DOT[a.status]}`}
-                      />
-                    ))}
+                    <span className="leading-none">{Number(day.slice(8))}</span>
+                    <span className="flex h-1.5 items-center gap-0.5">
+                      {(apptsByDay.get(day) ?? []).slice(0, 3).map((a) => (
+                        <span
+                          key={a.id}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            day === selected
+                              ? DOT_ON_WHITE[a.status]
+                              : DOT_ON_GRADIENT[a.status]
+                          }`}
+                        />
+                      ))}
+                    </span>
                   </span>
                 </button>
               )
@@ -752,14 +797,17 @@ export function WellnessCalendarClient({
           </div>
         </section>
 
-        {/* ---------------- คิวของวันที่เลือก ---------------- */}
-        <section className="mt-4 lg:mt-0">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-1">
+        {/* ---------------- การ์ดคิวของวัน ---------------- */}
+        <section className="mt-5 space-y-3 lg:mt-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 px-1">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-700">
               {selected === today ? "วันนี้" : "วันที่เลือก"}
             </h2>
             <span className="text-xs text-stone-500">
               {thaiDayTitle(selected)}
+            </span>
+            <span className="text-xs text-stone-400">
+              · {dayAppts.length} คิว
             </span>
             {canAdmin && (
               <button
@@ -771,42 +819,46 @@ export function WellnessCalendarClient({
               </button>
             )}
           </div>
-          <p className="mt-0.5 px-1 text-xs text-stone-400">
-            {dayAppts.length} คิว
-            {!isWellnessDoctorDay(selected) && " · ไม่ใช่วันแพทย์เข้าปกติ"}
-          </p>
 
-          {dayAppts.length === 0 ? (
-            <div className="mt-3 flex flex-col items-center gap-2 rounded-xl border border-dashed border-stone-200 bg-white/50 px-4 py-8 text-center">
-              <CalendarDays size={28} className="text-stone-300" />
-              <p className="text-sm text-stone-500">ยังไม่มีคิวในวันที่เลือก</p>
-              {canAdmin && (
-                <Button variant="secondary" onClick={() => setBookingOpen(true)}>
-                  <Plus size={14} /> ลงคิวในวันที่เลือก
-                </Button>
-              )}
-            </div>
-          ) : (
-            <ul className="mt-3 space-y-2.5 pb-24 lg:pb-2">
-              {dayAppts.map((a) => (
-                <ApptCard
-                  key={a.id}
-                  appt={a}
-                  onOpen={() => setDetailId(a.id)}
+          <DayCard
+            day={selected}
+            appts={dayAppts}
+            onOpen={setDetailId}
+            emptyAction={bookButton}
+          />
+
+          {nextDays.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-1 pt-2">
+                <CalendarDays size={13} className="text-stone-400" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  คิวถัดไป
+                </h3>
+              </div>
+              {nextDays.map((d) => (
+                <DayCard
+                  key={d}
+                  day={d}
+                  appts={apptsByDay.get(d) ?? []}
+                  onOpen={setDetailId}
+                  onPickDay={() => setSelected(d)}
                 />
               ))}
-            </ul>
+            </>
           )}
+
+          {/* เว้นที่ให้ปุ่มลอยบนมือถือ */}
+          <div className="h-20 lg:hidden" />
         </section>
       </div>
 
-      {/* ปุ่มลอยเพิ่มคิว — จอเล็กเท่านั้น (จอใหญ่มีปุ่มบนหัวลิสต์แล้ว) */}
+      {/* ปุ่มลอยกลางล่าง (ตามภาพอ้างอิง) — จอเล็กเท่านั้น */}
       {canAdmin && (
         <button
           type="button"
           onClick={() => setBookingOpen(true)}
           aria-label="ลงคิวนัดในวันที่เลือก"
-          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-lg transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
+          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-[0_10px_24px_rgba(94,58,49,0.35)] transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
         >
           <Plus size={26} />
         </button>
