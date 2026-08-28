@@ -88,12 +88,17 @@ async function login(page: Page) {
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
   // waitUntil "commit" — แค่ URL เปลี่ยนถึง /dashboard ก็พอ ไม่รอ load (กติกาเดียวกับ gotoPage)
+  // dev server compile หน้าแรกครั้งแรกได้ช้าเป็นนาที — timeout ต้องเผื่อ (บทเรียน 2026-08-28:
+  // ตั้ง 15s แล้ว retry กดปุ่ม submit ซ้ำทั้งที่ login ผ่านไปหน้า /dashboard แล้ว
+  // เลยค้างรอปุ่มที่ไม่มีอยู่จนกินเวลาเทสทั้งก้อน)
   try {
-    await page.waitForURL("**/dashboard", { timeout: 15_000, waitUntil: "commit" });
+    await page.waitForURL("**/dashboard", { timeout: 60_000, waitUntil: "commit" });
   } catch {
-    // click แรกอาจยิงก่อน handler ผูกเสร็จ (จังหวะ hydration) — ส่งซ้ำอีกครั้ง
-    await page.locator('form button[type="submit"]').click();
-    await page.waitForURL("**/dashboard", { timeout: 30_000, waitUntil: "commit" });
+    // click แรกอาจยิงก่อน handler ผูกเสร็จ (จังหวะ hydration) — ส่งซ้ำเฉพาะตอนยังค้างหน้า login
+    if (page.url().includes("/login")) {
+      await page.locator('form button[type="submit"]').click();
+    }
+    await page.waitForURL("**/dashboard", { timeout: 60_000, waitUntil: "commit" });
   }
 }
 

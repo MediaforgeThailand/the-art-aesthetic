@@ -211,6 +211,8 @@ export type WellnessWorkspace = {
   href: string;
   /** ป้ายบนเมนู (สั้น) */
   label: string;
+  /** ป้ายสั้นสุดบนแถบแท็บล่างมือถือ (~5 ช่อง ช่องละแคบ) */
+  short: string;
   /** ประโยคเดียวว่าหน้านี้ "ทำอะไร" — ใช้บนหน้าเลือกงานและใต้หัวข้อของหน้านั้น */
   detail: string;
   icon: WellnessIconKey;
@@ -227,6 +229,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "register",
     href: "/wellness-register",
     label: "ทะเบียนลูกค้า",
+    short: "ทะเบียน",
     detail:
       "เพิ่มการ์ดลูกค้าที่ตรวจเลือดแล้ว และแก้ชื่อ/เบอร์/หัตถการให้ถูกต้อง",
     icon: "register",
@@ -238,6 +241,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "lab",
     href: "/wellness-lab",
     label: "อัพผลแลบ",
+    short: "ผลแลบ",
     detail:
       "อัพไฟล์ผลตรวจเลือดของลูกค้าแต่ละคน แล้วกดยืนยันเมื่อผลครบ",
     icon: "lab",
@@ -249,6 +253,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "booking",
     href: "/wellness-booking",
     label: "โทรนัด + ลงคิว",
+    short: "ลงคิว",
     detail:
       "โทรหาลูกค้าที่ผลพร้อมแล้ว ตกลงเวลา แล้วลงคิวเข้าพบแพทย์ (1–3 ชม.)",
     icon: "booking",
@@ -260,6 +265,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "clinic",
     href: "/wellness-clinic",
     label: "คิวตรวจของแพทย์",
+    short: "คิวตรวจ",
     detail: "คิวที่ต้องตรวจวันนี้และวันถัดไป พร้อมเปิดผลเลือดของแต่ละคน",
     icon: "clinic",
     step: 4,
@@ -270,6 +276,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "calendar",
     href: "/wellness-calendar",
     label: "ปฏิทินคิว",
+    short: "ปฏิทิน",
     detail: "ดูคิวทั้งเดือน — วันแพทย์เข้าคือ อังคาร และ เสาร์",
     icon: "calendar",
     step: null,
@@ -280,6 +287,7 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     id: "cases",
     href: "/wellness-cases",
     label: "ภาพรวมเคส",
+    short: "เคส",
     detail: "การ์ดทั้งหมดในระบบ แยกตามขั้นตอน — ใช้ตามงานที่ค้าง",
     icon: "cases",
     step: null,
@@ -329,4 +337,14 @@ export function addDaysISO(dateIso: string, days: number): string {
   const d = new Date(`${dateIso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** เมนูบนแถบแท็บล่างของมือถือ — ที่มีจำกัด (~5 ช่อง):
+    admin เอาเฉพาะหน้างานของตัวเอง (ลงคิว/ปฏิทิน/ภาพรวมเคส) ส่วนหน้า stage
+    ของทีมอื่นเข้าผ่าน tile บนหน้าแรก "เลือกงาน"; บทบาทอื่นมีแค่ 1-2 หน้าอยู่แล้วโชว์ครบ */
+export function wellnessTabsFor(flags: WellnessRoleFlags): WellnessWorkspace[] {
+  const all = wellnessWorkspacesFor(flags);
+  if (!flags.admin) return all;
+  const adminTabs: WellnessWorkspaceId[] = ["booking", "calendar", "cases"];
+  return all.filter((w) => adminTabs.includes(w.id));
 }

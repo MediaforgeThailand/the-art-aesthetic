@@ -702,9 +702,11 @@ export function WellnessCalendarClient({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-3 py-3 sm:px-6 sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:gap-6">
-        {/* ---------------- แผ่นปฏิทินไล่เฉด ---------------- */}
-        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-600 px-2 pb-4 pt-3 text-cream shadow-[0_12px_36px_rgba(94,58,49,0.18)] sm:px-4">
+      <div className="mx-auto w-full max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:gap-6 lg:px-6 lg:py-5">
+        {/* ---------------- แผ่นปฏิทินไล่เฉด — จอเล็ก "กลืน" ลงมาจากขอบบนจอเลย
+             (ไม่มีแถบบน/ขอบ/มุมมนด้านบน — ตามภาพอ้างอิงใบ 2 ของผู้ใช้ 2026-08-28)
+             ≥lg กลับเป็นการ์ดมุมมนปกติในเลย์เอาต์ 2 คอลัมน์ ---------------- */}
+        <section className="overflow-hidden rounded-b-[2rem] bg-gradient-to-br from-brand-400 via-brand-500 to-brand-600 px-2 pb-5 pt-[calc(env(safe-area-inset-top)+0.5rem)] text-cream shadow-[0_12px_36px_rgba(94,58,49,0.22)] sm:px-4 lg:rounded-3xl lg:pb-4 lg:pt-3">
           <header className="flex items-center gap-1 px-1">
             <button
               type="button"
@@ -798,7 +800,7 @@ export function WellnessCalendarClient({
         </section>
 
         {/* ---------------- การ์ดคิวของวัน ---------------- */}
-        <section className="mt-5 space-y-3 lg:mt-0">
+        <section className="mt-5 space-y-3 px-3 sm:px-6 lg:mt-0 lg:px-0">
           <div className="flex flex-wrap items-baseline gap-x-2 px-1">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-700">
               {selected === today ? "วันนี้" : "วันที่เลือก"}
@@ -858,7 +860,8 @@ export function WellnessCalendarClient({
           type="button"
           onClick={() => setBookingOpen(true)}
           aria-label="ลงคิวนัดในวันที่เลือก"
-          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-[0_10px_24px_rgba(94,58,49,0.35)] transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
+          // ยกให้พ้นแถบแท็บล่าง (~60px + safe inset) — แถบล่างเป็น footer ใน flex column
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-[0_10px_24px_rgba(94,58,49,0.35)] transition-all duration-200 hover:shadow-xl active:scale-95 lg:hidden"
         >
           <Plus size={26} />
         </button>

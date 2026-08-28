@@ -42,24 +42,14 @@ export default async function WellnessLayout({
   const fullName = typeof meta_.full_name === "string" ? meta_.full_name : "";
   const email = typeof claims.email === "string" ? claims.email : "";
 
-  // ปุ่ม "แอปหลัก" — ปลายทางเดียวกับหน้าแรก (src/app/page.tsx) เพื่อไม่พาไปหน้าที่ไม่มีสิทธิ์
-  const backHref = access.permissions.includes("data")
-    ? "/dashboard"
-    : access.permissions.includes("team")
-      ? "/tasks"
-      : access.permissions.includes("pricing")
-        ? "/pricing"
-        : access.isAdmin
-          ? "/accounts"
-          : "/my-tasks";
-
+  // ไม่มีปุ่ม "แอปหลัก" และไม่มีกระดิ่งแจ้งเตือนในระบบนี้ (ผู้ใช้ 2026-08-28 —
+  // ทีม Wellness ไม่เกี่ยวกับระบบทีม/Influ; ใครมีสิทธิ์แอปอื่นเข้าผ่านหน้าประตู / เอง)
   return (
     <WellnessShell
       userId={access.uid}
       userName={fullName}
       userEmail={email}
       flags={wellnessRoleFlags(access.permissions)}
-      backHref={backHref}
     >
       {children}
     </WellnessShell>
