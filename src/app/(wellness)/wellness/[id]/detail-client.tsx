@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  ArrowLeft,
+  CalendarClock,
   CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ClipboardList,
+  FlaskConical,
   Pencil,
   Phone,
   RotateCcw,
@@ -18,13 +19,20 @@ import { useState } from "react";
 import {
   Button,
   ConfirmDialog,
-  Input,
-  Label,
   Modal,
   PageContainer,
-  Select,
-  Textarea,
 } from "@/components/ui";
+import {
+  BookingFields,
+  newBookingDraft,
+  type BookingDraft,
+} from "@/components/wellness/booking-fields";
+import { CustomerFormModal } from "@/components/wellness/customer-form";
+import { LabFilesCard } from "@/components/wellness/lab-files";
+import {
+  WellnessStageTracker,
+  WellnessStatusChip,
+} from "@/components/wellness/stage-tracker";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import type {
   WellnessAppointmentRow,
@@ -36,16 +44,12 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import {
   WELLNESS_APPT_STATUS,
-  WELLNESS_DURATION_OPTIONS,
-  WELLNESS_OVERLAP_MESSAGE as OVERLAP_MESSAGE,
   WELLNESS_STATUS,
+  apptErrorMessage,
   apptRangeLabel,
-  isWellnessDoctorDay,
-  todayBangkokISO,
   wellnessCustomerName,
   wellnessStatusOf,
 } from "@/lib/wellness-constants";
-import { LabFilesCard } from "./lab-files";
 
 function sortAppts(list: WellnessAppointmentRow[]): WellnessAppointmentRow[] {
   return [...list].sort((a, b) =>
@@ -55,133 +59,25 @@ function sortAppts(list: WellnessAppointmentRow[]): WellnessAppointmentRow[] {
   );
 }
 
-/** ฟอร์มแก้ข้อมูลลูกค้า — mount ใหม่ทุกครั้งที่เปิด (parent render แบบมีเงื่อนไข) */
-function EditCustomerModal({
-  customer,
-  onSave,
-  onClose,
-}: {
-  customer: WellnessCustomerRow;
-  onSave: (patch: Partial<WellnessCustomerRow>) => Promise<string | null>;
-  onClose: () => void;
-}) {
-  const [firstName, setFirstName] = useState(customer.first_name);
-  const [lastName, setLastName] = useState(customer.last_name);
-  const [phone, setPhone] = useState(customer.phone);
-  const [procedure, setProcedure] = useState(customer.procedure_text);
-  const [note, setNote] = useState(customer.note);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    if (!firstName.trim()) {
-      setError("กรอกชื่อลูกค้าก่อน");
-      return;
-    }
-    setSaving(true);
-    const err = await onSave({
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      phone: phone.trim(),
-      procedure_text: procedure.trim(),
-      note: note.trim(),
-    });
-    setSaving(false);
-    if (err) {
-      setError(err);
-      return;
-    }
-    onClose();
-  }
-
-  return (
-    <Modal open onClose={onClose} title="แก้ไขข้อมูลลูกค้า">
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label>ชื่อ *</Label>
-            <Input
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="ชื่อ"
-            />
-          </div>
-          <div>
-            <Label>นามสกุล</Label>
-            <Input
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="นามสกุล"
-            />
-          </div>
-        </div>
-        <div>
-          <Label>เบอร์โทร</Label>
-          <Input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="08x-xxx-xxxx"
-            inputMode="tel"
-          />
-        </div>
-        <div>
-          <Label>หัตถการที่ทำ</Label>
-          <Input
-            value={procedure}
-            onChange={(e) => setProcedure(e.target.value)}
-            placeholder="เช่น เสริมจมูก + ตา 2 ชั้น"
-          />
-        </div>
-        <div>
-          <Label>หมายเหตุ</Label>
-          <Textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            placeholder="ข้อมูลเพิ่มเติม (ถ้ามี)"
-          />
-        </div>
-        {error && <p className="text-xs text-rose-600">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose}>
-            ยกเลิก
-          </Button>
-          <Button onClick={() => void submit()} loading={saving}>
-            บันทึก
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/** ฟอร์มลงคิวนัด (Admin) — เลือกวัน + เวลาเริ่ม + ระยะเวลา 1/2/3 ชม. */
+/** ฟอร์มลงคิว (Admin) — ช่องกรอกใช้ชุดกลาง BookingFields เหมือนหน้าลงคิว/ปฏิทิน */
 function ApptFormModal({
   onCreate,
   onClose,
 }: {
-  onCreate: (input: {
-    date: string;
-    time: string;
-    duration: number;
-    note: string;
-  }) => Promise<string | null>;
+  onCreate: (draft: BookingDraft) => Promise<string | null>;
   onClose: () => void;
 }) {
-  const [date, setDate] = useState(todayBangkokISO());
-  const [time, setTime] = useState("10:00");
-  const [duration, setDuration] = useState<number>(1);
-  const [note, setNote] = useState("");
+  const [draft, setDraft] = useState<BookingDraft>(() => newBookingDraft());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!date || !time) {
+    if (!draft.date || !draft.time) {
       setError("เลือกวันและเวลาก่อน");
       return;
     }
     setSaving(true);
-    const err = await onCreate({ date, time, duration, note: note.trim() });
+    const err = await onCreate(draft);
     setSaving(false);
     if (err) {
       setError(err);
@@ -193,51 +89,11 @@ function ApptFormModal({
   return (
     <Modal open onClose={onClose} title="ลงคิวนัดฟังผล + ปรึกษาแพทย์">
       <div className="space-y-3">
-        <div>
-          <Label>วันนัด *</Label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-          {date && !isWellnessDoctorDay(date) && (
-            <p className="mt-1 text-xs text-amber-700">
-              แพทย์ Wellness เข้าเฉพาะ <b>วันอังคาร</b> และ <b>วันเสาร์</b> —
-              วันที่เลือกไม่ตรงวันแพทย์เข้า (ลงได้ถ้าเป็นเคสพิเศษ)
-            </p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>เวลาเริ่ม *</Label>
-            <Input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label>ระยะเวลา</Label>
-            <Select
-              value={String(duration)}
-              onChange={(e) => setDuration(Number(e.target.value))}
-            >
-              {WELLNESS_DURATION_OPTIONS.map((h) => (
-                <option key={h} value={h}>
-                  {h} ชั่วโมง
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-        <div>
-          <Label>หมายเหตุคิว</Label>
-          <Input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="เช่น ขอคุยเรื่องวิตามินเพิ่ม"
-          />
-        </div>
+        <BookingFields
+          idPrefix="case-appt"
+          draft={draft}
+          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+        />
         {error && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
             {error}
@@ -256,9 +112,39 @@ function ApptFormModal({
   );
 }
 
+/** บรรทัดสรุปสถานะของขั้นที่ "ไม่ใช่งานของบทบาทนี้" — บอกความคืบหน้าโดยไม่โชว์ปุ่มของคนอื่น */
+function StatusLine({
+  icon,
+  label,
+  value,
+  tone = "quiet",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone?: "quiet" | "ok" | "warn";
+}) {
+  const toneClass =
+    tone === "ok"
+      ? "text-emerald-700"
+      : tone === "warn"
+        ? "text-amber-700"
+        : "text-stone-600";
+  return (
+    <div className="glass flex flex-wrap items-center gap-2 rounded-xl px-4 py-3">
+      <span className="shrink-0 text-brand-500">{icon}</span>
+      <span className="text-sm font-medium text-stone-700">{label}</span>
+      <span className={`text-sm ${toneClass}`}>{value}</span>
+    </div>
+  );
+}
+
 /**
- * หน้าเดินงานการ์ดลูกค้า Wellness — BC แก้ข้อมูล · Lab อัพไฟล์+ยืนยัน · Admin ลงคิว/ปิดเคส
- * แพทย์ (view-only) เปิดดูได้ทุกส่วนแต่ไม่มีปุ่มแก้
+ * หน้าเคส 1 ใบ — **แสดงเฉพาะส่วนที่บทบาทของผู้เปิดทำได้**
+ *
+ * กติกาผู้ใช้ 2026-08-28: ห้ามเอาปุ่มของทุกบทบาทมารวมในหน้าเดียว —
+ * ขั้นที่ไม่ใช่งานของเรา แสดงเป็นบรรทัดสถานะอ่านอย่างเดียวเท่านั้น
+ * (งานประจำวันทำจบที่หน้าของแต่ละขั้นอยู่แล้ว หน้านี้ไว้ดูเคสเป็นใบๆ)
  */
 export function WellnessDetailClient({
   customer: customerProp,
@@ -268,6 +154,9 @@ export function WellnessDetailClient({
   canBc,
   canLab,
   canAdmin,
+  canDoctor,
+  backHref,
+  backLabel,
 }: {
   customer: WellnessCustomerRow;
   labFiles: WellnessLabFileRow[];
@@ -276,6 +165,9 @@ export function WellnessDetailClient({
   canBc: boolean;
   canLab: boolean;
   canAdmin: boolean;
+  canDoctor: boolean;
+  backHref: string;
+  backLabel: string;
 }) {
   const router = useRouter();
 
@@ -307,9 +199,17 @@ export function WellnessDetailClient({
   const [banner, setBanner] = useState<string | null>(null);
 
   const completed = !!customer.completed_at;
+  const labConfirmed = !!customer.lab_confirmed_at;
   const hasScheduled = appointments.some((a) => a.status === "scheduled");
   const status = wellnessStatusOf(customer, hasScheduled);
-  const statusMeta = WELLNESS_STATUS[status];
+  const nextAppt = sortAppts(
+    appointments.filter((a) => a.status === "scheduled")
+  )[0];
+
+  // เห็นรายละเอียดของขั้นนั้นไหม (ไม่ใช่ "แก้ได้ไหม")
+  const seeLabFiles = canLab || canAdmin || canDoctor;
+  const seeAppointments = canAdmin || canDoctor;
+  const seePhone = canBc || canAdmin || canDoctor;
 
   const supabase = createClient();
 
@@ -347,29 +247,24 @@ export function WellnessDetailClient({
     if (err) setBanner(err);
   }
 
-  async function createAppt(input: {
-    date: string;
-    time: string;
-    duration: number;
-    note: string;
-  }): Promise<string | null> {
+  async function createAppt(draft: BookingDraft): Promise<string | null> {
     const { data, error } = await supabase
       .from("wellness_appointments")
       .insert({
         customer_id: customer.id,
-        appt_date: input.date,
-        start_time: input.time,
-        duration_hours: input.duration,
-        note: input.note,
+        appt_date: draft.date,
+        start_time: draft.time,
+        duration_hours: draft.duration,
+        note: draft.note.trim(),
         created_by: uid,
       })
       .select("*")
       .single();
-    if (error || !data) {
-      if (error?.code === "23P01") return OVERLAP_MESSAGE;
-      return error?.message ?? "บันทึกคิวไม่สำเร็จ";
-    }
-    setState((s) => ({ ...s, appointments: sortAppts([...s.appointments, data]) }));
+    if (error || !data) return apptErrorMessage(error);
+    setState((s) => ({
+      ...s,
+      appointments: sortAppts([...s.appointments, data]),
+    }));
     router.refresh();
     return null;
   }
@@ -389,7 +284,7 @@ export function WellnessDetailClient({
     if (error) {
       setState((s) => ({ ...s, appointments: prev }));
       // กลับมาเป็น "นัดไว้" อีกครั้งก็เข้า exclusion constraint ใหม่ — ชนกับคิวอื่นได้
-      setBanner(error.code === "23P01" ? OVERLAP_MESSAGE : error.message);
+      setBanner(apptErrorMessage(error, "อัพเดตคิวไม่สำเร็จ"));
       return;
     }
     router.refresh();
@@ -421,29 +316,46 @@ export function WellnessDetailClient({
         .then(() => undefined)
         .catch(() => undefined);
     }
-    router.push("/wellness");
+    router.push(backHref);
     router.refresh();
   }
 
-  const labConfirmed = !!customer.lab_confirmed_at;
-
   return (
     <PageContainer>
-      <div className="mx-auto max-w-5xl space-y-4 animate-fade-in">
-        {/* หัวหน้า: ปุ่มกลับ + ชื่อ + สถานะ */}
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="mx-auto max-w-3xl space-y-4 animate-fade-in">
+        {/* หัวหน้า: ปุ่มกลับ + ชื่อ + สถานะ + เส้นบอกขั้น */}
+        <div className="space-y-3">
           <Link
-            href="/wellness"
+            href={backHref}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-stone-500 transition-colors hover:bg-white/70 hover:text-brand-700 max-sm:min-h-11"
           >
-            <ChevronLeft size={16} /> การ์ดลูกค้า
+            <ChevronLeft size={16} /> {backLabel}
           </Link>
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.badge}`}
-          >
-            {statusMeta.label}
-          </span>
-          <span className="text-xs text-stone-400">{statusMeta.hint}</span>
+
+          <section className="glass rounded-xl px-4 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <User size={17} className="shrink-0 text-brand-500" />
+              <h1 className="text-base font-semibold text-stone-800">
+                {wellnessCustomerName(customer)}
+              </h1>
+              <WellnessStatusChip status={status} />
+              {canBc && !completed && (
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  title="แก้ไขข้อมูลลูกค้า"
+                  aria-label="แก้ไขข้อมูลลูกค้า"
+                  className="ml-auto flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 sm:h-8 sm:w-8"
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+            </div>
+            <WellnessStageTracker status={status} className="mt-4" />
+            <p className="mt-3 text-center text-xs text-stone-500">
+              {WELLNESS_STATUS[status].hint}
+            </p>
+          </section>
         </div>
 
         {banner && (
@@ -459,92 +371,82 @@ export function WellnessDetailClient({
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* ซ้าย: ข้อมูลลูกค้า + ไฟล์แลบ */}
-          <div className="space-y-4">
-            <section className="glass overflow-hidden rounded-xl">
-              <header className="flex items-center gap-2 border-b border-white/60 px-4 py-3">
-                <User size={16} className="text-brand-500" />
-                <h1 className="text-base font-semibold text-stone-800">
-                  {wellnessCustomerName(customer)}
-                </h1>
-                {(canBc || canAdmin) && !completed && (
-                  <button
-                    type="button"
-                    onClick={() => setEditOpen(true)}
-                    title="แก้ไขข้อมูลลูกค้า"
-                    aria-label="แก้ไขข้อมูลลูกค้า"
-                    className="ml-auto flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 sm:h-8 sm:w-8"
-                  >
-                    <Pencil size={15} />
-                  </button>
+        {/* ---------- ข้อมูลลูกค้า (ทุกบทบาทเห็น — เบอร์โทรเฉพาะคนที่ต้องใช้) ---------- */}
+        <section className="glass overflow-hidden rounded-xl">
+          <header className="flex items-center gap-2 border-b border-white/60 px-4 py-3">
+            <h2 className="text-sm font-semibold text-stone-800">
+              ข้อมูลลูกค้า
+            </h2>
+          </header>
+          <dl className="space-y-2.5 px-4 py-3.5 text-sm">
+            {seePhone && (
+              <div className="flex items-center gap-2">
+                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                  เบอร์โทร
+                </dt>
+                <dd className="min-w-0">
+                  {customer.phone ? (
+                    <a
+                      href={`tel:${customer.phone.replace(/[^0-9+]/g, "")}`}
+                      className="inline-flex items-center gap-1.5 font-medium text-brand-700 underline-offset-2 hover:underline"
+                    >
+                      <Phone size={13} /> {customer.phone}
+                    </a>
+                  ) : (
+                    <span className="text-stone-400">—</span>
+                  )}
+                </dd>
+              </div>
+            )}
+            <div className="flex items-start gap-2">
+              <dt className="w-24 shrink-0 text-xs text-stone-400">
+                หัตถการที่ทำ
+              </dt>
+              <dd className="min-w-0 text-stone-700">
+                {customer.procedure_text || (
+                  <span className="text-stone-400">—</span>
                 )}
-              </header>
-              <dl className="space-y-2.5 px-4 py-3.5 text-sm">
-                <div className="flex items-center gap-2">
-                  <dt className="w-24 shrink-0 text-xs text-stone-400">
-                    เบอร์โทร
-                  </dt>
-                  <dd className="min-w-0">
-                    {customer.phone ? (
-                      <a
-                        href={`tel:${customer.phone.replace(/[^0-9+]/g, "")}`}
-                        className="inline-flex items-center gap-1.5 font-medium text-brand-700 underline-offset-2 hover:underline"
-                      >
-                        <Phone size={13} /> {customer.phone}
-                      </a>
-                    ) : (
-                      <span className="text-stone-400">—</span>
-                    )}
-                  </dd>
-                </div>
-                <div className="flex items-start gap-2">
-                  <dt className="w-24 shrink-0 text-xs text-stone-400">
-                    หัตถการที่ทำ
-                  </dt>
-                  <dd className="min-w-0 text-stone-700">
-                    {customer.procedure_text || (
-                      <span className="text-stone-400">—</span>
-                    )}
-                  </dd>
-                </div>
-                {customer.note && (
-                  <div className="flex items-start gap-2">
-                    <dt className="w-24 shrink-0 text-xs text-stone-400">
-                      หมายเหตุ
-                    </dt>
-                    <dd className="min-w-0 whitespace-pre-wrap text-stone-600">
-                      {customer.note}
-                    </dd>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <dt className="w-24 shrink-0 text-xs text-stone-400">
-                    สร้างการ์ด
-                  </dt>
-                  <dd className="text-xs text-stone-500">
-                    {formatDateTime(customer.created_at)}
-                  </dd>
-                </div>
-                {completed && (
-                  <div className="flex items-center gap-2">
-                    <dt className="w-24 shrink-0 text-xs text-stone-400">
-                      ปิดเคสเมื่อ
-                    </dt>
-                    <dd className="text-xs text-emerald-700">
-                      {formatDateTime(customer.completed_at!)}
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            </section>
+              </dd>
+            </div>
+            {customer.note && (
+              <div className="flex items-start gap-2">
+                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                  หมายเหตุ
+                </dt>
+                <dd className="min-w-0 whitespace-pre-wrap text-stone-600">
+                  {customer.note}
+                </dd>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <dt className="w-24 shrink-0 text-xs text-stone-400">
+                สร้างการ์ด
+              </dt>
+              <dd className="text-xs text-stone-500">
+                {formatDateTime(customer.created_at)}
+              </dd>
+            </div>
+            {completed && (
+              <div className="flex items-center gap-2">
+                <dt className="w-24 shrink-0 text-xs text-stone-400">
+                  ปิดเคสเมื่อ
+                </dt>
+                <dd className="text-xs text-emerald-700">
+                  {formatDateTime(customer.completed_at)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </section>
 
+        {/* ---------- ขั้น 2: ผลแลบ ---------- */}
+        {seeLabFiles ? (
+          <>
             <LabFilesCard
               customerId={customer.id}
               files={labFiles}
-              canLab={canLab}
+              canEdit={canLab && !completed}
               uid={uid}
-              readOnly={completed}
               onAdded={(rows) =>
                 setState((s) => ({ ...s, labFiles: [...s.labFiles, ...rows] }))
               }
@@ -556,7 +458,7 @@ export function WellnessDetailClient({
               }
             />
 
-            {/* การ์ดยืนยันผลแลบ — จุดส่งไม้จาก Lab → Admin */}
+            {/* จุดส่งไม้จาก Lab → Admin (ปุ่มเฉพาะทีม Lab) */}
             <section
               className={`overflow-hidden rounded-xl border px-4 py-3.5 ${
                 labConfirmed
@@ -566,12 +468,14 @@ export function WellnessDetailClient({
             >
               {labConfirmed ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <CheckCircle2 size={17} className="shrink-0 text-emerald-600" />
+                  <CheckCircle2
+                    size={17}
+                    className="shrink-0 text-emerald-600"
+                  />
                   <p className="min-w-0 flex-1 text-sm text-emerald-800">
                     ยืนยันผลแลบครบแล้ว —{" "}
                     <span className="text-xs text-emerald-700">
-                      {formatDateTime(customer.lab_confirmed_at!)} · ส่งต่อให้
-                      Admin โทรนัดคิว
+                      {formatDateTime(customer.lab_confirmed_at)}
                     </span>
                   </p>
                   {canLab && !completed && (
@@ -587,9 +491,11 @@ export function WellnessDetailClient({
               ) : (
                 <div className="flex flex-wrap items-center gap-2.5">
                   <p className="min-w-0 flex-1 text-sm text-stone-600">
-                    {labFiles.length === 0
-                      ? "อัพไฟล์ผลตรวจอย่างน้อย 1 ไฟล์ก่อน จึงจะยืนยันผลแลบได้"
-                      : "ตรวจไฟล์ครบแล้ว? ยืนยันเพื่อส่งต่อให้ Admin นัดคิวลูกค้า"}
+                    {canLab
+                      ? labFiles.length === 0
+                        ? "อัพไฟล์ผลตรวจอย่างน้อย 1 ไฟล์ก่อน จึงจะยืนยันผลแลบได้"
+                        : "ตรวจไฟล์ครบแล้ว? ยืนยันเพื่อส่งต่อให้ Admin นัดคิวลูกค้า"
+                      : "ทีม Lab ยังไม่ยืนยันผล"}
                   </p>
                   {canLab && !completed && (
                     <Button
@@ -602,149 +508,167 @@ export function WellnessDetailClient({
                 </div>
               )}
             </section>
-          </div>
+          </>
+        ) : (
+          <StatusLine
+            icon={<FlaskConical size={16} />}
+            label="ผลแลบ:"
+            value={
+              labConfirmed
+                ? `ยืนยันแล้ว ${formatDate(customer.lab_confirmed_at)} · ${labFiles.length} ไฟล์`
+                : `รอทีม Lab อัพผล (ตอนนี้ ${labFiles.length} ไฟล์)`
+            }
+            tone={labConfirmed ? "ok" : "warn"}
+          />
+        )}
 
-          {/* ขวา: คิวนัด + โซนจัดการเคส */}
-          <div className="space-y-4">
-            <section className="glass overflow-hidden rounded-xl">
-              <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
-                <ClipboardList size={16} className="text-brand-500" />
-                <h2 className="text-sm font-semibold text-stone-800">
-                  คิวนัดฟังผล + ปรึกษาแพทย์
-                </h2>
-                {canAdmin && !completed && (
-                  <button
-                    type="button"
-                    onClick={() => setApptFormOpen(true)}
-                    className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
-                  >
-                    <CalendarPlus size={13} /> ลงคิวนัด
-                  </button>
-                )}
-              </header>
+        {/* ---------- ขั้น 3: คิวนัด ---------- */}
+        {seeAppointments ? (
+          <section className="glass overflow-hidden rounded-xl">
+            <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
+              <ClipboardList size={16} className="text-brand-500" />
+              <h2 className="text-sm font-semibold text-stone-800">
+                คิวนัดฟังผล + ปรึกษาแพทย์
+              </h2>
+              {canAdmin && !completed && (
+                <button
+                  type="button"
+                  onClick={() => setApptFormOpen(true)}
+                  className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-11"
+                >
+                  <CalendarPlus size={13} /> ลงคิวนัด
+                </button>
+              )}
+            </header>
 
-              {appointments.length === 0 ? (
-                <p className="px-4 py-5 text-xs text-stone-400">
-                  ยังไม่มีคิวนัด
-                  {canAdmin && !completed
-                    ? " — กด “ลงคิวนัด” หลังโทรตกลงเวลากับลูกค้าแล้ว"
-                    : labConfirmed
-                      ? " — รอ Admin โทรนัดลูกค้า"
-                      : ""}
-                </p>
-              ) : (
-                <ul className="divide-y divide-white/60">
-                  {appointments.map((a) => {
-                    const meta = WELLNESS_APPT_STATUS[a.status];
-                    return (
-                      <li key={a.id} className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium text-stone-800">
-                            {formatDate(a.appt_date)}
-                          </span>
-                          <span className="text-sm text-stone-600">
-                            {apptRangeLabel(a.start_time, a.duration_hours)}
-                          </span>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}
-                          >
-                            {meta.label}
-                          </span>
-                        </div>
-                        {a.note && (
-                          <p className="mt-1 text-xs text-stone-500">{a.note}</p>
-                        )}
-                        {canAdmin && !completed && (
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {a.status === "scheduled" ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void setApptStatus(a.id, "done")}
-                                  className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 max-sm:min-h-11"
-                                >
-                                  มาแล้ว · เสร็จ
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void setApptStatus(a.id, "cancelled")
-                                  }
-                                  className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
-                                >
-                                  ยกเลิกคิว
-                                </button>
-                              </>
-                            ) : (
+            {appointments.length === 0 ? (
+              <p className="px-4 py-5 text-xs text-stone-400">
+                ยังไม่มีคิวนัด
+                {canAdmin && !completed
+                  ? " — กด “ลงคิวนัด” หลังโทรตกลงเวลากับลูกค้าแล้ว"
+                  : labConfirmed
+                    ? " — รอ Admin โทรนัดลูกค้า"
+                    : ""}
+              </p>
+            ) : (
+              <ul className="divide-y divide-white/60">
+                {appointments.map((a) => {
+                  const meta = WELLNESS_APPT_STATUS[a.status];
+                  return (
+                    <li key={a.id} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-stone-800">
+                          {formatDate(a.appt_date)}
+                        </span>
+                        <span className="text-sm text-stone-600">
+                          {apptRangeLabel(a.start_time, a.duration_hours)}
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}
+                        >
+                          {meta.label}
+                        </span>
+                      </div>
+                      {a.note && (
+                        <p className="mt-1 text-xs text-stone-500">{a.note}</p>
+                      )}
+                      {canAdmin && !completed && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {a.status === "scheduled" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void setApptStatus(a.id, "done")}
+                                className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 max-sm:min-h-11"
+                              >
+                                มาแล้ว · เสร็จ
+                              </button>
                               <button
                                 type="button"
                                 onClick={() =>
-                                  void setApptStatus(a.id, "scheduled")
+                                  void setApptStatus(a.id, "cancelled")
                                 }
                                 className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
                               >
-                                <RotateCcw size={11} className="mr-1 inline" />
-                                กลับเป็นนัดไว้
+                                ยกเลิกคิว
                               </button>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            {/* โซนจัดการเคส (Admin) */}
-            {canAdmin && (
-              <section className="glass overflow-hidden rounded-xl px-4 py-3.5">
-                <h2 className="text-sm font-semibold text-stone-800">
-                  จัดการเคส
-                </h2>
-                <p className="mt-1 text-xs text-stone-500">
-                  {completed
-                    ? "เคสนี้ปิดแล้ว — เปิดใหม่ได้ถ้าลูกค้ากลับมาใช้บริการต่อ"
-                    : "ลูกค้าฟังผล + ปรึกษาแพทย์เรียบร้อย = ปิดเคสเพื่อเก็บเป็นประวัติ"}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant={completed ? "ghost" : "primary"}
-                    onClick={() => void toggleCompleted()}
-                  >
-                    {completed ? (
-                      <>
-                        <RotateCcw size={14} /> เปิดเคสอีกครั้ง
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={14} /> ปิดเคส
-                      </>
-                    )}
-                  </Button>
-                  <Button variant="danger" onClick={() => setDeleteOpen(true)}>
-                    <Trash2 size={14} /> ลบการ์ด
-                  </Button>
-                </div>
-              </section>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void setApptStatus(a.id, "scheduled")
+                              }
+                              className="cursor-pointer rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11"
+                            >
+                              <RotateCcw size={11} className="mr-1 inline" />
+                              กลับเป็นนัดไว้
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
+          </section>
+        ) : (
+          <StatusLine
+            icon={<CalendarClock size={16} />}
+            label="คิวพบแพทย์:"
+            value={
+              nextAppt
+                ? `${formatDate(nextAppt.appt_date)} · ${apptRangeLabel(
+                    nextAppt.start_time,
+                    nextAppt.duration_hours
+                  )}`
+                : labConfirmed
+                  ? "รอ Admin โทรนัด"
+                  : "ยังไม่ถึงขั้นนัด"
+            }
+            tone={nextAppt ? "ok" : "quiet"}
+          />
+        )}
 
-            <Link
-              href="/wellness-calendar"
-              className="inline-flex items-center gap-1.5 text-xs text-stone-500 underline-offset-2 hover:text-brand-700 hover:underline"
-            >
-              <ArrowLeft size={12} className="rotate-180" />
-              ดูปฏิทินคิวแพทย์ทั้งหมด
-            </Link>
-          </div>
-        </div>
+        {/* ---------- ขั้น 4: จัดการเคส (Admin เท่านั้น) ---------- */}
+        {canAdmin && (
+          <section className="glass overflow-hidden rounded-xl px-4 py-3.5">
+            <h2 className="text-sm font-semibold text-stone-800">จัดการเคส</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              {completed
+                ? "เคสนี้ปิดแล้ว — เปิดใหม่ได้ถ้าลูกค้ากลับมาใช้บริการต่อ"
+                : "ลูกค้าฟังผล + ปรึกษาแพทย์เรียบร้อย = ปิดเคสเพื่อเก็บเป็นประวัติ"}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant={completed ? "ghost" : "primary"}
+                onClick={() => void toggleCompleted()}
+              >
+                {completed ? (
+                  <>
+                    <RotateCcw size={14} /> เปิดเคสอีกครั้ง
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} /> ปิดเคส
+                  </>
+                )}
+              </Button>
+              <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={14} /> ลบการ์ด
+              </Button>
+            </div>
+          </section>
+        )}
       </div>
 
       {editOpen && (
-        <EditCustomerModal
+        <CustomerFormModal
           customer={customer}
-          onSave={patchCustomer}
+          uid={uid}
           onClose={() => setEditOpen(false)}
+          onSaved={(row) => setState((s) => ({ ...s, customer: row }))}
         />
       )}
       {apptFormOpen && (

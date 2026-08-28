@@ -7,8 +7,14 @@ import {
   canWellnessBc,
   canWellnessLab,
   getAccess,
+  hasPermission,
 } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
+import {
+  WELLNESS_WORKSPACES,
+  wellnessHomeHref,
+  wellnessRoleFlags,
+} from "@/lib/wellness-constants";
 import { WellnessDetailClient } from "./detail-client";
 
 export const metadata: Metadata = { title: "การ์ดลูกค้า Wellness" };
@@ -40,6 +46,16 @@ export default async function WellnessDetailPage({
   if (!canViewWellness(access)) return <AccessNotice />;
   if (!customerRes.data) notFound();
 
+  // ปุ่มกลับ = หน้างานของบทบาทคนนั้น (admin กลับหน้าภาพรวม) — ไม่พาไปหน้าที่เขาไม่ได้ใช้
+  const flags = wellnessRoleFlags(access.permissions);
+  const back = flags.admin
+    ? { href: "/wellness-cases", label: "ภาพรวมเคส" }
+    : (() => {
+        const href = wellnessHomeHref(flags);
+        const ws = WELLNESS_WORKSPACES.find((w) => w.href === href);
+        return { href: href ?? "/wellness", label: ws?.label ?? "หน้าแรก" };
+      })();
+
   return (
     <WellnessDetailClient
       customer={customerRes.data}
@@ -49,6 +65,9 @@ export default async function WellnessDetailPage({
       canBc={canWellnessBc(access)}
       canLab={canWellnessLab(access)}
       canAdmin={canWellnessAdmin(access)}
+      canDoctor={hasPermission(access, "wellness_doctor")}
+      backHref={back.href}
+      backLabel={back.label}
     />
   );
 }

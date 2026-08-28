@@ -4,26 +4,23 @@ import {
   CalendarClock,
   ChevronRight,
   Phone,
-  Plus,
   Search,
   Stethoscope,
   UserRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Button, Input, Label, Modal, Textarea } from "@/components/ui";
+import { WellnessStatusChip } from "@/components/wellness/stage-tracker";
 import type {
   WellnessAppointmentRow,
   WellnessCustomerRow,
 } from "@/lib/database.types";
 import { formatDate } from "@/lib/format";
-import { createClient } from "@/lib/supabase/client";
 import {
-  apptRangeLabel,
   WELLNESS_STATUS,
   WELLNESS_STATUS_ORDER,
+  apptRangeLabel,
   wellnessCustomerName,
   wellnessStatusOf,
   type WellnessStatusKey,
@@ -35,29 +32,20 @@ export type ScheduledApptLite = Pick<
 >;
 
 /**
- * บอร์ดการ์ดลูกค้า Wellness — ลิสต์จัดกลุ่มตามสถานะของ flow
- * (รอผลแลบ → ผลพร้อม·รอนัด → นัดแล้ว → ปิดเคส) แพตเทิร์นเดียวกับบอร์ด Hunting
+ * ภาพรวมเคสของ Admin — ลิสต์จัดกลุ่มตามขั้นของ flow
+ * (รอผลแลบ → ผลพร้อม·รอนัด → นัดแล้ว → ปิดเคส)
  *
- * สถานะคำนวณจากข้อมูลจริง (wellnessStatusOf) ไม่มีให้เลือกเอง —
- * งานของแต่ละทีมคือทำ step ของตัวเองแล้วการ์ดเลื่อนกลุ่มเอง
+ * **หน้านี้ไม่มีปุ่มลงมือทำ** โดยตั้งใจ — เป็นหน้า "ดูว่าค้างตรงไหน" แล้วกดเข้าไป
+ * ทำงานที่หน้าเคส/หน้าขั้นนั้น (เพิ่มการ์ด = /wellness-register, ลงคิว = /wellness-booking)
  */
-export function WellnessBoardClient({
+export function WellnessCasesClient({
   customers,
   scheduledAppts,
-  uid,
-  canCreate,
-  canAdmin,
 }: {
   customers: WellnessCustomerRow[];
   scheduledAppts: ScheduledApptLite[];
-  uid: string | null;
-  /** BC หรือ Admin — สร้างการ์ดลูกค้าใหม่ได้ */
-  canCreate: boolean;
-  canAdmin: boolean;
 }) {
-  const router = useRouter();
   const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
 
   // นัดถัดไปของแต่ละคน — server เรียง วัน+เวลา มาแล้ว ตัวแรกที่เจอคือคิวใกล้สุด
   const nextApptByCustomer = useMemo(() => {
@@ -89,7 +77,6 @@ export function WellnessBoardClient({
   return (
     <div className="h-full overflow-y-auto">
       <div className="w-full px-3 py-4 sm:px-6 sm:py-6">
-        {/* แถบเครื่องมือแถวเดียว: ค้นหา + ปุ่มเพิ่มชิดขวา (ไม่มี PageHeader — กติกากลุ่มระบบแยก) */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:max-w-xs">
             <Search
@@ -104,14 +91,9 @@ export function WellnessBoardClient({
               className="glass w-full rounded-full border border-white/60 py-2 pl-9 pr-4 text-base text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-300 sm:text-sm"
             />
           </div>
-          {canCreate && (
-            <Button
-              onClick={() => setCreateOpen(true)}
-              className="sm:ml-auto max-sm:min-h-11"
-            >
-              <Plus size={16} /> เพิ่มการ์ดลูกค้า
-            </Button>
-          )}
+          <span className="text-xs text-stone-400 sm:ml-auto">
+            ทั้งหมด {customers.length} การ์ด
+          </span>
         </div>
 
         {/* ค้นหาแล้วไม่เจอ — ข้อมูลยังอยู่ครบ อย่าปล่อยหน้าโล่งให้เข้าใจผิด */}
@@ -148,7 +130,7 @@ export function WellnessBoardClient({
 
               {items.length === 0 ? (
                 <p className="px-4 py-4 text-xs text-stone-400">
-                  ยังไม่มีการ์ดในสถานะนี้
+                  ยังไม่มีการ์ดในขั้นนี้
                 </p>
               ) : (
                 <ul className="divide-y divide-white/60">
@@ -168,11 +150,7 @@ export function WellnessBoardClient({
                               <span className="truncate text-sm font-medium text-stone-800">
                                 {wellnessCustomerName(c)}
                               </span>
-                              <span
-                                className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}
-                              >
-                                {meta.label}
-                              </span>
+                              <WellnessStatusChip status={key} />
                             </span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-stone-500">
                               {c.phone && (
@@ -228,162 +206,11 @@ export function WellnessBoardClient({
               ยังไม่มีการ์ดลูกค้าในระบบ
             </p>
             <p className="text-xs text-stone-400">
-              {canCreate
-                ? "กด “เพิ่มการ์ดลูกค้า” เพื่อสร้างการ์ดใบแรก (ทีม BC กรอกหลังลูกค้าตรวจเลือด)"
-                : "ทีม BC เป็นผู้สร้างการ์ดหลังลูกค้าตรวจเลือด"}
+              ทีม BC เป็นผู้สร้างการ์ดที่หน้า “ทะเบียนลูกค้า” หลังลูกค้าตรวจเลือด
             </p>
           </div>
         )}
       </div>
-
-      {canCreate && (
-        <CreateCustomerModal
-          open={createOpen}
-          uid={uid}
-          onClose={() => setCreateOpen(false)}
-        />
-      )}
-      {/* canAdmin ยังไม่ใช้บนบอร์ด (การลบ/ปิดเคสอยู่หน้า detail) — รับไว้เผื่ออนาคต */}
-      {void canAdmin}
     </div>
-  );
-}
-
-/** ฟอร์มสร้างการ์ดลูกค้า (ทีม BC) — บังคับแค่ชื่อ ที่เหลือเติมทีหลังได้ในหน้าการ์ด */
-function CreateCustomerModal({
-  open,
-  uid,
-  onClose,
-}: {
-  open: boolean;
-  uid: string | null;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [procedure, setProcedure] = useState("");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function reset() {
-    setFirstName("");
-    setLastName("");
-    setPhone("");
-    setProcedure("");
-    setNote("");
-    setError(null);
-  }
-
-  async function submit() {
-    const first = firstName.trim();
-    if (!first) {
-      setError("กรุณากรอกชื่อลูกค้า");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const supabase = createClient();
-    const { data, error: insErr } = await supabase
-      .from("wellness_customers")
-      .insert({
-        first_name: first,
-        last_name: lastName.trim(),
-        phone: phone.trim(),
-        procedure_text: procedure.trim(),
-        note: note.trim(),
-        created_by: uid,
-      })
-      .select("id")
-      .single();
-    setSaving(false);
-    if (insErr || !data) {
-      setError(insErr?.message ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
-      return;
-    }
-    reset();
-    onClose();
-    // พาไปหน้าการ์ดใหม่เลย — BC เช็คข้อมูลต่อ / แปะโน้ตเพิ่มได้ทันที
-    router.push(`/wellness/${data.id}`);
-    router.refresh();
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="เพิ่มการ์ดลูกค้า Wellness">
-      <div className="space-y-3">
-        <p className="text-xs text-stone-500">
-          กรอกหลังลูกค้าศัลยกรรมตรวจเลือดแล้ว — การ์ดจะเข้าคิว “รอผลแลบ”
-          ให้ทีม Lab อัพผลต่อ
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="wc-first">ชื่อ *</Label>
-            <Input
-              id="wc-first"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="ชื่อจริงลูกค้า"
-              autoFocus={
-                typeof window !== "undefined" &&
-                window.matchMedia("(pointer: fine)").matches
-              }
-            />
-          </div>
-          <div>
-            <Label htmlFor="wc-last">นามสกุล</Label>
-            <Input
-              id="wc-last"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="นามสกุล"
-            />
-          </div>
-        </div>
-        <div>
-          <Label htmlFor="wc-phone">เบอร์โทร</Label>
-          <Input
-            id="wc-phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="08x-xxx-xxxx"
-          />
-        </div>
-        <div>
-          <Label htmlFor="wc-proc">หัตถการที่ทำ</Label>
-          <Input
-            id="wc-proc"
-            value={procedure}
-            onChange={(e) => setProcedure(e.target.value)}
-            placeholder="เช่น เสริมหน้าอก / ดูดไขมัน"
-          />
-        </div>
-        <div>
-          <Label htmlFor="wc-note">โน้ต</Label>
-          <Textarea
-            id="wc-note"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="ข้อมูลเพิ่มเติม (ถ้ามี)"
-          />
-        </div>
-        {error && (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
-            ยกเลิก
-          </Button>
-          <Button onClick={submit} loading={saving}>
-            สร้างการ์ด
-          </Button>
-        </div>
-      </div>
-    </Modal>
   );
 }

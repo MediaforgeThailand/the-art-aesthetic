@@ -167,3 +167,166 @@ export function todayBangkokISO(): string {
     → supabase เรียก .split() แล้วพังทั้งหน้า (บั๊กจริงที่เจอจาก e2e 2026-08-28) */
 export const CALENDAR_APPT_SELECT =
   "*, customer:wellness_customers(id, first_name, last_name, phone, procedure_text, lab_confirmed_at, completed_at, lab_files:wellness_lab_files(id, file_path, file_name, created_at))";
+
+/* ============================================================
+   บทบาท + พื้นที่ทำงาน (workspace) — "1 บทบาท = 1 หน้า = 1 งาน" (2026-08-28)
+
+   กติกาผู้ใช้: ทุก feature (เพิ่มการ์ด / อัพผล lab / ลงคิว) ต้องเป็น **stage แยกหน้ากัน**
+   และคนหนึ่งคนเห็นเฉพาะหน้าของบทบาทตัวเอง เพื่อลด learning gap —
+   ห้ามเอาปุ่มของอีกบทบาทไปแปะรวมในหน้าเดียวกันอีก
+   ============================================================ */
+
+export type WellnessRole = "bc" | "lab" | "admin" | "doctor";
+
+/** บทบาทที่ "ติ๊กไว้จริง" ของบัญชีนั้น — ไม่ใช่สิทธิ์ที่ได้มาเพราะเป็น admin
+    (canWellnessBc/Lab ใน permissions.ts คืน true ให้ admin ด้วย ซึ่งใช้คุมปุ่ม
+    แต่ตอนเลือก "หน้าแรกของคนนี้" ต้องดูบทบาทดิบ ไม่งั้น admin จะถูกส่งเข้าหน้า BC) */
+export type WellnessRoleFlags = Record<WellnessRole, boolean>;
+
+export function wellnessRoleFlags(
+  permissions: readonly string[]
+): WellnessRoleFlags {
+  return {
+    bc: permissions.includes("wellness_bc"),
+    lab: permissions.includes("wellness_lab"),
+    admin: permissions.includes("wellness_admin"),
+    doctor: permissions.includes("wellness_doctor"),
+  };
+}
+
+export type WellnessWorkspaceId =
+  | "register"
+  | "lab"
+  | "booking"
+  | "clinic"
+  | "calendar"
+  | "cases";
+
+/** คีย์ไอคอน — ค่าคงที่เป็นไฟล์ .ts จึงเก็บ JSX ไม่ได้ ตัว component map อยู่ฝั่ง client
+    (แพตเทิร์นเดียวกับ QUICK_ICONS ของ prospect-panel) */
+export type WellnessIconKey = WellnessWorkspaceId;
+
+export type WellnessWorkspace = {
+  id: WellnessWorkspaceId;
+  href: string;
+  /** ป้ายบนเมนู (สั้น) */
+  label: string;
+  /** ประโยคเดียวว่าหน้านี้ "ทำอะไร" — ใช้บนหน้าเลือกงานและใต้หัวข้อของหน้านั้น */
+  detail: string;
+  icon: WellnessIconKey;
+  /** ลำดับใน flow 1→4 (null = เครื่องมือประกอบ ไม่ใช่ stage ของ flow) */
+  step: number | null;
+  /** บทบาทที่เข้าหน้านี้ได้ — admin เข้าได้ทุกหน้าเสมอ ไม่ต้องใส่ซ้ำทุกแถว */
+  roles: WellnessRole[];
+  /** บทบาทที่ถือว่าหน้านี้คือ "หน้าทำงานหลัก" ของเขา (ใช้เลือกปลายทางของ /wellness) */
+  primaryFor: WellnessRole[];
+};
+
+export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
+  {
+    id: "register",
+    href: "/wellness-register",
+    label: "ทะเบียนลูกค้า",
+    detail:
+      "เพิ่มการ์ดลูกค้าที่ตรวจเลือดแล้ว และแก้ชื่อ/เบอร์/หัตถการให้ถูกต้อง",
+    icon: "register",
+    step: 1,
+    roles: ["bc"],
+    primaryFor: ["bc"],
+  },
+  {
+    id: "lab",
+    href: "/wellness-lab",
+    label: "อัพผลแลบ",
+    detail:
+      "อัพไฟล์ผลตรวจเลือดของลูกค้าแต่ละคน แล้วกดยืนยันเมื่อผลครบ",
+    icon: "lab",
+    step: 2,
+    roles: ["lab"],
+    primaryFor: ["lab"],
+  },
+  {
+    id: "booking",
+    href: "/wellness-booking",
+    label: "โทรนัด + ลงคิว",
+    detail:
+      "โทรหาลูกค้าที่ผลพร้อมแล้ว ตกลงเวลา แล้วลงคิวเข้าพบแพทย์ (1–3 ชม.)",
+    icon: "booking",
+    step: 3,
+    roles: [],
+    primaryFor: ["admin"],
+  },
+  {
+    id: "clinic",
+    href: "/wellness-clinic",
+    label: "คิวตรวจของแพทย์",
+    detail: "คิวที่ต้องตรวจวันนี้และวันถัดไป พร้อมเปิดผลเลือดของแต่ละคน",
+    icon: "clinic",
+    step: 4,
+    roles: ["doctor"],
+    primaryFor: ["doctor"],
+  },
+  {
+    id: "calendar",
+    href: "/wellness-calendar",
+    label: "ปฏิทินคิว",
+    detail: "ดูคิวทั้งเดือน — วันแพทย์เข้าคือ อังคาร และ เสาร์",
+    icon: "calendar",
+    step: null,
+    roles: ["doctor"],
+    primaryFor: [],
+  },
+  {
+    id: "cases",
+    href: "/wellness-cases",
+    label: "ภาพรวมเคส",
+    detail: "การ์ดทั้งหมดในระบบ แยกตามขั้นตอน — ใช้ตามงานที่ค้าง",
+    icon: "cases",
+    step: null,
+    roles: [],
+    primaryFor: [],
+  },
+];
+
+/** หน้าที่บัญชีนี้เข้าได้ — admin เห็นครบทุกหน้า (เป็นคนดูภาพรวมทั้งระบบ),
+    บทบาทอื่นเห็นเฉพาะหน้าของงานตัวเอง */
+export function wellnessWorkspacesFor(
+  flags: WellnessRoleFlags
+): WellnessWorkspace[] {
+  if (flags.admin) return WELLNESS_WORKSPACES;
+  return WELLNESS_WORKSPACES.filter((w) =>
+    w.roles.some((r) => flags[r])
+  );
+}
+
+/** ปลายทางของ `/wellness` — คนที่มีบทบาทเดียวเข้าหน้างานตัวเองตรงๆ (ไม่ต้องเลือกอะไรเลย)
+    ส่วน admin / คนที่มีหลายบทบาท คืน null = ไปหน้าเลือกงาน (hub) */
+export function wellnessHomeHref(flags: WellnessRoleFlags): string | null {
+  if (flags.admin) return null;
+  const roles = (["bc", "lab", "doctor"] as WellnessRole[]).filter(
+    (r) => flags[r]
+  );
+  if (roles.length !== 1) return null;
+  return (
+    WELLNESS_WORKSPACES.find((w) => w.primaryFor.includes(roles[0]))?.href ??
+    null
+  );
+}
+
+/** ข้อความ error ของการ insert/update คิว — 23P01 = ชนกับคิวอื่น (exclusion constraint ใน 0091)
+    ใช้ทุกที่ที่แตะ wellness_appointments (ปฏิทิน / หน้าลงคิว / หน้าเคส) ห้ามเขียนข้อความเองซ้ำ */
+export function apptErrorMessage(
+  error: { code?: string; message?: string } | null | undefined,
+  fallback = "บันทึกคิวไม่สำเร็จ"
+): string {
+  if (error?.code === "23P01") return WELLNESS_OVERLAP_MESSAGE;
+  return error?.message || fallback;
+}
+
+/** บวก/ลบวันจากวันที่ ISO (YYYY-MM-DD) — pure ไม่อ่านเวลาปัจจุบัน
+    ใช้กำหนดช่วงที่ query คิว (เช่นย้อนหลัง 30 วันในหน้าคิวตรวจของแพทย์) */
+export function addDaysISO(dateIso: string, days: number): string {
+  const d = new Date(`${dateIso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
