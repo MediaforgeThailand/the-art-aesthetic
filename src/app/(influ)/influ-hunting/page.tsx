@@ -10,6 +10,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluProfileRow,
   InfluProspectContactRow,
   InfluProspectRow,
@@ -42,6 +43,7 @@ export default async function InfluHuntingPage() {
     { data: promoCatalog },
     { data: doctors },
     { data: profiles },
+    { data: campaigns },
   ] = await Promise.all([
     getAccess(),
     supabase
@@ -78,6 +80,11 @@ export default async function InfluHuntingPage() {
       .order("name", { ascending: true }),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
     supabase.from("profiles").select("id, full_name, email"),
+    // แคมเปญ (0092) — ตัวเลือกในฟอร์มสร้างนัดที่เปิดต่อจากปุ่ม "ตอบรับ"
+    supabase
+      .from("influ_campaign_defs")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
   if (!canViewInflu(access)) return <AccessNotice />;
 
@@ -93,6 +100,7 @@ export default async function InfluHuntingPage() {
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         doctors={(doctors ?? []) as DoctorRow[]}
+        campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
         people={(profiles ?? []).map((p) => ({
           id: p.id,
           name: p.full_name || p.email || "ไม่ทราบชื่อ",

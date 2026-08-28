@@ -11,11 +11,11 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
   InfluPostLinkRow,
-  InfluProcedureItemRow,
   InfluProfileChannelRow,
   InfluProfileRow,
   InfluServiceRow,
@@ -28,7 +28,10 @@ import type {
   PriceCatalogEntry,
   PromoCatalogEntry,
 } from "../procedure-items-editor";
-import { InfluDetailClient } from "./detail-client";
+import {
+  InfluDetailClient,
+  type ProcedureItemWithPromo,
+} from "./detail-client";
 
 export const metadata: Metadata = {
   title: "รายละเอียด Influencer",
@@ -72,6 +75,7 @@ export default async function InfluencerDetailPage({
     { data: profile },
     { data: doctors },
     { data: services },
+    { data: campaigns },
   ] = await Promise.all([
     getAccess(),
     // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
@@ -98,9 +102,10 @@ export default async function InfluencerDetailPage({
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     // รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้
+    // embed sku ของโปรที่ผูกไว้ด้วย — เป็นที่มาของแฮชแท็ก #โปรโมชัน (0092)
     supabase
       .from("influ_procedure_items")
-      .select("*")
+      .select("*, promo:promo_packages(sku)")
       .eq("influencer_id", id)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
@@ -147,6 +152,11 @@ export default async function InfluencerDetailPage({
       .select("*")
       .eq("active", true)
       .order("name", { ascending: true }),
+    // แคมเปญ (0092) — ตัวเลือกในแท็บรายละเอียดเคส + ที่มาของแฮชแท็ก #แคมเปญ
+    supabase
+      .from("influ_campaign_defs")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -201,7 +211,9 @@ export default async function InfluencerDetailPage({
         signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
-        procedureItems={(procedureItems ?? []) as InfluProcedureItemRow[]}
+        procedureItems={
+          (procedureItems ?? []) as unknown as ProcedureItemWithPromo[]
+        }
         priceCatalog={(priceCatalog ?? []) as PriceCatalogEntry[]}
         promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         services={(services ?? []) as InfluServiceRow[]}
@@ -212,6 +224,7 @@ export default async function InfluencerDetailPage({
         userId={userId}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
+        campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
         canManage={canEditInflu(access)}
         initialStage={initialStage}
       />

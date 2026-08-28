@@ -19,6 +19,7 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influ-doctors", name: "influ-doctors" },
   { path: "/influ-gallery", name: "influ-gallery" },
   { path: "/influencers/contracts", name: "influ-contracts" },
+  { path: "/influ-campaigns", name: "influ-campaigns" },
   { path: "/influ-calendar", name: "influ-calendar" },
   { path: "/influ-cost", name: "influ-cost" },
   { path: "/influ-dashboard", name: "influ-dashboard" },
@@ -316,6 +317,8 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/influencers", label: "สร้างนัดใหม่", name: "influ-new-case" },
     { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
     { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
+    { path: "/influ-campaigns", label: "แคมเปญใหม่", name: "influ-campaign-new" },
+    { path: "/influ-doctors", label: "เพิ่มแพทย์", name: "influ-doctor-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
     {
       path: "/wellness/register",

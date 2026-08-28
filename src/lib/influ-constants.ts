@@ -68,23 +68,27 @@ export function tierFromFollowers(followers: number): InfluTier {
 
 export const INFLU_PRODUCT_TEAMS: Record<
   InfluProductTeam,
-  { label: string; chip: string }
+  { label: string; chip: string; tag: string }
 > = {
   aesthetics: {
     label: "Aesthetics (สกิน)",
     chip: "border border-brand-200 bg-brand-50 text-brand-700",
+    tag: "Aesthetics",
   },
   breast: {
     label: "หน้าอก",
     chip: "border border-rose-200 bg-rose-50 text-rose-700",
+    tag: "หน้าอก",
   },
   abdomen: {
     label: "หนังหน้าท้อง",
     chip: "border border-amber-200 bg-amber-50 text-amber-700",
+    tag: "หนังหน้าท้อง",
   },
   lipo: {
     label: "ดูดไขมัน",
     chip: "border border-sky-200 bg-sky-50 text-sky-700",
+    tag: "ดูดไขมัน",
   },
 };
 
@@ -979,3 +983,190 @@ export function contractEndDate(
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/* ---------- แฮชแท็กบังคับของเคส (0092) ----------
+   ที่มา (ผู้ใช้ 2026-08-29): influ ทุกคนต้องติดแท็กชุดนี้ในโพส เพื่อให้ทีมหลังบ้าน
+   ดึงข้อมูลจาก Meta API มา attribute ได้ว่ายอดมาจากใคร/แคมเปญไหน/โปรตัวไหน
+
+   ⚠️ IG/FB ตัดแฮชแท็กที่เครื่องหมาย "-" (#INF-00001 จะกลายเป็น #INF)
+   รหัสที่คนอ่าน (INF-00001) กับข้อความแท็กจริง (#INF00001) จึงคนละรูป — แปลงด้วย
+   hashtagSafe() ที่เดียวเท่านั้น และให้ทีมกดปุ่มคัดลอกแทนการพิมพ์เอง */
+
+/** ตัดทุกอย่างที่ไม่ใช่ตัวอักษร/ตัวเลข/ขีดล่าง (รองรับไทย) — ได้ข้อความที่ใช้เป็นแฮชแท็กได้จริง */
+export function hashtagSafe(raw: string): string {
+  return raw.replace(/[^\p{L}\p{N}_]/gu, "");
+}
+
+/** คำนำหน้าแท็กของหมอ — เปลี่ยนที่นี่ที่เดียวถ้าทีมอยากได้รูปแบบอื่น */
+export const DOCTOR_TAG_PREFIX = "DR";
+
+export type CaseHashtagKey =
+  | "influ"
+  | "doctor"
+  | "campaign"
+  | "procedure"
+  | "promo";
+
+export type CaseHashtag = {
+  key: CaseHashtagKey;
+  /** ป้ายบอกว่าแท็กนี้แทนอะไร (ใช้ใน tooltip/หัวข้อ) */
+  label: string;
+  /** ข้อความแท็กพร้อม # — null = ยังไม่มีข้อมูลให้สร้างแท็ก */
+  tag: string | null;
+  /** ค่าที่คนอ่านเข้าใจ เช่นชื่อหมอ/ชื่อแคมเปญ (โชว์ใน tooltip) */
+  source: string | null;
+  /** true = ขาดไม่ได้ — เคสที่ยังไม่มีต้องขึ้นเตือนให้ไปเติมข้อมูล */
+  required: boolean;
+  /** บอกว่าต้องไปเติมที่ไหนเมื่อ tag เป็น null */
+  missingHint?: string;
+};
+
+export type CaseHashtagInput = {
+  influCode: string | null;
+  /** เลขใบ ปว. ของหมอที่รับเคส — หาจากทะเบียนหมอด้วยชื่อ (doctors.name ↔ influencers.doctor_name) */
+  doctorLicense?: string | null;
+  doctorName?: string | null;
+  /** แท็กของแคมเปญที่เคสนี้สังกัด (ไม่มี # นำหน้า) */
+  campaignTag?: string | null;
+  campaignName?: string | null;
+  /** ทีมสินค้าของหัตถการในเคส (ไม่ซ้ำ) — เคสหนึ่งมีได้หลายทีม */
+  teams?: InfluProductTeam[];
+  /** รหัสแพ็กเกจโปรที่เคสนี้ใช้ (promo_packages.sku) */
+  promoSkus?: string[];
+};
+
+/**
+ * ชุดแฮชแท็กของเคสหนึ่ง — เรียงตามลำดับที่ตกลงกับผู้ใช้:
+ * #Influ ID · #รหัสหมอ · #แคมเปญ · #หัตถการ · #โปรโมชัน
+ *
+ * รายการที่ยังไม่มีข้อมูลก็คืนมาด้วย (tag = null) เพื่อให้หน้าจอเตือนว่าขาดอะไร —
+ * ฝั่งที่ต้องการเฉพาะแท็กที่ใช้ได้จริงให้กรอง `t.tag !== null` เอง
+ */
+export function caseHashtags(input: CaseHashtagInput): CaseHashtag[] {
+  const tags: CaseHashtag[] = [];
+
+  tags.push({
+    key: "influ",
+    label: "รหัส Influ",
+    tag: input.influCode ? `#${hashtagSafe(input.influCode)}` : null,
+    source: input.influCode ?? null,
+    required: true,
+    missingHint: "เคสนี้ยังไม่มีรหัส Influ ID — กดออกรหัสที่หน้าเคส",
+  });
+
+  tags.push({
+    key: "doctor",
+    label: "รหัสหมอ",
+    tag: input.doctorLicense
+      ? `#${DOCTOR_TAG_PREFIX}${hashtagSafe(input.doctorLicense)}`
+      : null,
+    source: input.doctorName ?? null,
+    required: true,
+    missingHint: input.doctorName
+      ? `"${input.doctorName}" ยังไม่มีเลขใบ ปว. ในทะเบียนหมอ — เพิ่มที่เมนู "จัดการหมอ"`
+      : "ยังไม่ได้ระบุแพทย์ที่รับเคส",
+  });
+
+  // แคมเปญไม่บังคับ — เคสที่ไม่ได้อยู่ในแคมเปญไหนไม่ต้องมีแท็กนี้
+  if (input.campaignTag) {
+    tags.push({
+      key: "campaign",
+      label: "แคมเปญ",
+      tag: `#${hashtagSafe(input.campaignTag)}`,
+      source: input.campaignName ?? null,
+      required: true,
+    });
+  }
+
+  const teams = [...new Set(input.teams ?? [])];
+  if (teams.length === 0) {
+    tags.push({
+      key: "procedure",
+      label: "หัตถการ",
+      tag: null,
+      source: null,
+      required: true,
+      missingHint: "ยังไม่มีรายการหัตถการในเคส — เพิ่มที่แท็บรายละเอียดเคส",
+    });
+  } else {
+    for (const team of teams) {
+      tags.push({
+        key: "procedure",
+        label: "หัตถการ",
+        tag: `#${hashtagSafe(INFLU_PRODUCT_TEAMS[team].tag)}`,
+        source: INFLU_PRODUCT_TEAMS[team].label,
+        required: true,
+      });
+    }
+  }
+
+  // โปรโมชันมีเฉพาะเคสที่หัตถการผูกกับโปรใน Price List — ไม่ผูกก็ไม่ต้องมีแท็ก
+  for (const sku of [...new Set(input.promoSkus ?? [])]) {
+    tags.push({
+      key: "promo",
+      label: "โปรโมชัน",
+      tag: `#${hashtagSafe(sku)}`,
+      source: sku,
+      required: true,
+    });
+  }
+
+  return tags;
+}
+
+/** ข้อความแท็กทั้งชุดคั่นด้วยช่องว่าง — ปุ่ม "คัดลอกแฮชแท็ก" ส่งค่านี้ให้ influ */
+export function hashtagText(tags: CaseHashtag[]): string {
+  return tags
+    .map((t) => t.tag)
+    .filter((t): t is string => t !== null)
+    .join(" ");
+}
+
+/** จำนวนแท็กบังคับที่ยังไม่มีข้อมูล — >0 = เคสนี้ยังส่งแท็กให้ influ ไม่ได้ */
+export function missingHashtagCount(tags: CaseHashtag[]): number {
+  return tags.filter((t) => t.required && t.tag === null).length;
+}
+
+/* ---------- แท็กแคมเปญ ---------- */
+
+/** ปรับข้อความที่ผู้ใช้พิมพ์ให้เป็นแท็กที่ใช้ได้จริง (ตัวพิมพ์ใหญ่ ไม่มีขีด/ช่องว่าง) */
+export function normalizeCampaignTag(raw: string): string {
+  return hashtagSafe(raw.trim().replace(/\s+/g, "")).toUpperCase().slice(0, 30);
+}
+
+/** ตรวจว่าแท็กผ่านกติกาเดียวกับ check constraint ของ DB หรือยัง */
+export function campaignTagError(tag: string): string | null {
+  if (tag.length < 2) return "แท็กต้องยาวอย่างน้อย 2 ตัวอักษร";
+  if (tag.length > 30) return "แท็กยาวเกิน 30 ตัวอักษร";
+  if (!/^[A-Za-z0-9_\u0E01-\u0E5B]+$/.test(tag)) {
+    return "แท็กใช้ได้เฉพาะตัวอักษร ตัวเลข และขีดล่าง (ห้ามมีขีดกลางหรือช่องว่าง)";
+  }
+  return null;
+}
+
+/* ---------- ทะเบียนหมอ (0092) ---------- */
+
+/**
+ * ชื่อที่แสดงของหมอ — ประกอบจากช่องที่กรอกแยกไว้ให้ได้รูปแบบเดียวทั้งระบบ
+ * `นพ. ชื่อ นามสกุล (ชื่อเล่น)` ตามที่ทีมตกลงกันไว้
+ *
+ * ค่านี้ถูกเขียนลง doctors.name ซึ่งเป็น **กุญแจจับคู่** กับ influencers.doctor_name
+ * และ influ_calendar_events.doctor_name (คอลัมน์เหล่านั้นเป็น text ไม่มี FK) —
+ * เปลี่ยนชื่อจึงต้องตามแก้เคส/คิวเสมอ (โมดัลจัดการหมอทำให้อยู่แล้ว)
+ */
+export function doctorDisplayName(d: {
+  title?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  nickname?: string | null;
+}): string {
+  const head = [d.title, d.first_name, d.last_name]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const nick = (d.nickname ?? "").trim();
+  return nick ? `${head} (${nick})`.trim() : head;
+}
+
+/** คำนำหน้าที่เลือกได้ในทะเบียนหมอ ("" = ไม่ระบุ เช่นแถว "ทรีทเม้นท์" ที่ไม่ใช่หมอ) */
+export const DOCTOR_TITLES = ["นพ.", "พญ.", ""] as const;

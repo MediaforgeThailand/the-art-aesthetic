@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  Hash,
   Copy,
   FileSignature,
   FolderOpen,
@@ -39,6 +40,7 @@ import {
   ConfirmDialog,
   Input,
   Label,
+  Select,
   Modal,
   Textarea,
 } from "@/components/ui";
@@ -52,8 +54,11 @@ import {
 } from "@/lib/format";
 import {
   activeFollowupTasks,
+  type CaseHashtag,
+  caseHashtags,
   contractEndDate,
   contractStartFor,
+  hashtagText,
   INFLU_CHECKLIST,
   INFLU_CHECKLIST_SECTIONS,
   INFLU_FOLLOWUP_MODE_ORDER,
@@ -69,6 +74,7 @@ import { logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluencerRow,
   InfluRoundLite,
   InfluFollowupMode,
@@ -95,6 +101,12 @@ import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 import { PackageStage } from "./package-stage";
 import { PostLinksCard } from "./post-links";
+
+/** หัตถการของเคส + รหัสแพ็กเกจของโปรที่ผูกไว้ (embed จาก promo_packages)
+    ใช้สร้างแฮชแท็ก #โปรโมชัน — embed มาจาก query ของ page.tsx ไม่ใช่คอลัมน์จริงในตาราง */
+export type ProcedureItemWithPromo = InfluProcedureItemRow & {
+  promo?: { sku: string } | null;
+};
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -209,9 +221,48 @@ function NameEditModal({
   const [firstName, setFirstName] = useState(influencer.first_name);
   const [lastName, setLastName] = useState(influencer.last_name ?? "");
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
+  /** รหัส Influ ID — อ่านอย่างเดียว (ระบบออกให้); เคสเก่าที่ยังว่างกดออกรหัสได้จากปุ่มในโมดัล */
   const [code, setCode] = useState(influencer.influ_code ?? "");
+  const [issuing, setIssuing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /** ออกรหัสให้เคสที่ยังไม่มี — บันทึกทันที ไม่ต้องรอกดปุ่มบันทึกชื่อ */
+  const issueCode = async () => {
+    if (issuing || code) return;
+    setIssuing(true);
+    setErr(null);
+    const { data: newCode, error: rpcErr } = await supabase.rpc(
+      "next_influ_code"
+    );
+    if (rpcErr || !newCode) {
+      setIssuing(false);
+      setErr(`ออกรหัสไม่สำเร็จ: ${rpcErr?.message ?? "ไม่ทราบสาเหตุ"}`);
+      return;
+    }
+    const { error: upErr } = await supabase
+      .from("influencers")
+      .update({ influ_code: newCode })
+      .eq("id", influencer.id);
+    setIssuing(false);
+    if (upErr) {
+      setErr(
+        upErr.code === "23505"
+          ? `รหัส ${newCode} ชนกับเคสอื่น — กดออกรหัสอีกครั้ง`
+          : `บันทึกรหัสไม่สำเร็จ: ${upErr.message}`
+      );
+      return;
+    }
+    setCode(newCode);
+    log({
+      action: "update",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ออกรหัส Influ ID ให้เคสนี้: ${newCode}`,
+    });
+    router.refresh();
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,7 +274,6 @@ function NameEditModal({
     }
     setBusy(true);
     setErr(null);
-    const nextCode = code.trim() || null;
     // ชื่อเป็นข้อมูล "ตัวบุคคล" — แก้ครั้งเดียวเปลี่ยนให้ทุกรอบของคนนี้ (person_id เดียวกัน)
     // ไม่งั้นคนที่เข้ามาทำหลายรอบจะชื่อไม่ตรงกันข้ามการ์ด
     const { error } = await supabase
@@ -248,25 +298,6 @@ function NameEditModal({
         nickname: nickname.trim() || null,
       })
       .eq("id", influencer.person_id);
-    // รหัส Influ ID ผูกกับ "การ์ดรอบนี้" ไม่ใช่ตัวบุคคล — ห้ามยิงพร้อมชื่อที่อัปเดตทุกรอบ
-    // ไม่งั้นทุกรอบของคนเดียวกันจะได้รหัสซ้ำกันแล้วชน unique index
-    if (nextCode !== (influencer.influ_code ?? null)) {
-      const { error: codeErr } = await supabase
-        .from("influencers")
-        .update({ influ_code: nextCode })
-        .eq("id", influencer.id);
-      if (codeErr) {
-        setBusy(false);
-        // unique index บน lower(influ_code) — บอกเป็นภาษาคนแทน error ดิบของ Postgres
-        setErr(
-          codeErr.code === "23505"
-            ? `รหัส Influ ID "${nextCode}" ถูกใช้กับเคสอื่นแล้ว (ชื่อถูกบันทึกแล้ว)`
-            : `บันทึกรหัส Influ ID ไม่สำเร็จ: ${codeErr.message}`
-        );
-        router.refresh();
-        return;
-      }
-    }
     setBusy(false);
     const changed: string[] = [];
     const nextName = logNameOf({
@@ -275,8 +306,6 @@ function NameEditModal({
       nickname: nickname.trim() || null,
     });
     if (nextName !== logNameOf(influencer)) changed.push(`ชื่อ → ${nextName}`);
-    if (nextCode !== (influencer.influ_code ?? null))
-      changed.push(`รหัส Influ ID → ${nextCode ?? "(ลบออก)"}`);
     if (changed.length > 0) {
       log({
         action: "update",
@@ -319,16 +348,29 @@ function NameEditModal({
             placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
           />
         </div>
+        {/* รหัส Influ ID ระบบออกให้เอง (0092) — แก้มือไม่ได้แล้ว เพราะเป็นกุญแจของแฮชแท็ก
+            ที่ใช้ track ยอดจาก Meta; เคสเก่าที่ยังไม่มีรหัสกดออกให้ได้จากตรงนี้ */}
         <div>
-          <Label htmlFor="influ-code">รหัส Influ ID</Label>
-          <Input
-            id="influ-code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="เช่น INF-2569-001"
-          />
+          <Label>รหัส Influ ID</Label>
+          <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+            <Hash size={15} className="shrink-0 text-brand-500" />
+            <span className="font-mono text-sm font-semibold text-stone-700">
+              {code || "ยังไม่มีรหัส"}
+            </span>
+            {!code && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="ml-auto shrink-0 !py-1.5 text-xs"
+                loading={issuing}
+                onClick={() => void issueCode()}
+              >
+                ออกรหัสให้
+              </Button>
+            )}
+          </div>
           <p className="mt-1 text-[11px] text-stone-400">
-            รหัสอ้างอิงของทีม — ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่ออกรหัส)
+            ระบบออกให้อัตโนมัติและไม่ซ้ำกับเคสอื่น — ใช้เป็นแฮชแท็กประจำเคสในโพส
           </p>
         </div>
         {err && (
@@ -495,6 +537,7 @@ export function InfluDetailClient({
   userId,
   userName,
   doctors,
+  campaigns,
   canManage,
   initialStage = null,
 }: {
@@ -505,7 +548,7 @@ export function InfluDetailClient({
   tasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   /** รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้ */
-  procedureItems: InfluProcedureItemRow[];
+  procedureItems: ProcedureItemWithPromo[];
   /** ตัวเลือกโปรแกรมจาก Price List กลาง (dropdown ในแท็บรายละเอียดเคส) */
   priceCatalog: PriceCatalogEntry[];
   /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
@@ -525,6 +568,8 @@ export function InfluDetailClient({
   userId: string | null;
   userName: string;
   doctors: DoctorRow[];
+  /** แคมเปญทั้งหมด (0092) — ตัวเลือกในแท็บรายละเอียดเคส + ที่มาของแฮชแท็ก */
+  campaigns: InfluCampaignDefRow[];
   /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
@@ -1003,6 +1048,7 @@ export function InfluDetailClient({
                 : null
             }
             doctors={doctors}
+            campaigns={campaigns}
             canManage={canManage}
             onGoStage={(step) => setView(step)}
           />
@@ -1017,6 +1063,7 @@ export function InfluDetailClient({
             promoCatalog={promoCatalog}
             services={services}
             doctors={doctors}
+            campaigns={campaigns}
             readOnly={!canEdit}
           />
         )}
@@ -1183,6 +1230,74 @@ function OverviewPhoto({ path }: { path: string }) {
   );
 }
 
+/**
+ * แฮชแท็กบังคับของเคส (0092) — ชุดที่ influ ต้องติดในโพสทุกครั้ง
+ *
+ * แสดงทั้งแท็กที่พร้อมใช้และแท็กที่ยังขาดข้อมูล (พร้อมบอกว่าต้องไปเติมที่ไหน)
+ * ปุ่มคัดลอกส่งเฉพาะแท็กที่พร้อมแล้ว — ทีมส่งข้อความให้ influ ได้เลยโดยไม่ต้องพิมพ์เอง
+ * (พิมพ์เองเสี่ยงพิมพ์ผิด แล้วโพสนั้นจะ track ไม่เจอ)
+ */
+function HashtagBlock({ tags }: { tags: CaseHashtag[] }) {
+  const [copied, setCopied] = useState(false);
+  const ready = tags.filter((t) => t.tag !== null);
+  const missing = tags.filter((t) => t.tag === null);
+  const text = hashtagText(tags);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {ready.map((t) => (
+          <span
+            key={`${t.key}-${t.tag}`}
+            title={t.source ? `${t.label}: ${t.source}` : t.label}
+            className="rounded-lg bg-brand-50 px-2.5 py-1 font-mono text-sm font-semibold text-brand-700 ring-1 ring-brand-100"
+          >
+            {t.tag}
+          </span>
+        ))}
+        {ready.length > 0 && (
+          <Button
+            variant="secondary"
+            className="ml-auto shrink-0 !py-1.5 text-xs"
+            onClick={() => {
+              void navigator.clipboard.writeText(text).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1800);
+              });
+            }}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? "คัดลอกแล้ว" : "คัดลอกแฮชแท็ก"}
+          </Button>
+        )}
+      </div>
+
+      {missing.length > 0 && (
+        <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+          {missing.map((t) => (
+            <li
+              key={`miss-${t.key}`}
+              className="flex items-start gap-2 text-xs leading-5 text-amber-800"
+            >
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <span>
+                ยังไม่มีแท็ก<span className="font-semibold">{t.label}</span>
+                {t.missingHint ? ` — ${t.missingHint}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="text-[11px] leading-5 text-stone-400">
+        แท็กชุดนี้เป็นข้อบังคับของทุกโพส — ระบบใช้จับคู่กับข้อมูลจาก Meta
+        เพื่อดูว่ายอดมาจากใคร/แคมเปญไหน
+        (เครื่องหมาย &quot;-&quot; ถูกตัดออกจากแท็กเพราะ IG/FB ตัดคำตรงนั้น)
+      </p>
+    </div>
+  );
+}
+
 /** section ของเอกสารภาพรวมแนว A4 — เส้นคั่นบน + หัวข้อ (+ปุ่ม action ชิดขวา) ใช้ซ้ำทุกหมวด */
 function DocSection({
   icon,
@@ -1217,13 +1332,14 @@ function OverviewPanel({
   profileChannels,
   onEditProfile,
   doctors,
+  campaigns,
   canManage,
   onGoStage,
 }: {
   influencer: InfluencerRow;
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
-  procedureItems: InfluProcedureItemRow[];
+  procedureItems: ProcedureItemWithPromo[];
   sourceLinks: InfluLinkRow[];
   /** โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (0080) — ใช้ร่วมกันทุกรอบของคนนี้ */
   personProfile: InfluProfileRow | null;
@@ -1231,6 +1347,8 @@ function OverviewPanel({
   /** null = ไม่มีสิทธิ์แก้ (team/Viewer) หรือเคสเก่าที่ยังไม่มีโปรไฟล์ */
   onEditProfile: (() => void) | null;
   doctors: DoctorRow[];
+  /** แคมเปญทั้งหมด (0092) — หาแท็กของแคมเปญที่เคสนี้สังกัด */
+  campaigns: InfluCampaignDefRow[];
   /** false = สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี — ซ่อนปุ่มแก้ไขทั้งหมด */
   canManage: boolean;
   onGoStage: (step: number) => void;
@@ -1256,6 +1374,26 @@ function OverviewPanel({
       ? contractEndDate(influencer.contract_start, influencer.contract_months)
       : null;
   const maxStage = influencer.completed ? INFLU_STAGE_LAST : influencer.stage;
+
+  // แฮชแท็กบังคับของเคส (0092) — ประกอบจากรหัสเคส · เลขใบ ปว. ของหมอ (จับคู่ด้วยชื่อ
+  // เพราะ doctor_name เป็น text ไม่มี FK) · แท็กแคมเปญ · ทีมสินค้า + โปรของหัตถการ
+  const campaign = influencer.campaign_id
+    ? (campaigns.find((c) => c.id === influencer.campaign_id) ?? null)
+    : null;
+  const hashtags = caseHashtags({
+    influCode: influencer.influ_code,
+    doctorName: influencer.doctor_name,
+    doctorLicense: influencer.doctor_name
+      ? (doctors.find((d) => d.name === influencer.doctor_name)?.license_no ??
+        null)
+      : null,
+    campaignTag: campaign?.tag ?? null,
+    campaignName: campaign?.name ?? null,
+    teams: procedureItems.map((i) => i.product_team),
+    promoSkus: procedureItems
+      .map((i) => i.promo?.sku)
+      .filter((s): s is string => Boolean(s)),
+  });
 
   return (
     <div className="space-y-5">
@@ -1290,6 +1428,15 @@ function OverviewPanel({
             </p>
           </div>
         </div>
+
+        {/* แฮชแท็กบังคับ (0092) — ชุดที่ influ ต้องติดในโพส ทีมกดคัดลอกส่งให้ได้ทันที
+            วางไว้บนสุดเพราะเป็นสิ่งที่ต้องส่งให้ influ ทุกเคส ไม่ใช่ข้อมูลอ้างอิงท้ายเอกสาร */}
+        <DocSection
+          icon={<Hash size={15} className="text-brand-600" />}
+          title="แฮชแท็กที่ต้องติดในโพส"
+        >
+          <HashtagBlock tags={hashtags} />
+        </DocSection>
 
         {/* ความคืบหน้า stage — กดขั้นที่เดินถึงแล้วเพื่อเปิดหน้าขั้นนั้น */}
         <DocSection
@@ -1746,6 +1893,7 @@ function CaseDetailStage({
   promoCatalog,
   services,
   doctors,
+  campaigns,
   readOnly,
 }: {
   influencer: InfluencerRow;
@@ -1756,6 +1904,8 @@ function CaseDetailStage({
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (0080) */
   services: InfluServiceRow[];
   doctors: DoctorRow[];
+  /** แคมเปญทั้งหมด (0092) — ตัวเลือก "แคมเปญ" ของเคสนี้ */
+  campaigns: InfluCampaignDefRow[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -1776,6 +1926,8 @@ function CaseDetailStage({
   const [contactChannel, setContactChannel] = useState(
     influencer.contact_channel ?? ""
   );
+  /** แคมเปญของเคส (0092) — "" = ไม่อยู่ในแคมเปญไหน */
+  const [campaignId, setCampaignId] = useState(influencer.campaign_id ?? "");
   /** เคส "รอปรึกษา" (ติ๊กมาตั้งแต่ตอนสร้างนัด) — ธงเดียวที่อนุญาตให้ไม่มีหัตถการ
       เอาติ๊กออกเมื่อปรึกษาแพทย์แล้วเคาะโปรแกรมได้ (ต้องมีรายการอย่างน้อย 1 ก่อน) */
   const [consultOnly, setConsultOnly] = useState(influencer.consult_only);
@@ -1801,6 +1953,14 @@ function CaseDetailStage({
   // มูลค่าเคส (case_value) คำนวณให้เอง = Σ ราคาโปรแกรมที่เลือก + ค่าตัว — ไม่มีช่องกรอกมือแล้ว
   const itemsTotal = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
   const caseTotal = itemsTotal + (Number(talentFee) || 0);
+
+  // ตัวเลือกแคมเปญ = ที่ยังเปิดใช้งาน + ของเดิมที่เคสนี้ผูกไว้ (ถึงจะปิดไปแล้วก็ต้องยังเห็น
+  // ไม่งั้นกดบันทึกครั้งถัดไปแคมเปญจะหลุดหายไปเงียบๆ)
+  const campaignOptions = campaigns.filter(
+    (c) => c.active || c.id === influencer.campaign_id
+  );
+  const selectedCampaign =
+    campaignOptions.find((c) => c.id === campaignId) ?? null;
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
   // เคส "รอปรึกษา" = ยกเว้นข้อบังคับเรื่องหัตถการ (ยังไม่รู้ว่าจะทำอะไรจนกว่าจะเจอแพทย์)
@@ -1881,6 +2041,7 @@ function CaseDetailStage({
         service_date: serviceDate === "" ? null : serviceDate,
         doctor_name: doctorName.trim() || null,
         contact_channel: contactChannel.trim() || null,
+        campaign_id: campaignId || null,
         // มูลค่าเคสคำนวณจากรายการ + ค่าตัวที่ validate แล้ว (ไม่มีอะไรมีมูลค่า = null ไม่ใช่ 0)
         case_value:
           itemsTotal + (feeNum ?? 0) > 0 ? itemsTotal + (feeNum ?? 0) : null,
@@ -2034,6 +2195,29 @@ function CaseDetailStage({
             />
             <p className="mt-1 text-[11px] text-stone-400">
               ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ — คนละชุดกับช่องทางในโปรไฟล์ (IG/TikTok ของ influ)
+            </p>
+          </div>
+          {/* แคมเปญ (0092) — เลือกแล้วแฮชแท็กของแคมเปญถูกเพิ่มเข้าชุดที่ influ ต้องติดในโพส
+              ตัวเลือกโชว์เฉพาะแคมเปญที่เปิดใช้งาน + ของเดิมที่เคสนี้ผูกไว้ (กันค่าหายตอนบันทึก) */}
+          <div>
+            <Label htmlFor="d-campaign">แคมเปญ</Label>
+            <Select
+              id="d-campaign"
+              disabled={readOnly}
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
+            >
+              <option value="">— ไม่อยู่ในแคมเปญ —</option>
+              {campaignOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} (#{c.tag}){c.active ? "" : " — ปิดใช้งานแล้ว"}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-[11px] text-stone-400">
+              {selectedCampaign
+                ? `โพสของเคสนี้ต้องติด #${selectedCampaign.tag} ด้วย`
+                : "ตั้งแคมเปญได้ที่เมนู “แคมเปญ” บนแถบเมนูด้านบน"}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

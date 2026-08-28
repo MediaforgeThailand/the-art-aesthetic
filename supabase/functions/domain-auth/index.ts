@@ -6,9 +6,12 @@
 // เหตุผล: endpoint นี้เปิดสาธารณะและสร้างบัญชีแบบ email_confirm=true โดยไม่พิสูจน์ว่าผู้สมัคร
 // เป็นเจ้าของอีเมลจริง ใครเดาที่อยู่อีเมลพนักงานได้ก็สร้างบัญชีแทนได้ และเมื่อ RLS ของทุกตาราง
 // เป็น "authenticated เข้าถึงได้ทั้งหมด" บัญชีนั้นอ่าน/แก้ข้อมูลทั้งฐานผ่าน REST ได้ทันที
-// (สิทธิ์ใน profiles.permissions กันแค่การมองเห็นเมนู ไม่ได้กันข้อมูล) — และพนักงานที่ถูกลบบัญชี
-// ไปแล้วก็สมัครกลับเข้ามาเองได้ · admin เพิ่มบัญชีผ่าน /accounts ซึ่ง upsert allowed_emails ให้อยู่แล้ว
-// กติกาเดียวกันนี้ถูกบังคับซ้ำที่ trigger handle_new_user (migration 0056) กันช่องทาง auth.signUp ตรงๆ
+//
+// 2026-08-29 (migration 0093): เมลโดเมนบริษัทเข้าระบบเองได้อีกครั้ง — **แต่ผ่าน Google SSO
+// เท่านั้น** เพราะ Google เป็นคนพิสูจน์ให้ว่าผู้สมัครเป็นเจ้าของกล่องเมลนั้นจริง ช่องโหว่ข้างบน
+// จึงไม่กลับมา; การ "ตั้งรหัสผ่านเอง" ที่ action=signup ยังจำกัดอยู่ที่ allowed_emails เหมือนเดิม
+// ทุกประการ (โดเมนที่อนุญาตอยู่ในตาราง allowed_email_domains — trigger handle_new_user
+// เป็นคนบังคับกติกาชั้นสุดท้าย ฟังก์ชันนี้แค่บอก UI ว่าควรแสดงทางไหนให้ผู้ใช้)
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -51,13 +54,22 @@ Deno.serve(async (req: Request) => {
     if (!validEmail(email)) {
       return json({ ok: false, error: "invalid_email" }, 400);
     }
-    // อีเมลนี้ได้รับอนุญาตหรือไม่ — ต้องอยู่ใน allowlist ที่ admin เพิ่มไว้เท่านั้น
+    // อีเมลนี้ตั้งรหัสผ่านเองได้ไหม — ต้องอยู่ใน allowlist ที่ admin เพิ่มไว้เท่านั้น
     const { data: allowRow } = await admin
       .from("allowed_emails")
       .select("email")
       .eq("email", email)
       .maybeSingle();
     const allowed = allowRow !== null;
+
+    // โดเมนบริษัท = เข้าได้เองผ่าน Google SSO (ไม่ใช่ตั้งรหัสผ่านเอง)
+    const domain = email.split("@")[1] ?? "";
+    const { data: domainRow } = await admin
+      .from("allowed_email_domains")
+      .select("domain")
+      .ilike("domain", domain)
+      .maybeSingle();
+    const domainAllowed = domainRow !== null;
 
     const { data: exists, error: existsErr } = await admin.rpc(
       "email_exists",
@@ -66,13 +78,25 @@ Deno.serve(async (req: Request) => {
     if (existsErr) return json({ ok: false, error: existsErr.message }, 500);
 
     if (action === "check") {
-      return json({ ok: true, exists: exists === true, allowed });
+      return json({
+        ok: true,
+        exists: exists === true,
+        allowed,
+        domain_allowed: domainAllowed,
+      });
     }
 
     if (action === "signup") {
       const password = String(body?.password ?? "");
       const fullName = String(body?.full_name ?? "").trim();
-      if (!allowed) return json({ ok: false, error: "not_allowed" }, 403);
+      // ⚠️ เจตนาไม่รวม domainAllowed ตรงนี้ — โดเมนบริษัทสร้างบัญชีเองได้เฉพาะทาง Google
+      // (ทางนี้ไม่มีอะไรพิสูจน์ว่าคนกรอกเป็นเจ้าของกล่องเมลจริง)
+      if (!allowed) {
+        return json(
+          { ok: false, error: domainAllowed ? "use_google" : "not_allowed" },
+          403
+        );
+      }
       if (exists === true) return json({ ok: false, error: "already_exists" }, 409);
       if (password.length < 6) {
         return json({ ok: false, error: "password_too_short" }, 400);

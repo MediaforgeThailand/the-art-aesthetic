@@ -2,21 +2,24 @@ import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { getAccess, hasPermission } from "@/lib/access";
-import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import type {
-  PriceItemRow,
-  PricePromotionRow,
-  PromoPackageWithItems,
-} from "@/lib/types";
+import type { PriceItemRow, PromoPackageWithItems } from "@/lib/types";
 import { PriceItemsAdmin } from "./price-items-admin";
-import { PricingClient } from "./pricing-client";
 import { PromoPackagesAdmin } from "./promo-packages-admin";
 
 export const metadata: Metadata = {
   title: "Product Pricing",
 };
 
+/**
+ * หลังบ้านราคา — 2 ส่วน: โปรที่ขึ้นหน้า /price-list (promo_packages) + ราคาอ้างอิงกลาง (price_items)
+ *
+ * ⚠️ การ์ด "โปรโมชันที่อนุมัติ" (ตาราง `price_promotions` โทนชมพู) ถูกถอดออกจากหน้านี้
+ * เมื่อ 2026-08-29 เพื่อเร่ง v1.0 ตามคำสั่งผู้ใช้ — ตารางไม่เคยมีข้อมูลสักแถว (0 rows)
+ * และงานจริงย้ายไปอยู่ที่ promo_packages หมดแล้ว **ข้อมูล/ตาราง/โค้ดยังอยู่ครบ**
+ * (`pricing-client.tsx` + type `PricePromotionRow`) เอากลับมาได้ด้วยการ import
+ * PricingClient แล้ว query price_promotions เหมือนเดิม
+ */
 export default async function PricingPage() {
   const supabase = await createClient();
 
@@ -61,22 +64,12 @@ export default async function PricingPage() {
   };
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
-  const [access, { data, error }, priceItemsResult, promoResult] = await Promise.all([
+  const [access, priceItemsResult, promoResult] = await Promise.all([
     getAccess(),
-    supabase
-      .from("price_promotions")
-      .select("*")
-      // โปรที่เลยวันหมดเขตถือว่าปิดไปแล้ว — ไม่ดึงมาแสดง (แถวยังอยู่ในตารางเป็นประวัติ)
-      .or(`expires_on.is.null,expires_on.gte.${todayISO()}`)
-      .order("category", { ascending: true })
-      .order("normal_price", { ascending: true }),
     fetchPriceItems(),
     fetchPromoPackages(),
   ]);
   if (!hasPermission(access, "pricing")) return <AccessNotice />;
-
-  const promotions = (data ?? []) as PricePromotionRow[];
-  const demo = promotions.some((p) => p.note === "demo");
 
   return (
     <PageContainer>
@@ -87,11 +80,6 @@ export default async function PricingPage() {
       <PriceItemsAdmin
         items={priceItemsResult.rows}
         loadError={priceItemsResult.error}
-      />
-      <PricingClient
-        promotions={promotions}
-        demo={demo}
-        loadError={error?.message ?? null}
       />
     </PageContainer>
   );

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/access";
+import { PendingApprovalClient } from "./pending-client";
 
 /**
  * ปลายทางแรกของแต่ละคน — เลือกตามสิทธิ์ที่มีจริง
@@ -36,7 +37,10 @@ export default async function StartPage() {
     redirect("/wellness");
   // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ
   if (access.isAdmin) redirect("/accounts");
-  // ผู้ใช้ใหม่ที่ admin ยังไม่เปิดสิทธิ์ให้ — อย่างน้อย My List ใช้ได้ทันทีโดยไม่ต้องรอใคร
-  // (เป็นพื้นที่ส่วนตัวของบัญชีนั้นเอง ไม่ใช่ข้อมูลของแผนก)
-  redirect("/my-tasks");
+
+  // ยังไม่มีสิทธิ์อะไรเลย = บัญชีที่เพิ่งสร้าง (ส่วนใหญ่มาจากเมลบริษัทที่ล็อกอินด้วย Google
+  // ตาม migration 0093) — บอกตรงๆ ว่า "รออนุมัติสิทธิ์" ไม่ใช่โยนเข้า My List เงียบๆ
+  // ให้เดาเอาเองว่าทำไมไม่มีเมนูอะไรเลย (ผู้ใช้ 2026-08-29)
+  if (!access.uid) redirect("/login");
+  return <PendingApprovalClient email={access.name ?? ""} />;
 }

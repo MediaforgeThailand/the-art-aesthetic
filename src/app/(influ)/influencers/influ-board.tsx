@@ -30,6 +30,7 @@ import {
   CalendarClock,
   Check,
   FileSignature,
+  Hash,
   MessageCircleQuestion,
   Phone,
   RotateCcw,
@@ -42,6 +43,7 @@ import { Fragment, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
+  type CaseHashtag,
   contractEndDate,
   INFLU_SIZE_GROUP_ORDER,
   INFLU_SIZE_GROUPS,
@@ -385,6 +387,7 @@ export function InfluCardContent({
   today,
   overlay = false,
   links,
+  hashtags,
   ownerName,
   deleting = false,
   needsBooking = false,
@@ -400,6 +403,8 @@ export function InfluCardContent({
   ownerName?: string | null;
   /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
   links?: InfluLinkLite[];
+  /** แฮชแท็กบังคับของเคส (0092) — undefined = หน้าที่เรียกไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
+  hashtags?: CaseHashtag[];
   deleting?: boolean;
   /** ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ติดป้ายเรืองแสง (ดู needsDoctorBooking) */
   needsBooking?: boolean;
@@ -594,6 +599,12 @@ export function InfluCardContent({
         </div>
       )}
 
+      {/* แฮชแท็กบังคับของเคส (0092) — influ ต้องติดชุดนี้ในโพส ทีมจึงต้องเห็นบนการ์ด
+          แท็กที่ยังขาดข้อมูลขึ้นเป็นชิปเหลืองพร้อมบอกว่าต้องไปเติมที่ไหน */}
+      {hashtags && hashtags.length > 0 && !declined && (
+        <CardHashtags tags={hashtags} />
+      )}
+
       <StageTracker
         stage={i.stage}
         completed={i.completed}
@@ -604,12 +615,46 @@ export function InfluCardContent({
   );
 }
 
+/** แถวแฮชแท็กบนการ์ด — ตัวเล็ก โทนเงียบ (แท็กที่ครบ) + เหลืองเมื่อยังขาดข้อมูล */
+function CardHashtags({ tags }: { tags: CaseHashtag[] }) {
+  const ready = tags.filter((t) => t.tag !== null);
+  const missing = tags.filter((t) => t.tag === null);
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-1 border-t border-stone-100 pt-2.5">
+      <Hash size={11} className="shrink-0 text-stone-300" />
+      {ready.map((t) => (
+        <span
+          key={`${t.key}-${t.tag}`}
+          title={t.source ? `${t.label}: ${t.source}` : t.label}
+          className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-600"
+        >
+          {t.tag}
+        </span>
+      ))}
+      {/* แท็กที่ขาดยุบเป็นชิปเดียว — เคสส่วนใหญ่ขาดพร้อมกันหลายอัน (เช่นตอนทะเบียนหมอ
+          ยังไม่ได้กรอกเลขใบ ปว.) ถ้าลิสต์ทีละอันการ์ดจะเต็มไปด้วยชิปเหลืองจนอ่านอย่างอื่นไม่ออก
+          รายละเอียดว่าขาดอะไร/ต้องไปเติมที่ไหน อยู่ในหน้าเคส (HashtagBlock) */}
+      {missing.length > 0 && (
+        <span
+          title={missing
+            .map((t) => t.missingHint ?? `ยังไม่มีแท็ก${t.label}`)
+            .join("\n")}
+          className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200"
+        >
+          แท็กไม่ครบ {missing.length}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ---------- การ์ดแบบลากได้ ---------- */
 
 function SortableInfluCard({
   influ,
   stats,
   links,
+  hashtags,
   ownerName,
   today,
   deleting,
@@ -623,6 +668,8 @@ function SortableInfluCard({
   influ: InfluencerListRow;
   stats: InfluStats | undefined;
   links: InfluLinkLite[] | undefined;
+  /** แฮชแท็กบังคับของเคสนี้ (0092) — undefined = หน้าที่ไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
+  hashtags?: CaseHashtag[];
   ownerName?: string | null;
   today: string;
   deleting: boolean;
@@ -661,6 +708,7 @@ function SortableInfluCard({
         influ={influ}
         stats={stats}
         links={links}
+        hashtags={hashtags}
         ownerName={ownerName}
         today={today}
         deleting={deleting}
@@ -680,6 +728,7 @@ function BoardColumn({
   influs,
   statsByInflu,
   linksByInflu,
+  hashtagsByInflu,
   ownerNameById,
   bookingAlertIds,
   today,
@@ -695,6 +744,8 @@ function BoardColumn({
   influs: InfluencerListRow[];
   statsByInflu: Map<string, InfluStats>;
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  /** แฮชแท็กบังคับต่อเคส (0092) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
+  hashtagsByInflu?: Map<string, CaseHashtag[]>;
   ownerNameById?: Map<string, string>;
   bookingAlertIds: ReadonlySet<string>;
   today: string;
@@ -753,6 +804,7 @@ function BoardColumn({
               influ={i}
               stats={statsByInflu.get(i.id)}
               links={linksByInflu?.get(i.id)}
+              hashtags={hashtagsByInflu?.get(i.id)}
               ownerName={i.owner_id ? ownerNameById?.get(i.owner_id) : null}
               today={today}
               deleting={deletingId === i.id}
@@ -776,6 +828,7 @@ export function InfluBoard({
   items,
   statsByInflu,
   linksByInflu,
+  hashtagsByInflu,
   ownerNameById,
   bookingAlertIds,
   today,
@@ -792,6 +845,8 @@ export function InfluBoard({
   statsByInflu: Map<string, InfluStats>;
   /** ลิงก์ไฟล์ source ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด (ไม่ส่ง = ไม่มีปุ่ม) */
   linksByInflu?: Map<string, InfluLinkLite[]>;
+  /** แฮชแท็กบังคับต่อเคส (0092) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
+  hashtagsByInflu?: Map<string, CaseHashtag[]>;
   /** ชื่อผู้รับผิดชอบต่อ uid — แปลง owner_id เป็นชื่อบนการ์ด */
   ownerNameById?: Map<string, string>;
   /** id ของเคสที่ต้องติดป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" */
@@ -982,6 +1037,7 @@ export function InfluBoard({
               influs={influs}
               statsByInflu={statsByInflu}
               linksByInflu={linksByInflu}
+              hashtagsByInflu={hashtagsByInflu}
               ownerNameById={ownerNameById}
               bookingAlertIds={bookingAlertIds}
               today={today}

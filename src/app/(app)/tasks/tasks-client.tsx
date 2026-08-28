@@ -2,7 +2,6 @@
 
 import {
   BadgeCheck,
-  BarChart3,
   ClipboardCheck,
   EyeOff,
   ListTodo,
@@ -2140,19 +2139,17 @@ export function TasksClient({
               </span>
             )}
           </button>
-          {/* ผลวิเคราะห์ = คลังลิงก์ Canva ที่หัวหน้าทีมแปะแชร์ — ไม่มี badge เพราะเป็นคลัง ไม่ใช่คิวงาน */}
+          {/* แท็บ "ผลวิเคราะห์" (คลังลิงก์ Canva) ถูกซ่อนเพื่อเร่ง v1.0 เมื่อ 2026-08-29
+              ตามคำสั่งผู้ใช้ — ไม่เคยมีใครแปะลิงก์เลยสักอัน (analysis_links 0 แถว)
+              โค้ด/ข้อมูล/ตารางยังอยู่ครบ (AnalysisList + query ใน page.tsx)
+              เอากลับมาได้ด้วยการปลดคอมเมนต์ปุ่มนี้:
           <button
             type="button"
             onClick={() => setTab("analysis")}
-            className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-              tab === "analysis"
-                ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                : "text-stone-500 hover:bg-white/70 hover:text-brand-700"
-            }`}
+            className={...}
           >
-            <BarChart3 size={16} />
-            ผลวิเคราะห์
-          </button>
+            <BarChart3 size={16} /> ผลวิเคราะห์
+          </button> */}
           <button
             type="button"
             onClick={() => setTab("trash")}

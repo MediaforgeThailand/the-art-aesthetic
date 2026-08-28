@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Clock,
   Dices,
   KeyRound,
   ShieldCheck,
@@ -132,7 +133,13 @@ function PermissionSummary({ profile }: { profile: AccountProfile }) {
   const perms = permsOf(profile);
   const isAdmin = profile.role === "admin";
   if (!isAdmin && perms.length === 0) {
-    return <span className="text-xs text-stone-400">ยังไม่เปิดสิทธิ์</span>;
+    // บัญชีที่เพิ่งสมัครเองด้วยเมลบริษัท (Google SSO — migration 0093) จะมาโผล่ตรงนี้
+    // ทำให้เด่นหน่อย เพราะเป็นคิวงานของผู้ดูแล ไม่ใช่แค่สถานะเฉยๆ
+    return (
+      <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+        <Clock size={12} /> รออนุมัติสิทธิ์
+      </Badge>
+    );
   }
   return (
     <div className="flex flex-wrap gap-1">

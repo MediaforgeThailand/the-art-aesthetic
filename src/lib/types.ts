@@ -50,6 +50,8 @@ export type {
   InfluSignatureRow,
   InfluTaskRow,
   InfluCampaignRow,
+  InfluCampaignDefRow,
+  InfluCampaignMemberRow,
   InfluCalendarKind,
   InfluCalendarEventRow,
   InfluProcedureItemRow,

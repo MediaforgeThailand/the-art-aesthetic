@@ -12,10 +12,17 @@
  * คัดลอกเฉพาะข้อมูลตัวบุคคล + copy รูปเข้าโฟลเดอร์เคสใหม่ (best effort ห้ามชี้ path ข้ามเคส)
  */
 
-import { CalendarPlus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
+import {
+  CalendarPlus,
+  Hash,
+  Search,
+  UserRound,
+  UserRoundPlus,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Button, Input, Label, Modal } from "@/components/ui";
+import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import {
@@ -26,6 +33,7 @@ import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluProfileRow,
   InfluServiceRow,
 } from "@/lib/types";
@@ -49,6 +57,7 @@ export function NewCaseModal({
   priceCatalog,
   promoCatalog,
   doctors,
+  campaigns,
   me,
   actor,
   onServiceCreated,
@@ -64,6 +73,8 @@ export function NewCaseModal({
   /** โปรที่ขึ้นหน้า /price-list (promo_packages) — ค้นเจอในช่องหัตถการด้วย (0090) */
   promoCatalog: PromoCatalogEntry[];
   doctors: DoctorRow[];
+  /** แคมเปญที่เปิดใช้งาน — เลือกได้ตอนสร้างเคส (ไม่บังคับ) */
+  campaigns: InfluCampaignDefRow[];
   me: { id: string | null; name: string };
   actor: InfluLogActor;
   /** หัตถการใหม่ที่เพิ่งลงทะเบียน — แจ้ง parent ให้ลิสต์กลางอัปเดต */
@@ -88,7 +99,8 @@ export function NewCaseModal({
   );
   const [profileQuery, setProfileQuery] = useState("");
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [influCode, setInfluCode] = useState("");
+  /** แคมเปญของเคส (ไม่บังคับ) — "" = ไม่อยู่ในแคมเปญไหน */
+  const [campaignId, setCampaignId] = useState("");
   const [procedures, setProcedures] = useState<PickedProcedure[]>([]);
   /** รอปรึกษา = ยังไม่รู้ว่าจะทำอะไร ต้องให้แพทย์ดูก่อน — ทางออกเดียวที่เปิดเคสได้โดยไม่มีหัตถการ */
   const [consultOnly, setConsultOnly] = useState(false);
@@ -104,7 +116,7 @@ export function NewCaseModal({
   const reset = () => {
     setSelected(null);
     setProfileQuery("");
-    setInfluCode("");
+    setCampaignId("");
     setProcedures([]);
     setConsultOnly(false);
     setTalentFee("");
@@ -113,6 +125,14 @@ export function NewCaseModal({
     setContactChannel("");
     setErr(null);
   };
+
+  // เลือกได้เฉพาะแคมเปญที่ยังเปิดใช้งาน — ของที่ปิดไปแล้วไม่ควรผูกเคสใหม่เข้าไป
+  const activeCampaigns = useMemo(
+    () => campaigns.filter((c) => c.active),
+    [campaigns]
+  );
+  const selectedCampaign =
+    activeCampaigns.find((c) => c.id === campaignId) ?? null;
 
   const matchedProfiles = useMemo(() => {
     const q = profileQuery.trim().toLowerCase();
@@ -165,6 +185,19 @@ export function NewCaseModal({
     }
     const roundNo = (latest?.[0]?.round_no ?? 0) + 1;
 
+    // รหัส Influ ID ออกจาก DB (sequence) — ไม่ให้คนพิมพ์เอง เพราะเป็นกุญแจของแฮชแท็ก
+    // ที่ใช้ track ยอดจาก Meta ต้องไม่ซ้ำเด็ดขาด (0092)
+    const { data: newCode, error: codeErr } = await supabase.rpc(
+      "next_influ_code"
+    );
+    if (codeErr || !newCode) {
+      setSaving(false);
+      setErr(
+        `ออกรหัส Influ ID ไม่สำเร็จ: ${codeErr?.message ?? "ไม่ทราบสาเหตุ"}`
+      );
+      return;
+    }
+
     const { data: created, error } = await supabase
       .from("influencers")
       .insert({
@@ -181,7 +214,8 @@ export function NewCaseModal({
         tier: selected.tier,
         // ขั้นติดต่อ+รายละเอียดจบตอนทำโปรไฟล์/ฟอร์มนี้แล้ว — เริ่มที่ Memo เลย
         stage: INFLU_STAGE.memo,
-        influ_code: influCode.trim() || null,
+        influ_code: newCode,
+        campaign_id: campaignId || null,
         // รอปรึกษา = ทำ Memo ได้ทั้งที่ยังไม่มีหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคสเมื่อเคาะแล้ว)
         // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
         consult_only: consultOnly && procedures.length === 0,
@@ -201,10 +235,10 @@ export function NewCaseModal({
       .single();
     if (error || !created) {
       setSaving(false);
-      // 23505 = ชนกับ unique index ของ influ_code (คนละเคสแต่กรอกรหัสซ้ำ)
+      // 23505 = รหัสชนกัน — แทบเป็นไปไม่ได้แล้วเพราะระบบออกให้ แต่บอกทางออกไว้เผื่อ
       setErr(
         error?.code === "23505"
-          ? `รหัส Influ ID "${influCode.trim()}" ถูกใช้กับเคสอื่นแล้ว — ใช้รหัสอื่น`
+          ? `รหัส Influ ID ${newCode} ชนกับเคสอื่น — กดสร้างอีกครั้งเพื่อออกรหัสใหม่`
           : `สร้างนัดไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
       );
       return;
@@ -251,9 +285,7 @@ export function NewCaseModal({
       entityId: created.id,
       influencerId: created.id,
       influencerName: name,
-      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name}${
-        influCode.trim() ? ` (รหัส ${influCode.trim()})` : ""
-      } — ${
+      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name} (รหัส ${newCode}) — ${
         procedures.length > 0
           ? `หัตถการ: ${procedureSummaryText(procedures)}`
           : "รอปรึกษา (ยังไม่ระบุหัตถการ)"
@@ -264,6 +296,8 @@ export function NewCaseModal({
         procedures: procedures.length,
         consult_only: consultOnly,
         talent_fee: feeNum,
+        influ_code: newCode,
+        campaign: selectedCampaign?.tag ?? null,
         contact_channel: contactChannel.trim() || null,
       },
     });
@@ -390,16 +424,21 @@ export function NewCaseModal({
           {/* ---- ขั้น 2: ข้อมูลเคส ---- */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="nc-code">รหัส Influ ID</Label>
-              <Input
-                id="nc-code"
-                disabled={saving}
-                value={influCode}
-                onChange={(e) => setInfluCode(e.target.value)}
-                placeholder="เช่น INF-2569-001"
-              />
+              <Label>รหัส Influ ID</Label>
+              {/* ระบบออกให้เองตอนกดสร้าง (RPC next_influ_code) — ไม่ให้พิมพ์เอง
+                  เพราะรหัสนี้เป็นกุญแจของแฮชแท็กที่ใช้ track ยอดจาก Meta ต้องไม่ซ้ำเด็ดขาด */}
+              <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+                <Hash size={15} className="shrink-0 text-brand-500" />
+                <span className="font-mono text-sm text-stone-500">
+                  INF-XXXXX
+                </span>
+                <span className="ml-auto text-xs text-stone-400">
+                  ออกให้อัตโนมัติ
+                </span>
+              </div>
               <p className="mt-1 text-xs text-stone-400">
-                รหัสต่อเคส/รอบ ห้ามซ้ำกับเคสอื่น (เว้นว่างได้ถ้ายังไม่มีรหัส)
+                ระบบออกรหัสให้ตอนกดสร้าง (ไม่ซ้ำกับเคสอื่น) —
+                ใช้เป็นแฮชแท็กประจำเคสในโพสของ influ
               </p>
             </div>
             <div>
@@ -415,6 +454,29 @@ export function NewCaseModal({
                 ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ (แก้ทีหลังได้ที่แท็บรายละเอียดเคส)
               </p>
             </div>
+          </div>
+
+          {/* แคมเปญ (ไม่บังคับ) — เลือกแล้วเคสนี้จะมีแฮชแท็กของแคมเปญเพิ่มเข้าไปในชุดที่ influ ต้องติด */}
+          <div>
+            <Label htmlFor="nc-campaign">แคมเปญ</Label>
+            <Select
+              id="nc-campaign"
+              disabled={saving}
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
+            >
+              <option value="">— ไม่อยู่ในแคมเปญ —</option>
+              {activeCampaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} (#{c.tag})
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-stone-400">
+              {selectedCampaign
+                ? `เคสนี้ต้องติดแท็ก #${selectedCampaign.tag} ในโพสด้วย`
+                : "เลือกได้ถ้าเคสนี้อยู่ในแคมเปญ — จะเพิ่มแฮชแท็กของแคมเปญให้อัตโนมัติ"}
+            </p>
           </div>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">

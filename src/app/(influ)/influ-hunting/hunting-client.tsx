@@ -50,6 +50,7 @@ import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluProfileRow,
   InfluProspectContactRow,
   InfluProspectRow,
@@ -99,6 +100,7 @@ export function HuntingClient({
   priceCatalog,
   promoCatalog,
   doctors,
+  campaigns,
   people,
   me,
   loadError,
@@ -111,6 +113,8 @@ export function HuntingClient({
   /** โปรที่ขึ้นหน้า /price-list (promo_packages — 0090) — ต้องค้นเจอในช่องหัตถการด้วย */
   promoCatalog: PromoCatalogEntry[];
   doctors: DoctorRow[];
+  /** แคมเปญทั้งหมด (0092) — ตัวเลือกในฟอร์มสร้างนัด */
+  campaigns: InfluCampaignDefRow[];
   people: { id: string; name: string }[];
   me: Me;
   loadError: string | null;
@@ -732,6 +736,7 @@ export function HuntingClient({
           priceCatalog={priceCatalog}
           promoCatalog={promoCatalog}
           doctors={doctors}
+          campaigns={campaigns}
           me={{ id: me.id, name: me.name }}
           actor={actor}
           onServiceCreated={(svc) => setExtraServices((prev) => [...prev, svc])}

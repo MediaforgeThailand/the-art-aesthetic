@@ -11,12 +11,17 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
   InfluProfileRow,
   InfluServiceRow,
   InfluTaskRow,
 } from "@/lib/types";
 import type { InfluLinkLite } from "./influ-links";
-import { InfluencersClient, type InfluencerListRow } from "./influencers-client";
+import {
+  type CaseProcedureLite,
+  InfluencersClient,
+  type InfluencerListRow,
+} from "./influencers-client";
 import type {
   PriceCatalogEntry,
   PromoCatalogEntry,
@@ -29,7 +34,7 @@ export const metadata: Metadata = {
 // คอลัมน์ทั้งหมดของ influencers ยกเว้น procedure_history — jsonb เก็บลายเซน base64
 // (~10-30KB/รายการ) หน้า list ไม่ได้ใช้ ไม่ต้องส่งลงมาให้หนักเปล่า
 const INFLU_LIST_COLUMNS =
-  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, consult_only, talent_fee, service_date, doctor_name, contact_channel, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, owner_id, created_by, created_at, updated_at";
+  "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, consult_only, talent_fee, service_date, doctor_name, contact_channel, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, campaign_id, owner_id, created_by, created_at, updated_at";
 
 export default async function InfluencersPage() {
   const supabase = await createClient();
@@ -50,6 +55,8 @@ export default async function InfluencersPage() {
     { data: profiles },
     { data: influProfiles },
     { data: services },
+    { data: campaigns },
+    { data: procedureItems },
   ] = await Promise.all([
       getAccess(),
       supabase
@@ -104,6 +111,15 @@ export default async function InfluencersPage() {
         .select("*")
         .eq("active", true)
         .order("name", { ascending: true }),
+      // แคมเปญ (0092) — ตัวเลือกในฟอร์มสร้างนัด + แปลงเป็นแฮชแท็กบนการ์ด
+      supabase
+        .from("influ_campaign_defs")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      // หัตถการของทุกเคส — ใช้สร้างแฮชแท็ก #หัตถการ (product_team) และ #โปรโมชัน (sku ของโปร)
+      supabase
+        .from("influ_procedure_items")
+        .select("influencer_id, product_team, promo:promo_packages(sku)"),
     ]);
   if (!canViewInflu(access)) return <AccessNotice />;
 
@@ -120,6 +136,11 @@ export default async function InfluencersPage() {
           >[]
         }
         doctors={(doctors ?? []) as DoctorRow[]}
+        campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
+        // embed ของ supabase ไม่มีใน Database type ที่เขียนมือ — ต้อง cast ผ่าน unknown
+        procedureItems={
+          (procedureItems ?? []) as unknown as CaseProcedureLite[]
+        }
         sourceLinks={(sourceLinks ?? []) as InfluLinkLite[]}
         bookedInfluIds={
           (serviceBookings ?? [])

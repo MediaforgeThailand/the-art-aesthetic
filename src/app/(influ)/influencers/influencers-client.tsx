@@ -27,6 +27,8 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatNumber, todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
 import {
+  type CaseHashtag,
+  caseHashtags,
   INFLU_STAGE_LAST,
   INFLU_STAGES,
   sizeGroupFromFollowers,
@@ -35,6 +37,8 @@ import type { InfluLevel } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluCampaignDefRow,
+  InfluProductTeam,
   InfluProfileRow,
   InfluServiceRow,
   InfluSizeGroup,
@@ -61,6 +65,14 @@ import {
 // ที่อยู่ใหม่ของ type/helper อยู่ใน influ-board.tsx — re-export ให้หน้าอื่น (influ-gallery) import ได้เหมือนเดิม
 export { influName } from "./influ-board";
 export type { InfluencerListRow } from "./influ-board";
+
+/** หัตถการของเคส (ย่อ) — ใช้สร้างแฮชแท็ก #หัตถการ/#โปรโมชัน บนการ์ด (0092) */
+export type CaseProcedureLite = {
+  influencer_id: string;
+  product_team: InfluProductTeam;
+  /** โปรที่ผูกไว้ (0090) — null = หัตถการเดี่ยว ไม่ได้มาจากโปร */
+  promo: { sku: string } | null;
+};
 
 /* ---------- ตัวกรอง "ยกเว้น" (จำค่าใน localStorage — ใช้ร่วมทุกเครื่องที่เปิดหน้านี้) ---------- */
 
@@ -221,6 +233,8 @@ export function InfluencersClient({
   influencers,
   tasks,
   doctors,
+  campaigns,
+  procedureItems,
   sourceLinks,
   bookedInfluIds,
   priceCatalog,
@@ -234,6 +248,10 @@ export function InfluencersClient({
   influencers: InfluencerListRow[];
   tasks: InfluTaskLite[];
   doctors: DoctorRow[];
+  /** แคมเปญทั้งหมด (0092) — ส่งต่อให้ฟอร์มสร้างนัดเลือก + แปลงเป็นแฮชแท็กบนการ์ด */
+  campaigns: InfluCampaignDefRow[];
+  /** หัตถการของทุกเคส — ที่มาของแฮชแท็ก #หัตถการ (ทีมสินค้า) และ #โปรโมชัน (0092) */
+  procedureItems: CaseProcedureLite[];
   /** ลิงก์ไฟล์ source (Google Drive) ทั้งหมด — ปุ่มเปิดเร็วบนการ์ด */
   sourceLinks: InfluLinkLite[];
   /** influencer ที่มีคิว "เข้ารับบริการ" ในปฏิทินแล้ว = นัดหมอเรียบร้อย */
@@ -297,6 +315,57 @@ export function InfluencersClient({
     },
     [router]
   );
+
+  /* แฮชแท็กบังคับต่อเคส (0092) — คำนวณครั้งเดียวที่นี่แล้วส่งเป็น Map ให้การ์ด
+     ประกอบจาก 4 แหล่ง: รหัสเคส · เลขใบ ปว. ของหมอ (จับคู่ด้วยชื่อ) · แท็กแคมเปญ ·
+     product team + โปรของหัตถการในเคส */
+  const licenseByDoctor = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of doctors) {
+      if (d.license_no) m.set(d.name, d.license_no);
+    }
+    return m;
+  }, [doctors]);
+
+  const campaignById = useMemo(() => {
+    const m = new Map<string, InfluCampaignDefRow>();
+    for (const c of campaigns) m.set(c.id, c);
+    return m;
+  }, [campaigns]);
+
+  const proceduresByInflu = useMemo(() => {
+    const m = new Map<string, { teams: InfluProductTeam[]; skus: string[] }>();
+    for (const it of procedureItems) {
+      const cur = m.get(it.influencer_id) ?? { teams: [], skus: [] };
+      cur.teams.push(it.product_team);
+      if (it.promo?.sku) cur.skus.push(it.promo.sku);
+      m.set(it.influencer_id, cur);
+    }
+    return m;
+  }, [procedureItems]);
+
+  const hashtagsByInflu = useMemo(() => {
+    const m = new Map<string, CaseHashtag[]>();
+    for (const i of items) {
+      const campaign = i.campaign_id ? campaignById.get(i.campaign_id) : null;
+      const procs = proceduresByInflu.get(i.id);
+      m.set(
+        i.id,
+        caseHashtags({
+          influCode: i.influ_code,
+          doctorName: i.doctor_name,
+          doctorLicense: i.doctor_name
+            ? (licenseByDoctor.get(i.doctor_name) ?? null)
+            : null,
+          campaignTag: campaign?.tag ?? null,
+          campaignName: campaign?.name ?? null,
+          teams: procs?.teams ?? [],
+          promoSkus: procs?.skus ?? [],
+        })
+      );
+    }
+    return m;
+  }, [items, campaignById, proceduresByInflu, licenseByDoctor]);
 
   // ลิงก์ไฟล์ source จัดกลุ่มตาม influencer — ปุ่มเปิดเร็วบนการ์ด
   const linksByInflu = useMemo(() => {
@@ -754,6 +823,7 @@ export function InfluencersClient({
           items={filtered}
           statsByInflu={statsByInflu}
           linksByInflu={linksByInflu}
+          hashtagsByInflu={hashtagsByInflu}
           bookingAlertIds={bookingAlertIds}
           ownerNameById={nameById}
           today={today}
@@ -797,6 +867,7 @@ export function InfluencersClient({
         priceCatalog={priceCatalog}
         promoCatalog={promoCatalog}
         doctors={doctors}
+        campaigns={campaigns}
         me={{ id: me.id, name: me.name }}
         actor={actor}
         onServiceCreated={(sv) => setExtraServices((prev) => [...prev, sv])}

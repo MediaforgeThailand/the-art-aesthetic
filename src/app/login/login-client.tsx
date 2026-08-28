@@ -39,6 +39,9 @@ function authErrorText(raw: string): string {
     invalid_email: "รูปแบบอีเมลไม่ถูกต้อง",
     not_allowed:
       "อีเมลนี้ยังไม่ได้รับอนุญาตให้ใช้งาน — ติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชีให้",
+    // อีเมลบริษัทที่ยังไม่มีบัญชี — สร้างเองได้ทาง Google เท่านั้น (migration 0093)
+    use_google:
+      "อีเมลบริษัทเข้าใช้งานได้เลย — กดปุ่ม “เข้าสู่ระบบด้วย Google” ด้านบน ระบบจะสร้างบัญชีให้อัตโนมัติ แล้วรอผู้ดูแลอนุมัติสิทธิ์",
     already_exists: "อีเมลนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบ",
     password_too_short: "รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร",
     // สามอันล่างมาจาก /auth/callback (Google SSO) ที่ส่งเหตุผลกลับมาทาง query ?error=
@@ -137,6 +140,10 @@ export default function LoginClient({
         setStep("login");
       } else if (res.allowed) {
         setStep("signup");
+      } else if (res.domain_allowed) {
+        // อีเมลบริษัทที่ยังไม่มีบัญชี — สร้างบัญชีเองได้ แต่ต้องผ่าน Google
+        // (Google เป็นคนพิสูจน์ว่าเป็นเจ้าของกล่องเมลจริง — ดู migration 0093)
+        setError(authErrorText("use_google"));
       } else {
         setError(authErrorText("not_allowed"));
       }

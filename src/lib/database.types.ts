@@ -419,8 +419,11 @@ export type InfluencerRow = {
   archived: boolean;
   /** เวลาที่ mark ว่า "ปฏิเสธ" (ไม่ร่วมงาน) — null = ไม่ได้ปฏิเสธ; ตัวกรองยกเว้นซ่อนได้ */
   declined_at: string | null;
-  /** รหัส Influ ID ที่ทีมกำหนดเอง — DB บังคับไม่ให้ซ้ำ (เทียบแบบไม่สนตัวพิมพ์) */
+  /** รหัส Influ ID — ระบบออกให้อัตโนมัติเป็น INF-00001 ผ่าน RPC `next_influ_code()` (0092)
+      DB บังคับไม่ให้ซ้ำ (unique index บน lower(influ_code)); null = เคสเก่าที่ยังไม่ได้ออกรหัส */
   influ_code: string | null;
+  /** แคมเปญของเคสนี้ (0092) — null = ไม่ได้อยู่ในแคมเปญไหน (แฮชแท็กแคมเปญจะไม่ถูกบังคับ) */
+  campaign_id: string | null;
   /** ผู้รับผิดชอบเคส = คนที่สร้างการ์ด (null = บัญชีถูกลบไปแล้ว) */
   owner_id: string | null;
   created_by: string | null;
@@ -776,12 +779,49 @@ export type AnalysisLinkRow = {
     active=false = ซ่อนจากตัวเลือก แต่ชื่อในเคส/คิวเก่ายังแสดงตามเดิม */
 export type DoctorRow = {
   id: string;
+  /** ชื่อที่แสดง — ประกอบจาก title/first_name/last_name/nickname ตอนบันทึก (doctorDisplayName())
+      และเป็น "กุญแจ" ที่จับคู่กับ influencers.doctor_name / influ_calendar_events.doctor_name */
   name: string;
+  /** เลขใบประกอบวิชาชีพเวชกรรม (0092) — ห้ามซ้ำ, เป็นที่มาของแฮชแท็ก #DR<เลข> */
+  license_no: string | null;
+  /** คำนำหน้า เช่น นพ. / พญ. */
+  title: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  nickname: string | null;
   /** รูปโปรไฟล์ใน bucket documents path doctors/{id}/... — null = แสดงไอคอนแทน */
   photo_path: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+/** แคมเปญการตลาดระดับระบบ (0092) — 1 แคมเปญ = 1 แท็กที่ influ ต้องติดในโพส
+    ⚠️ คนละก้อนกับ `InfluCampaignRow` (Sub Campaign รายเคสในหน้าสัญญา) */
+export type InfluCampaignDefRow = {
+  id: string;
+  name: string;
+  /** แท็กที่บังคับให้ติดในโพส — เก็บโดยไม่มี # นำหน้า และห้ามมี "-"/ช่องว่าง
+      (IG/FB ตัดคำที่ขีดกลาง แท็กที่มีขีดจะ track ไม่ได้) */
+  tag: string;
+  detail: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** influ ที่อยู่ในแคมเปญ — ผูกกับ "ตัวบุคคล" (influ_profiles) ไม่ใช่เคส
+    เพราะคนหนึ่งอยู่ในแคมเปญแล้วอาจเปิดเคสหลายรอบภายใต้แคมเปญเดียวกัน */
+export type InfluCampaignMemberRow = {
+  id: string;
+  campaign_id: string;
+  profile_id: string;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
 };
 
 export type PricePromotionRow = {
@@ -1334,6 +1374,21 @@ export interface Database {
         Update: Partial<DoctorRow>;
         Relationships: [];
       };
+      influ_campaign_defs: {
+        Row: InfluCampaignDefRow;
+        Insert: Partial<InfluCampaignDefRow> & { name: string; tag: string };
+        Update: Partial<InfluCampaignDefRow>;
+        Relationships: [];
+      };
+      influ_campaign_members: {
+        Row: InfluCampaignMemberRow;
+        Insert: Partial<InfluCampaignMemberRow> & {
+          campaign_id: string;
+          profile_id: string;
+        };
+        Update: Partial<InfluCampaignMemberRow>;
+        Relationships: [];
+      };
       influ_links: {
         Row: InfluLinkRow;
         Insert: Partial<InfluLinkRow> & {
@@ -1553,6 +1608,16 @@ export interface Database {
       influ_purge_expired_backups: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      /** ออกรหัส Influ ID ถัดไป (INF-00001) — ไม่ซ้ำทั้งระบบ (0092) */
+      next_influ_code: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      /** ออกแท็กแคมเปญถัดไป (CMP00001) เมื่อทีมไม่อยากตั้งเอง (0092) */
+      next_campaign_tag: {
+        Args: Record<string, never>;
+        Returns: string;
       };
     };
     Enums: Record<string, never>;
