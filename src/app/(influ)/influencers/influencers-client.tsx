@@ -27,6 +27,7 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatNumber, todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
 import {
+  INFLU_STAGE_LAST,
   INFLU_STAGES,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
@@ -759,7 +760,22 @@ export function InfluencersClient({
           deletingId={deletingId}
           canEdit={me.canEdit}
           canDelete={mayDelete}
-          onOpen={(i) => router.push(`/influencers/${i.id}`)}
+          onOpen={(i) => {
+            // กรอง stage อยู่ = เปิดหน้าเดินงานที่ขั้นนั้นเลย ไม่ต้องผ่านภาพรวม
+            // (กรอง "จบงาน" = เปิดที่ขั้นตามงาน — ขั้นสุดท้ายที่มีผลงาน/checklist ให้ดู)
+            // ฝั่ง detail จะ clamp ให้เองถ้าเคสยังเดินไม่ถึงขั้นที่ขอ
+            const stageView =
+              typeof stageFilter === "number"
+                ? stageFilter
+                : stageFilter === "done"
+                  ? INFLU_STAGE_LAST
+                  : null;
+            router.push(
+              stageView !== null
+                ? `/influencers/${i.id}?view=${stageView}`
+                : `/influencers/${i.id}`
+            );
+          }}
           onDelete={(i) => {
             setActionError(null);
             setDeleteTarget(i);

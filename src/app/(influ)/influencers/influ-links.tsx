@@ -107,11 +107,14 @@ export function InfluLinksCard({
   influencerId,
   initialLinks,
   readOnly = false,
+  bare = false,
 }: {
   influencerId: string;
   initialLinks: InfluLinkRow[];
   /** true = เปิดลิงก์ได้อย่างเดียว (สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี) */
   readOnly?: boolean;
+  /** true = ตัดกรอบ Card + หัวข้อของตัวเองออก (ฝังใน section ของเอกสารภาพรวมที่มีหัวข้ออยู่แล้ว) */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -168,18 +171,8 @@ export function InfluLinksCard({
       });
   };
 
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <FolderOpen size={16} className="text-brand-600" />
-        <h3 className="text-sm font-semibold text-stone-900">
-          ไฟล์ Source (Google Drive)
-        </h3>
-        {links.length > 0 && (
-          <span className="text-xs text-stone-400">{links.length} ลิงก์</span>
-        )}
-      </div>
-
+  const body = (
+    <>
       {links.length === 0 ? (
         <p className="mb-3 rounded-xl border border-dashed border-stone-300 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
           ยังไม่มีลิงก์ — วางลิงก์โฟลเดอร์ Google Drive ของไฟล์ source
@@ -255,6 +248,23 @@ export function InfluLinksCard({
           {err}
         </p>
       )}
+    </>
+  );
+
+  if (bare) return <div>{body}</div>;
+
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <FolderOpen size={16} className="text-brand-600" />
+        <h3 className="text-sm font-semibold text-stone-900">
+          ไฟล์ Source (Google Drive)
+        </h3>
+        {links.length > 0 && (
+          <span className="text-xs text-stone-400">{links.length} ลิงก์</span>
+        )}
+      </div>
+      {body}
     </Card>
   );
 }
