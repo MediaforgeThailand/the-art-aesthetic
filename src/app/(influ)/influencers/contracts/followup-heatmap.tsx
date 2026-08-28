@@ -120,7 +120,7 @@ export function FollowupHeatmap({
 
         <div className="flex flex-wrap gap-x-5 gap-y-4">
           {grids.map((g) => (
-            <div key={g.key} className="min-w-0">
+            <div key={g.key} className="w-full min-w-0 sm:w-auto">
               <p className="mb-1 text-[11px] font-medium text-stone-500">
                 {monthLabel(g)}
               </p>
@@ -137,48 +137,56 @@ export function FollowupHeatmap({
                 ))}
                 {g.days.map((date, idx) => {
                   if (date === null)
-                    return <span key={`pad-${g.key}-${idx}`} className="h-7" />;
-                  const cell = cells.get(date);
-                  const level = cell
-                    ? heatLevelOf(cell)
-                    : ("empty" as const);
-                  const count = cell?.rows.length ?? 0;
-                  const isToday = date === today;
-                  const selected = date === selectedDay;
+                    return (
+                      <span
+                        key={`pad-${g.key}-${idx}`}
+                        className="aspect-square w-full sm:aspect-auto sm:h-7"
+                      />
+                    );
                   const day = Number(date.slice(8));
-                  const title = cell
-                    ? `${formatDate(date)} — ${count} เคสเข้ามา · ลงคลิปแล้ว ${cell.rows.reduce((s, r) => s + r.metCount, 0)}/${cell.rows.reduce((s, r) => s + r.quotaTotal, 0)} โพส${
-                        cell.unset > 0
-                          ? ` · ยังไม่ตั้งเป้า ${cell.unset} เคส`
-                          : ""
-                      }`
-                    : `${formatDate(date)} — ไม่มี influ เข้ามา`;
+                  const cell = cells.get(date);
+                  // วันที่ไม่มี influ เข้ามา = ช่องเปล่า ไม่ต้องเป็นปุ่ม
+                  // (กด/โฟกัสไปก็ไม่มีอะไรให้ดู — ปฏิทินนี้เต็มไปด้วยวันว่าง)
+                  if (!cell)
+                    return (
+                      <span
+                        key={date}
+                        className={`flex aspect-square w-full items-center justify-center rounded-md text-[10px] tabular-nums sm:aspect-auto sm:h-7 sm:w-7 ${HEAT_CELL.empty} ${
+                          date === today ? "ring-1 ring-stone-400" : ""
+                        }`}
+                      >
+                        {day}
+                      </span>
+                    );
+                  const count = cell.rows.length;
+                  const selected = date === selectedDay;
+                  const met = cell.rows.reduce((s, r) => s + r.metCount, 0);
+                  const quota = cell.rows.reduce((s, r) => s + r.quotaTotal, 0);
+                  const title = `${formatDate(date)} — ${count} เคสเข้ามา · ลงคลิปแล้ว ${met}/${quota} โพส${
+                    cell.unset > 0 ? ` · ยังไม่ตั้งเป้า ${cell.unset} เคส` : ""
+                  }`;
                   return (
                     <button
                       key={date}
                       type="button"
-                      disabled={count === 0}
                       title={title}
                       aria-label={title}
+                      aria-pressed={selected}
                       onClick={() => onSelectDay(selected ? "" : date)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-medium tabular-nums transition-all ${HEAT_CELL[level]} ${
-                        count > 0
-                          ? "cursor-pointer hover:scale-110 hover:shadow-sm"
-                          : "cursor-default"
-                      } ${selected ? "ring-2 ring-brand-500 ring-offset-1" : isToday ? "ring-1 ring-stone-400" : ""}`}
+                      className={`flex aspect-square w-full cursor-pointer items-center justify-center rounded-md text-[10px] font-medium tabular-nums transition-all hover:scale-110 hover:shadow-sm sm:aspect-auto sm:h-7 sm:w-7 ${HEAT_CELL[heatLevelOf(cell)]} ${
+                        selected
+                          ? "ring-2 ring-brand-500 ring-offset-1"
+                          : date === today
+                            ? "ring-1 ring-stone-400"
+                            : ""
+                      }`}
                     >
-                      {count > 0 ? (
-                        <span className="flex flex-col items-center leading-none">
-                          <span>{day}</span>
-                          {count > 1 && (
-                            <span className="text-[8px] opacity-80">
-                              ×{count}
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        day
-                      )}
+                      <span className="flex flex-col items-center leading-none">
+                        <span>{day}</span>
+                        {count > 1 && (
+                          <span className="text-[8px] opacity-80">×{count}</span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
