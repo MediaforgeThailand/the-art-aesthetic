@@ -151,27 +151,26 @@ export function workStateOf(t: TrackedTask): WorkState {
   return "sent";
 }
 
+/** ป้ายสถานะในโมดัลรายวัน — อยู่บนพื้นขาว จึงใช้คนละชุดกับชิปในช่องปฏิทิน (HEAT_CHIP) */
 export const WORK_STATES: Record<
   WorkState,
-  { label: string; chip: string; dot: string; short: string }
+  { label: string; chip: string; short: string }
 > = {
   approved: {
     label: "ตรวจผ่านแล้ว",
     short: "ผ่าน",
-    chip: "bg-amber-500 text-white",
-    dot: "bg-amber-500",
+    // orange-600 คู่ตัวขาว ≈4.5:1 — ปลายเดียวกับระดับเข้มสุดของ heatmap
+    chip: "bg-orange-600 text-white",
   },
   waiting: {
     label: "ส่งแล้ว · รอตรวจ",
     short: "รอตรวจ",
     chip: "bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300",
-    dot: "bg-amber-200 ring-1 ring-amber-400",
   },
   sent: {
     label: "ส่งแล้ว · ไม่ได้อยู่ในคิวตรวจ",
     short: "ยังไม่ผ่าน",
-    chip: "border border-dashed border-amber-400 bg-amber-50 text-amber-800",
-    dot: "border border-dashed border-amber-400 bg-amber-50",
+    chip: "border border-dashed border-stone-300 bg-stone-50 text-stone-600",
   },
 };
 
@@ -193,22 +192,91 @@ export function heatLevel(total: number, approved: number): HeatLevel {
   return 4;
 }
 
-/** พื้นช่องปฏิทินตามระดับ — ตัวหนังสือยังเป็นสีเข้มอ่านได้ทุกระดับ (สูงสุด amber-300) */
-export const HEAT_CELL: Record<HeatLevel, string> = {
-  0: "bg-stone-100/70",
-  1: "bg-amber-50",
-  2: "bg-amber-100",
-  3: "bg-amber-200",
-  4: "bg-amber-300",
+/**
+ * สีของช่องปฏิทินต่อระดับ — คุมที่ตารางนี้ที่เดียว (redesign 2026-08-29 ตามผู้ใช้:
+ * "สีสื่อสารพอเข้าใจแล้ว แต่ไม่สวย ทำให้ดูเป็น heat map กว่านี้")
+ *
+ * หลักที่ยึด:
+ * 1. **ramp แนว YlOrBr ของ ColorBrewer** (sequential ที่ผ่านการพิสูจน์มาแล้ว):
+ *    ครีมส้ม → ทอง → ส้ม → ส้มไหม้ (orange-100 → amber-300 → orange-400 → orange-700)
+ *    — **สว่างลดลงพร้อมอิ่มสีเพิ่มขึ้นไปด้วยกัน** ซึ่งเป็นหัวใจของ heat ramp;
+ *    เคยลองจบที่ brand-700 (copper ของแบรนด์) แล้วพัง เพราะมันเป็นสีหม่นอิ่มสีต่ำ
+ *    พอไล่จากส้มสดไปน้ำตาลหม่นสายตาอ่านว่า "จางลง/ปิดใช้งาน" แทนที่จะเป็น "เข้มขึ้น"
+ * 2. **ค่าความสว่างไล่ลงจริง** L*≈95 → 87 → 74 → 52 (ของเดิม amber 50→300 ซีดใกล้กันหมด
+ *    จนแยกไม่ออก) — ขั้นสุดท้ายเว้นห่างมากโดยตั้งใจ ให้ "ผ่านครบ" เป็นหมุดสายตา
+ * 3. **ช่องว่าง = สีเทากลาง ไม่ใช่ขาว** ให้วันที่ยังไม่ส่งงานจมลงไปเป็นพื้นหลัง
+ * 4. **คอนทราสต์ตัวหนังสือผ่านทุกระดับ**: ระดับ 1-3 ตัวเข้ม brand-900 (≥5.8:1)
+ *    ระดับ 4 ตัวขาวบน brand-700 (≈5.9:1) — ห้ามใช้เฉดกลางอย่าง brand-500/orange-500
+ *    เป็นพื้น เพราะคอนทราสต์ตกทั้งกับตัวขาวและตัวเข้ม (~3:1 ทั้งคู่)
+ * 5. **ชิปงานเป็นการ์ดขาวทึบเสมอทุกระดับ** — ของเดิมเป็นชิปส้มวางบนพื้นส้ม เลยขุ่น
+ *    กลืนกันไปหมด; ขาวบนพื้นสีทำให้อ่านง่ายและดูสะอาดขึ้นมาก (ระดับ 0 ไม่มีชิปอยู่แล้ว
+ *    เพราะ level 0 = ไม่มีงานในวันนั้น)
+ */
+export const HEAT_LEVELS: Record<
+  HeatLevel,
+  {
+    /** พื้นช่อง */
+    tile: string;
+    /** สีตอน hover (เข้มขึ้นนิดเดียว ไม่เปลี่ยนความหมาย) */
+    hover: string;
+    /** เลขวัน */
+    day: string;
+    /** วงกลม "วันนี้" ที่ครอบเลขวัน — ต้องเด่นบนพื้นทุกระดับ */
+    today: string;
+    /** ตัวเลข ผ่าน/ทั้งหมด มุมขวาบน */
+    ratio: string;
+  }
+> = {
+  0: {
+    tile: "bg-stone-200/40",
+    hover: "hover:bg-stone-200/70",
+    day: "text-stone-400",
+    today: "bg-stone-600 text-white",
+    ratio: "text-stone-400",
+  },
+  1: {
+    tile: "bg-orange-100",
+    hover: "hover:bg-orange-200/80",
+    day: "text-orange-950",
+    today: "bg-orange-950 text-white",
+    ratio: "text-orange-900/70",
+  },
+  2: {
+    tile: "bg-amber-300",
+    hover: "hover:bg-amber-400/90",
+    day: "text-orange-950",
+    today: "bg-orange-950 text-white",
+    ratio: "text-orange-950/75",
+  },
+  3: {
+    tile: "bg-orange-400",
+    hover: "hover:bg-orange-500/90",
+    day: "text-orange-950",
+    today: "bg-orange-950 text-white",
+    ratio: "text-orange-950/80",
+  },
+  4: {
+    tile: "bg-orange-700",
+    hover: "hover:bg-orange-800",
+    day: "text-white",
+    today: "bg-white text-orange-800",
+    ratio: "text-white/80",
+  },
 };
 
-/** ตัวอย่างสีสำหรับแถบคำอธิบาย (legend) เหนือปฏิทิน */
-export const HEAT_LEGEND: { level: HeatLevel; label: string }[] = [
-  { level: 0, label: "ยังไม่ส่ง" },
-  { level: 1, label: "ส่งแล้ว ยังไม่ผ่าน" },
-  { level: 2, label: "ผ่านบางส่วน" },
-  { level: 4, label: "ผ่านครบทุกงาน" },
-];
+/** ชิปงานในช่องวัน — การ์ดขาวทึบ ใช้ชุดเดียวทุกระดับความเข้ม (อ่านง่ายบนพื้นสีทุกเฉด) */
+export const HEAT_CHIP =
+  "bg-white/90 text-stone-700 shadow-[0_1px_2px_rgba(120,53,15,0.12)]";
+
+/**
+ * จุดสถานะหน้าชิป — เข้ารหัสสองชั้น (สี + ทึบ/กลวง) คนตาบอดสีก็แยกออก
+ * ทึบ = ตรวจผ่านแล้ว · กลวง = ส่งแล้วยังไม่ผ่าน
+ */
+export const HEAT_DOT_DONE = "bg-brand-600";
+export const HEAT_DOT_OPEN = "border border-stone-300 bg-white";
+
+/** ไล่ระดับสำหรับแถบคำอธิบาย (legend) — เรียงอ่อน→เข้มแบบ heatmap มาตรฐาน */
+export const HEAT_SCALE: HeatLevel[] = [1, 2, 3, 4];
 
 /* ---------- กติกา KPI ---------- */
 
