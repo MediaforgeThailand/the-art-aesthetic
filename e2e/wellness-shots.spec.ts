@@ -38,12 +38,12 @@ async function login(page: Page) {
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
   try {
-    await page.waitForURL("**/dashboard", { timeout: 60_000, waitUntil: "commit" });
+    await page.waitForURL("**/start", { timeout: 60_000, waitUntil: "commit" });
   } catch {
     if (page.url().includes("/login")) {
       await page.locator('form button[type="submit"]').click();
     }
-    await page.waitForURL("**/dashboard", { timeout: 60_000, waitUntil: "commit" });
+    await page.waitForURL("**/start", { timeout: 60_000, waitUntil: "commit" });
   }
 }
 
