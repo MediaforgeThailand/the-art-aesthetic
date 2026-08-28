@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Copy,
   FileSignature,
+  FolderOpen,
   Image as ImageIcon,
   ImagePlus,
   LayoutList,
@@ -495,6 +496,7 @@ export function InfluDetailClient({
   userName,
   doctors,
   canManage,
+  initialStage = null,
 }: {
   influencer: InfluencerRow;
   /** รอบงานทั้งหมดของคนเดียวกัน (person_id เดียวกัน รวมเคสนี้ + เคสเก่า archived) เรียงรอบแรก→ล่าสุด */
@@ -527,13 +529,26 @@ export function InfluDetailClient({
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
   canManage: boolean;
+  /** ?view=<เลขขั้น> จากบอร์ดตอนกรอง stage — เปิดหน้ามาที่ขั้นนั้นเลยแทนภาพรวม
+      (clamp ที่นี่เพราะฝั่ง client รู้ stage จริงของเคส; เกินที่เคสเดินถึง = ตกไปภาพรวม) */
+  initialStage?: number | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const actor = useMemo(() => ({ id: userId, name: userName }), [userId, userName]);
   // view = "overview" (หน้าสรุป) · "detail" (รายละเอียดเคส — ไม่มีเลขขั้น แก้ได้เสมอ)
-  // หรือเลข stage 1-3 — เปิดหน้ารายละเอียดมาเจอภาพรวมก่อน
-  const [view, setView] = useState<"overview" | "detail" | number>("overview");
+  // หรือเลข stage 1-3 — เปิดหน้ามาเจอภาพรวม เว้นแต่บอร์ดส่ง ?view= มา (ดู initialStage)
+  const [view, setView] = useState<"overview" | "detail" | number>(() => {
+    const max = influencer.completed ? INFLU_STAGE_LAST : influencer.stage;
+    return initialStage !== null &&
+      initialStage !== undefined &&
+      Number.isInteger(initialStage) &&
+      initialStage >= 1 &&
+      initialStage <= INFLU_STAGE_LAST &&
+      initialStage <= max
+      ? initialStage
+      : "overview";
+  });
   // เมื่อ stage เลื่อนจริง (หลัง router.refresh หลังกด next) ให้พาไปหน้าของ stage ใหม่
   // แต่ตอน mount ครั้งแรกให้อยู่ที่ภาพรวมเสมอ
   const prevStageRef = useRef(influencer.stage);
@@ -1168,6 +1183,30 @@ function OverviewPhoto({ path }: { path: string }) {
   );
 }
 
+/** section ของเอกสารภาพรวมแนว A4 — เส้นคั่นบน + หัวข้อ (+ปุ่ม action ชิดขวา) ใช้ซ้ำทุกหมวด */
+function DocSection({
+  icon,
+  title,
+  action,
+  children,
+}: {
+  icon?: ReactNode;
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-t border-stone-200/60 px-5 py-5 sm:px-8">
+      <div className="mb-3 flex items-center gap-2">
+        {icon}
+        <h3 className="text-sm font-semibold text-stone-900">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function OverviewPanel({
   influencer,
   followupTasks,
@@ -1220,20 +1259,44 @@ function OverviewPanel({
 
   return (
     <div className="space-y-5">
-      {/* ความคืบหน้า stage */}
-      <Card className="p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <ListChecks size={16} className="text-brand-600" />
-          <h2 className="text-sm font-semibold text-stone-900">
-            ความคืบหน้าตามขั้นตอน
-          </h2>
-          <span className="text-xs text-stone-400">
-            {influencer.completed
-              ? "จบงานแล้ว"
-              : `กำลังอยู่ขั้นที่ ${influencer.stage} จาก ${INFLU_STAGES.length}`}
-          </span>
+      {/* เอกสารแนวตั้งใบเดียวแบบ A4 (ผู้ใช้ 2026-08-27 — เดิมแยก 4+ การ์ดอ่านยาก):
+          หัวเอกสาร = ตัวตน + สถานะรวม แล้วไล่หมวดลงมาด้วยเส้นคั่น (DocSection) */}
+      <Card className="mx-auto w-full max-w-3xl overflow-hidden p-0">
+        {/* หัวเอกสาร: รูป + ชื่อ + Tier + สถานะรวม */}
+        <div className="flex flex-wrap items-center gap-4 px-5 py-5 sm:px-8 sm:py-6">
+          {influencer.photo_path && (
+            <OverviewPhoto path={influencer.photo_path} />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-stone-900">
+                {influencer.nickname || fullName || "—"}
+              </h2>
+              {tier && <Badge className={tier.badge}>{tier.label}</Badge>}
+            </div>
+            {influencer.nickname && fullName && (
+              <p className="text-sm text-stone-500">{fullName}</p>
+            )}
+            <p className="mt-1 text-xs text-stone-400">
+              {influencer.completed
+                ? "จบงานแล้ว"
+                : `กำลังอยู่ขั้นที่ ${influencer.stage} จาก ${INFLU_STAGES.length}`}
+              {influencer.followers != null && (
+                <> · ผู้ติดตาม {formatNumber(influencer.followers)}</>
+              )}
+              {influencer.updated_at && (
+                <> · อัปเดตล่าสุด {formatDateTime(influencer.updated_at)}</>
+              )}
+            </p>
+          </div>
         </div>
-        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+
+        {/* ความคืบหน้า stage — กดขั้นที่เดินถึงแล้วเพื่อเปิดหน้าขั้นนั้น */}
+        <DocSection
+          icon={<ListChecks size={15} className="text-brand-600" />}
+          title="ความคืบหน้าตามขั้นตอน"
+        >
+          <ol className="grid gap-2 sm:grid-cols-3">
           {INFLU_STAGES.map((s) => {
             const passed = influencer.completed || influencer.stage > s.step;
             const current = !influencer.completed && influencer.stage === s.step;
@@ -1288,63 +1351,42 @@ function OverviewPanel({
             );
           })}
         </ol>
-      </Card>
+        </DocSection>
 
-      {/* ข้อมูลที่กรอกแล้ว */}
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-stone-900">
-            ข้อมูล Influencer
-          </h3>
-          <div className="flex gap-4">
-            {influencer.photo_path && (
-              <OverviewPhoto path={influencer.photo_path} />
-            )}
-            <dl className="grid flex-1 grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
-              <Field label="ชื่อเล่น" value={influencer.nickname} />
-              <Field label="ชื่อ-นามสกุล" value={fullName} />
-              <Field label="เบอร์โทร" value={influencer.phone} />
-              <Field label="อาชีพ" value={influencer.occupation} />
-              <Field
-                label="ผู้ติดตาม"
-                value={
-                  influencer.followers != null
-                    ? formatNumber(influencer.followers)
-                    : null
-                }
-              />
-              <Field
-                label="ระดับ (Tier)"
-                value={
-                  tier ? (
-                    <Badge className={tier.badge}>{tier.label}</Badge>
-                  ) : null
-                }
-              />
-              <Field label="ช่องทาง/หมายเหตุผู้ติดตาม" value={influencer.follower_note} />
-              <Field label="ผู้ดูแล (ผู้จัดทำ)" value={influencer.maker_name} />
-            </dl>
-          </div>
-        </Card>
+        {/* ข้อมูลตัวบุคคล — ชื่อ/Tier/ผู้ติดตามขึ้นหัวเอกสารแล้ว เหลือช่องที่ยังไม่ได้โชว์ */}
+        <DocSection
+          icon={<UserRound size={15} className="text-brand-600" />}
+          title="ข้อมูล Influencer"
+        >
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 min-[420px]:grid-cols-2">
+            <Field label="ชื่อเล่น" value={influencer.nickname} />
+            <Field label="ชื่อ-นามสกุล" value={fullName} />
+            <Field label="เบอร์โทร" value={influencer.phone} />
+            <Field label="อาชีพ" value={influencer.occupation} />
+            <Field label="ช่องทาง/หมายเหตุผู้ติดตาม" value={influencer.follower_note} />
+            <Field label="ผู้ดูแล (ผู้จัดทำ)" value={influencer.maker_name} />
+          </dl>
+        </DocSection>
 
-        <Card className="p-5">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-stone-900">
-              รายละเอียดเคส
-            </h3>
-            {canManage && !influencer.completed && (
+        <DocSection
+          icon={<ClipboardList size={15} className="text-brand-600" />}
+          title="รายละเอียดเคส"
+          action={
+            canManage &&
+            !influencer.completed && (
               <button
                 type="button"
                 onClick={() => setCaseInfoOpen(true)}
                 title="แก้ไขวันเข้ารับบริการ / แพทย์ที่รับเคส / ช่องทางการติดต่อ"
-                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:min-h-11"
+                className="ml-auto flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:min-h-11"
               >
                 <PenLine size={13} />
                 แก้ข้อมูลนัด
               </button>
-            )}
-          </div>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
+            )
+          }
+        >
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 min-[420px]:grid-cols-2">
             <Field
               label="หัตถการที่รับ"
               value={
@@ -1419,13 +1461,13 @@ function OverviewPanel({
               (ดูใน &quot;วันเข้ารับบริการ&quot;)
             </p>
           )}
-        </Card>
+        </DocSection>
 
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-stone-900">
-            เอกสาร & สัญญา
-          </h3>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
+        <DocSection
+          icon={<FileSignature size={15} className="text-brand-600" />}
+          title="เอกสาร & สัญญา"
+        >
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 min-[420px]:grid-cols-2">
             <Field
               label="Memo ขออนุมัติ"
               value={
@@ -1467,21 +1509,14 @@ function OverviewPanel({
               }
             />
           </dl>
-        </Card>
+        </DocSection>
 
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-stone-900">
-            การติดตามงาน
-          </h3>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2">
-            <Field
-              label="สถานะรวม"
-              value={
-                influencer.completed
-                  ? "จบงานแล้ว"
-                  : `กำลังทำขั้นที่ ${influencer.stage}`
-              }
-            />
+        {/* สถานะรวม/อัปเดตล่าสุดขึ้นหัวเอกสารแล้ว — หมวดนี้เหลือเฉพาะตัวเลขติดตามงาน */}
+        <DocSection
+          icon={<CheckCircle2 size={15} className="text-brand-600" />}
+          title="การติดตามงาน"
+        >
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 min-[420px]:grid-cols-2">
             <Field
               label="Follow-up (ขั้นตามงาน)"
               value={
@@ -1494,33 +1529,30 @@ function OverviewPanel({
               label="งานคอนเทนต์ที่ผูก"
               value={`${contentTasks.length} งาน`}
             />
-            <Field
-              label="อัปเดตล่าสุด"
-              value={
-                influencer.updated_at
-                  ? formatDateTime(influencer.updated_at)
-                  : null
-              }
-            />
           </dl>
-        </Card>
+        </DocSection>
 
         {/* ลิงก์ไฟล์ source (Google Drive) — แก้ได้เสมอแม้ปิดงานแล้ว (คลังไฟล์อ้างอิง)
-            แต่สิทธิ์ team ที่เข้ามาดูจากแกลเลอรีให้เปิดลิงก์ได้อย่างเดียว */}
-        <InfluLinksCard
-          influencerId={influencer.id}
-          initialLinks={sourceLinks}
-          readOnly={!canManage}
-        />
+            แต่สิทธิ์ team ที่เข้ามาดูจากแกลเลอรีให้เปิดลิงก์ได้อย่างเดียว —
+            bare = ตัดกรอบ Card/หัวข้อของการ์ดออก ใช้หัวข้อของ DocSection แทน */}
+        <DocSection
+          icon={<FolderOpen size={15} className="text-brand-600" />}
+          title="ไฟล์ Source (Google Drive)"
+        >
+          <InfluLinksCard
+            influencerId={influencer.id}
+            initialLinks={sourceLinks}
+            readOnly={!canManage}
+            bare
+          />
+        </DocSection>
 
         {/* โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (influ_profiles, 0080) — ข้อมูลกลางของทุกรอบ */}
-        <Card className="p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Link2 size={16} className="text-brand-600" />
-            <h2 className="text-sm font-semibold text-stone-900">
-              ช่องทางการติดต่อ (โปรไฟล์)
-            </h2>
-            {onEditProfile && (
+        <DocSection
+          icon={<Link2 size={15} className="text-brand-600" />}
+          title="ช่องทางการติดต่อ (โปรไฟล์)"
+          action={
+            onEditProfile && (
               <button
                 type="button"
                 onClick={onEditProfile}
@@ -1528,8 +1560,9 @@ function OverviewPanel({
               >
                 แก้โปรไฟล์
               </button>
-            )}
-          </div>
+            )
+          }
+        >
           {personProfile ? (
             <>
               {profileChannels.length > 0 ? (
@@ -1578,8 +1611,8 @@ function OverviewPanel({
               เคสนี้สร้างก่อนระบบโปรไฟล์ — ยังไม่มีข้อมูลโปรไฟล์กลางของคนนี้
             </p>
           )}
-        </Card>
-      </div>
+        </DocSection>
+      </Card>
 
       {caseInfoOpen && (
         <CaseInfoEditModal

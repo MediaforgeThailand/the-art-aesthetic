@@ -36,10 +36,17 @@ export const metadata: Metadata = {
 
 export default async function InfluencerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, { view }] = await Promise.all([params, searchParams]);
+
+  // ?view=<เลขขั้น> มาจากบอร์ดตอนกรอง stage อยู่ — เปิดหน้ามาที่ขั้นนั้นเลย
+  // (client เป็นคน clamp กับ stage จริงของเคส เพราะรู้ maxStage หลังโหลดข้อมูล)
+  const viewNum = Number.parseInt(view ?? "", 10);
+  const initialStage = Number.isInteger(viewNum) ? viewNum : null;
 
   const supabase = await createClient();
 
@@ -206,6 +213,7 @@ export default async function InfluencerDetailPage({
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
         canManage={canEditInflu(access)}
+        initialStage={initialStage}
       />
     </PageContainer>
   );
