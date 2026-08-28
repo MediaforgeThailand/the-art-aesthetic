@@ -49,7 +49,7 @@ export default async function WellnessDetailPage({
   // ปุ่มกลับ = หน้างานของบทบาทคนนั้น (admin กลับหน้าภาพรวม) — ไม่พาไปหน้าที่เขาไม่ได้ใช้
   const flags = wellnessRoleFlags(access.permissions);
   const back = flags.admin
-    ? { href: "/wellness-cases", label: "ภาพรวมเคส" }
+    ? { href: "/wellness/cases", label: "ภาพรวมเคส" }
     : (() => {
         const href = wellnessHomeHref(flags);
         const ws = WELLNESS_WORKSPACES.find((w) => w.href === href);

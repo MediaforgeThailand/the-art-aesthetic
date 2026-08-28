@@ -197,9 +197,9 @@ export function wellnessRoleFlags(
 export type WellnessWorkspaceId =
   | "register"
   | "lab"
-  | "booking"
-  | "clinic"
+  | "contact"
   | "calendar"
+  | "clinic"
   | "cases";
 
 /** คีย์ไอคอน — ค่าคงที่เป็นไฟล์ .ts จึงเก็บ JSX ไม่ได้ ตัว component map อยู่ฝั่ง client
@@ -211,10 +211,13 @@ export type WellnessWorkspace = {
   href: string;
   /** ป้ายบนเมนู (สั้น) */
   label: string;
+  /** ป้ายสั้นสุดบนแถบแท็บล่างมือถือ (~5 ช่อง ช่องละแคบ) */
+  short: string;
   /** ประโยคเดียวว่าหน้านี้ "ทำอะไร" — ใช้บนหน้าเลือกงานและใต้หัวข้อของหน้านั้น */
   detail: string;
   icon: WellnessIconKey;
-  /** ลำดับใน flow 1→4 (null = เครื่องมือประกอบ ไม่ใช่ stage ของ flow) */
+  /** ลำดับใน flow 1→5 (null = เครื่องมือประกอบ ไม่ใช่ stage ของ flow)
+      แถบแท็บล่างเรียงตามเลขนี้เสมอ — "เมนูล่างต้องเรียงตาม flow" (ผู้ใช้ 2026-08-28) */
   step: number | null;
   /** บทบาทที่เข้าหน้านี้ได้ — admin เข้าได้ทุกหน้าเสมอ ไม่ต้องใส่ซ้ำทุกแถว */
   roles: WellnessRole[];
@@ -225,8 +228,9 @@ export type WellnessWorkspace = {
 export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   {
     id: "register",
-    href: "/wellness-register",
+    href: "/wellness/register",
     label: "ทะเบียนลูกค้า",
+    short: "ทะเบียน",
     detail:
       "เพิ่มการ์ดลูกค้าที่ตรวจเลือดแล้ว และแก้ชื่อ/เบอร์/หัตถการให้ถูกต้อง",
     icon: "register",
@@ -236,8 +240,9 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
   },
   {
     id: "lab",
-    href: "/wellness-lab",
+    href: "/wellness/lab",
     label: "อัพผลแลบ",
+    short: "ผลแลบ",
     detail:
       "อัพไฟล์ผลตรวจเลือดของลูกค้าแต่ละคน แล้วกดยืนยันเมื่อผลครบ",
     icon: "lab",
@@ -246,40 +251,47 @@ export const WELLNESS_WORKSPACES: WellnessWorkspace[] = [
     primaryFor: ["lab"],
   },
   {
-    id: "booking",
-    href: "/wellness-booking",
-    label: "โทรนัด + ลงคิว",
+    id: "contact",
+    href: "/wellness/contact",
+    label: "ข้อมูลติดต่อ",
+    short: "ติดต่อ",
     detail:
-      "โทรหาลูกค้าที่ผลพร้อมแล้ว ตกลงเวลา แล้วลงคิวเข้าพบแพทย์ (1–3 ชม.)",
-    icon: "booking",
+      "เบอร์ลูกค้าที่ผลเลือดพร้อมแล้ว — โทรแจ้งผลและตกลงวันเข้าพบแพทย์",
+    icon: "contact",
     step: 3,
     roles: [],
     primaryFor: ["admin"],
   },
   {
-    id: "clinic",
-    href: "/wellness-clinic",
-    label: "คิวตรวจของแพทย์",
-    detail: "คิวที่ต้องตรวจวันนี้และวันถัดไป พร้อมเปิดผลเลือดของแต่ละคน",
-    icon: "clinic",
+    id: "calendar",
+    href: "/wellness/calendar",
+    label: "ลงคิวนัด",
+    short: "ลงคิว",
+    detail:
+      "ปฏิทินคิวทั้งเดือน — วันแพทย์เข้า (อังคาร · เสาร์) ไฮไลต์ไว้ กดวันแล้วลงคิวได้เลย",
+    icon: "calendar",
     step: 4,
+    // เฉพาะ admin — หมอดูปฏิทินตัวเดียวกันที่หน้า "คิวตรวจ" (อ่านอย่างเดียว) ไม่ต้องมี 2 เมนู
+    roles: [],
+    primaryFor: [],
+  },
+  {
+    id: "clinic",
+    href: "/wellness/clinic",
+    label: "คิวตรวจของแพทย์",
+    short: "คิวตรวจ",
+    detail:
+      "ปฏิทินคิวตรวจทั้งเดือน (อ่านอย่างเดียว) — กดวันแล้วเห็นคิว กดคิวแล้วเปิดผลเลือด",
+    icon: "clinic",
+    step: 5,
     roles: ["doctor"],
     primaryFor: ["doctor"],
   },
   {
-    id: "calendar",
-    href: "/wellness-calendar",
-    label: "ปฏิทินคิว",
-    detail: "ดูคิวทั้งเดือน — วันแพทย์เข้าคือ อังคาร และ เสาร์",
-    icon: "calendar",
-    step: null,
-    roles: ["doctor"],
-    primaryFor: [],
-  },
-  {
     id: "cases",
-    href: "/wellness-cases",
+    href: "/wellness/cases",
     label: "ภาพรวมเคส",
+    short: "เคส",
     detail: "การ์ดทั้งหมดในระบบ แยกตามขั้นตอน — ใช้ตามงานที่ค้าง",
     icon: "cases",
     step: null,
@@ -329,4 +341,24 @@ export function addDaysISO(dateIso: string, days: number): string {
   const d = new Date(`${dateIso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** แท็บบนแถบล่างของมือถือ — **เรียงตาม flow เสมอ** (ทะเบียน → ผลแลบ → ติดต่อ →
+    ลงคิว → คิวตรวจ) ตามคำสั่งผู้ใช้ 2026-08-28; หน้าที่ไม่ใช่ stage (ภาพรวมเคส)
+    ไปอยู่ในแท็บ "เพิ่มเติม" ของ shell แทน — ที่บนแถบมีจำกัด */
+export function wellnessTabsFor(flags: WellnessRoleFlags): WellnessWorkspace[] {
+  const tabs = wellnessWorkspacesFor(flags).filter((w) => w.step !== null);
+  // admin: "ลงคิวนัด" (4) กับ "คิวตรวจของแพทย์" (5) เป็นปฏิทินตัวเดียวกัน ต่างแค่สิทธิ์ลงคิว
+  // — เอา clinic ออกจากแท็บของ admin ไม่ให้ซ้ำซ้อน (ยังเข้าได้จากชีต "เพิ่มเติม")
+  const shown = flags.admin ? tabs.filter((w) => w.id !== "clinic") : tabs;
+  return shown.sort((a, b) => (a.step ?? 99) - (b.step ?? 99));
+}
+
+/** หน้าที่ไม่ได้อยู่บนแถบแท็บของคนนี้ — โผล่ในชีต "เพิ่มเติม" (คำนวณจากส่วนต่าง
+    ไม่ใช่เช็ค step เอง จะได้ไม่มีหน้าไหนหายไปเมื่อ wellnessTabsFor ตัดอะไรออก) */
+export function wellnessExtraPagesFor(
+  flags: WellnessRoleFlags
+): WellnessWorkspace[] {
+  const onTabs = new Set(wellnessTabsFor(flags).map((w) => w.id));
+  return wellnessWorkspacesFor(flags).filter((w) => !onTabs.has(w.id));
 }

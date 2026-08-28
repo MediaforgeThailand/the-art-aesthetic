@@ -39,7 +39,7 @@ export function LabFileOpenLink({ file }: { file: LabFileLite }) {
           target="_blank"
           rel="noreferrer"
           aria-disabled={!url}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11 ${
+          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11 ${
             url ? "" : "pointer-events-none opacity-50"
           }`}
         >
@@ -68,7 +68,7 @@ function LabFileRow({
         <span className="block truncate text-sm font-medium text-stone-700">
           {file.file_name}
         </span>
-        <span className="block text-[11px] text-stone-400">
+        <span className="block text-xs text-stone-400">
           อัพเมื่อ {formatDateTime(file.created_at)}
         </span>
       </span>
@@ -241,7 +241,7 @@ export function LabFilesPanel({
             )}
             อัพโหลดไฟล์ผลตรวจ
           </button>
-          <span className="text-[11px] text-stone-400">
+          <span className="text-xs text-stone-400">
             PDF หรือรูปสแกน · เลือกได้หลายไฟล์
           </span>
           <input
@@ -276,7 +276,7 @@ export function LabFilesPanel({
       )}
 
       {files.length === 0 ? (
-        <p className="px-4 py-4 text-xs text-stone-400">
+        <p className="px-4 py-4 text-[13px] text-stone-400">
           {emptyText ??
             (canEdit
               ? "ยังไม่มีไฟล์ผลตรวจ — กด “อัพโหลดไฟล์ผลตรวจ” เพื่อแนบ PDF/รูปสแกน"
@@ -313,8 +313,8 @@ export function LabFilesCard(props: PanelProps & { title?: string }) {
   return (
     <section className="glass overflow-hidden rounded-xl">
       <header className="flex flex-wrap items-center gap-2 border-b border-white/60 px-4 py-3">
-        <h2 className="text-sm font-semibold text-stone-800">{title}</h2>
-        <span className="text-xs text-stone-400">{panel.files.length} ไฟล์</span>
+        <h2 className="text-base font-semibold text-stone-800">{title}</h2>
+        <span className="text-[13px] text-stone-400">{panel.files.length} ไฟล์</span>
       </header>
       <LabFilesPanel {...panel} />
     </section>

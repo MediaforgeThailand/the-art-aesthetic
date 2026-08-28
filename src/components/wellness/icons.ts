@@ -1,5 +1,5 @@
 import {
-  CalendarDays,
+  CalendarPlus,
   ClipboardList,
   FlaskConical,
   LayoutGrid,
@@ -19,8 +19,8 @@ import type { WellnessIconKey } from "@/lib/wellness-constants";
 export const WELLNESS_ICONS: Record<WellnessIconKey, LucideIcon> = {
   register: ClipboardList,
   lab: FlaskConical,
-  booking: PhoneCall,
+  contact: PhoneCall,
+  calendar: CalendarPlus,
   clinic: Stethoscope,
-  calendar: CalendarDays,
   cases: LayoutGrid,
 };
