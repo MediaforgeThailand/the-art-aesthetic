@@ -28,8 +28,11 @@ import {
 import {
   computeKpiMonth,
   firstWeekdayIndex,
-  HEAT_CELL,
-  HEAT_LEGEND,
+  HEAT_CHIP,
+  HEAT_DOT_DONE,
+  HEAT_DOT_OPEN,
+  HEAT_LEVELS,
+  HEAT_SCALE,
   heatLevel,
   monthLabel,
   paceTone,
@@ -856,15 +859,26 @@ export function TrackingClient({
                   </>
                 )}
               </p>
+              {/* legend แบบ heatmap มาตรฐาน — ไล่อ่อน→เข้ม ไม่ใช่ป้ายสีแยกชิ้น */}
               <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-stone-500">
-                {HEAT_LEGEND.map((l) => (
-                  <span key={l.level} className="inline-flex items-center gap-1">
-                    <span
-                      className={`h-3 w-3 rounded-sm border border-stone-300/70 ${HEAT_CELL[l.level]}`}
-                    />
-                    {l.label}
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className={`h-3.5 w-3.5 rounded-[4px] ${HEAT_LEVELS[0].tile}`}
+                  />
+                  ยังไม่ส่ง
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  ยังไม่ผ่าน
+                  <span className="flex gap-0.5">
+                    {HEAT_SCALE.map((lv) => (
+                      <span
+                        key={lv}
+                        className={`h-3.5 w-3.5 rounded-[4px] ${HEAT_LEVELS[lv].tile}`}
+                      />
+                    ))}
                   </span>
-                ))}
+                  ผ่านครบ
+                </span>
               </div>
             </div>
 
@@ -882,13 +896,15 @@ export function TrackingClient({
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-stone-200/70 bg-stone-200/70">
+            {/* ไทล์มนมีช่องไฟ (ไม่ใช่ตารางเส้นบาง) — นี่คือสิ่งที่ทำให้อ่านเป็น heatmap
+                ไม่ใช่สเปรดชีต; ช่องนอกเดือนโปร่งใสไปเลย ไม่ต้องมีกรอบ */}
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
               {cells.map((day, idx) => {
                 if (day === null)
                   return (
                     <div
                       key={`blank-${idx}`}
-                      className="min-h-[74px] bg-white/40 sm:min-h-[112px]"
+                      className="min-h-[74px] sm:min-h-[112px]"
                     />
                   );
                 const dayIndex = day - 1;
@@ -897,6 +913,7 @@ export function TrackingClient({
                   ({ t }) => workStateOf(t) === "approved"
                 ).length;
                 const level = heatLevel(list.length, approved);
+                const heat = HEAT_LEVELS[level];
                 const isToday =
                   isCurrentMonth && day === Math.min(initialDay, daysInMonth);
                 const future =
@@ -917,44 +934,33 @@ export function TrackingClient({
                         ? `${thaiDateLabel(ym.year, ym.month, day)} — ยังไม่มีงานที่ส่ง`
                         : `${thaiDateLabel(ym.year, ym.month, day)} — ส่ง ${list.length} งาน · ตรวจผ่านแล้ว ${approved}`
                     }
-                    className={`flex min-h-[74px] cursor-pointer flex-col gap-1 p-1 text-left transition-colors sm:min-h-[112px] sm:p-1.5 ${
-                      HEAT_CELL[level]
-                    } ${future && list.length === 0 ? "opacity-60" : ""} ${
+                    className={`flex min-h-[74px] cursor-pointer flex-col gap-1 rounded-lg p-1 text-left transition-colors sm:min-h-[112px] sm:rounded-xl sm:p-1.5 ${
+                      heat.tile
+                    } ${heat.hover} ${
+                      future && list.length === 0 ? "opacity-50" : ""
+                    } ${
                       openDay === dayIndex
-                        ? "ring-2 ring-inset ring-brand-500"
+                        ? "ring-2 ring-brand-500 ring-offset-1 ring-offset-white"
                         : ""
-                    } hover:brightness-[0.97]`}
+                    }`}
                   >
                     <span className="flex items-center gap-1">
                       <span
                         className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold tabular-nums sm:h-6 sm:min-w-6 sm:text-xs ${
                           isToday
-                            ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-                            : sunday
-                              ? "text-rose-500"
-                              : "text-stone-700"
+                            ? `${heat.today} shadow-sm`
+                            : sunday && level === 0
+                              ? "text-rose-400"
+                              : heat.day
                         }`}
                       >
                         {day}
                       </span>
                       {list.length > 0 && (
-                        <span className="ml-auto shrink-0 text-[10px] font-bold tabular-nums text-amber-900/70 sm:text-[11px]">
-                          {approved}/{list.length}
-                        </span>
-                      )}
-                    </span>
-
-                    {/* จอเล็ก: แท่งสีล้วนต่อ 1 งาน (ช่องกว้าง ~48px — ข้อความอ่านไม่ออก) */}
-                    <span className="flex w-full min-w-0 flex-col gap-0.5 sm:hidden">
-                      {list.slice(0, 4).map(({ t }) => (
                         <span
-                          key={t.id}
-                          className={`h-1.5 w-full rounded-full ${WORK_STATES[workStateOf(t)].dot}`}
-                        />
-                      ))}
-                      {list.length > 4 && (
-                        <span className="text-[9px] leading-none text-stone-500">
-                          +{list.length - 4}
+                          className={`ml-auto shrink-0 text-[10px] font-bold tabular-nums sm:text-[11px] ${heat.ratio}`}
+                        >
+                          {approved}/{list.length}
                         </span>
                       )}
                     </span>
@@ -970,18 +976,22 @@ export function TrackingClient({
                                   ? "ไม่ระบุผู้รับผิดชอบ"
                                   : personName(profileById.get(g.id))
                               } · ส่ง ${g.total} · ผ่าน ${g.approved}`}
-                              className={`flex w-full items-center gap-1 rounded px-1 py-px text-[11px] leading-tight ${
-                                g.approved === g.total
-                                  ? WORK_STATES.approved.chip
-                                  : WORK_STATES.waiting.chip
-                              }`}
+                              className={`flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[11px] leading-tight ${HEAT_CHIP}`}
                             >
+                              {/* จุดทึบ = คนนี้ผ่านครบแล้ว / กลวง = ยังมีค้าง (สี + รูปทรง 2 ชั้น) */}
+                              <span
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                  g.approved === g.total
+                                    ? HEAT_DOT_DONE
+                                    : HEAT_DOT_OPEN
+                                }`}
+                              />
                               <span className="min-w-0 flex-1 truncate font-medium">
                                 {g.id === ""
                                   ? "ไม่ระบุคน"
                                   : shortName(profileById.get(g.id))}
                               </span>
-                              <span className="shrink-0 tabular-nums">
+                              <span className="shrink-0 tabular-nums text-stone-500">
                                 {g.total}
                               </span>
                             </span>
@@ -990,13 +1000,24 @@ export function TrackingClient({
                             <span
                               key={t.id}
                               title={`${t.title} — ${WORK_STATES[workStateOf(t)].label}`}
-                              className={`w-full truncate rounded px-1 py-px text-[11px] leading-tight ${WORK_STATES[workStateOf(t)].chip}`}
+                              className={`flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[11px] leading-tight ${HEAT_CHIP}`}
                             >
-                              {t.title}
+                              <span
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                  workStateOf(t) === "approved"
+                                    ? HEAT_DOT_DONE
+                                    : HEAT_DOT_OPEN
+                                }`}
+                              />
+                              <span className="min-w-0 flex-1 truncate">
+                                {t.title}
+                              </span>
                             </span>
                           ))}
                       {hidden > 0 && (
-                        <span className="px-1 text-[10px] font-medium leading-tight text-stone-500">
+                        <span
+                          className={`px-1 text-[10px] font-semibold leading-tight ${heat.ratio}`}
+                        >
                           +{hidden} {personId === "all" ? "คน" : "งาน"}
                         </span>
                       )}
