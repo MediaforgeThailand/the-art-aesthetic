@@ -4,11 +4,11 @@ import {
   ArrowLeft,
   CalendarDays,
   Crosshair,
-  FileSignature,
   Gauge,
   History,
   IdCard,
   LayoutGrid,
+  ListChecks,
   LogOut,
   Sparkles,
   Stethoscope,
@@ -139,7 +139,8 @@ export function InfluShell({
     { href: "/influ-calendar", label: "ปฏิทินคิว", icon: CalendarDays, show: canView },
     { href: "/influ-dashboard", label: "แดชบอร์ด", icon: Gauge, show: canView },
     { href: "/influ-cost", label: "ต้นทุน", icon: Wallet, show: canView },
-    { href: "/influencers/contracts", label: "สัญญา", icon: FileSignature, show: canView },
+    // "Follow Up" = ทั้งที่ตั้งเป้าโพสและที่ติดตามผลงาน (0092 — ขั้นตามงานในหน้าเคสถูกถอด)
+    { href: "/influencers/contracts", label: "Follow Up", icon: ListChecks, show: canView },
     { href: "/influ-gallery", label: "โปรไฟล์", icon: IdCard, show: canGallery },
     // ทะเบียนหมอ = งานผู้ดูแล (เดิมเป็นปุ่มบนหัวบอร์ดเคส — ย้ายมาเป็นหน้าของตัวเอง 2026-08-19)
     { href: "/influ-doctors", label: "จัดการหมอ", icon: Stethoscope, show: canManage },

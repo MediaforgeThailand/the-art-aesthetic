@@ -739,6 +739,9 @@ export type InfluPostLinkRow = {
   influencer_id: string;
   kind: InfluPostKind;
   url: string;
+  /** ช่องทางที่ทีมเลือกเองตอนแปะลิงก์ (migration 0092 — ฟอร์มบังคับให้เลือกจากเป้าที่ตั้งไว้)
+      null = แถวเก่าก่อนมีคอลัมน์นี้ → อ่านผ่าน postLinkPlatform() ซึ่งเดาจาก hostname ให้ */
+  platform: InfluPostPlatform | null;
   /** โน้ตกำกับ เช่น "คลิปรีวิวหลัก TikTok" — null = ไม่มี */
   note: string | null;
   position: number;

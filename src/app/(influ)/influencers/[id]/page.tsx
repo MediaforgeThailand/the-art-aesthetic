@@ -14,7 +14,6 @@ import type {
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
-  InfluPostLinkRow,
   InfluProcedureItemRow,
   InfluProfileChannelRow,
   InfluProfileRow,
@@ -68,7 +67,6 @@ export default async function InfluencerDetailPage({
     { data: priceCatalog },
     { data: promoCatalog },
     { data: sourceLinks },
-    { data: postLinks },
     { data: profile },
     { data: doctors },
     { data: services },
@@ -121,13 +119,6 @@ export default async function InfluencerDetailPage({
     // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
     supabase
       .from("influ_links")
-      .select("*")
-      .eq("influencer_id", id)
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true }),
-    // ลิงก์โพส/คอมเมนต์ที่ influ ลงจริง (การ์ดบนสุดของขั้นตามงาน)
-    supabase
-      .from("influ_post_links")
       .select("*")
       .eq("influencer_id", id)
       .order("position", { ascending: true })
@@ -208,7 +199,6 @@ export default async function InfluencerDetailPage({
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
-        postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
         userId={userId}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}

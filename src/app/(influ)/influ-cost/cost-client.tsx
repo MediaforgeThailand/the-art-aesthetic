@@ -57,6 +57,8 @@ export type CostInflu = {
   round_no: number;
   service_date: string | null;
   stage: number;
+  /** วันเริ่มนับสัญญา — ตั้งแต่ 0092 นี่คือตัวชี้ว่าเคส "ใช้บริการแล้ว" (ดู costUsageOf) */
+  contract_start: string | null;
   completed: boolean;
   archived: boolean;
   declined_at: string | null;
