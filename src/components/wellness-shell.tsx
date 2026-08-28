@@ -21,7 +21,6 @@ import { useSignedUrl } from "@/lib/use-signed-url";
 import {
   wellnessExtraPagesFor,
   wellnessHomeHref,
-  wellnessLabelOf,
   wellnessTabsFor,
   wellnessWorkspacesFor,
   type WellnessRoleFlags,
@@ -42,11 +41,9 @@ function roleLabelOf(flags: WellnessRoleFlags): string | null {
 function DesktopNav({
   items,
   activeHref,
-  flags,
 }: {
   items: WellnessWorkspace[];
   activeHref: string | null;
-  flags: WellnessRoleFlags;
 }) {
   return (
     <nav
@@ -69,7 +66,7 @@ function DesktopNav({
             }`}
           >
             <Icon size={16} className={active ? "text-brand-600" : ""} />
-            {wellnessLabelOf(w, flags).label}
+            {w.label}
           </Link>
         );
       })}
@@ -252,7 +249,7 @@ export function WellnessShell({
           )}
 
           <span aria-hidden className="h-7 w-px shrink-0 bg-stone-200/90" />
-          <DesktopNav items={workspaces} activeHref={activeHref} flags={flags} />
+          <DesktopNav items={workspaces} activeHref={activeHref} />
           <span aria-hidden className="h-7 w-px shrink-0 bg-stone-200/90" />
 
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -298,7 +295,7 @@ export function WellnessShell({
             className={TAB_CLASS}
           >
             <TabInner
-              label={wellnessLabelOf(w, flags).short}
+              label={w.short}
               active={isActive(w.href)}
               step={w.step}
               icon={WELLNESS_ICONS[w.icon]}
@@ -349,7 +346,7 @@ export function WellnessShell({
                     className="flex min-h-12 items-center gap-3 rounded-xl bg-white/70 px-3 text-[15px] text-stone-700 transition-colors hover:bg-brand-50"
                   >
                     <Icon size={18} className="shrink-0 text-brand-500" />
-                    {wellnessLabelOf(w, flags).label}
+                    {w.label}
                     <ChevronRight size={16} className="ml-auto text-stone-300" />
                   </Link>
                 );

@@ -24,10 +24,14 @@ export default async function WellnessCalendarPage() {
       .select(CALENDAR_APPT_SELECT)
       .order("appt_date", { ascending: true })
       .order("start_time", { ascending: true }),
+    // ตัวเลือกในฟอร์มลงคิว = **เฉพาะคนที่ทีม Lab ยืนยันผลแล้วและยังไม่ปิดเคส**
+    // (ผู้ใช้ 2026-08-29: ชื่อที่เลือกได้ต้องอัพผล Lab แล้วเท่านั้น)
     supabase
       .from("wellness_customers")
       .select("id, first_name, last_name, phone, lab_confirmed_at, completed_at")
-      .order("created_at", { ascending: false }),
+      .not("lab_confirmed_at", "is", null)
+      .is("completed_at", null)
+      .order("lab_confirmed_at", { ascending: true }),
   ]);
 
   // ปฏิทินเป็นเครื่องมือของ Admin (คนลงคิว) และแพทย์ (คนดูคิวตัวเอง) —

@@ -463,12 +463,17 @@ function BookingModal({
 
   const selected = customers.find((c) => c.id === customerId) ?? null;
   const q = query.trim().toLowerCase();
+  // **เลือกได้เฉพาะคนที่ทีม Lab ยืนยันผลแล้ว** (ผู้ใช้ 2026-08-29) — ลงคิวก่อนมีผลเลือด
+  // ไม่มีประโยชน์กับหมอ; server ก็กรองมาแล้วชั้นหนึ่ง ตรงนี้กันพลาดซ้ำ
+  const bookable = customers.filter(
+    (c) => c.lab_confirmed_at && !c.completed_at
+  );
   const filtered = (
     q
-      ? customers.filter((c) =>
+      ? bookable.filter((c) =>
           `${c.first_name} ${c.last_name} ${c.phone}`.toLowerCase().includes(q)
         )
-      : customers
+      : bookable
   ).slice(0, 30);
 
   async function submit() {
@@ -522,10 +527,15 @@ function BookingModal({
                 placeholder="ค้นหาชื่อ / เบอร์โทร"
                 className="mt-1"
               />
+              <p className="mt-1.5 text-xs text-stone-500">
+                แสดงเฉพาะลูกค้าที่ <b>ทีม Lab ยืนยันผลเลือดแล้ว</b> เท่านั้น
+              </p>
               <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-stone-200/70 bg-white/70 p-1">
                 {filtered.length === 0 ? (
-                  <li className="px-3 py-3 text-xs text-stone-400">
-                    ไม่พบลูกค้า — ทีม BC สร้างการ์ดที่หน้า “ทะเบียนลูกค้า”
+                  <li className="px-3 py-3 text-[13px] text-stone-400">
+                    {query
+                      ? "ไม่พบชื่อนี้ในกลุ่มที่ผลเลือดพร้อมแล้ว"
+                      : "ยังไม่มีใครที่ผลเลือดพร้อม — รอทีม Lab กดยืนยันผลก่อน"}
                   </li>
                 ) : (
                   filtered.map((c) => (
@@ -533,29 +543,20 @@ function BookingModal({
                       <button
                         type="button"
                         onClick={() => setCustomerId(c.id)}
+                        aria-label={`เลือกลูกค้า ${wellnessCustomerName(c)}`}
                         className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-brand-50 max-sm:min-h-11"
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-stone-700">
+                          <span className="block truncate text-[15px] text-stone-700">
                             {wellnessCustomerName(c)}
                           </span>
-                          <span className="block text-[11px] text-stone-400">
+                          <span className="block text-xs text-stone-400">
                             {c.phone || "ไม่มีเบอร์"}
                           </span>
                         </span>
-                        {c.completed_at ? (
-                          <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] text-stone-500">
-                            ปิดเคสแล้ว
-                          </span>
-                        ) : c.lab_confirmed_at ? (
-                          <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700">
-                            ผลพร้อม
-                          </span>
-                        ) : (
-                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                            รอผลแลบ
-                          </span>
-                        )}
+                        <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700">
+                          ผลพร้อม
+                        </span>
                       </button>
                     </li>
                   ))
@@ -724,7 +725,7 @@ export function WellnessCalendarClient({
             </button>
           </header>
 
-          <div className="mb-1 flex items-center justify-center gap-2 text-[11px] text-cream/80">
+          <div className="mb-1.5 flex flex-wrap items-center justify-center gap-2 text-xs">
             <button
               type="button"
               onClick={() => setSelected(today)}
@@ -732,21 +733,33 @@ export function WellnessCalendarClient({
             >
               วันนี้
             </button>
-            <span>แพทย์เข้า อังคาร · เสาร์</span>
+            {/* ป้ายวันแพทย์เข้า — ต้องเด่นพอให้ admin รู้ทันทีว่าลงคิวได้วันไหน
+                (ผู้ใช้ 2026-08-29: "ตัววันอังคารกับเสาร์ที่หมอเข้ายังเด่นไม่พอ") */}
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 font-semibold text-brand-700 shadow-sm">
+              <Stethoscope size={13} /> วันแพทย์เข้า: อังคาร · เสาร์
+            </span>
           </div>
 
-          {/* หัวคอลัมน์วัน */}
+          {/* หัวคอลัมน์วัน — อ./ส. เน้นเป็นชิปขาวให้ตรงกับช่องวันแพทย์ด้านล่าง */}
           <div className="grid grid-cols-7">
-            {WEEKDAY_HEADS.map((label, i) => (
-              <div
-                key={label}
-                className={`py-1.5 text-center text-[11px] font-semibold ${
-                  i === 6 ? "text-cream/60" : "text-cream/80"
-                }`}
-              >
-                {label}
-              </div>
-            ))}
+            {WEEKDAY_HEADS.map((label, i) => {
+              const doctorCol = i === 1 || i === 5; // จันทร์=0 → อังคาร, เสาร์
+              return (
+                <div key={label} className="py-1 text-center">
+                  <span
+                    className={`inline-flex min-w-7 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                      doctorCol
+                        ? "bg-white/85 text-brand-700"
+                        : i === 6
+                          ? "text-cream/60"
+                          : "text-cream/80"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/* ช่องวัน — ตัวเลขบนแผ่นไล่เฉด, วันที่เลือก = สี่เหลี่ยมขาว */}
@@ -767,11 +780,14 @@ export function WellnessCalendarClient({
                     className={`flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-xl text-sm transition-all ${
                       day === selected
                         ? "bg-white font-semibold text-brand-700 shadow-md"
-                        : day === today
-                          ? "bg-white/25 font-semibold text-cream"
-                          : isWellnessDoctorDay(day)
-                            ? "font-medium text-cream hover:bg-white/15"
-                            : "text-cream/75 hover:bg-white/15"
+                        : isWellnessDoctorDay(day)
+                          ? // วันแพทย์เข้า = กรอบขาวชัดๆ (วันนี้ที่เป็นวันแพทย์ได้พื้นทึบขึ้น)
+                            `font-semibold text-cream ring-1 ring-white/70 hover:bg-white/25 ${
+                              day === today ? "bg-white/35" : "bg-white/10"
+                            }`
+                          : day === today
+                            ? "bg-white/25 font-semibold text-cream"
+                            : "text-cream/70 hover:bg-white/15"
                     }`}
                   >
                     <span className="leading-none">{Number(day.slice(8))}</span>
