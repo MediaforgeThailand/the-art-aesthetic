@@ -40,7 +40,14 @@ export type AppPermission =
   | "influ"
   | "influ_hunter"
   | "influ_view"
-  | "pricing";
+  | "pricing"
+  // ระบบ Wellness — สิทธิ์แยกอิสระ 4 บทบาท (ติ๊กรวมกันได้ ดู WELLNESS_ROLES ใน permissions.ts):
+  // bc = สร้าง/แก้การ์ดลูกค้า, lab = อัพ/ลบไฟล์ผลตรวจ + ยืนยันผล,
+  // admin = ลงคิว/จัดการทุกอย่าง, doctor = ดูปฏิทินคิว + ผลตรวจ (อ่านอย่างเดียว)
+  | "wellness_bc"
+  | "wellness_lab"
+  | "wellness_admin"
+  | "wellness_doctor";
 
 /** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
 export type TaskReviewerRow = {
@@ -1021,6 +1028,62 @@ export type AllowedEmailRow = {
   created_at: string;
 };
 
+/* ============================================================
+   Wellness System (migration 0091) — การ์ดลูกค้า + ไฟล์ผล lab + คิวปรึกษาแพทย์
+   ============================================================ */
+
+/** การ์ดลูกค้า Wellness — BC สร้างหลังลูกค้าศัลยกรรมตรวจเลือด
+    สถานะเคสเป็นค่า "คำนวณ" จาก 3 ช่องเวลา (ดู wellnessStatusOf ใน wellness-constants):
+    รอผล lab → lab ยืนยันแล้ว (รอนัด) → ลงคิวแล้ว → ปิดเคส */
+export type WellnessCustomerRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  /** หัตถการศัลยกรรมที่ทำ (ที่มาของการตรวจเลือด) */
+  procedure_text: string;
+  note: string;
+  /** Lab กดยืนยันผลครบ = ส่งต่อ Admin โทรนัด (null = ยังรอผล) */
+  lab_confirmed_at: string | null;
+  lab_confirmed_by: string | null;
+  /** ปิดเคส — ฟังผล + ปรึกษาแพทย์เสร็จแล้ว */
+  completed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** ไฟล์ผลตรวจเลือด (PDF) ของการ์ดลูกค้า — ไฟล์จริงอยู่ bucket documents
+    path `wellness/{customer_id}/` (ลบแถวต้องลบไฟล์ storage เอง best effort) */
+export type WellnessLabFileRow = {
+  id: string;
+  customer_id: string;
+  file_path: string;
+  /** ชื่อไฟล์เดิมตอนอัพ — path จริงมี timestamp นำหน้ากันชนกัน */
+  file_name: string;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type WellnessApptStatus = "scheduled" | "done" | "cancelled";
+
+/** คิวปรึกษาแพทย์ Wellness — Admin กรอกเวลาเอง เลือก 1/2/3 ชั่วโมง
+    DB มี exclusion constraint กันคิว scheduled เวลาทับกัน (ชน = error 23P01) */
+export type WellnessAppointmentRow = {
+  id: string;
+  customer_id: string;
+  /** วันที่คิว (YYYY-MM-DD) */
+  appt_date: string;
+  /** เวลาเริ่ม (HH:MM:SS) */
+  start_time: string;
+  duration_hours: number;
+  status: WellnessApptStatus;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -1427,6 +1490,33 @@ export interface Database {
           target_amount: number;
         };
         Update: Partial<StaffKpiRow>;
+        Relationships: [];
+      };
+      wellness_customers: {
+        Row: WellnessCustomerRow;
+        Insert: Partial<WellnessCustomerRow> & { first_name: string };
+        Update: Partial<WellnessCustomerRow>;
+        Relationships: [];
+      };
+      wellness_lab_files: {
+        Row: WellnessLabFileRow;
+        Insert: Partial<WellnessLabFileRow> & {
+          customer_id: string;
+          file_path: string;
+          file_name: string;
+        };
+        Update: Partial<WellnessLabFileRow>;
+        Relationships: [];
+      };
+      wellness_appointments: {
+        Row: WellnessAppointmentRow;
+        Insert: Partial<WellnessAppointmentRow> & {
+          customer_id: string;
+          appt_date: string;
+          start_time: string;
+          duration_hours: number;
+        };
+        Update: Partial<WellnessAppointmentRow>;
         Relationships: [];
       };
     };

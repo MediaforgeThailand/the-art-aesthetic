@@ -8,8 +8,9 @@ export const PERMISSION_META: {
   key: AppPermission;
   label: string;
   detail: string;
-  /** กลุ่มของสิทธิ์ — 'influ' = 3 ระดับของระบบ Influencer (เลือกได้ระดับเดียว) */
-  group?: "influ";
+  /** กลุ่มของสิทธิ์ — 'influ' = 3 ระดับของระบบ Influencer (เลือกได้ระดับเดียว),
+      'wellness' = บทบาทของระบบ Wellness (สวิตช์อิสระ ติ๊กรวมกันได้) */
+  group?: "influ" | "wellness";
 }[] = [
   {
     key: "data",
@@ -46,6 +47,34 @@ export const PERMISSION_META: {
     key: "pricing",
     label: "Product Pricing",
     detail: "เข้าหน้าจัดการราคา (Price List) — หน้าราคาสาธารณะยังเปิดให้ทุกคน",
+  },
+  {
+    key: "wellness_bc",
+    label: "Wellness — BC (Beauty Consult)",
+    detail:
+      "สร้าง/แก้การ์ดลูกค้า Wellness (ชื่อ เบอร์โทร หัตถการที่ทำ) หลังลูกค้าตรวจเลือด",
+    group: "wellness",
+  },
+  {
+    key: "wellness_lab",
+    label: "Wellness — Lab",
+    detail:
+      "อัพโหลด/แก้ไข/ลบไฟล์ผลตรวจเลือด (PDF) บนการ์ดลูกค้า และกดยืนยันผลเพื่อส่งต่อให้ Admin",
+    group: "wellness",
+  },
+  {
+    key: "wellness_admin",
+    label: "Wellness — Admin",
+    detail:
+      "ทำได้ทุกอย่างในระบบ Wellness: ดูข้อมูลติดต่อลูกค้า โทรนัด ลงคิวปรึกษาแพทย์ (เลือก 1-3 ชม.) ปิดเคส และลบข้อมูล",
+    group: "wellness",
+  },
+  {
+    key: "wellness_doctor",
+    label: "Wellness — แพทย์",
+    detail:
+      "ดูปฏิทินคิวของตัวเอง + เปิดดูผลตรวจเลือดและข้อมูลลูกค้า (อ่านอย่างเดียว)",
+    group: "wellness",
   },
 ];
 
@@ -140,4 +169,46 @@ export function canDeleteInflu(
   if (lvl === "manager") return true;
   if (lvl !== "hunter") return false;
   return ownerId !== null && ownerId !== undefined && ownerId === access.uid;
+}
+
+/* ============================================================
+   บทบาทของระบบ Wellness (2026-08-27)
+
+   ต่างจาก Influencer ที่เป็น "ระดับ": ที่นี่เป็น "บทบาทตาม flow งาน"
+   ที่แยกอิสระและติ๊กรวมกันได้ (คนเดียวเป็นทั้ง BC + Lab ได้):
+     wellness_bc     = สร้าง/แก้การ์ดลูกค้า
+     wellness_lab    = อัพ/ลบไฟล์ผล lab + ยืนยันผล
+     wellness_admin  = ลงคิว/ปิดเคส/ลบ — ทำได้ทุกอย่าง
+     wellness_doctor = ดูปฏิทิน + ผล lab + ข้อมูลลูกค้า (อ่านอย่างเดียว)
+   ============================================================ */
+
+/** เห็นระบบ Wellness ไหม (guard ของทุกหน้าในระบบนี้) — มีบทบาทใดบทบาทหนึ่งก็เข้าได้ */
+export function canViewWellness(access: Access): boolean {
+  return (
+    hasPermission(access, "wellness_bc") ||
+    hasPermission(access, "wellness_lab") ||
+    hasPermission(access, "wellness_admin") ||
+    hasPermission(access, "wellness_doctor")
+  );
+}
+
+/** สร้าง/แก้การ์ดลูกค้าได้ไหม — BC หรือ Admin */
+export function canWellnessBc(access: Access): boolean {
+  return (
+    hasPermission(access, "wellness_bc") ||
+    hasPermission(access, "wellness_admin")
+  );
+}
+
+/** จัดการไฟล์ผล lab + กดยืนยันผลได้ไหม — Lab หรือ Admin */
+export function canWellnessLab(access: Access): boolean {
+  return (
+    hasPermission(access, "wellness_lab") ||
+    hasPermission(access, "wellness_admin")
+  );
+}
+
+/** งาน Admin ของระบบ Wellness — ลงคิว/แก้คิว/ปิดเคส/ลบข้อมูล */
+export function canWellnessAdmin(access: Access): boolean {
+  return hasPermission(access, "wellness_admin");
 }

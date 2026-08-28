@@ -12,6 +12,11 @@ const VALID_PERMISSIONS = new Set([
   "influ_hunter",
   "influ",
   "pricing",
+  // ระบบ Wellness — บทบาทอิสระ 4 ตัว ติ๊กรวมกันได้ (ดู PERMISSION_META group "wellness")
+  "wellness_bc",
+  "wellness_lab",
+  "wellness_admin",
+  "wellness_doctor",
 ]);
 
 const corsHeaders = {

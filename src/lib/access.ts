@@ -13,6 +13,10 @@ export {
   canManageInflu,
   canDeleteInflu,
   INFLU_LEVELS,
+  canViewWellness,
+  canWellnessBc,
+  canWellnessLab,
+  canWellnessAdmin,
   type Access,
   type InfluLevel,
 } from "@/lib/permissions";

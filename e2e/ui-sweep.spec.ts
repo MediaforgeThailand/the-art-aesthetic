@@ -24,6 +24,8 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/influ-dashboard", name: "influ-dashboard" },
   { path: "/influencer-management/logs", name: "influ-logs" },
   { path: "/influencer-management/trash", name: "influ-trash" },
+  { path: "/wellness", name: "wellness" },
+  { path: "/wellness-calendar", name: "wellness-calendar" },
   { path: "/tasks", name: "tasks" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
@@ -42,6 +44,25 @@ async function settle(page: Page, ms = 700) {
   await page.waitForTimeout(ms);
 }
 
+/** เปิดหน้าโดยรอแค่ DOMContentLoaded — บทเรียน 2026-08-28: dev server (Turbopack) ปล่อยให้
+    request ค้างได้เป็นนาที (เช่น RSC prefetch ของ /dashboard) ทำให้ browser ไม่ยิง load event
+    ทั้งที่หน้า render ครบแล้ว — sweep เคยค้างที่ goto /pricing "waiting until load" จนกินเวลา
+    เทสหมด 10 นาทีทั้งสอง viewport. เนื้อหาถูกตรวจต่อด้วย settle + expectNot404 + assert
+    รายหน้าอยู่แล้ว จึงไม่ต้องรอ load; timeout 60s เพื่อให้หน้าที่พังจริงล้มดังๆ เร็วๆ */
+async function gotoPage(page: Page, path: string) {
+  await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 });
+}
+
+/** หน้า 404 ของ Next ต้องไม่โผล่หลัง navigate — บทเรียน 2026-08-28: sweep เคยถ่าย 404
+    ของทุก path ซ้อนชั้นแล้ว "ผ่าน" ทั้งชุด (server เทสต์ที่ reuse มาเป็นของ checkout อื่น/
+    สถานะเพี้ยน) เพราะลูป PAGES ไม่เคย assert เนื้อหา — ต่อไปนี้ 404 ต้องล้มดังๆ ทันที */
+async function expectNot404(page: Page, where: string) {
+  await expect(
+    page.getByText("This page could not be found"),
+    `${where}: หน้าเป็น 404 — เช็คว่า server เทสต์เป็นของ checkout นี้จริง (ดูคอมเมนต์ reuseExistingServer ใน playwright.config.ts)`
+  ).toHaveCount(0);
+}
+
 /** ห้ามมีเนื้อหาล้นจอแนวนอน (ยกเว้นกล่องที่ตั้งใจ scroll เอง ซึ่งไม่ดัน document) */
 async function expectNoHorizontalOverflow(page: Page, where: string) {
   const ox = await page.evaluate(
@@ -53,19 +74,20 @@ async function expectNoHorizontalOverflow(page: Page, where: string) {
 }
 
 async function login(page: Page) {
-  await page.goto("/login");
+  await gotoPage(page, "/login");
   await page.locator("form input").first().fill(EMAIL);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   const password = page.locator('input[type="password"]').first();
   await password.waitFor({ state: "visible", timeout: 15_000 });
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
+  // waitUntil "commit" — แค่ URL เปลี่ยนถึง /dashboard ก็พอ ไม่รอ load (กติกาเดียวกับ gotoPage)
   try {
-    await page.waitForURL("**/dashboard", { timeout: 15_000 });
+    await page.waitForURL("**/dashboard", { timeout: 15_000, waitUntil: "commit" });
   } catch {
     // click แรกอาจยิงก่อน handler ผูกเสร็จ (จังหวะ hydration) — ส่งซ้ำอีกครั้ง
     await page.locator('form button[type="submit"]').click();
-    await page.waitForURL("**/dashboard", { timeout: 30_000 });
+    await page.waitForURL("**/dashboard", { timeout: 30_000, waitUntil: "commit" });
   }
 }
 
@@ -92,7 +114,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   shotSeq = 0;
 
   /* ---------- login ---------- */
-  await page.goto("/login");
+  await gotoPage(page, "/login");
   await settle(page);
   await page.screenshot({ path: shotPath(project, "login"), fullPage: true });
   await expectNoHorizontalOverflow(page, "/login");
@@ -100,8 +122,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   /* ---------- ทุกหน้า: เปิด + screenshot + เช็ค overflow ---------- */
   for (const p of PAGES) {
-    await page.goto(p.path);
+    await gotoPage(page, p.path);
     await settle(page, 1200);
+    await expectNot404(page, p.path);
     await page.screenshot({
       path: shotPath(project, p.name),
       fullPage: true,
@@ -110,7 +133,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (จอใหญ่ = แถว inline, มือถือ = bottom sheet) ---------- */
-  await page.goto("/influ-calendar");
+  await gotoPage(page, "/influ-calendar");
   await settle(page, 1000);
 
   // เดสก์ท็อป (≥lg): หน้าปฏิทินต้องสูงพอดีจอ ไม่มี scroll แนวตั้ง (คำสั่งผู้ใช้ 2026-08-20)
@@ -144,7 +167,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
   if (mobile) {
-    await page.goto("/dashboard");
+    await gotoPage(page, "/dashboard");
     await settle(page, 800);
 
     // drawer เมนู
@@ -191,7 +214,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   /* ---------- /tasks: 4 แท็บ + ตัวกรอง + แผงงาน ---------- */
-  await page.goto("/tasks");
+  await gotoPage(page, "/tasks");
   await settle(page, 1500);
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
@@ -278,10 +301,12 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
     { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
+    { path: "/wellness", label: "เพิ่มการ์ดลูกค้า", name: "wellness-add-customer" },
   ];
   for (const a of ADD_BUTTONS) {
-    await page.goto(a.path);
+    await gotoPage(page, a.path);
     await settle(page, 1000);
+    await expectNot404(page, a.path);
     await openShotClose(
       page,
       project,
@@ -296,8 +321,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   /* ---------- หน้าเดินงาน influencer รายคน (คนแรกบนบอร์ด) ---------- */
-  await page.goto("/influencers");
+  await gotoPage(page, "/influencers");
   await settle(page, 1000);
+  await expectNot404(page, "/influencers (ก่อนเปิดหน้าเดินงาน)");
   const influCard = page
     .locator('[aria-label^="เปิดหน้าเดินงานของ"]')
     .first();
@@ -311,10 +337,62 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       await page.waitForURL("**/influencers/**", { timeout: 30_000 });
     }
     await settle(page, 1200);
+    await expectNot404(page, "หน้าเดินงาน influencer");
     await page.screenshot({
       path: shotPath(project, "influ-detail"),
       fullPage: true,
     });
     await expectNoHorizontalOverflow(page, "หน้าเดินงาน influencer");
+  }
+
+  /* ---------- Wellness: การ์ดลูกค้าใบแรก (บอร์ด → หน้ารายละเอียด) ---------- */
+  await gotoPage(page, "/wellness");
+  await settle(page, 1000);
+  await expectNot404(page, "/wellness (ก่อนเปิดการ์ดลูกค้า)");
+  // แถวลูกค้าเป็น <Link href="/wellness/{id}"> — เมนู shell ลิงก์ "/wellness" เฉยๆ ไม่ติด selector นี้
+  const wellnessRow = page.locator('a[href^="/wellness/"]').first();
+  if ((await wellnessRow.count()) > 0) {
+    await wellnessRow.click();
+    try {
+      await page.waitForURL("**/wellness/**", { timeout: 15_000 });
+    } catch {
+      // click แรกอาจยิงก่อน hydration ผูก handler เสร็จ (แพตเทิร์นเดียวกับ influ detail)
+      await wellnessRow.click();
+      await page.waitForURL("**/wellness/**", { timeout: 30_000 });
+    }
+    await settle(page, 1200);
+    await expectNot404(page, "หน้าการ์ดลูกค้า wellness");
+    await page.screenshot({
+      path: shotPath(project, "wellness-detail"),
+      fullPage: true,
+    });
+    await expectNoHorizontalOverflow(page, "หน้าการ์ดลูกค้า wellness");
+  }
+
+  /* ---------- Wellness: ปฏิทินคิวแพทย์ — เปิดแผงคิวของวัน (เลือกวันที่มีคิวถ้ามี) ---------- */
+  await gotoPage(page, "/wellness-calendar");
+  await settle(page, 1000);
+  const wellnessDays = page.locator('button[aria-label^="เปิดคิววันที่"]');
+  // ปฏิทินเดือนมีช่องวันเสมอ (≥28) — assert แข็งๆ กันหน้า crash แล้ว sweep ผ่านเงียบๆ
+  // (บทเรียน 2026-08-28: server error จาก client-reference proxy ทำให้ section นี้ถูกข้ามทั้งก้อน)
+  await expect(
+    wellnessDays.first(),
+    "ปฏิทินคิวแพทย์ Wellness ต้องมีช่องวันให้กด — ไม่มีแปลว่าหน้าพัง"
+  ).toBeVisible({ timeout: 15_000 });
+  {
+    // วันแรกที่มีชิปคิว (span.truncate อยู่ใน DOM ทั้งจอใหญ่/จอเล็ก) — ไม่มีก็ใช้วันแรกของเดือน
+    const busyDay = wellnessDays
+      .filter({ has: page.locator("span.truncate") })
+      .first();
+    const target = (await busyDay.count()) > 0 ? busyDay : wellnessDays.first();
+    await openShotClose(
+      page,
+      project,
+      async () => {
+        await target.click();
+        return true;
+      },
+      "wellness-day-panel"
+    );
   }
 });

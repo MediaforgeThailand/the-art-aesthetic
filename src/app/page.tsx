@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import {
   BarChart3,
+  HeartPulse,
   Megaphone,
   Tags,
   TabletSmartphone,
@@ -58,6 +59,12 @@ const CHANNELS: Channel[] = [
     href: "/influencers",
     image: "influencers-system",
     icon: Megaphone,
+  },
+  {
+    name: "Wellness System",
+    href: "/wellness",
+    image: "wellness-system",
+    icon: HeartPulse,
   },
   {
     name: "Sales Tool",
