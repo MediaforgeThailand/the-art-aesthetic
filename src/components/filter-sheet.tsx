@@ -101,7 +101,7 @@ export function FilterGroup({
   return (
     <section>
       <h3 className="mb-2 text-[13px] font-semibold text-stone-700">{label}</h3>
-      {hint && <p className="-mt-1.5 mb-2 text-xs text-stone-400">{hint}</p>}
+      {hint && <p className="-mt-1.5 mb-2 text-xs text-stone-500">{hint}</p>}
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </section>
   );

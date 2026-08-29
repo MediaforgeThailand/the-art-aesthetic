@@ -92,7 +92,7 @@ export function WellnessCasesClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหา ชื่อ / เบอร์ / หัตถการ"
-            className="w-full rounded-full border border-stone-200/80 bg-white/90 py-2.5 pl-10 pr-4 text-base text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-full border border-stone-200/80 bg-white/90 py-2.5 pl-10 pr-4 text-base text-stone-700 shadow-sm placeholder:text-stone-500 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
         </div>
 

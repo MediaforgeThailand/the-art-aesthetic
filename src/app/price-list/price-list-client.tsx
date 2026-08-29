@@ -572,7 +572,7 @@ export function PriceListClient({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาโปร เช่น Botox, Filler, Pico, Ultraformer..."
-              className="w-full rounded-xl border border-stone-200/80 bg-white/90 py-2.5 pl-9 pr-9 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+              className="w-full rounded-xl border border-stone-200/80 bg-white/90 py-2.5 pl-9 pr-9 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
             />
             {search !== "" && (
               <button

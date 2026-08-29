@@ -329,6 +329,8 @@ export function WorkloadClient({
     const assigneeById = new Map(filteredTasks.map((t) => [t.id, t.assignee_id]));
     for (const r of monthRevisions) {
       if (!assigneeById.has(r.task_id)) continue;
+      // การขอแก้ของ "ผู้สั่ง brief" เป็นการคุยกันก่อนส่งตรวจจริง — ไม่เข้า KPI ทั้งสองช่อง
+      if (r.revision_kind === "brief") continue;
       const assigneeId = assigneeById.get(r.task_id) ?? null;
       const row = (assigneeId && byId.get(assigneeId)) || unassigned;
       // "เพิ่มเติม" เป็นคำแนะนำเพื่อคุมคุณภาพ ไม่ใช่ความผิด — แยกช่องไม่ปนกับ KPI ข้อผิดพลาด

@@ -3,6 +3,7 @@ import type {
   ContentFormat,
   ContentKpiBasis,
   ContentKpiPeriod,
+  NotificationType,
   PriceGroup,
   RevisionKind,
   TaskPriority,
@@ -418,9 +419,13 @@ export const PAYMENT_METHODS = [
 
 export const STORAGE_BUCKET_DOCUMENTS = "documents";
 
-/* ---------- ตีกลับงาน 2 แบบ (migration 0063) ----------
-   ต่างกันที่ "นับเป็นข้อผิดพลาดไหม" เท่านั้น — ทั้งคู่ดึงงานกลับเป็น "กำลังทำ" เหมือนกัน
-   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload */
+/* ---------- ตีกลับงาน (migration 0063 + 'brief' ที่ 0097) ----------
+   ทุกแบบดึงงานกลับเป็น "กำลังทำ" เหมือนกัน ต่างกันที่ "นับเป็นข้อผิดพลาดไหม"
+   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload
+
+   ⚠️ 'brief' = ตีกลับของ "ผู้สั่ง brief" ในทอด 0 — ไม่มีปุ่มให้เลือก (จึงไม่อยู่ใน
+   REVISION_KIND_ORDER) ระบบใส่ให้เองตอนผู้สั่ง brief กดตีกลับ และ **ไม่นับ KPI**
+   เพราะยังไม่ผ่านสายตาผู้ตรวจจริง (กติกาผู้ใช้ 2026-08-29) */
 export const REVISION_KINDS: Record<
   RevisionKind,
   {
@@ -446,12 +451,100 @@ export const REVISION_KINDS: Record<
     chip: "border border-sky-200 bg-sky-50 text-sky-700",
     dot: "bg-sky-500",
   },
+  brief: {
+    label: "ผู้สั่ง brief ขอแก้",
+    hint: "ผู้สั่ง brief ขอให้แก้ก่อนส่งตรวจจริง — บันทึกในแชท แต่ไม่นับเป็นข้อผิดพลาด",
+    countsAsError: false,
+    chip: "border border-amber-200 bg-amber-50 text-amber-700",
+    dot: "bg-amber-500",
+  },
 };
 
+/** ตัวเลือกในกล่อง "ตีกลับ" ของผู้ตรวจจริง — 'brief' ไม่อยู่ในนี้โดยตั้งใจ
+    (ผู้สั่ง brief กดตีกลับได้ปุ่มเดียว ระบบใส่ชนิดให้เอง) */
 export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
 
 /** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
 export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
+
+/* ---------- ป้ายชนิดงานในกระดิ่งแจ้งเตือน (migration 0096) ----------
+   ทุกแถวในกระดิ่งติดป้ายชิดขวาบอกว่า "เรื่องนี้คืออะไร" อ่านได้ตั้งแต่ยังไม่อ่านข้อความ
+
+   loud = เรื่องที่ต้องลงมือทำต่อ (ป้ายเรืองแสงด้วย animate-glow-pulse ตามสีตัวเอง)
+   loud = false = เรื่องที่แค่ "เราเกี่ยวข้องอยู่ด้วย" — ป้ายเงียบๆ ไม่แย่งสายตา
+   กติกาผู้ใช้ 2026-08-29: อย่าให้ทุกอย่างเด่นเท่ากัน ไม่งั้นเท่ากับไม่มีอะไรเด่น */
+export type NotificationBadgeKey =
+  | "review_request"
+  | "rejected_mistake"
+  | "rejected_addition"
+  | "rejected_brief"
+  | "mention"
+  | "assign"
+  | "approved"
+  | "comment"
+  | "brief_accepted";
+
+export const NOTIFICATION_BADGES: Record<
+  NotificationBadgeKey,
+  { label: string; chip: string; loud: boolean }
+> = {
+  review_request: {
+    label: "ตรวจงาน",
+    chip: "border-amber-300 bg-amber-50 text-amber-700",
+    loud: true,
+  },
+  rejected_mistake: {
+    label: "แก้คำผิด",
+    chip: "border-rose-300 bg-rose-50 text-rose-700",
+    loud: true,
+  },
+  rejected_addition: {
+    label: "แก้เพิ่มเติม",
+    chip: "border-sky-300 bg-sky-50 text-sky-700",
+    loud: true,
+  },
+  rejected_brief: {
+    label: "แก้ก่อนส่งตรวจ",
+    chip: "border-amber-300 bg-amber-50 text-amber-700",
+    loud: true,
+  },
+  mention: {
+    label: "กล่าวถึงคุณ",
+    chip: "border-violet-300 bg-violet-50 text-violet-700",
+    loud: true,
+  },
+  assign: {
+    label: "งานใหม่",
+    chip: "border-brand-300 bg-brand-50 text-brand-700",
+    loud: true,
+  },
+  approved: {
+    label: "อนุมัติแล้ว",
+    chip: "border-emerald-200 bg-emerald-50 text-emerald-600",
+    loud: false,
+  },
+  comment: {
+    label: "ความคิดเห็น",
+    chip: "border-stone-200 bg-stone-50 text-stone-500",
+    loud: false,
+  },
+  brief_accepted: {
+    label: "รับงาน brief",
+    chip: "border-stone-200 bg-stone-50 text-stone-500",
+    loud: false,
+  },
+};
+
+/** ชนิด "rejected" แตกเป็น 3 ป้ายตาม revision_kind — ที่เหลือแมปตรงตัว */
+export function notificationBadgeKey(
+  type: NotificationType,
+  revisionKind: RevisionKind | null
+): NotificationBadgeKey {
+  if (type !== "rejected") return type;
+  if (revisionKind === "addition") return "rejected_addition";
+  if (revisionKind === "brief") return "rejected_brief";
+  return "rejected_mistake";
+}
 
 /* ---------- คลังลิงก์ผลวิเคราะห์ (migration 0065) ----------
    แท็บ "ผลวิเคราะห์" หน้า Task — ลิงก์ Canva ราย สัปดาห์/เดือน ที่หัวหน้าทีมแปะแชร์ */

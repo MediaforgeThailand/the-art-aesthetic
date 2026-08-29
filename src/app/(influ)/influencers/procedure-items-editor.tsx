@@ -639,7 +639,7 @@ export function ProcedureItemsEditor({
                   : `ค้นหา/เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
               }
               maxLength={PROCEDURE_NAME_MAX}
-              className="w-full bg-transparent text-base text-stone-900 outline-none placeholder:text-stone-400 sm:text-sm"
+              className="w-full bg-transparent text-base text-stone-900 outline-none placeholder:text-stone-500 sm:text-sm"
             />
           </div>
           {open && (

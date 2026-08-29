@@ -23,6 +23,18 @@ export function isVideoPath(path: string): boolean {
   return /\.(mp4|mov|webm|m4v)$/i.test(path);
 }
 
+/**
+ * src ของ `<video>` ที่ใช้เป็น "รูปหน้าปก" (thumbnail) — **ต้องต่อ media fragment `#t=`**
+ * ไม่งั้นเบราว์เซอร์ที่ `preload="metadata"` โหลดแค่ header แล้ว **ไม่วาดเฟรมไหนเลย**
+ * (ได้ช่องเทาๆ ว่างแทนรูป — อาการที่ทีมเจอบนการ์ดงานที่เป็นวิดีโอ);
+ * `#t=0.1` สั่งให้ seek ไปวินาทีนั้นแล้ววาดเฟรมออกมาเป็นภาพนิ่ง (Supabase Storage
+ * รองรับ range request จึงดึงมาแค่ช่วงต้นไฟล์ ไม่ได้โหลดทั้งคลิป)
+ * ใช้เฉพาะกับ `<video>` ที่เป็นรูปหน้าปก — ตัวเล่นจริง (lightbox/แผงงาน) ไม่ต้องใช้
+ */
+export function videoThumbSrc(url: string): string {
+  return `${url}#t=0.1`;
+}
+
 export type MediaKind = "image" | "video" | "other";
 
 export const MEDIA_KINDS: Record<
