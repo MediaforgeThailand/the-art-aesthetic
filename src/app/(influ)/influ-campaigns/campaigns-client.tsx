@@ -123,7 +123,9 @@ function CopyTagButton({ text, label }: { text: string; label: string }) {
           window.setTimeout(() => setDone(false), 1500);
         });
       }}
-      className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 sm:h-8 sm:w-8"
+      // ขนาดฐาน = เดสก์ท็อป แล้วขยายเป็น 44px ด้วย max-sm: (ไม่ใช่ h-11 + sm:h-8)
+      // เพราะ utility ที่คุม property เดียวกันแพ้ชนะตามลำดับใน CSS ไม่ใช่ลำดับใน class
+      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90 max-sm:h-11 max-sm:w-11"
     >
       {done ? (
         <Check size={15} className="text-emerald-600" />
@@ -261,7 +263,9 @@ function CampaignFormModal({
         <div>
           <Label htmlFor="cmp-tag">แท็กประจำแคมเปญ *</Label>
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+            {/* min-w-0: ความกว้างขั้นต่ำโดยธรรมชาติของ <input> กว้างพอจะดันปุ่ม
+                "สุ่มรหัส" ล้นขอบโมดัลบนจอ 375px ถ้าไม่ยอมให้หด */}
+            <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base font-semibold text-brand-500 sm:text-sm">
                 #
               </span>
@@ -481,7 +485,8 @@ function MemberPanel({
             <p className="truncate text-base font-semibold text-stone-800">
               {campaign.name}
             </p>
-            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-sm font-semibold text-brand-600">
+            {/* truncate ตรงนี้เพราะแท็กยาวๆ ดันหัวแผงจนล้นขอบจอ 375px ได้ */}
+            <p className="mt-0.5 truncate font-mono text-sm font-semibold text-brand-600">
               #{campaign.tag}
             </p>
           </div>
@@ -490,7 +495,7 @@ function MemberPanel({
             type="button"
             onClick={onClose}
             aria-label="ปิดแผง"
-            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 sm:h-8 sm:w-8"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 max-sm:h-11 max-sm:w-11"
           >
             <X size={18} />
           </button>
@@ -532,7 +537,7 @@ function MemberPanel({
                         type="button"
                         disabled={busyId !== null}
                         onClick={() => void addMember(p)}
-                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-brand-50 disabled:opacity-50"
+                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-brand-50 disabled:opacity-50 max-sm:min-h-11"
                       >
                         <UserRound size={15} className="shrink-0 text-brand-500" />
                         <span className="min-w-0 flex-1 truncate text-sm text-stone-700">
@@ -603,7 +608,7 @@ function MemberPanel({
                             m.profile ? profileName(m.profile) : "influ"
                           } ออกจากแคมเปญ`}
                           title="เอาออกจากแคมเปญ"
-                          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 sm:h-8 sm:w-8"
+                          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 max-sm:h-11 max-sm:w-11"
                         >
                           <X size={16} />
                         </button>
@@ -720,8 +725,10 @@ export function CampaignsClient({
     router.refresh();
   };
 
+  // ไม่มี padding ที่ root — PageContainer ของหน้า (page.tsx) ให้ px/py มาแล้ว
+  // ซ้อนสองชั้นทำให้จอ 375px เหลือความกว้างใช้งานน้อยลงไปอีก
   return (
-    <div className="mx-auto w-full px-3 py-4 sm:px-4">
+    <>
       {/* แถบเครื่องมือแถวเดียวตามแพตเทิร์นหน้าอื่นในระบบ */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
@@ -737,11 +744,16 @@ export function CampaignsClient({
           />
         </div>
         {canManage && (
+          // จอเล็ก: ยุบเหลือไอคอน 44px (แพตเทิร์นเดียวกับ "เพิ่มรายชื่อ" ที่ Hunting)
+          // ไม่งั้นช่องค้นหา + ปุ่มเต็มข้อความรวมกันเกินความกว้าง 375px แล้วตกบรรทัด
+          // — aria-label คงข้อความเดิมไว้ให้ e2e จับปุ่มได้เหมือนเดิม
           <Button
-            className="sm:ml-auto"
+            aria-label="แคมเปญใหม่"
+            className="ml-auto max-sm:w-11 max-sm:!px-0"
             onClick={() => setFormFor({ campaign: null })}
           >
-            <Plus size={16} /> แคมเปญใหม่
+            <Plus size={16} />
+            <span className="max-sm:hidden">แคมเปญใหม่</span>
           </Button>
         )}
       </div>
@@ -787,7 +799,9 @@ export function CampaignsClient({
                       {c.name}
                     </p>
                     <p className="mt-1 flex items-center gap-1.5">
-                      <span className="truncate rounded-md bg-brand-50 px-2 py-0.5 font-mono text-sm font-semibold tracking-wide text-brand-700">
+                      {/* min-w-0: flex item มี min-width:auto ทำให้ truncate ไม่ทำงาน
+                          แท็กยาวจะดันการ์ดล้นออกนอกจอแทนที่จะตัดด้วย ... */}
+                      <span className="min-w-0 truncate rounded-md bg-brand-50 px-2 py-0.5 font-mono text-sm font-semibold tracking-wide text-brand-700">
                         #{c.tag}
                       </span>
                     </p>
@@ -821,7 +835,7 @@ export function CampaignsClient({
                         e.stopPropagation();
                         setFormFor({ campaign: c });
                       }}
-                      className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 sm:h-8 sm:w-8"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 max-sm:h-11 max-sm:w-11"
                     >
                       <Pencil size={15} />
                     </button>
@@ -833,7 +847,7 @@ export function CampaignsClient({
                         e.stopPropagation();
                         setConfirmDelete(c);
                       }}
-                      className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 max-sm:h-11 max-sm:w-11"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -882,6 +896,6 @@ export function CampaignsClient({
         onConfirm={() => void doDelete()}
         onClose={() => setConfirmDelete(null)}
       />
-    </div>
+    </>
   );
 }

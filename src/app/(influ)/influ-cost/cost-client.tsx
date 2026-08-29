@@ -12,6 +12,11 @@
  * ชิปงานค้าง + ปุ่มตัวกรองที่พับ support/ช่วงวัน/เคสเก่าไว้ข้างใน) → ลิสต์เป็นตาราง
  * จัดกลุ่มตามสถานะแบบเดียวกับ Hunting/my-tasks (คอลัมน์ตรงกันทุกแถว อ่านราคาไล่ลง
  * แนวดิ่งได้ — ของเดิมเป็นการ์ด 2 คอลัมน์ที่ราคา/ปุ่ม support ลอยไปคนละที่ทุกแถว)
+ *
+ * มือถือ (2026-08-30): แถบเครื่องมือเหลือ [ค้นหา][ปุ่มตัวกรอง] — ตัวกรองรองทั้งหมด
+ * (รวมชิป "ยังไม่กรอกต้นทุน") ย้ายเข้า `FilterSheet` กลางของระบบ แทน bottom sheet ที่
+ * หน้านี้เคยเขียน portal เองซึ่งไม่มีเพดานความสูง/ไม่ล็อค scroll (ตัวกรองยาวแล้วปุ่มตกใต้ fold)
+ * ตัวกรองที่เปิดค้างอยู่ถูกสรุปเป็น ActiveFilterChips ใต้แถบ — กดกากบาทปลดทีละอันได้
  */
 
 import {
@@ -24,12 +29,16 @@ import {
   Search,
   SlidersHorizontal,
   Wallet,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import {
+  ActiveFilterChips,
+  FilterButton,
+  FilterGroup,
+  FilterSheet,
+} from "@/components/filter-sheet";
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -159,11 +168,44 @@ function SummaryTile({
   );
 }
 
-/* ---------- ตัวกรองรอง (support / ช่วงวันรับบริการ / เคสเก่า) ----------
-   ใช้ชุดเดียวกัน 2 ที่: แถว inline ใต้แถบเครื่องมือ (จอ ≥sm) และ bottom sheet
-   บนมือถือ — แยกเป็น component ระดับโมดูล กัน logic ตัวกรองแตกเป็นสองสำเนา */
+/* ---------- ตัวกรองรอง (support / ช่วงวันรับบริการ / เคสเก่า / ยังไม่กรอกต้นทุน) ----------
+   ใช้ชุดเดียวกัน 2 ที่: แถว inline ใต้แถบเครื่องมือ (จอ ≥sm) และแผ่นตัวกรองกลางบนมือถือ
+   — ตัวควบคุมทุกตัวเขียนครั้งเดียวใน component นี้ ต่างกันแค่ "กล่องที่ห่อ" (โหมด row =
+   ชิปเรียงต่อกันเหมือนเดิม · โหมด sheet = แยกเป็น FilterGroup) ห้าม copy markup ไปเขียน
+   ซ้ำในแผ่น ไม่งั้น logic ตัวกรองแตกเป็นสองสำเนาแล้วหลุดกันแน่ */
+
+/** ชิป "ยังไม่กรอกต้นทุน" — อยู่บนแถบเครื่องมือของจอ ≥sm และย้ายเข้าแผ่นบนมือถือ
+    (component เดียว ใช้ทั้งสองที่ — ป้าย/สี/เกณฑ์นับต้องตรงกันเสมอ) */
+function UnpricedChip({
+  active,
+  count,
+  onToggle,
+  className = "",
+}: {
+  active: boolean;
+  count: number;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      title="รายการที่ทีมยังไม่ได้กรอกต้นทุน (ไม่นับของที่ผูก Price List หรือแบรนด์ support)"
+      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 sm:text-xs ${
+        active
+          ? "border-amber-400 bg-amber-50 font-medium text-amber-700"
+          : "border-stone-200 bg-white/70 text-stone-500 hover:border-stone-300"
+      } ${className}`}
+    >
+      ยังไม่กรอกต้นทุน ({count})
+    </button>
+  );
+}
 
 function FilterControls({
+  layout = "row",
   supportFilter,
   onSupportFilter,
   dateFrom,
@@ -172,7 +214,12 @@ function FilterControls({
   onDateTo,
   includeOld,
   onToggleOld,
+  unpricedOnly,
+  onToggleUnpriced,
+  unpricedCount,
 }: {
+  /** row = แถว inline ของจอ ≥sm · sheet = แผ่นตัวกรองบนมือถือ (จัดเป็น FilterGroup) */
+  layout?: "row" | "sheet";
   supportFilter: SupportFilter;
   onSupportFilter: (v: SupportFilter) => void;
   dateFrom: string;
@@ -181,13 +228,18 @@ function FilterControls({
   onDateTo: (v: string) => void;
   includeOld: boolean;
   onToggleOld: () => void;
+  unpricedOnly: boolean;
+  onToggleUnpriced: () => void;
+  unpricedCount: number;
 }) {
+  const sheet = layout === "sheet";
   const seg = (v: SupportFilter, label: string) => (
     <button
       key={v}
       type="button"
       onClick={() => onSupportFilter(v)}
-      className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all max-sm:min-h-10 ${
+      aria-pressed={supportFilter === v}
+      className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all max-sm:min-h-11 max-sm:px-4 ${
         supportFilter === v
           ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
           : "text-stone-500 hover:text-brand-700"
@@ -196,44 +248,91 @@ function FilterControls({
       {label}
     </button>
   );
+
+  const supportControl = (
+    <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 p-0.5">
+      {/* ในแผ่นมีหัวข้อ FilterGroup กำกับอยู่แล้ว — ป้ายในตัวควบคุมจะซ้ำกันเปล่าๆ */}
+      {!sheet && (
+        <span className="pl-2 pr-0.5 text-[11px] text-stone-400">Support</span>
+      )}
+      {seg("all", "ทั้งหมด")}
+      {seg("supported", "ได้ของ")}
+      {seg("unsupported", "ไม่ได้")}
+    </span>
+  );
+
+  const dateControl = (
+    <span className="inline-flex w-full items-center gap-1 rounded-full border border-stone-200 bg-white/70 py-0.5 pl-3 pr-1 text-[11px] whitespace-nowrap text-stone-400 sm:w-auto">
+      {!sheet && "วันรับบริการ"}
+      {/* ห้ามส่ง text-xs ทับ Input — primitive ตั้ง text-base sm:text-sm ไว้แล้ว
+          (ช่องกรอก <16px บนจอเล็ก = iOS ซูมเข้าแล้วไม่ซูมกลับ) */}
+      <Input
+        type="date"
+        aria-label="วันรับบริการ ตั้งแต่"
+        value={dateFrom}
+        onChange={(e) => onDateFrom(e.target.value)}
+        className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 max-sm:min-h-11 sm:flex-none"
+      />
+      <span>–</span>
+      <Input
+        type="date"
+        aria-label="วันรับบริการ ถึง"
+        value={dateTo}
+        onChange={(e) => onDateTo(e.target.value)}
+        className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 max-sm:min-h-11 sm:flex-none"
+      />
+    </span>
+  );
+
+  const oldControl = (
+    <button
+      type="button"
+      onClick={onToggleOld}
+      aria-pressed={includeOld}
+      title="รวมข้อมูลเก่าที่นำเข้า (archive) และเคสที่ปฏิเสธ"
+      className={`inline-flex cursor-pointer items-center rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 max-sm:text-sm ${
+        includeOld
+          ? "border-brand-300 bg-brand-50 text-brand-700"
+          : "border-stone-200 bg-white/60 text-stone-400 hover:text-stone-600"
+      }`}
+    >
+      รวมเคสเก่า / ปฏิเสธ
+    </button>
+  );
+
+  if (sheet)
+    return (
+      <>
+        <FilterGroup label="งานค้าง">
+          <UnpricedChip
+            active={unpricedOnly}
+            count={unpricedCount}
+            onToggle={onToggleUnpriced}
+          />
+        </FilterGroup>
+        <FilterGroup
+          label="แบรนด์ support"
+          hint="รายการที่แบรนด์ส่งของมาให้ นับต้นทุนเป็น ฿0"
+        >
+          {supportControl}
+        </FilterGroup>
+        <FilterGroup
+          label="ช่วงวันรับบริการ"
+          hint="เคสที่ยังไม่เคาะวันจะไม่เข้าช่วงที่เลือก"
+        >
+          {dateControl}
+        </FilterGroup>
+        <FilterGroup label="ข้อมูลเก่า">{oldControl}</FilterGroup>
+      </>
+    );
+
+  /* โหมด row (จอ ≥sm) — เรียงต่อกันเหมือนเดิมทุกประการ; ชิป "ยังไม่กรอกต้นทุน"
+     อยู่บนแถบเครื่องมือของจอนี้อยู่แล้ว จึงไม่ซ้ำเข้ามาในแถวนี้ */
   return (
     <>
-      <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 p-0.5">
-        <span className="pl-2 pr-0.5 text-[11px] text-stone-400">Support</span>
-        {seg("all", "ทั้งหมด")}
-        {seg("supported", "ได้ของ")}
-        {seg("unsupported", "ไม่ได้")}
-      </span>
-      <span className="inline-flex w-full items-center gap-1 rounded-full border border-stone-200 bg-white/70 py-0.5 pl-3 pr-1 text-[11px] whitespace-nowrap text-stone-400 sm:w-auto">
-        วันรับบริการ
-        <Input
-          type="date"
-          aria-label="วันรับบริการ ตั้งแต่"
-          value={dateFrom}
-          onChange={(e) => onDateFrom(e.target.value)}
-          className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 text-xs sm:flex-none"
-        />
-        <span>–</span>
-        <Input
-          type="date"
-          aria-label="วันรับบริการ ถึง"
-          value={dateTo}
-          onChange={(e) => onDateTo(e.target.value)}
-          className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 text-xs sm:flex-none"
-        />
-      </span>
-      <button
-        type="button"
-        onClick={onToggleOld}
-        title="รวมข้อมูลเก่าที่นำเข้า (archive) และเคสที่ปฏิเสธ"
-        className={`inline-flex cursor-pointer items-center rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
-          includeOld
-            ? "border-brand-300 bg-brand-50 text-brand-700"
-            : "border-stone-200 bg-white/60 text-stone-400 hover:text-stone-600"
-        }`}
-      >
-        รวมเคสเก่า / ปฏิเสธ
-      </button>
+      {supportControl}
+      {dateControl}
+      {oldControl}
     </>
   );
 }
@@ -355,9 +454,12 @@ export function CostClient({
   const [dateTo, setDateTo] = useState("");
   // เคสเก่า (archive) + เคสที่ปฏิเสธ ซ่อนโดย default — ข้อมูลนำเข้าเก่าเยอะมาก
   const [includeOld, setIncludeOld] = useState(false);
+  /* แถวตัวกรอง inline ของจอ ≥sm กับแผ่นตัวกรองของมือถือ แยก state กันโดยตั้งใจ —
+     FilterSheet ปิดตัวเองทันทีเมื่อจอ ≥sm ถ้าใช้ state ร่วมกัน แถว inline จะกางไม่ขึ้น */
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  /* Esc ปิดตัวกรอง — จำเป็นกับ bottom sheet บนมือถือ (จอใหญ่ได้ประโยชน์เดียวกัน) */
+  /* Esc ปิดแถวตัวกรอง inline (แผ่นของมือถือมี Esc ในตัวอยู่แล้ว) */
   useEffect(() => {
     if (!filtersOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -528,6 +630,29 @@ export function CostClient({
     usageFilter !== "all" ||
     search.trim() !== "";
 
+  /** จำนวนบน badge ของปุ่มตัวกรองมือถือ — นับเฉพาะของที่ "อยู่ในแผ่น" ให้ตรงกับที่เห็น
+      เมื่อเปิดเข้าไป (สถานะมาจากการ์ดสรุปด้านบน ซึ่งมีวงแหวนบอกอยู่แล้ว) */
+  const sheetFilterCount =
+    (supportFilter !== "all" ? 1 : 0) +
+    (dateFrom !== "" || dateTo !== "" ? 1 : 0) +
+    (includeOld ? 1 : 0) +
+    (unpricedOnly ? 1 : 0);
+
+  /** จำนวนรายการที่เหลือหลังกรอง — โชว์บนปุ่มปิดแผ่น ให้เห็นผลก่อนกดกลับไปดูลิสต์ */
+  const shownCount = useMemo(
+    () =>
+      sections.reduce(
+        (n, s) => n + s.groups.reduce((m, g) => m + g.items.length, 0),
+        0
+      ),
+    [sections]
+  );
+
+  const clearDates = () => {
+    setDateFrom("");
+    setDateTo("");
+  };
+
   const clearFilters = () => {
     setSearch("");
     setUsageFilter("all");
@@ -556,8 +681,10 @@ export function CostClient({
     />
   );
 
-  const filterControls = (
+  /* ตัวกรองรองชุดเดียว — ต่างกันแค่กล่องที่ห่อ (แถว inline ของ ≥sm / แผ่นของมือถือ) */
+  const filterControls = (layout: "row" | "sheet") => (
     <FilterControls
+      layout={layout}
       supportFilter={supportFilter}
       onSupportFilter={setSupportFilter}
       dateFrom={dateFrom}
@@ -566,8 +693,44 @@ export function CostClient({
       onDateTo={setDateTo}
       includeOld={includeOld}
       onToggleOld={() => setIncludeOld((v) => !v)}
+      unpricedOnly={unpricedOnly}
+      onToggleUnpriced={() => setUnpricedOnly((v) => !v)}
+      unpricedCount={sums.unpricedCount}
     />
   );
+
+  /* ชิปสรุปตัวกรองที่เปิดอยู่ (มือถือ) — พอตัวกรองถูกพับเก็บในแผ่นที่ปิดอยู่ ผู้ใช้จะ
+     มองไม่เห็นว่ากำลังกรองอะไรค้างไว้แล้วนึกว่าข้อมูลหาย (บทเรียนเดียวกับ my-tasks);
+     ใส่สถานะจากการ์ดสรุปมาด้วย เพราะกดง่ายและปลดยากถ้าจำไม่ได้ว่าเผลอกดใบไหนไว้ */
+  const activeChips = [
+    usageFilter !== "all" && {
+      key: "usage",
+      label: COST_USAGE_META[usageFilter].label,
+      onClear: () => setUsageFilter("all"),
+    },
+    unpricedOnly && {
+      key: "unpriced",
+      label: "ยังไม่กรอกต้นทุน",
+      onClear: () => setUnpricedOnly(false),
+    },
+    supportFilter !== "all" && {
+      key: "support",
+      label: `Support: ${supportFilter === "supported" ? "ได้ของ" : "ไม่ได้"}`,
+      onClear: () => setSupportFilter("all"),
+    },
+    (dateFrom !== "" || dateTo !== "") && {
+      key: "date",
+      label: `วันรับบริการ ${dateFrom ? formatDate(dateFrom) : "…"} – ${
+        dateTo ? formatDate(dateTo) : "…"
+      }`,
+      onClear: clearDates,
+    },
+    includeOld && {
+      key: "old",
+      label: "รวมเคสเก่า / ปฏิเสธ",
+      onClear: () => setIncludeOld(false),
+    },
+  ].filter(Boolean) as { key: string; label: string; onClear: () => void }[];
 
   return (
     <div>
@@ -602,11 +765,10 @@ export function CostClient({
         {usageTile("used", CheckCircle2, "bg-emerald-50 text-emerald-600", 120)}
       </div>
 
-      {/* แถบเครื่องมือแถวเดียว — ตัวกรองรองถูกพับเก็บไว้ในปุ่มขวาสุด */}
+      {/* แถบเครื่องมือแถวเดียว — ตัวกรองรองถูกพับเก็บไว้ในปุ่มขวาสุด
+          จอเล็กเหลือ [ค้นหา][ปุ่มตัวกรอง] เท่านั้น (ชิป/ปุ่มที่เหลือย้ายเข้าแผ่น) */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {/* จอเล็กให้ช่องค้นหากินเต็มบรรทัด แล้วชิป/ปุ่มไหลลงแถวถัดไป
-            (บีบให้อยู่บรรทัดเดียวกันแล้ว placeholder โดนตัดจนอ่านไม่ออก) */}
-        <div className="relative w-full sm:w-64">
+        <div className="relative min-w-52 flex-1 sm:w-64 sm:flex-none">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -618,33 +780,28 @@ export function CostClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setUnpricedOnly((v) => !v)}
-          title="รายการที่ทีมยังไม่ได้กรอกต้นทุน (ไม่นับของที่ผูก Price List หรือแบรนด์ support)"
-          className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-[0.97] sm:min-h-0 sm:text-xs ${
-            unpricedOnly
-              ? "border-amber-400 bg-amber-50 font-medium text-amber-700"
-              : "border-stone-200 bg-white/70 text-stone-500 hover:border-stone-300"
-          }`}
-        >
-          ยังไม่กรอกต้นทุน ({sums.unpricedCount})
-        </button>
+        <UnpricedChip
+          active={unpricedOnly}
+          count={sums.unpricedCount}
+          onToggle={() => setUnpricedOnly((v) => !v)}
+          className="max-sm:hidden"
+        />
         {anyFilterActive && (
           <button
             type="button"
             onClick={clearFilters}
-            className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-2 text-xs text-stone-400 transition-colors hover:text-brand-700 sm:min-h-0"
+            className="inline-flex cursor-pointer items-center rounded-full px-2 text-xs text-stone-400 transition-colors hover:text-brand-700 max-sm:hidden"
           >
             ล้างตัวกรอง
           </button>
         )}
+        {/* จอ ≥sm: กางแถวตัวกรอง inline ใต้แถบ (พฤติกรรมเดิม) */}
         <button
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
           aria-label="ตัวกรองเพิ่มเติม"
           title="ตัวกรอง: แบรนด์ support / ช่วงวันรับบริการ / เคสเก่า"
-          className={`relative ml-auto flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 ${
+          className={`relative ml-auto hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:flex ${
             filtersOpen
               ? "border-brand-300 bg-brand-50 text-brand-700"
               : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
@@ -655,12 +812,21 @@ export function CostClient({
             <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
           )}
         </button>
+        {/* จอเล็ก: ปุ่มเดียวเปิดแผ่นตัวกรองกลางของระบบ */}
+        <FilterButton
+          count={sheetFilterCount}
+          onClick={() => setSheetOpen(true)}
+          className="sm:hidden"
+        />
       </div>
 
-      {/* แถวตัวกรองรอง inline — เฉพาะจอ ≥sm (มือถือใช้ bottom sheet ท้ายไฟล์แทน) */}
+      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — จอเล็กเท่านั้น (≥sm เห็นของจริงบนแถบ/แถว inline) */}
+      <ActiveFilterChips items={activeChips} className="mb-3 sm:hidden" />
+
+      {/* แถวตัวกรองรอง inline — เฉพาะจอ ≥sm (มือถือใช้แผ่นท้ายไฟล์แทน) */}
       {filtersOpen && (
         <div className="mb-4 hidden flex-wrap items-center gap-2 animate-fade-in sm:flex">
-          {filterControls}
+          {filterControls("row")}
         </div>
       )}
 
@@ -803,44 +969,19 @@ export function CostClient({
         </div>
       )}
 
-      {/* มือถือ: ตัวกรองรองเป็น bottom sheet เด้งจากขอบล่าง (แถว inline กินจอเกินไป)
-          ใช้ FilterControls ชุดเดียวกับจอ ≥sm; portal ปลอดภัยกับ SSR เพราะ filtersOpen
-          เริ่ม false — สไตล์ลอกจาก Modal (rounded-t-2xl + pb-safe) */}
-      {filtersOpen &&
-        createPortal(
-          <div className="sm:hidden">
-            <button
-              type="button"
-              aria-label="ปิดตัวกรอง"
-              onClick={() => setFiltersOpen(false)}
-              className="fixed inset-0 z-40 cursor-default bg-brand-900/30 backdrop-blur-sm animate-fade-in"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="ตัวกรองต้นทุน"
-              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-white/70 bg-white/95 shadow-2xl animate-slide-in-up"
-            >
-              <div className="flex items-center justify-between border-b border-brand-100/70 px-5 py-3">
-                <h2 className="text-base font-semibold text-stone-900">
-                  ตัวกรองต้นทุน
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="-mr-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 px-5 py-4 pb-safe-4">
-                {filterControls}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {/* มือถือ: ตัวกรองรองอยู่ในแผ่นกลางของระบบ (ซ่อนตัวเองที่ ≥sm อยู่แล้ว)
+          — ใช้ FilterControls ชุดเดียวกับแถว inline ของจอ ≥sm */}
+      <FilterSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title="ตัวกรองต้นทุน"
+        onClear={clearFilters}
+        clearDisabled={!anyFilterActive}
+        resultCount={shownCount}
+        resultNoun="รายการ"
+      >
+        {filterControls("sheet")}
+      </FilterSheet>
     </div>
   );
 }

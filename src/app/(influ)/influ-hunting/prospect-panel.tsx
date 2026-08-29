@@ -131,7 +131,8 @@ export function RatingStars({
             type="button"
             aria-label={`ให้ ${n} ดาว`}
             onClick={() => onChange(n === value ? 0 : n)}
-            className="flex h-11 w-8 cursor-pointer items-center justify-center transition-transform active:scale-90 sm:h-7 sm:w-6"
+            // เป้านิ้วเต็ม 44×44 เฉพาะจอเล็ก (ดาวเรียงติดกัน กดพลาดง่ายสุดในแผงนี้)
+            className="flex h-7 w-6 cursor-pointer items-center justify-center transition-transform active:scale-90 max-sm:h-11 max-sm:w-11"
           >
             {star}
           </button>
@@ -413,7 +414,9 @@ export function ProspectPanel({
                       type="button"
                       disabled={locked || active}
                       onClick={() => onSetStatus(s)}
-                      className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all active:scale-[0.97] disabled:cursor-default sm:min-h-0 ${
+                      // max-sm: อย่างเดียว (ไม่ใช่ min-h-11 + sm:min-h-0) — utility ที่คุม
+                      // property เดียวกันแพ้ชนะตามลำดับใน CSS ไม่ใช่ลำดับที่เขียนในคลาส
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all active:scale-[0.97] disabled:cursor-default max-sm:min-h-11 ${
                         active
                           ? meta.chip
                           : "border border-transparent text-stone-400 hover:bg-stone-100 disabled:opacity-40 disabled:hover:bg-transparent"
@@ -614,7 +617,10 @@ export function ProspectPanel({
                           }
                           onBlur={() => commitChannels(rows)}
                           placeholder="ลิงก์ / @handle"
-                          className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
+                          // จอเล็กช่องนี้กินทั้งบรรทัดของตัวเอง — แถวมีแพลตฟอร์ม/ผู้ติดตาม/
+                          // ปุ่ม 44px อยู่ด้วย ถ้าปล่อยให้ยืดตามที่เหลือจะเหลือกว้าง ~30px
+                          // (ต้องสั่งผ่าน flex ทั้งชุดเพราะ basis-full ตัวเดียวแพ้ flex-1)
+                          className="min-w-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none max-sm:flex-[1_1_100%] sm:flex-1 sm:text-sm"
                         />
                         <input
                           type="text"

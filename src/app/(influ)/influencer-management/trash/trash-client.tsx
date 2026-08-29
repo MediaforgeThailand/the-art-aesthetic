@@ -130,7 +130,9 @@ export function TrashClient({
                 >
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-stone-800">
-                      {b.label}
+                      {/* ห่อ span ให้ตัดคำได้ — ข้อความเปล่าใน flex เป็น item ที่ min-width:auto
+                          ชื่อยาวๆ (ชื่อ+นามสกุล+ชื่อเล่น) จึงดันแถวล้นขอบจอ 375px */}
+                      <span className="min-w-0 break-words">{b.label}</span>
                       {restored && (
                         <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
                           กู้คืนแล้ว

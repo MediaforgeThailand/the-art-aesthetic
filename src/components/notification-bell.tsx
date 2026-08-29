@@ -259,7 +259,9 @@ export function NotificationBell({ userId }: { userId: string }) {
         onClick={toggle}
         title="การแจ้งเตือน"
         aria-label={`การแจ้งเตือน${unread > 0 ? ` (ยังไม่อ่าน ${unread})` : ""}`}
-        className="relative shrink-0 cursor-pointer rounded-lg p-2 text-stone-400 transition-colors duration-200 hover:bg-white/70 hover:text-brand-700 active:scale-90"
+        // เป้านิ้ว 44px เฉพาะจอเล็ก (กระดิ่งเป็นปุ่มหลักบน topbar มือถือ) — คุมด้วย
+        // max-sm: อย่างเดียวทั้งขนาดและการจัดกลาง เพื่อไม่ให้กล่องบนเดสก์ท็อปเปลี่ยน
+        className="relative shrink-0 cursor-pointer rounded-lg p-2 text-stone-400 transition-colors duration-200 hover:bg-white/70 hover:text-brand-700 active:scale-90 max-sm:flex max-sm:h-11 max-sm:w-11 max-sm:items-center max-sm:justify-center max-sm:p-0"
       >
         <Bell size={18} />
         {unread > 0 && (
@@ -275,7 +277,9 @@ export function NotificationBell({ userId }: { userId: string }) {
           <div
             ref={panelRef}
             style={{ left: pos.x, top: Math.max(8, pos.y) }}
-            className="glass fixed z-[70] flex max-h-[75vh] w-96 max-w-[calc(100vw-16px)] flex-col rounded-xl shadow-2xl animate-scale-in"
+            // z-[60] = ชั้น "เมนูลอย/drawer" ตามสเกลของระบบ (แผงนี้เคยเป็น z-[70]
+            // ซึ่งอยู่นอกสเกล) — drawer เมนูมือถือปิดตัวเองก่อนอยู่แล้วจึงไม่ชนกัน
+            className="glass fixed z-[60] flex max-h-[75vh] w-96 max-w-[calc(100vw-16px)] flex-col rounded-xl shadow-2xl animate-scale-in"
           >
             <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-2.5">
               <p className="text-sm font-semibold text-stone-800">การแจ้งเตือน</p>

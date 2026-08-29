@@ -183,7 +183,7 @@ export function MemoStage({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 max-sm:min-h-11 ${
             mode === "copy"
               ? "cursor-default bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
               : "cursor-pointer border border-stone-200 bg-white/50 text-stone-500"
@@ -196,11 +196,12 @@ export function MemoStage({
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70"
+          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70 max-sm:min-h-11"
         >
           <FileSignature size={15} />
           แบบฟอร์มดิจิทัล (เซนในระบบ)
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          {/* ป้าย Coming soon ซ่อนที่ <sm — ปุ่มนี้กดไม่ได้อยู่แล้ว ไม่ควรกินความกว้างจอเล็ก */}
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 max-sm:hidden">
             Coming soon
           </span>
         </button>
@@ -261,8 +262,9 @@ function CopyBox({
           {copied ? "คัดลอกแล้ว" : "คัดลอก"}
         </Button>
       </div>
+      {/* ข้อความ memo มีทั้งชื่อโปรแกรม/ลิงก์ยาวๆ ที่ตัดคำเองไม่ได้ — break-words กันดันจอที่ 375px */}
       <div
-        className={`rounded-xl border border-stone-200 bg-white/80 px-3.5 py-2.5 text-[13px] leading-6 text-stone-800 ${
+        className={`break-words rounded-xl border border-stone-200 bg-white/80 px-3.5 py-2.5 text-[13px] leading-6 text-stone-800 ${
           multiline ? "whitespace-pre-wrap" : ""
         }`}
       >
@@ -638,7 +640,8 @@ function MemoCopyStage({
                 </p>
               )}
             </div>
-            <div className="flex gap-2">
+            {/* จอเล็ก: กลุ่มปุ่มไฟล์ลงบรรทัดของตัวเองแล้วชิดขวา — เรียงต่อท้ายชื่อไฟล์ไม่พอที่ 375px */}
+            <div className="flex flex-wrap gap-2 max-sm:w-full max-sm:justify-end">
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -1090,7 +1093,7 @@ export function ContractStage(props: {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 max-sm:min-h-11 ${
             mode === "upload"
               ? "cursor-default bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
               : "cursor-pointer border border-stone-200 bg-white/50 text-stone-500"
@@ -1103,11 +1106,12 @@ export function ContractStage(props: {
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70"
+          className="flex cursor-not-allowed items-center gap-2 rounded-full border border-stone-200 bg-white/50 px-3.5 py-2 text-sm font-medium text-stone-400 opacity-70 max-sm:min-h-11"
         >
           <FileSignature size={15} />
           เซนในระบบ (ดิจิทัล)
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          {/* ป้าย Coming soon ซ่อนที่ <sm — ปุ่มนี้กดไม่ได้อยู่แล้ว ไม่ควรกินความกว้างจอเล็ก */}
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 max-sm:hidden">
             Coming soon
           </span>
         </button>
@@ -1370,7 +1374,9 @@ function ContractUploadStage({
                 </p>
               )}
             </div>
-            <div className="flex gap-2">
+            {/* จอเล็ก: กลุ่มปุ่มไฟล์ (ดาวน์โหลด/เปลี่ยน/ลบ) ลงบรรทัดของตัวเองแล้วชิดขวา
+                — 3 ปุ่มเรียงต่อท้ายชื่อไฟล์ล้นแนวนอนแน่นอนที่ 375px */}
+            <div className="flex flex-wrap gap-2 max-sm:w-full max-sm:justify-end">
               <Button
                 variant="secondary"
                 onClick={() => void downloadSigned()}
