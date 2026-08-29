@@ -243,9 +243,26 @@ export type NotificationRow = {
   type: NotificationType;
   /** ข้อความย่อ (เช่นเนื้อคอมเมนต์/เหตุผลตีกลับ) */
   preview: string | null;
-  /** เวลาอ่าน — null = ยังไม่อ่าน */
+  /** ประเภทการตีกลับ (มีค่าเฉพาะ type = 'rejected') — ใช้แยกป้าย "แก้คำผิด"/"แก้เพิ่มเติม" */
+  revision_kind: RevisionKind | null;
+  /** เวลาที่ "เห็นแล้ว" (เปิดแผงกระดิ่ง) — null = ยังนับอยู่ในตัวเลขบนกระดิ่ง */
+  seen_at: string | null;
+  /** เวลาอ่าน — null = ยังไม่อ่าน (แถวขึ้นเส้นขอบเด่นแบบกล่องอีเมล) */
   read_at: string | null;
   created_at: string;
+};
+
+/** อุปกรณ์ที่กดอนุญาตแจ้งเตือน (Web Push) — 1 แถว = 1 เบราว์เซอร์/เครื่อง */
+export type PushSubscriptionRow = {
+  id: string;
+  user_id: string;
+  /** endpoint ของ push service — unique, ถือเป็นความลับของเครื่องนั้น */
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: string;
+  last_success_at: string | null;
 };
 
 export type DocumentRow = {
@@ -1244,6 +1261,17 @@ export interface Database {
         Update: Partial<NotificationRow>;
         Relationships: [];
       };
+      push_subscriptions: {
+        Row: PushSubscriptionRow;
+        Insert: Partial<PushSubscriptionRow> & {
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+        };
+        Update: Partial<PushSubscriptionRow>;
+        Relationships: [];
+      };
       task_files: {
         Row: TaskFileRow;
         Insert: Partial<TaskFileRow> & { task_id: string; file_path: string };
@@ -1596,6 +1624,17 @@ export interface Database {
       sales_staff_detail: {
         Args: { p_name: string; p_from: string; p_to: string };
         Returns: Json;
+      };
+      /** ลงทะเบียนอุปกรณ์รับ Web Push ของคนที่ล็อกอินอยู่ (ย้ายเจ้าของ endpoint ให้เองเมื่อ
+          เครื่องเดิมสลับคนใช้ — ดู migration 0096) */
+      register_push_subscription: {
+        Args: {
+          p_endpoint: string;
+          p_p256dh: string;
+          p_auth: string;
+          p_user_agent?: string | null;
+        };
+        Returns: undefined;
       };
       /** ลบเคส Influ = สำรองลง influ_deleted_backups ก่อนเสมอ — คืน id ของสำเนา */
       influ_delete_with_backup: {

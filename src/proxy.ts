@@ -14,6 +14,10 @@ export default async function proxy(request: NextRequest) {
     // PWA: เบราว์เซอร์ดึง manifest แบบไม่ส่ง cookie — ไม่ปล่อยผ่านจะโดนเด้งไป /login
     // แล้วติดตั้งลงหน้าจอโฮมไม่ได้ (matcher ข้างล่างยกเว้นแค่นามสกุลรูป ไม่ครอบคลุมอันนี้)
     request.nextUrl.pathname === "/manifest.webmanifest" ||
+    // service worker ของ Web Push — เบราว์เซอร์ดึงไฟล์นี้เองนอกบริบทหน้าเว็บ
+    // (และดึงซ้ำเป็นระยะเพื่อเช็คเวอร์ชัน) ไม่ปล่อยผ่าน = โดนเด้งไป /login แล้ว
+    // register ล้มเหลว → แจ้งเตือนไม่เด้งทั้งระบบ
+    request.nextUrl.pathname === "/sw.js" ||
     // ปลายทางที่ Supabase ส่งกลับหลังยืนยันตัวตนกับ Google — ตอนถูกเรียกยังไม่มี session
     // (route handler เป็นคนแลก code เป็นคุกกี้เอง) ไม่ปล่อยผ่าน = เด้งกลับ /login วนไม่จบ
     request.nextUrl.pathname === "/auth/callback"

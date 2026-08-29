@@ -22,6 +22,7 @@ export type {
   NotificationType,
   NotificationRow,
   NotificationWithJoins,
+  PushSubscriptionRow,
   TaskFileRow,
   TaskWithAssignee,
   InfluencerLite,

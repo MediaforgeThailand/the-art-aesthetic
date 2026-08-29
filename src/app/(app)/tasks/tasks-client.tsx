@@ -746,6 +746,8 @@ export function TasksClient({
       recipient: string | null | undefined;
       type: NotificationType;
       preview?: string | null;
+      /** เฉพาะ type 'rejected' — ให้กระดิ่งติดป้ายแยก "แก้คำผิด"/"แก้เพิ่มเติม" ได้ */
+      revisionKind?: RevisionKind | null;
     }[]
   ) => {
     if (isTempId(task.id)) return;
@@ -756,6 +758,7 @@ export function TasksClient({
       task_id: string;
       type: NotificationType;
       preview: string | null;
+      revision_kind: RevisionKind | null;
     }[] = [];
     for (const r of rows) {
       // ไม่แจ้งเตือนตัวเอง + กันแถวซ้ำ (คนเดียวกัน+ชนิดเดียวกัน)
@@ -769,6 +772,7 @@ export function TasksClient({
         task_id: task.id,
         type: r.type,
         preview: r.preview ?? null,
+        revision_kind: r.revisionKind ?? null,
       });
     }
     if (inserts.length > 0) {
@@ -1345,8 +1349,10 @@ export function TasksClient({
       {
         recipient: task.assignee_id,
         type: "rejected",
-        // ใส่ประเภทนำหน้าเหตุผล — ผู้รับผิดชอบต้องรู้ตั้งแต่ในกระดิ่งว่าเป็นคำผิดหรือแค่ขอเพิ่มเติม
-        preview: `[${REVISION_KINDS[rejectKind].label}] ${rejectReason.trim()}`.trim(),
+        // ประเภทเก็บเป็นคอลัมน์ (migration 0095) — กระดิ่งเอาไปทำป้าย "แก้คำผิด"/"แก้เพิ่มเติม"
+        // ชิดขวาของแถว ไม่ต้องยัดคำนำหน้าปนกับเหตุผลในข้อความเหมือนเดิมอีกแล้ว
+        revisionKind: rejectKind,
+        preview: rejectReason.trim() || null,
       },
     ]);
     setRejectTarget(null);
