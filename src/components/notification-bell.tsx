@@ -44,9 +44,11 @@ function messageOf(n: NotificationWithJoins): string {
     case "approved":
       return `${actor} อนุมัติงาน ${title} แล้ว`;
     case "rejected":
-      return n.revision_kind === "addition"
-        ? `${actor} ขอให้แก้เพิ่มเติมในงาน ${title}`
-        : `${actor} ตีกลับงาน ${title} ให้แก้คำผิด`;
+      return n.revision_kind === "brief"
+        ? `${actor} ขอให้แก้งาน ${title} ก่อนส่งตรวจ`
+        : n.revision_kind === "addition"
+          ? `${actor} ขอให้แก้เพิ่มเติมในงาน ${title}`
+          : `${actor} ตีกลับงาน ${title} ให้แก้คำผิด`;
     case "brief_accepted":
       return `${actor} รับงาน brief ${title} แล้ว`;
   }
@@ -115,6 +117,8 @@ export function NotificationBell({ userId }: { userId: string }) {
       if (Notification.permission !== "granted") return;
       // กำลังใช้งานหน้าเว็บอยู่ — เห็นกระดิ่งในแอปอยู่แล้ว ไม่ต้องเด้งซ้ำ
       if (document.hasFocus()) return;
+      // แจ้งเตือนแบบ "เกี่ยวข้องเฉยๆ" ไม่เด้ง — กติกาเดียวกับฝั่ง push (notify_push ข้าม secondary)
+      if (n.priority === "secondary") return;
       const badge = NOTIFICATION_BADGES[
         notificationBadgeKey(n.type, n.revision_kind)
       ];
@@ -431,6 +435,8 @@ export function NotificationBell({ userId }: { userId: string }) {
                     notificationBadgeKey(n.type, n.revision_kind)
                   ];
                 const isUnread = !n.read_at;
+                // secondary = เราแค่เกี่ยวข้องอยู่ด้วย ไม่ใช่งานที่ต้องลงมือทำ → เงียบทั้งแถว
+                const quiet = n.priority === "secondary";
                 return (
                   <button
                     key={n.id}
@@ -438,7 +444,9 @@ export function NotificationBell({ userId }: { userId: string }) {
                     onClick={() => openTask(n)}
                     className={`flex w-full cursor-pointer items-start gap-2.5 rounded-lg border-l-4 py-2 pl-2 pr-2.5 text-left transition-colors hover:bg-brand-50/70 ${
                       isUnread
-                        ? "border-brand-500 bg-brand-50/60"
+                        ? quiet
+                          ? "border-stone-300 bg-stone-50/60"
+                          : "border-brand-500 bg-brand-50/60"
                         : "border-transparent bg-transparent"
                     }`}
                   >
@@ -446,9 +454,11 @@ export function NotificationBell({ userId }: { userId: string }) {
                     <span className="min-w-0 flex-1">
                       <span
                         className={`block text-[13px] leading-5 ${
-                          isUnread
+                          isUnread && !quiet
                             ? "font-semibold text-stone-800"
-                            : "text-stone-500"
+                            : isUnread
+                              ? "text-stone-700"
+                              : "text-stone-500"
                         }`}
                       >
                         {messageOf(n)}
@@ -464,8 +474,14 @@ export function NotificationBell({ userId }: { userId: string }) {
                     </span>
                     {/* ป้ายชนิดงานชิดขวา — เรื่องที่ต้องลงมือทำจะเรืองแสงตามสีตัวเอง */}
                     <span
-                      className={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badge.chip} ${
-                        badge.loud && isUnread ? "animate-glow-pulse" : ""
+                      className={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                        quiet
+                          ? "border-stone-200 bg-stone-50 text-stone-500"
+                          : badge.chip
+                      } ${
+                        badge.loud && isUnread && !quiet
+                          ? "animate-glow-pulse"
+                          : ""
                       }`}
                     >
                       {badge.label}

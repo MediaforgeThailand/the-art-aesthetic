@@ -20,6 +20,7 @@ export type {
   TaskCommentWithAuthor,
   RevisionKind,
   NotificationType,
+  NotificationPriority,
   NotificationRow,
   NotificationWithJoins,
   PushSubscriptionRow,

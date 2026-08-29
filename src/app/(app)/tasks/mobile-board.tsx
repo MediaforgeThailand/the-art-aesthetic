@@ -20,6 +20,7 @@ import {
   AssigneeAvatar,
   isTempId,
   profileName,
+  reviewStepOf,
   useCachedSignedUrl,
 } from "./task-card";
 
@@ -156,9 +157,12 @@ function PosterCard({
       : task.review_status === "pending"
         ? {
             tone: "amber" as const,
-            label: task.reviewer2_id
-              ? `รอตรวจ ${task.review_step ?? 1}/2`
-              : "รอตรวจ",
+            label:
+              reviewStepOf(task) <= 0
+                ? "รอผู้สั่ง brief"
+                : task.reviewer2_id
+                  ? `รอตรวจ ${reviewStepOf(task)}/2`
+                  : "รอตรวจ",
           }
         : null;
   // การ์ด brief: วงกลมเจ้าของ = ผู้สั่ง brief (ผู้รับผิดชอบตามกติกาของ brief)

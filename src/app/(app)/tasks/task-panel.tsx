@@ -49,6 +49,7 @@ import type {
   ContentCategoryRow,
   ContentFormat,
   InfluencerLite,
+  NotificationPriority,
   NotificationType,
   TaskCommentRow,
   TaskCommentWithAuthor,
@@ -64,12 +65,14 @@ import { MediaLightbox } from "./media-lightbox";
 import { PersonSelect } from "./person-select";
 import {
   AssigneeAvatar,
+  briefReviewerId,
   CompleteToggle,
   currentReviewerIds,
   isImagePath,
   isVideoPath,
   type ProfileOption,
   profileName,
+  reviewStepOf,
   reviewWaitStart,
   waitDurationLabel,
 } from "./task-card";
@@ -353,7 +356,8 @@ export function TaskPanel({
   const isReviewer = userId !== null && stepReviewerIds.includes(userId);
   // งานนี้ตรวจเป็นทอด (มีผู้ตรวจลำดับ 2 ติดอยู่กับงาน)
   const hasChain = task.reviewer2_id !== null;
-  const reviewStep = task.review_step ?? 1;
+  // 0 = ทอดของผู้สั่ง brief (graphic ส่งให้ผู้สั่ง brief ตรวจก่อนเข้าสายตรวจจริง)
+  const reviewStep = reviewStepOf(task);
   // ทอดแรกยังมีคนอื่นที่ยังไม่อนุมัติอีกไหม (นอกจากฉัน) — ถ้ามี การกดอนุมัติของฉันยังไม่ผ่านทอด 1
   // ไม่นับช่องที่ผู้ตรวจเป็นเจ้าของงานเอง (ผ่านอัตโนมัติ — งานเก่าที่ยังไม่ถูก stamp ก็ไม่ต้องรอ)
   const pendingOthers =
@@ -404,10 +408,17 @@ export function TaskPanel({
   const briefCreator = briefSource
     ? (profiles.find((p) => p.id === briefSource.created_by) ?? null)
     : (task.creator ?? null);
-  // งานจาก brief: ผู้สั่ง brief ตรวจทาน/คุยในแชทก่อน แล้วเป็นคนกด "ส่งตรวจ" เอง
-  // (งานเก่าที่ไม่รู้ผู้สั่ง (created_by ว่าง) ไม่ล็อก — ให้ส่งได้ตามปกติ)
-  const canSubmitReview =
-    !isFromBrief || task.created_by === null || task.created_by === userId;
+  // งานจาก brief (migration 0097): graphic เป็นคนกด "ส่งตรวจ" เอง แล้วผู้สั่ง brief
+  // เป็นผู้ตรวจคนแรก (ทอด 0) — ผ่านแล้วระบบส่งต่อเข้าสายตรวจจริงให้เอง
+  const brieferId = briefReviewerId(task);
+  const briefStage = reviewStep <= 0 && brieferId !== null;
+  const brieferPerson = brieferId
+    ? (briefCreator?.id === brieferId
+        ? briefCreator
+        : (profiles.find((p) => p.id === brieferId) ?? null))
+    : null;
+  // ส่งกลับหลังถูกตีกลับ = "ส่งตรวจแก้" (วิ่งกลับหาคนตีกลับตรงๆ ถ้าเขายังค้างอยู่คนเดียว)
+  const isResubmit = task.rejected_by !== null;
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptionsBase =
@@ -938,7 +949,7 @@ export function TaskPanel({
   const [linkDraft, setLinkDraft] = useState("");
   const [showLinkInput, setShowLinkInput] = useState(false);
   const commentFileRef = useRef<HTMLInputElement>(null);
-  const commentsEndRef = useRef<HTMLDivElement>(null);
+  const commentsTopRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   /* ---------- @mention — พิมพ์ @ ในช่องแชทเพื่อแท็กคน (แจ้งเตือนคนนั้น) ---------- */
@@ -1051,7 +1062,7 @@ export function TaskPanel({
     setShowLinkInput(false);
     setAttachFile(null);
     window.setTimeout(
-      () => commentsEndRef.current?.scrollIntoView({ block: "nearest" }),
+      () => commentsTopRef.current?.scrollIntoView({ block: "nearest" }),
       50
     );
 
@@ -1121,6 +1132,7 @@ export function TaskPanel({
       actor_id: string | null;
       task_id: string;
       type: NotificationType;
+      priority: NotificationPriority;
       preview: string;
     }[] = [];
     for (const p of mentioned) {
@@ -1130,16 +1142,22 @@ export function TaskPanel({
         actor_id: userId,
         task_id: task.id,
         type: "mention",
+        priority: "primary",
         preview,
       });
     }
-    // ผู้ตรวจลำดับ 2 ต้องอยู่ในรายชื่อด้วย — ตอนงานอยู่ทอด 2 เขาคือคนที่งานค้างอยู่จริง
-    for (const rid of [
-      task.assignee_id,
-      task.created_by,
-      task.reviewer_id,
-      task.reviewer2_id,
-    ]) {
+    // เจ้าของงาน + ผู้ตรวจของ "ทอดปัจจุบัน" = คนที่งานค้างอยู่จริง → แจ้งเตือนแบบเด่น
+    // ส่วนคนที่แค่เกี่ยวข้อง (ผู้สั่ง brief, คนที่เคยตีกลับ) ได้แบบเงียบ —
+    // ผู้ตรวจลำดับ 2 จึงไม่ถูกกวนจนกว่างานจะมาถึงทอดของเขา (หรือเป็นงานที่เขาตีกลับเอง)
+    const loud = new Set<string>([
+      ...(task.assignee_id ? [task.assignee_id] : []),
+      ...currentReviewerIds(task),
+    ]);
+    const quiet = new Set<string>([
+      ...(task.created_by ? [task.created_by] : []),
+      ...(task.rejected_by ? [task.rejected_by] : []),
+    ]);
+    for (const rid of [...loud, ...quiet]) {
       if (!rid || rid === userId || seen.has(rid)) continue;
       seen.add(rid);
       notiRows.push({
@@ -1147,6 +1165,7 @@ export function TaskPanel({
         actor_id: userId,
         task_id: task.id,
         type: "comment",
+        priority: loud.has(rid) ? "primary" : "secondary",
         preview,
       });
     }
@@ -1271,7 +1290,9 @@ export function TaskPanel({
                 type="button"
                 onClick={() => onApprove(task)}
                 title={
-                  pendingOthers.length > 0
+                  briefStage
+                    ? "คุณเป็นผู้สั่ง brief — ผ่านแล้วระบบจะส่งงานเข้าสายตรวจจริงให้เอง"
+                    : pendingOthers.length > 0
                     ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนอนุมัติก่อนไปต่อ"
                     : hasChain && reviewStep < 2
                       ? `อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 (${
@@ -1284,15 +1305,19 @@ export function TaskPanel({
                 <CheckCircle2 size={15} />
                 {pendingOthers.length > 0
                   ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
-                  : hasChain
-                    ? reviewStep < 2
-                      ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
-                      : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
-                    : "อนุมัติ"}
+                  : briefStage
+                    ? "ผ่าน → ส่งเข้าสายตรวจจริง"
+                    : hasChain
+                      ? reviewStep < 2
+                        ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
+                        : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
+                      : "อนุมัติ"}
               </button>
               {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ (ผู้ตรวจร่วมยังไม่อนุมัติ และ/หรือ มีลำดับ 2):
                   ปิดงานเลย ข้ามทุกคนที่ยังไม่ได้ตรวจ */}
-              {reviewStep < 2 && (hasChain || pendingOthers.length > 0) && (
+              {reviewStep >= 1 &&
+                reviewStep < 2 &&
+                (hasChain || pendingOthers.length > 0) && (
                 <button
                   type="button"
                   onClick={() => onApproveBypass(task)}
@@ -1306,17 +1331,25 @@ export function TaskPanel({
               <button
                 type="button"
                 onClick={() => onReject(task)}
-                title="ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                title={
+                  briefStage
+                    ? "ขอให้ผู้รับผิดชอบแก้ก่อนส่งตรวจจริง (บันทึกในแชท แต่ไม่นับ KPI)"
+                    : "ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-600 transition-all duration-200 hover:bg-rose-50 active:scale-[0.97]"
               >
                 <Undo2 size={15} />
-                ตีกลับให้แก้ไข
+                {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับให้แก้ไข"}
               </button>
             </>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
-              {hasChain ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2` : "รอตรวจ"}
+              {briefStage
+                ? `รอ${brieferPerson ? profileName(brieferPerson) : "ผู้สั่ง brief"} ตรวจก่อนส่งเข้าสายตรวจ`
+                : hasChain
+                  ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2`
+                  : "รอตรวจ"}
               {partial1 && (
                 <span className="text-xs font-normal opacity-75">
                   · ลำดับ 1 อนุมัติแล้ว 1/2 คน
@@ -1331,22 +1364,28 @@ export function TaskPanel({
           )
         ) : (
           // งานปกติต้องส่งตรวจก่อนเท่านั้น (ไม่มีทางลัด "เสร็จแล้ว")
-          // งานจาก brief: เฉพาะผู้สั่ง brief กดส่งตรวจได้ (ตรวจทานกับทีมในแชทให้จบก่อน)
+          // งานจาก brief: graphic กดเอง → ผู้สั่ง brief ตรวจก่อน (ทอด 0) จึงยังไม่ต้องมีผู้ตรวจจริง
           <button
             type="button"
             onClick={() => onSubmitReview(task)}
-            disabled={!task.reviewer_id || !canSubmitReview}
+            disabled={!briefStage && !task.reviewer_id}
             title={
-              !canSubmitReview
-                ? `ผู้สั่ง brief (${briefCreator ? profileName(briefCreator) : "-"}) เป็นคนกดส่งตรวจ — คุยตรวจทานงานกันในแชทด้านล่างก่อน`
+              briefStage
+                ? `ส่งให้ ${brieferPerson ? profileName(brieferPerson) : "ผู้สั่ง brief"} ตรวจก่อน — ผ่านแล้วระบบจะส่งเข้าสายตรวจจริงให้เอง`
                 : task.reviewer_id
-                  ? undefined
+                  ? isResubmit
+                    ? "ส่งงานที่แก้แล้วกลับไปหาผู้ตรวจที่ตีกลับ"
+                    : undefined
                   : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
             }
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
           >
             <SendHorizontal size={15} />
-            {canSubmitReview ? "ส่งตรวจงาน" : "รอผู้สั่ง brief ส่งตรวจ"}
+            {isResubmit
+              ? "ส่งตรวจแก้"
+              : briefStage
+                ? "ส่งให้ผู้สั่ง brief ตรวจ"
+                : "ส่งตรวจงาน"}
           </button>
         )}
 
@@ -1517,6 +1556,37 @@ export function TaskPanel({
                     {t.label}
                   </button>
                 ))}
+              </div>
+            </FieldRow>
+          )}
+
+          {/* ผู้ตรวจก่อนส่งเข้าสายตรวจจริง = ผู้สั่ง brief (ทอด 0, migration 0097)
+              read-only — มาจากผู้สร้างการ์ด brief ต้นทาง เลือกใหม่ไม่ได้ */}
+          {!isBrief && isFromBrief && brieferId !== null && (
+            <FieldRow label="ผู้ตรวจก่อนส่ง">
+              <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-0.5">
+                <AssigneeAvatar assignee={brieferPerson} size={5} />
+                <span className="min-w-0 truncate text-xs text-stone-800">
+                  {brieferPerson ? profileName(brieferPerson) : "-"}
+                </span>
+                <span className="shrink-0 text-[11px] text-stone-400">
+                  (ผู้สั่ง brief)
+                </span>
+                {briefStage ? (
+                  task.review_status === "pending" ? (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                      กำลังตรวจ
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-stone-400">
+                      รอ graphic ส่งตรวจ
+                    </span>
+                  )
+                ) : (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ✓ ผ่านแล้ว
+                  </span>
+                )}
               </div>
             </FieldRow>
           )}
@@ -2053,7 +2123,9 @@ export function TaskPanel({
             พูดคุย
           </p>
           <div className="space-y-2.5">
-            {(comments ?? []).map((c) => (
+            {/* ข้อความล่าสุดอยู่บนสุด — เก็บใน DB เรียงเก่า→ใหม่เหมือนเดิม กลับด้านตอนแสดงผลเท่านั้น */}
+            <div ref={commentsTopRef} />
+            {[...(comments ?? [])].reverse().map((c) => (
               <CommentItem
                 key={c.id}
                 comment={c}
@@ -2066,7 +2138,6 @@ export function TaskPanel({
                 ยังไม่มีข้อความ — เริ่มคุยเรื่องงานนี้ได้เลย
               </p>
             )}
-            <div ref={commentsEndRef} />
           </div>
         </div>
 

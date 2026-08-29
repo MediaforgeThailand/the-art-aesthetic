@@ -10,7 +10,7 @@
 // runtime ไม่นิ่ง — โปรโตคอลจริงมีแค่ 2 ส่วนคือ VAPID (JWT ES256) + เข้ารหัส aes128gcm
 // (RFC 8291/8188) ซึ่ง WebCrypto ทำได้ครบ ไม่ต้องพึ่ง dependency ภายนอกเลย
 //
-// ⚠️ ข้อความในแจ้งเตือน (messageOf) ต้องตรงกับฝั่งเว็บที่ `src/lib/notify-meta.ts` —
+// ⚠️ ข้อความในแจ้งเตือน (messageOf/headingOf) ต้องตรงกับ `messageOf` ใน src/components/notification-bell.tsx —
 // แก้ที่หนึ่งต้องแก้อีกที่ด้วย (ข้ามฝั่ง repo/runtime จึง import กันไม่ได้)
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -188,9 +188,11 @@ function messageOf(r: Row): string {
     case "approved":
       return `${who} อนุมัติงาน ${title} แล้ว`;
     case "rejected":
-      return r.revision_kind === "addition"
-        ? `${who} ขอให้แก้เพิ่มเติมในงาน ${title}`
-        : `${who} ตีกลับงาน ${title} ให้แก้คำผิด`;
+      return r.revision_kind === "brief"
+        ? `${who} ขอให้แก้งาน ${title} ก่อนส่งตรวจ`
+        : r.revision_kind === "addition"
+          ? `${who} ขอให้แก้เพิ่มเติมในงาน ${title}`
+          : `${who} ตีกลับงาน ${title} ให้แก้คำผิด`;
     case "brief_accepted":
       return `${who} รับงาน brief ${title} แล้ว`;
     default:
@@ -204,7 +206,11 @@ function headingOf(r: Row): string {
     case "review_request":
       return "ตรวจงาน";
     case "rejected":
-      return r.revision_kind === "addition" ? "แก้เพิ่มเติม" : "แก้คำผิด";
+      return r.revision_kind === "brief"
+        ? "แก้ก่อนส่งตรวจ"
+        : r.revision_kind === "addition"
+          ? "แก้เพิ่มเติม"
+          : "แก้คำผิด";
     case "mention":
       return "มีคนกล่าวถึงคุณ";
     case "assign":

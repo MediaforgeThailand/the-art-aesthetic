@@ -86,7 +86,8 @@ export type TaskRow = {
   review_status: "none" | "pending" | "approved";
   /** ผู้ตรวจลำดับ 2 (อนุมัติขั้นสุดท้าย) — snapshot จาก app_settings ตอนส่งตรวจ; null = ตรวจชั้นเดียว */
   reviewer2_id: string | null;
-  /** ทอดที่กำลังรอตรวจ (1|2) — มีผลเฉพาะตอน review_status='pending' */
+  /** ทอดที่กำลังรอตรวจ — มีผลเฉพาะตอน review_status='pending'
+      0 = ผู้สั่ง brief ตรวจก่อน (เฉพาะการ์ดที่มาจาก brief) · 1 = ผู้ตรวจจริง · 2 = ผู้ตรวจลำดับ 2 */
   review_step: number;
   /** เวลาที่ผู้ตรวจลำดับ 1 อนุมัติ (ก่อนส่งต่อลำดับ 2) */
   review1_approved_at: string | null;
@@ -113,6 +114,9 @@ export type TaskRow = {
   brief_accepted_at: string | null;
   /** บนการ์ด creative — ชี้กลับไปการ์ด brief ต้นทางที่สร้างมัน */
   brief_source_id: string | null;
+  /** ผู้ตีกลับล่าสุด — งานที่แก้แล้วกด "ส่งตรวจแก้" จะวิ่งกลับมาที่คนนี้ตรงๆ (ข้ามผู้สั่ง brief);
+      ล้างตอนอนุมัติ/ยกเลิกส่งตรวจ/เปิดงานใหม่ — migration 0097 */
+  rejected_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -203,7 +207,7 @@ export type AppSettingRow = {
 
 /** ประเภทการตีกลับ (migration 0063) — mistake = ข้อผิดพลาด นับเป็น KPI,
     addition = ผู้ตรวจขอให้ปรับเพิ่มเพื่อคุมคุณภาพ บันทึกไว้แต่ไม่นับเป็นข้อผิดพลาด */
-export type RevisionKind = "mistake" | "addition";
+export type RevisionKind = "mistake" | "addition" | "brief";
 
 export type TaskCommentRow = {
   id: string;
@@ -233,6 +237,10 @@ export type NotificationType =
   | "rejected"
   | "brief_accepted";
 
+/** ระดับความสำคัญของแจ้งเตือน — primary = ต้องลงมือทำ (ป้ายเรืองแสง + เด้งเข้าเครื่อง)
+    secondary = แค่เกี่ยวข้อง (ขึ้นในกระดิ่งแบบเงียบ ไม่เด้ง) — migration 0097 */
+export type NotificationPriority = "primary" | "secondary";
+
 export type NotificationRow = {
   id: string;
   /** ผู้รับการแจ้งเตือน */
@@ -245,6 +253,8 @@ export type NotificationRow = {
   preview: string | null;
   /** ประเภทการตีกลับ (มีค่าเฉพาะ type = 'rejected') — ใช้แยกป้าย "แก้คำผิด"/"แก้เพิ่มเติม" */
   revision_kind: RevisionKind | null;
+  /** ความสำคัญ — ตัวคุมว่าป้ายเรืองแสงและเด้งเข้าเครื่องไหม (ดู NotificationPriority) */
+  priority: NotificationPriority;
   /** เวลาที่ "เห็นแล้ว" (เปิดแผงกระดิ่ง) — null = ยังนับอยู่ในตัวเลขบนกระดิ่ง */
   seen_at: string | null;
   /** เวลาอ่าน — null = ยังไม่อ่าน (แถวขึ้นเส้นขอบเด่นแบบกล่องอีเมล) */

@@ -418,9 +418,13 @@ export const PAYMENT_METHODS = [
 
 export const STORAGE_BUCKET_DOCUMENTS = "documents";
 
-/* ---------- ตีกลับงาน 2 แบบ (migration 0063) ----------
-   ต่างกันที่ "นับเป็นข้อผิดพลาดไหม" เท่านั้น — ทั้งคู่ดึงงานกลับเป็น "กำลังทำ" เหมือนกัน
-   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload */
+/* ---------- ตีกลับงาน (migration 0063 + 'brief' ที่ 0097) ----------
+   ทุกแบบดึงงานกลับเป็น "กำลังทำ" เหมือนกัน ต่างกันที่ "นับเป็นข้อผิดพลาดไหม"
+   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload
+
+   ⚠️ 'brief' = ตีกลับของ "ผู้สั่ง brief" ในทอด 0 — ไม่มีปุ่มให้เลือก (จึงไม่อยู่ใน
+   REVISION_KIND_ORDER) ระบบใส่ให้เองตอนผู้สั่ง brief กดตีกลับ และ **ไม่นับ KPI**
+   เพราะยังไม่ผ่านสายตาผู้ตรวจจริง (กติกาผู้ใช้ 2026-08-29) */
 export const REVISION_KINDS: Record<
   RevisionKind,
   {
@@ -446,8 +450,17 @@ export const REVISION_KINDS: Record<
     chip: "border border-sky-200 bg-sky-50 text-sky-700",
     dot: "bg-sky-500",
   },
+  brief: {
+    label: "ผู้สั่ง brief ขอแก้",
+    hint: "ผู้สั่ง brief ขอให้แก้ก่อนส่งตรวจจริง — บันทึกในแชท แต่ไม่นับเป็นข้อผิดพลาด",
+    countsAsError: false,
+    chip: "border border-amber-200 bg-amber-50 text-amber-700",
+    dot: "bg-amber-500",
+  },
 };
 
+/** ตัวเลือกในกล่อง "ตีกลับ" ของผู้ตรวจจริง — 'brief' ไม่อยู่ในนี้โดยตั้งใจ
+    (ผู้สั่ง brief กดตีกลับได้ปุ่มเดียว ระบบใส่ชนิดให้เอง) */
 export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
 
 /** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
@@ -463,6 +476,7 @@ export type NotificationBadgeKey =
   | "review_request"
   | "rejected_mistake"
   | "rejected_addition"
+  | "rejected_brief"
   | "mention"
   | "assign"
   | "approved"
@@ -486,6 +500,11 @@ export const NOTIFICATION_BADGES: Record<
   rejected_addition: {
     label: "แก้เพิ่มเติม",
     chip: "border-sky-300 bg-sky-50 text-sky-700",
+    loud: true,
+  },
+  rejected_brief: {
+    label: "แก้ก่อนส่งตรวจ",
+    chip: "border-amber-300 bg-amber-50 text-amber-700",
     loud: true,
   },
   mention: {
@@ -515,13 +534,15 @@ export const NOTIFICATION_BADGES: Record<
   },
 };
 
-/** ชนิด "rejected" แตกเป็น 2 ป้ายตาม revision_kind — ที่เหลือแมปตรงตัว */
+/** ชนิด "rejected" แตกเป็น 3 ป้ายตาม revision_kind — ที่เหลือแมปตรงตัว */
 export function notificationBadgeKey(
   type: NotificationType,
   revisionKind: RevisionKind | null
 ): NotificationBadgeKey {
   if (type !== "rejected") return type;
-  return revisionKind === "addition" ? "rejected_addition" : "rejected_mistake";
+  if (revisionKind === "addition") return "rejected_addition";
+  if (revisionKind === "brief") return "rejected_brief";
+  return "rejected_mistake";
 }
 
 /* ---------- คลังลิงก์ผลวิเคราะห์ (migration 0065) ----------

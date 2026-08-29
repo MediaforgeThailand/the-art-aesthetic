@@ -19,6 +19,7 @@ import {
   currentReviewerIds,
   currentReviewerPersons,
   profileName,
+  reviewStepOf,
   reviewer1PartialApproved,
   reviewWaitStart,
   waitDurationLabel,
@@ -104,7 +105,7 @@ export function ReviewList({
               const sec = sectionName(task.section_id);
               // งานตรวจ 2 ทอด — บอกว่าใบนี้อยู่ทอดไหน และอนุมัติแล้วจะเกิดอะไรต่อ
               const hasChain = task.reviewer2_id !== null;
-              const step = task.review_step ?? 1;
+              const step = reviewStepOf(task);
               // ทอดแรกยังมีผู้ตรวจร่วมคนอื่นที่ยังไม่อนุมัติ — กดอนุมัติของฉันแล้วงานยังรอเขา
               // (ช่องที่ผู้ตรวจเป็นเจ้าของงานเองผ่านอัตโนมัติ ไม่นับว่ารอ)
               const pendingOthers =
@@ -113,8 +114,10 @@ export function ReviewList({
                       (id) => id !== userId && id !== task.assignee_id
                     )
                   : [];
+              // ทอด 0 = ผู้สั่ง brief ตรวจก่อน — อนุมัติแล้วงานเพิ่งจะเข้าสายตรวจจริง ยังไม่จบ
+              const briefStage = step <= 0;
               const isFinalStep =
-                (!hasChain || step >= 2) && pendingOthers.length === 0;
+                !briefStage && (!hasChain || step >= 2) && pendingOthers.length === 0;
               const partial1 = reviewer1PartialApproved(task);
               const wait = waitDurationLabel(reviewWaitStart(task));
               return (
@@ -136,7 +139,11 @@ export function ReviewList({
                   <div className="min-w-0 flex-1 basis-64">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        {hasChain ? `รอตรวจ · ลำดับ ${step}/2` : "รอตรวจ"}
+                        {step <= 0
+                          ? "รอผู้สั่ง brief ตรวจ"
+                          : hasChain
+                            ? `รอตรวจ · ลำดับ ${step}/2`
+                            : "รอตรวจ"}
                       </span>
                       {hasChain && step >= 2 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
@@ -207,11 +214,15 @@ export function ReviewList({
                         e.stopPropagation();
                         onReject(task);
                       }}
-                      title="ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                      title={
+                        briefStage
+                          ? "ส่งกลับให้ผู้รับงานแก้ก่อนเข้าสายตรวจจริง (ไม่นับเป็นข้อผิดพลาดใน KPI)"
+                          : "ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                      }
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95"
                     >
                       <Undo2 size={15} />
-                      ตีกลับ
+                      {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับ"}
                     </button>
                     <button
                       type="button"
@@ -220,23 +231,28 @@ export function ReviewList({
                         onApprove(task);
                       }}
                       title={
-                        pendingOthers.length > 0
-                          ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนก่อนไปต่อ"
-                          : isFinalStep
-                            ? undefined
-                            : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
+                        briefStage
+                          ? "ผ่านแล้ว — ส่งงานเข้าสายตรวจจริงต่อ"
+                          : pendingOthers.length > 0
+                            ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนก่อนไปต่อ"
+                            : isFinalStep
+                              ? undefined
+                              : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
                       }
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
                     >
                       <CheckCircle2 size={15} />
-                      {pendingOthers.length > 0
-                        ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
-                        : isFinalStep
-                          ? "อนุมัติ"
-                          : "อนุมัติ → ส่งต่อลำดับ 2"}
+                      {briefStage
+                        ? "ผ่าน → ส่งเข้าสายตรวจจริง"
+                        : pendingOthers.length > 0
+                          ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
+                          : isFinalStep
+                            ? "อนุมัติ"
+                            : "อนุมัติ → ส่งต่อลำดับ 2"}
                     </button>
-                    {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ: ปิดงานเลย ข้ามคนที่ยังไม่ได้ตรวจ */}
-                    {!isFinalStep && (
+                    {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ: ปิดงานเลย ข้ามคนที่ยังไม่ได้ตรวจ
+                        (ทอด 0 ไม่มี — ผู้สั่ง brief ปิดงานแทนผู้ตรวจจริงไม่ได้) */}
+                    {!briefStage && !isFinalStep && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -279,7 +295,7 @@ export function ReviewList({
             {teamPending.map((task) => {
               const sec = sectionName(task.section_id);
               const hasChain = task.reviewer2_id !== null;
-              const step = task.review_step ?? 1;
+              const step = reviewStepOf(task);
               // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์เฉพาะคนที่ยังไม่อนุมัติ (งานค้างอยู่ที่เขา)
               const stuckWith = currentReviewerPersons(task);
               const partial1 = reviewer1PartialApproved(task);
@@ -308,7 +324,11 @@ export function ReviewList({
                   <div className="min-w-0 flex-1 basis-64">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        {hasChain ? `รอตรวจ · ลำดับ ${step}/2` : "รอตรวจ"}
+                        {step <= 0
+                          ? "รอผู้สั่ง brief ตรวจ"
+                          : hasChain
+                            ? `รอตรวจ · ลำดับ ${step}/2`
+                            : "รอตรวจ"}
                       </span>
                       {hasChain && step >= 2 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
