@@ -7,7 +7,7 @@
  * (กฎ react-hooks/purity ของโปรเจกต์): "วันนี้" ถูกส่งมาจาก server ผ่าน props เสมอ
  *
  * นิยามที่ทั้งสองหน้าต้องตรงกัน (แก้ที่นี่ที่เดียว):
- *  - "วันส่งงาน" = review_submitted_at → approved_at → posted_at (workTimeOf)
+ *  - "วันส่งงาน" = review_submitted_at → revision_at → approved_at → posted_at (workTimeOf)
  *  - เป้าของกติกา 'day' = target × จำนวนวันของเดือนนั้น (monthTargetOf)
  *  - เป้ารวมของคน = กติกา "ทุกฟอร์แมต·ทุกหมวด" ถ้ามี ไม่งั้นรวมกติกาที่ระบุฟอร์แมต
  *    (กันนับซ้ำกับกติกาที่เจาะหมวดของฟอร์แมตเดียวกัน — convention เดียวกับ hint ใน /content-kpi)
@@ -43,6 +43,14 @@ export type TrackedTask = {
   brief_source_id: string | null;
   /** ชนิดงานที่สั่งบนการ์ด Brief (graphic|video) — ใช้เดาฟอร์แมตของ event ฐาน 'brief' */
   brief_content_type: string | null;
+  /**
+   * เวลาที่ถูกตีกลับล่าสุด (คอมเมนต์ is_revision ล่าสุดของการ์ด) — kpi-data เป็นคนใส่มาให้
+   * **ทำไมต้องมี:** migration 0036 ล้าง `review_submitted_at` ทิ้งตอนตีกลับ งานที่กำลังแก้อยู่
+   * จึงไม่เหลือวันส่งงานเลยและหายไปจาก KPI ทั้งใบ — ช่องนี้คือวันส่งงานที่กู้กลับคืนมา
+   */
+  revision_at: string | null;
+  /** ประเภทการตีกลับล่าสุด ('mistake' = คำผิด นับ KPI · 'addition' = เพิ่มเติม ไม่นับ) */
+  revision_kind: string | null;
   /** ไฟล์ที่อัพโหลดในการ์ด (task_files) — ตัววิเคราะห์จำนวนชิ้นงานใช้นับภาพ/วิดีโอจริง */
   files: { file_path: string }[];
 };
@@ -132,12 +140,21 @@ export function initialsOf(p: ProfileLite | undefined | null): string {
 /* ---------- งาน: เวลาส่ง + สถานะการตรวจ ---------- */
 
 /**
- * เวลาที่งานชิ้นนี้ "ส่งงาน" — ผู้ใช้ให้นับ KPI จากการส่งงาน ไม่ใช่วันกดโพส
- * (คนโพสอาจกดช้าเป็นชุด — คนทำงานไม่ควรดูตามหลังเพราะคิวโพส):
- * ยึด review_submitted_at (กดส่งตรวจ) → งานเก่าก่อน 0036 ใช้ approved_at → posted_at
+ * วันส่งงานดิบของการ์ด — **ห้ามสลับให้ approved_at ขึ้นก่อน**
+ * (ผู้ใช้ย้ำ 2026-08-29: KPI นับ "วันที่ส่งตรวจ" ไม่ใช่ "วันที่ตรวจผ่าน")
+ *  1. review_submitted_at = กดส่งตรวจ (ค่าปกติ)
+ *  2. revision_at         = ถูกตีกลับอยู่ — 0036 ล้างช่องแรกทิ้ง ใช้วันที่ตีกลับแทน
+ *                           ไม่งั้นงานที่กำลังแก้หายจาก KPI ทั้งใบ
+ *  3. approved_at         = งานเก่าก่อน 0036 ที่ไม่เคยมี review_submitted_at
+ *  4. posted_at           = ทางสุดท้ายของงานที่ไม่เคยเข้าคิวตรวจ
  */
+function workRawOf(t: TrackedTask): string | null {
+  return t.review_submitted_at ?? t.revision_at ?? t.approved_at ?? t.posted_at;
+}
+
+/** เวลาที่งานชิ้นนี้ "ส่งงาน" (epoch ms) — ฐานเวลาเดียวของทั้งระบบ KPI */
 export function workTimeOf(t: TrackedTask): number | null {
-  const raw = t.review_submitted_at ?? t.approved_at ?? t.posted_at;
+  const raw = workRawOf(t);
   if (raw === null) return null;
   const ms = Date.parse(raw);
   return Number.isNaN(ms) ? null : ms;
@@ -145,47 +162,74 @@ export function workTimeOf(t: TrackedTask): number | null {
 
 /** วันส่งงานตามเวลาไทย (YYYY-MM-DD) — ตัววิเคราะห์จำนวนชิ้นงานใช้เทียบกับตัวกรองช่วงวัน */
 export function workDayOf(t: TrackedTask): string | null {
-  const raw = t.review_submitted_at ?? t.approved_at ?? t.posted_at;
+  const raw = workRawOf(t);
   return raw === null ? null : thaiDayOf(raw);
 }
 
 /**
- * สถานะของงานที่ส่งแล้ว — เป็นตัวกำหนดสีบนปฏิทิน (heatmap ตามคำสั่งผู้ใช้):
- *  approved = ตรวจผ่านแล้ว (ส้มเข้ม) · waiting = ส่งตรวจแล้วรอผู้ตรวจ (ส้มอ่อน)
- *  sent     = ส่งแล้วแต่ไม่ได้อยู่ในคิวตรวจ (งานเก่า/ปิดเองโดยไม่ส่งตรวจ, หรือถูกตีกลับ
- *             หลังเคยผ่าน) — ยังนับเป็น "ยังไม่ผ่าน" เหมือน waiting แค่แยกป้ายให้รู้ที่มา
- * (งานที่ถูกตีกลับตอนยังไม่เคยผ่านจะหลุดจากการนับเอง เพราะ 0036 ล้าง review_submitted_at)
+ * สถานะของงานที่ส่งแล้ว — เป็นตัวกำหนดสีทั้งระบบ KPI
+ * **รหัสสีที่ผู้ใช้กำหนดเอง (2026-08-29): ฟ้า = ตรวจผ่านแล้ว · เขียว = ส่งตรวจแล้ว · แดง = งานแก้**
+ *  approved = ตรวจผ่านแล้ว (ฟ้า) · waiting = ส่งตรวจแล้วรอผู้ตรวจ (เขียว)
+ *  revision = ถูกตีกลับและยังไม่ได้กดส่งตรวจใหม่ = กำลังแก้อยู่ (แดง)
+ *  sent     = ส่งแล้วแต่ไม่ได้อยู่ในคิวตรวจ (งานเก่า/ปิดเองโดยไม่ส่งตรวจ) — นับเป็น
+ *             "ยังไม่ผ่าน" เหมือน waiting แค่แยกป้ายให้รู้ที่มา จึงใช้โทนเขียวชุดเดียวกัน
  */
-export type WorkState = "approved" | "waiting" | "sent";
+export type WorkState = "approved" | "waiting" | "revision" | "sent";
 
 export function workStateOf(t: TrackedTask): WorkState {
   if (t.review_status === "approved") return "approved";
   if (t.review_status === "pending") return "waiting";
+  // ไม่อยู่ในคิวตรวจ + เคยถูกตีกลับ + ยังไม่ได้กดส่งตรวจใหม่ (0036 ล้างช่องนั้นทิ้ง) = กำลังแก้
+  if (t.revision_at !== null && t.review_submitted_at === null) return "revision";
   return "sent";
 }
 
-/** ป้ายสถานะในโมดัลรายวัน — อยู่บนพื้นขาว จึงใช้คนละชุดกับชิปในช่องปฏิทิน (HEAT_CHIP) */
+/**
+ * ป้ายสถานะในโมดัลรายวัน/ตัวกรอง — อยู่บนพื้นขาว จึงใช้คนละชุดกับชิปในช่องปฏิทิน (HEAT_CHIP)
+ * `text` = สีตัวเลขบนแผงสถิติ/หัวปฏิทิน (พื้นขาวเหมือนกัน)
+ */
 export const WORK_STATES: Record<
   WorkState,
-  { label: string; chip: string; short: string }
+  { label: string; chip: string; short: string; text: string; dot: string }
 > = {
   approved: {
     label: "ตรวจผ่านแล้ว",
     short: "ผ่าน",
-    // orange-600 คู่ตัวขาว ≈4.5:1 — ปลายเดียวกับระดับเข้มสุดของ heatmap
-    chip: "bg-orange-600 text-white",
+    // sky-600 คู่ตัวขาว ≈4.6:1 — ปลายเดียวกับระดับเข้มสุดของ heatmap
+    chip: "bg-sky-600 text-white",
+    text: "text-sky-700",
+    dot: "bg-sky-600",
   },
   waiting: {
-    label: "ส่งแล้ว · รอตรวจ",
+    label: "ส่งตรวจแล้ว · รอตรวจ",
     short: "รอตรวจ",
-    chip: "bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300",
+    chip: "bg-emerald-100 text-emerald-900 ring-1 ring-inset ring-emerald-300",
+    text: "text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+  revision: {
+    label: "ถูกตีกลับ · กำลังแก้",
+    short: "งานแก้",
+    chip: "bg-rose-100 text-rose-900 ring-1 ring-inset ring-rose-300",
+    text: "text-rose-600",
+    dot: "bg-rose-500",
   },
   sent: {
     label: "ส่งแล้ว · ไม่ได้อยู่ในคิวตรวจ",
     short: "ยังไม่ผ่าน",
-    chip: "border border-dashed border-stone-300 bg-stone-50 text-stone-600",
+    chip: "border border-dashed border-emerald-300 bg-emerald-50/70 text-emerald-800",
+    text: "text-emerald-700",
+    dot: "border border-emerald-400 bg-white",
   },
 };
+
+/** ลำดับที่ใช้แสดงสถานะ (ตัวกรอง/คำอธิบายสี) — ไล่จาก "จบแล้ว" ไป "ยังต้องทำต่อ" */
+export const WORK_STATE_ORDER: WorkState[] = [
+  "approved",
+  "waiting",
+  "revision",
+  "sent",
+];
 
 /* ---------- "ผลงาน 1 ชิ้น" ของแต่ละคน = KPI event (migration 0095) ---------- */
 
@@ -335,24 +379,26 @@ export function heatLevel(total: number, approved: number): HeatLevel {
 }
 
 /**
- * สีของช่องปฏิทินต่อระดับ — คุมที่ตารางนี้ที่เดียว (redesign 2026-08-29 ตามผู้ใช้:
- * "สีสื่อสารพอเข้าใจแล้ว แต่ไม่สวย ทำให้ดูเป็น heat map กว่านี้")
+ * สีของช่องปฏิทินต่อระดับ — คุมที่ตารางนี้ที่เดียว
+ * (recolor 2026-08-29 ตามผู้ใช้: "สีแดงเป็นงานแก้ สีฟ้าเป็นตรวจผ่านแล้ว สีเขียวเป็นส่งตรวจแล้ว")
  *
  * หลักที่ยึด:
- * 1. **ramp แนว YlOrBr ของ ColorBrewer** (sequential ที่ผ่านการพิสูจน์มาแล้ว):
- *    ครีมส้ม → ทอง → ส้ม → ส้มไหม้ (orange-100 → amber-300 → orange-400 → orange-700)
- *    — **สว่างลดลงพร้อมอิ่มสีเพิ่มขึ้นไปด้วยกัน** ซึ่งเป็นหัวใจของ heat ramp;
- *    เคยลองจบที่ brand-700 (copper ของแบรนด์) แล้วพัง เพราะมันเป็นสีหม่นอิ่มสีต่ำ
- *    พอไล่จากส้มสดไปน้ำตาลหม่นสายตาอ่านว่า "จางลง/ปิดใช้งาน" แทนที่จะเป็น "เข้มขึ้น"
- * 2. **ค่าความสว่างไล่ลงจริง** L*≈95 → 87 → 74 → 52 (ของเดิม amber 50→300 ซีดใกล้กันหมด
- *    จนแยกไม่ออก) — ขั้นสุดท้ายเว้นห่างมากโดยตั้งใจ ให้ "ผ่านครบ" เป็นหมุดสายตา
+ * 1. **ramp แนว GnBu ของ ColorBrewer** (sequential ที่ผ่านการพิสูจน์มาแล้ว):
+ *    เขียวอ่อน → เขียวอมฟ้า → ฟ้า → ฟ้าเข้ม (emerald-100 → teal-200 → sky-400 → sky-700)
+ *    — เข้ารหัสความหมายไปในตัว: ต้นทางเขียว = "ส่งตรวจแล้ว" ปลายทางฟ้า = "ตรวจผ่านแล้ว"
+ *    และ **สว่างลดลงพร้อมอิ่มสีเพิ่มขึ้นไปด้วยกัน** ซึ่งเป็นหัวใจของ heat ramp
+ * 2. **ค่าความสว่างไล่ลงจริง** L*≈94 → 87 → 72 → 47 — ขั้นสุดท้ายเว้นห่างมากโดยตั้งใจ
+ *    ให้ "ผ่านครบ" เป็นหมุดสายตา
  * 3. **ช่องว่าง = สีเทากลาง ไม่ใช่ขาว** ให้วันที่ยังไม่ส่งงานจมลงไปเป็นพื้นหลัง
- * 4. **คอนทราสต์ตัวหนังสือผ่านทุกระดับ**: ระดับ 1-3 ตัวเข้ม brand-900 (≥5.8:1)
- *    ระดับ 4 ตัวขาวบน brand-700 (≈5.9:1) — ห้ามใช้เฉดกลางอย่าง brand-500/orange-500
- *    เป็นพื้น เพราะคอนทราสต์ตกทั้งกับตัวขาวและตัวเข้ม (~3:1 ทั้งคู่)
- * 5. **ชิปงานเป็นการ์ดขาวทึบเสมอทุกระดับ** — ของเดิมเป็นชิปส้มวางบนพื้นส้ม เลยขุ่น
- *    กลืนกันไปหมด; ขาวบนพื้นสีทำให้อ่านง่ายและดูสะอาดขึ้นมาก (ระดับ 0 ไม่มีชิปอยู่แล้ว
- *    เพราะ level 0 = ไม่มีงานในวันนั้น)
+ * 4. **คอนทราสต์ตัวหนังสือผ่านทุกระดับ**: ระดับ 1-3 ตัวเข้ม (≥6:1) · ระดับ 4 ตัวขาวบน
+ *    sky-700 (≈5.4:1) — **ห้ามใช้เฉดกลางอย่าง sky-500/brand-500 เป็นพื้น** เพราะคอนทราสต์
+ *    ตกทั้งกับตัวขาวและตัวเข้ม (~3:1 ทั้งคู่); เคยลองจบที่ brand-700 (copper) แล้วพังมาแล้ว
+ *    เพราะสีหม่นอิ่มสีต่ำอ่านว่า "จางลง" แทนที่จะเป็น "เข้มขึ้น"
+ * 5. **ชิปงานเป็นการ์ดขาวทึบเสมอทุกระดับ** — ชิปสีบนพื้นสีเดียวกันจะขุ่นกลืนกันหมด
+ *    (ระดับ 0 ไม่มีชิปอยู่แล้ว เพราะ level 0 = ไม่มีงานในวันนั้น)
+ * 6. **งานแก้ (แดง) ไม่ใช่ระดับความเข้ม แต่เป็นสัญญาณซ้อนทับ** — วันที่มีงานถูกตีกลับได้
+ *    ขอบแดง (HEAT_REWORK) เพราะเป็นคนละมิติกับ "ผ่านไปเท่าไหร่" และเป็นสัญญาณเดียว
+ *    ที่มองเห็นได้บนจอเล็กซึ่งไม่มีชิปงานให้อ่าน
  */
 export const HEAT_LEVELS: Record<
   HeatLevel,
@@ -377,45 +423,50 @@ export const HEAT_LEVELS: Record<
     ratio: "text-stone-400",
   },
   1: {
-    tile: "bg-orange-100",
-    hover: "hover:bg-orange-200/80",
-    day: "text-orange-950",
-    today: "bg-orange-950 text-white",
-    ratio: "text-orange-900/70",
+    tile: "bg-emerald-100",
+    hover: "hover:bg-emerald-200/80",
+    day: "text-emerald-950",
+    today: "bg-emerald-950 text-white",
+    ratio: "text-emerald-900/70",
   },
   2: {
-    tile: "bg-amber-300",
-    hover: "hover:bg-amber-400/90",
-    day: "text-orange-950",
-    today: "bg-orange-950 text-white",
-    ratio: "text-orange-950/75",
+    tile: "bg-teal-200",
+    hover: "hover:bg-teal-300/90",
+    day: "text-teal-950",
+    today: "bg-teal-950 text-white",
+    ratio: "text-teal-950/75",
   },
   3: {
-    tile: "bg-orange-400",
-    hover: "hover:bg-orange-500/90",
-    day: "text-orange-950",
-    today: "bg-orange-950 text-white",
-    ratio: "text-orange-950/80",
+    tile: "bg-sky-400",
+    hover: "hover:bg-sky-500/90",
+    day: "text-sky-950",
+    today: "bg-sky-950 text-white",
+    ratio: "text-sky-950/80",
   },
   4: {
-    tile: "bg-orange-700",
-    hover: "hover:bg-orange-800",
+    tile: "bg-sky-700",
+    hover: "hover:bg-sky-800",
     day: "text-white",
-    today: "bg-white text-orange-800",
+    today: "bg-white text-sky-800",
     ratio: "text-white/80",
   },
 };
 
+/** ขอบเตือนของช่องวันที่มีงานถูกตีกลับ — แดงตามรหัสสีของผู้ใช้ (สัญญาณเดียวที่เห็นได้บนจอเล็ก) */
+export const HEAT_REWORK = "ring-2 ring-inset ring-rose-400";
+
 /** ชิปงานในช่องวัน — การ์ดขาวทึบ ใช้ชุดเดียวทุกระดับความเข้ม (อ่านง่ายบนพื้นสีทุกเฉด) */
 export const HEAT_CHIP =
-  "bg-white/90 text-stone-700 shadow-[0_1px_2px_rgba(120,53,15,0.12)]";
+  "bg-white/90 text-stone-700 shadow-[0_1px_2px_rgba(12,74,110,0.12)]";
 
 /**
  * จุดสถานะหน้าชิป — เข้ารหัสสองชั้น (สี + ทึบ/กลวง) คนตาบอดสีก็แยกออก
- * ทึบ = ตรวจผ่านแล้ว · กลวง = ส่งแล้วยังไม่ผ่าน
+ * ทึบฟ้า = ตรวจผ่านแล้ว · ทึบเขียว = รอตรวจ · ทึบแดง = งานแก้ · กลวง = ส่งแล้วไม่อยู่ในคิว
+ * (สีมาจาก WORK_STATES ที่เดียว — ห้ามตั้งสีซ้ำในหน้า UI)
  */
-export const HEAT_DOT_DONE = "bg-brand-600";
-export const HEAT_DOT_OPEN = "border border-stone-300 bg-white";
+export const heatDotOf = (state: WorkState) => WORK_STATES[state].dot;
+export const HEAT_DOT_DONE = WORK_STATES.approved.dot;
+export const HEAT_DOT_OPEN = WORK_STATES.sent.dot;
 
 /** ไล่ระดับสำหรับแถบคำอธิบาย (legend) — เรียงอ่อน→เข้มแบบ heatmap มาตรฐาน */
 export const HEAT_SCALE: HeatLevel[] = [1, 2, 3, 4];
@@ -604,6 +655,8 @@ export type PersonStat = {
   basisCounts: Record<ContentKpiBasis, number>;
   approved: number;
   waiting: number;
+  /** งานที่ถูกตีกลับและยังแก้อยู่ (WorkState 'revision') */
+  revision: number;
   sent: number;
   posted: number;
   /** จำนวนวันในเดือนที่มีผลงานอย่างน้อย 1 ชิ้น */
@@ -635,6 +688,8 @@ export type TeamTotals = {
   creditedByBasis: Record<ContentKpiBasis, number>;
   approved: number;
   waiting: number;
+  /** งานทั้งทีมที่ถูกตีกลับและยังแก้อยู่ */
+  revision: number;
   sent: number;
   posted: number;
   prevSubmitted: number;
@@ -829,12 +884,11 @@ export function computeKpiMonth({
   for (const t of tasks) {
     if (t.review_status !== "approved") continue;
     const ownerId = postOwnerIdOf(t);
-    const approvedMs = parseMs(t.approved_at);
-    if (
-      approvedMs !== null &&
-      approvedMs >= bounds.start &&
-      approvedMs < bounds.end
-    ) {
+    // **จัดลงเดือนด้วย "วันส่งงาน" ไม่ใช่วันที่ตรวจผ่าน** (ผู้ใช้ 2026-08-29) — งานที่ส่ง
+    // ปลายเดือนแล้วผู้ตรวจกดผ่านต้นเดือนถัดไป ต้องอยู่เดือนเดียวกับที่มันถูกนับเป็นผลงาน
+    // ไม่งั้นตัวหารของ "โพสแล้ว x/y" ไปคนละเดือนกับตัวเลขผลงานบนแผงเดียวกัน
+    const workMs = workTimeOf(t);
+    if (workMs !== null && workMs >= bounds.start && workMs < bounds.end) {
       bumpPost(ownerId, (p) => {
         p.due += 1;
         if (t.posted_at !== null) p.done += 1;
@@ -945,6 +999,7 @@ export function computeKpiMonth({
       basisCounts,
       approved: workTasks.filter((t) => workStateOf(t) === "approved").length,
       waiting: workTasks.filter((t) => workStateOf(t) === "waiting").length,
+      revision: workTasks.filter((t) => workStateOf(t) === "revision").length,
       sent: workTasks.filter((t) => workStateOf(t) === "sent").length,
       posted: events.filter((e) => e.t.posted_at !== null).length,
       activeDays: new Set(events.map((e) => e.dayIndex)).size,
@@ -1024,6 +1079,8 @@ export function computeKpiMonth({
     approved: workInMonth.filter(({ t }) => workStateOf(t) === "approved")
       .length,
     waiting: workInMonth.filter(({ t }) => workStateOf(t) === "waiting").length,
+    revision: workInMonth.filter(({ t }) => workStateOf(t) === "revision")
+      .length,
     sent: workInMonth.filter(({ t }) => workStateOf(t) === "sent").length,
     posted: workInMonth.filter(({ t }) => t.posted_at !== null).length,
     prevSubmitted: workPrevMonth.length,

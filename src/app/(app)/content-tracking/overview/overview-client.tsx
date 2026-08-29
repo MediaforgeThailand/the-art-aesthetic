@@ -554,8 +554,10 @@ export function OverviewClient({
           label="ตรวจผ่านแล้ว"
           value={team.approved}
           unit="ชิ้น"
-          tone="text-amber-600"
-          sub={`รอตรวจ ${team.waiting + team.sent} ชิ้น`}
+          tone="text-sky-700"
+          sub={`รอตรวจ ${team.waiting + team.sent} ชิ้น${
+            team.revision > 0 ? ` · งานแก้ ${team.revision}` : ""
+          }`}
           onClick={() => setDetail({ kind: "review" })}
           detailLabel="ดูรายคน"
         />
@@ -661,16 +663,24 @@ export function OverviewClient({
                     </span>
                     <span>
                       ผ่าน{" "}
-                      <span className="font-semibold text-amber-600">
+                      <span className="font-semibold text-sky-700">
                         {s.approved}
                       </span>
                     </span>
                     <span>
                       รอตรวจ{" "}
-                      <span className="font-semibold text-stone-700">
+                      <span className="font-semibold text-emerald-700">
                         {s.waiting + s.sent}
                       </span>
                     </span>
+                    {s.revision > 0 && (
+                      <span>
+                        งานแก้{" "}
+                        <span className="font-semibold text-rose-600">
+                          {s.revision}
+                        </span>
+                      </span>
+                    )}
                     <span>
                       โพส{" "}
                       <span className="font-semibold text-stone-700">
@@ -863,11 +873,20 @@ export function OverviewClient({
                     <p className="text-right text-xs font-semibold tabular-nums text-stone-700">
                       {s.submitted}
                     </p>
-                    <p className="text-right text-xs font-semibold tabular-nums text-amber-600">
+                    <p className="text-right text-xs font-semibold tabular-nums text-sky-700">
                       {s.approved}
                     </p>
-                    <p className="text-right text-xs tabular-nums text-stone-600">
+                    {/* รอตรวจ = เขียว · ตัวเลขแดงต่อท้าย = งานที่ถูกตีกลับ (งานแก้) */}
+                    <p className="text-right text-xs tabular-nums text-emerald-700">
                       {s.waiting + s.sent}
+                      {s.revision > 0 && (
+                        <span
+                          className="ml-1 font-bold text-rose-600"
+                          title={`ถูกตีกลับ ${s.revision} ชิ้น — ยังไม่ได้ส่งตรวจใหม่`}
+                        >
+                          แก้ {s.revision}
+                        </span>
+                      )}
                     </p>
                     {/* โพสแล้วกี่/กี่ + ตัวเลขเหลือง = ดองไว้ (กดเปิดรายละเอียดของคนนี้) */}
                     <div className="text-right text-xs tabular-nums">
@@ -909,7 +928,8 @@ export function OverviewClient({
         &quot;ทำได้ / เป้ารวม&quot; = ผลงานตามฐานที่ตั้งไว้ให้คนนั้น (ส่งงาน /
         Brief ที่ถูกรับ / งานที่ต้องโพส) · &quot;ส่ง&quot; =
         การ์ดที่ตัวเองกดส่งตรวจในเดือนนี้ · &quot;ผ่าน&quot; = ตรวจผ่านแล้ว ·
-        &quot;รอตรวจ&quot; = ส่งแล้วยังไม่ผ่าน · &quot;โพสแล้ว&quot; =
+        &quot;รอตรวจ&quot; = ส่งแล้วยังไม่ผ่าน (ตัวเลขแดงต่อท้าย =
+        งานที่ถูกตีกลับ ยังไม่ได้ส่งตรวจใหม่) · &quot;โพสแล้ว&quot; =
         โพสแล้ว/งานที่อนุมัติในเดือนนี้ซึ่งคนนี้เป็นคนต้องโพส (ตัวเลขเหลือง =
         ดองไว้ทั้งหมด กดดูรายการได้) · &quot;ไฟล์&quot; =
         ไฟล์ภาพ/วิดีโอที่อัพจริงในการ์ด · &quot;เดือนก่อน&quot; = จำนวนชิ้น
@@ -1150,6 +1170,7 @@ export function OverviewClient({
           นับเฉพาะการ์ดที่แต่ละคนกดส่งตรวจในเดือนนี้ (ผลงานฐาน Brief/โพส
           ไม่ผ่านคิวตรวจ จึงไม่อยู่ในตารางนี้) · ทั้งทีมส่งตรวจ {team.submitted}{" "}
           ชิ้น · ผ่าน {team.approved} · รอตรวจ {team.waiting + team.sent}
+          {team.revision > 0 ? ` · งานแก้ ${team.revision}` : ""}
         </p>
         <ul className="space-y-1.5">
           {[...personStats]
@@ -1170,11 +1191,20 @@ export function OverviewClient({
                     {s2.submitted}
                   </span>{" "}
                   · ผ่าน{" "}
-                  <span className="font-bold text-amber-600">{s2.approved}</span>{" "}
+                  <span className="font-bold text-sky-700">{s2.approved}</span>{" "}
                   · รอตรวจ{" "}
-                  <span className="font-bold text-stone-800">
+                  <span className="font-bold text-emerald-700">
                     {s2.waiting + s2.sent}
                   </span>
+                  {s2.revision > 0 && (
+                    <>
+                      {" "}
+                      · งานแก้{" "}
+                      <span className="font-bold text-rose-600">
+                        {s2.revision}
+                      </span>
+                    </>
+                  )}
                 </span>
               </li>
             ))}
