@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BellRing,
   CalendarClock,
   Check,
   ChevronDown,
@@ -23,8 +22,15 @@ import {
   EmptyState,
   Input,
 } from "@/components/ui";
+import {
+  ActiveFilterChips,
+  FilterButton,
+  FilterChip,
+  FilterGroup,
+  FilterSheet,
+} from "@/components/filter-sheet";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { formatNumber, todayISO } from "@/lib/format";
+import { todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
 import {
   type CaseHashtag,
@@ -414,6 +420,59 @@ export function InfluencersClient({
     excluded.size === DEFAULT_EXCLUDED.length &&
     DEFAULT_EXCLUDED.every((s) => excluded.has(s));
 
+  /* จอเล็ก: ตัวกรองทั้งหมดพับอยู่ในแผ่นเลื่อนขึ้นจากขอบล่าง (FilterSheet)
+     — นับเฉพาะตัวที่ไม่ใช่ค่าเริ่มต้น ไม่นับคำค้น (ช่องค้นหาอยู่นอกแผ่น เห็นอยู่แล้ว) */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const mobileFilterCount =
+    (stageFilter !== "all" ? 1 : 0) +
+    (mineOnly ? 1 : 0) +
+    (excludedIsDefault ? 0 : 1);
+  const clearFilters = () => {
+    setSearch("");
+    setStageFilter("all");
+    setMineOnly(false);
+    setExcluded(new Set(DEFAULT_EXCLUDED));
+  };
+  /** ชิปสรุปใต้แถบเครื่องมือของจอเล็ก — บอกว่ากำลังกรองอะไรอยู่ทั้งที่แผ่นปิด */
+  const mobileFilterChips: { key: string; label: string; onClear: () => void }[] =
+    [
+      ...(stageFilter !== "all" && stageFilter !== "needbooking"
+        ? [
+            {
+              key: "stage",
+              label:
+                stageFilter === "done"
+                  ? "จบงาน"
+                  : stageFilter === "declined"
+                    ? "ปฏิเสธ"
+                    : `ขั้น ${stageFilter}`,
+              onClear: () => setStageFilter("all"),
+            },
+          ]
+        : []),
+      ...(mineOnly
+        ? [
+            {
+              key: "mine",
+              label: "เคสของฉัน",
+              onClear: () => setMineOnly(false),
+            },
+          ]
+        : []),
+      ...(excludedIsDefault
+        ? []
+        : [
+            {
+              key: "excluded",
+              label:
+                excluded.size === 0
+                  ? "แสดงทุกสถานะ"
+                  : `ซ่อน ${excluded.size} สถานะ`,
+              onClear: () => setExcluded(new Set(DEFAULT_EXCLUDED)),
+            },
+          ]),
+    ];
+
   // ลบ influencer
   const [deleteTarget, setDeleteTarget] = useState<InfluencerListRow | null>(
     null
@@ -583,14 +642,6 @@ export function InfluencersClient({
     return map;
   }, [activeTasks, today]);
 
-  const totalDue = useMemo(() => {
-    let n = 0;
-    for (const t of activeTasks) {
-      if (!t.done && t.due_date && t.due_date <= today) n += 1;
-    }
-    return n;
-  }, [activeTasks, today]);
-
   /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
      ชิป "ปฏิเสธ" / "รอลงคิวหมอ" = ดูเฉพาะกลุ่มนั้น (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า)
 
@@ -673,17 +724,65 @@ export function InfluencersClient({
         </div>
       )}
 
-      {totalDue > 0 && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 animate-fade-in">
-          <BellRing size={16} className="shrink-0" />
-          มีงาน follow up ถึงกำหนดแล้ว {formatNumber(totalDue)} รายการ —
-          การ์ดที่ต้องตามมีป้ายเตือนสีเหลือง/แดงบนบอร์ด
+      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (เปิดแผ่นด้านล่าง) + ปุ่มสร้างนัดใหม่
+          (ผู้ใช้ 2026-08-30: ชิปตัวกรองที่เรียงเต็มแถบกินจอมือถือไปครึ่งหนึ่ง) */}
+      <div className="mb-3 flex items-center gap-2 animate-fade-in-up sm:hidden">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+          />
+          <Input
+            type="search"
+            placeholder="ค้นหา"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-      )}
+        <FilterButton
+          count={mobileFilterCount}
+          onClick={() => setFiltersOpen(true)}
+        />
+        {me.canEdit && (
+          <Button
+            onClick={() => setCaseOpen(true)}
+            aria-label="สร้างนัดใหม่"
+            className="!px-3 max-sm:w-11"
+          >
+            <Plus size={18} />
+          </Button>
+        )}
+      </div>
+
+      {/* จอเล็ก: ชิปสรุปตัวกรองที่เปิดอยู่ + ปุ่มลัด "รอลงคิวหมอ"
+          (ตัวกรองพับอยู่ในแผ่นแล้ว ต้องมีอะไรบอกว่ากำลังกรองอะไรค้างไว้ ไม่งั้นคนอ่าน
+          นึกว่าเคสหาย; และสัญญาณ "รอลงคิวหมอ" ต้องไม่หายไปอยู่หลังปุ่มตัวกรอง) */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:hidden">
+        {bookingAlertIds.size > 0 && (
+          <button
+            type="button"
+            onClick={() =>
+              setStageFilter(bookingAlertActive ? "all" : "needbooking")
+            }
+            className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition-colors active:scale-[0.97] ${
+              bookingAlertActive
+                ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
+                : "border-amber-400 bg-amber-50 text-amber-800 animate-glow-amber"
+            }`}
+          >
+            <CalendarClock size={13} />
+            รอลงคิวหมอ {bookingAlertIds.size}
+          </button>
+        )}
+        <ActiveFilterChips items={mobileFilterChips} />
+      </div>
 
       {/* ค้นหา + กรอง stage — แบนเนอร์เตือน "ยังไม่มีคิวหมอ" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-19)
-          เหลือปุ่มกรอง "รอลงคิวหมอ" ตัวเดียวเป็นทางเข้า */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
+          เหลือปุ่มกรอง "รอลงคิวหมอ" ตัวเดียวเป็นทางเข้า
+          แบนเนอร์ "มีงาน follow up ถึงกำหนด" ก็ถูกถอดออกแล้วเช่นกัน (ผู้ใช้ 2026-08-30)
+          — การติดตามย้ายไปหน้า Follow Up ทั้งหมด บอร์ดนี้ไม่ต้องเตือนซ้ำ */}
+      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={16}
@@ -787,6 +886,113 @@ export function InfluencersClient({
           </div>
         )}
       </div>
+
+      {/* ---- แผ่นตัวกรองของจอเล็ก (2/3 จอ) — ตัวเลือกชุดเดียวกับแถบ ≥sm ด้านบน
+           (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) ---- */}
+      <FilterSheet
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          onClear={clearFilters}
+          clearDisabled={
+            search === "" &&
+            stageFilter === "all" &&
+            !mineOnly &&
+            excludedIsDefault
+          }
+          resultCount={filtered.length}
+          resultNoun="เคส"
+        >
+          <FilterGroup label="ขั้นงาน">
+            <FilterChip
+              active={stageFilter === "all"}
+              onClick={() => setStageFilter("all")}
+              count={countFor("all")}
+            >
+              ทั้งหมด
+            </FilterChip>
+            {INFLU_STAGES.map((s) => (
+              <FilterChip
+                key={s.step}
+                active={stageFilter === s.step}
+                onClick={() =>
+                  setStageFilter(stageFilter === s.step ? "all" : s.step)
+                }
+                count={countFor(s.step)}
+              >
+                {s.step}. {s.short}
+              </FilterChip>
+            ))}
+            <FilterChip
+              active={stageFilter === "done"}
+              onClick={() =>
+                setStageFilter(stageFilter === "done" ? "all" : "done")
+              }
+              count={countFor("done")}
+            >
+              จบงาน
+            </FilterChip>
+            <FilterChip
+              active={stageFilter === "declined"}
+              onClick={() =>
+                setStageFilter(stageFilter === "declined" ? "all" : "declined")
+              }
+              count={countFor("declined")}
+            >
+              ปฏิเสธ
+            </FilterChip>
+          </FilterGroup>
+
+          <FilterGroup
+            label="ตัวกรองด่วน"
+            hint="รอลงคิวหมอ = ผ่าน Memo แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+          >
+            <FilterChip
+              active={stageFilter === "needbooking"}
+              onClick={() =>
+                setStageFilter(
+                  stageFilter === "needbooking" ? "all" : "needbooking"
+                )
+              }
+              count={bookingAlertIds.size}
+            >
+              <CalendarClock size={14} />
+              รอลงคิวหมอ
+            </FilterChip>
+            <FilterChip
+              active={mineOnly}
+              onClick={() => setMineOnly((v) => !v)}
+              count={items.filter((i) => i.owner_id === me.id).length}
+            >
+              <UserRound size={14} />
+              เคสของฉัน
+            </FilterChip>
+          </FilterGroup>
+
+          <FilterGroup
+            label="ซ่อนสถานะ"
+            hint="ติ๊กสถานะที่ไม่อยากเห็นบนบอร์ด (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
+          >
+            {INFLU_STATUS_ORDER.map((s) => {
+              const off = excluded.has(s);
+              return (
+                <FilterChip
+                  key={s}
+                  active={off}
+                  onClick={() => {
+                    const next = new Set(excluded);
+                    if (off) next.delete(s);
+                    else next.add(s);
+                    setExcluded(next);
+                  }}
+                  count={items.filter((i) => influStatusOf(i) === s).length}
+                >
+                  {off ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {INFLU_STATUS_META[s].label}
+                </FilterChip>
+              );
+            })}
+          </FilterGroup>
+      </FilterSheet>
 
       {actionError && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">

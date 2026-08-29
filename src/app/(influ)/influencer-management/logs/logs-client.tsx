@@ -3,6 +3,13 @@
 import { History, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import {
+  ActiveFilterChips,
+  FilterButton,
+  FilterChip,
+  FilterGroup,
+  FilterSheet,
+} from "@/components/filter-sheet";
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import {
@@ -57,6 +64,27 @@ export function LogsClient({
     ),
   ];
 
+  const isDefault = search === "" && action === "all";
+  const clearFilters = () => {
+    setSearch("");
+    setAction("all");
+  };
+
+  /* จอเล็ก: ชิปประเภทการกระทำมีได้ถึง ~8 ตัว (พร้อมตัวเลขต่อท้าย) — เรียงบนแถบแล้ว
+     กินจอ 375px ไปครึ่งหน้าก่อนเห็นประวัติสักบรรทัด จึงพับเข้าแผ่นตัวกรอง
+     เหลือ [ค้นหา][ปุ่มตัวกรอง] แล้วสรุปสิ่งที่กรองอยู่ด้วยชิปใต้แถบ */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const mobileFilterChips =
+    action === "all"
+      ? []
+      : [
+          {
+            key: "action",
+            label: influLogActionMeta(action).label,
+            onClear: () => setAction("all"),
+          },
+        ];
+
   return (
     <>
       {loadError && (
@@ -65,7 +93,31 @@ export function LogsClient({
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
+      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (ชิปประเภทอยู่ในแผ่นด้านล่าง) */}
+      <div className="mb-3 flex items-center gap-2 animate-fade-in-up sm:hidden">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+          />
+          <Input
+            type="search"
+            placeholder="ค้นหาชื่อเคส ผู้ทำ"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <FilterButton
+          count={action === "all" ? 0 : 1}
+          onClick={() => setFiltersOpen(true)}
+        />
+      </div>
+
+      {/* ชิปสรุปประเภทที่กรองอยู่ — แผ่นปิดแล้วต้องยังเห็นว่าลิสต์ถูกกรองไว้ */}
+      <ActiveFilterChips items={mobileFilterChips} className="mb-3 sm:hidden" />
+
+      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={16}
@@ -87,7 +139,7 @@ export function LogsClient({
                 key={c.key}
                 type="button"
                 onClick={() => setAction(c.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-2.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] sm:py-1.5 ${
+                className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
                   active
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
@@ -102,13 +154,10 @@ export function LogsClient({
             );
           })}
         </div>
-        {(search !== "" || action !== "all") && (
+        {!isDefault && (
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setAction("all");
-            }}
+            onClick={clearFilters}
             className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
           >
             <X size={14} />
@@ -116,6 +165,33 @@ export function LogsClient({
           </button>
         )}
       </div>
+
+      {/* แผ่นตัวกรองของจอเล็ก — ตัวเลือกชุดเดียวกับชิปบนแถบ ≥sm
+          (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) */}
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={clearFilters}
+        clearDisabled={isDefault}
+        resultCount={filtered.length}
+        resultNoun="รายการ"
+      >
+        <FilterGroup
+          label="ประเภทการกระทำ"
+          hint={`แสดงเฉพาะประเภทที่มีอยู่ใน ${formatNumber(limit)} รายการล่าสุด`}
+        >
+          {chips.map((c) => (
+            <FilterChip
+              key={c.key}
+              active={action === c.key}
+              onClick={() => setAction(c.key)}
+              count={c.count}
+            >
+              {c.label}
+            </FilterChip>
+          ))}
+        </FilterGroup>
+      </FilterSheet>
 
       {filtered.length === 0 ? (
         <Card>
@@ -168,7 +244,9 @@ export function LogsClient({
                       )}
                     </p>
                   </div>
-                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-stone-400">
+                  {/* จอเล็ก: เวลาตกไปอยู่บรรทัดของตัวเอง — บีบอยู่ข้างข้อความสรุปที่ 375px
+                      แล้วเหลือที่ให้สรุปไม่ถึงครึ่งบรรทัด อ่านไม่รู้เรื่อง */}
+                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-stone-400 max-sm:w-full">
                     {formatDateTime(l.created_at)}
                   </span>
                 </li>

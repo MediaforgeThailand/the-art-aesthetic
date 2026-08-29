@@ -141,13 +141,31 @@ test("flow ครบวงจร: BC → Lab → Admin ลงคิว → ค�
       mimeType: "application/pdf",
       buffer: Buffer.from("%PDF-1.4\n% e2e wellness flow test\n"),
     });
+    // รอ "แถวไฟล์ที่บันทึกลง DB แล้ว" ไม่ใช่แค่ชื่อไฟล์ — ระหว่างอัพโหลด แผงไฟล์ก็โชว์
+    // ชื่อไฟล์ในบรรทัด "กำลังอัพโหลด ..." เหมือนกัน จับชื่อเฉยๆ จะผ่านตั้งแต่ยังอัพไม่เสร็จ
+    // แล้วไปตกที่ปุ่มยืนยันซึ่งยัง disabled อยู่ (ปุ่มปลดล็อกเมื่อ lab_files มีแถวจริง)
     await expect(
-      labCard.getByText(`e2e-lab-${STAMP}.pdf`),
+      labCard.getByRole("button", { name: `ลบไฟล์ e2e-lab-${STAMP}.pdf` }),
       "② ไฟล์ผลเลือดต้องขึ้นในรายการหลังอัพเสร็จ"
     ).toBeVisible({ timeout: 60_000 });
 
     await expect(confirmBtn, "② มีไฟล์แล้วปุ่มยืนยันต้องกดได้").toBeEnabled();
+    // ต้องรอ "คำขอบันทึกถึง DB จริง" ก่อนเดินหน้าต่อ — หน้า Lab ย้ายการ์ดไปกอง
+    // "ยืนยันแล้ว" แบบ optimistic ตั้งแต่ยังไม่ได้คำตอบ ถ้ารีบ goto หน้าถัดไป
+    // คำขอที่ค้างอยู่จะถูกยกเลิกกลางทาง = ผลแลบไม่เคยถูกยืนยันจริง
+    // (บั๊กของสเปกเอง: รอบก่อนเช็คแค่หัวข้อกอง ซึ่งมีอยู่แล้วจากเคส demo เลยผ่านทั้งที่ยังไม่บันทึก)
+    const confirmSaved = page.waitForResponse(
+      (r) =>
+        r.url().includes("/rest/v1/wellness_customers") &&
+        r.request().method() === "PATCH",
+      { timeout: 30_000 }
+    );
     await confirmBtn.click();
+    const confirmRes = await confirmSaved;
+    expect(
+      confirmRes.status(),
+      "② คำขอยืนยันผลแลบต้องบันทึกสำเร็จ"
+    ).toBeLessThan(300);
     await expect(
       page.getByText("ยืนยันแล้ว · รอ Admin นัด"),
       "② ยืนยันแล้วเคสต้องย้ายไปกอง 'รอ Admin นัด'"

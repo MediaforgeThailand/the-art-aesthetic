@@ -58,7 +58,7 @@ function messageOf(n: NotificationWithJoins): string {
  * กระดิ่งแจ้งเตือน — badge เลข "ยังไม่เห็น" + แผงรายการ (เปิดออกด้านขวาผ่าน portal)
  * อัพเดทสดผ่าน Supabase Realtime (INSERT/UPDATE ของแถวที่ recipient = ฉัน)
  *
- * "เห็นแล้ว" กับ "อ่านแล้ว" เป็นคนละเรื่องกันโดยตั้งใจ (migration 0095):
+ * "เห็นแล้ว" กับ "อ่านแล้ว" เป็นคนละเรื่องกันโดยตั้งใจ (migration 0096):
  * - เปิดแผง = ทุกแถวถูกทำเครื่องหมาย seen_at → ตัวเลขบนกระดิ่งรีเซ็ตทันที
  * - แถวที่ยังไม่ได้กดเข้าไปดูยังเป็น "ยังไม่อ่าน" (แถบสีซ้ายเด่น + ตัวหนา) จนกว่าจะ
  *   คลิกหรือกด "อ่านทั้งหมด" — พฤติกรรมเดียวกับกล่องอีเมล/Facebook
@@ -355,7 +355,9 @@ export function NotificationBell({ userId }: { userId: string }) {
         onClick={toggle}
         title="การแจ้งเตือน"
         aria-label={`การแจ้งเตือน${unseen > 0 ? ` (ใหม่ ${unseen})` : ""}`}
-        className="relative shrink-0 cursor-pointer rounded-lg p-2 text-stone-400 transition-colors duration-200 hover:bg-white/70 hover:text-brand-700 active:scale-90"
+        // เป้านิ้ว 44px เฉพาะจอเล็ก (กระดิ่งเป็นปุ่มหลักบน topbar มือถือ) — คุมด้วย
+        // max-sm: อย่างเดียวทั้งขนาดและการจัดกลาง เพื่อไม่ให้กล่องบนเดสก์ท็อปเปลี่ยน
+        className="relative shrink-0 cursor-pointer rounded-lg p-2 text-stone-400 transition-colors duration-200 hover:bg-white/70 hover:text-brand-700 active:scale-90 max-sm:flex max-sm:h-11 max-sm:w-11 max-sm:items-center max-sm:justify-center max-sm:p-0"
       >
         <Bell size={18} />
         {unseen > 0 && (
@@ -371,7 +373,10 @@ export function NotificationBell({ userId }: { userId: string }) {
           <div
             ref={panelRef}
             style={{ left: pos.x, top: Math.max(8, pos.y) }}
-            className="glass fixed z-[70] flex max-h-[75dvh] w-100 max-w-[calc(100vw-16px)] flex-col rounded-xl shadow-2xl animate-scale-in"
+            // z-[60] = ชั้น "เมนูลอย/drawer" ตามสเกลของระบบ (แผงนี้เคยเป็น z-[70]
+            // ซึ่งอยู่นอกสเกล) — drawer เมนูมือถือปิดตัวเองก่อนอยู่แล้วจึงไม่ชนกัน
+            // w-100 (ไม่ใช่ w-96) เพราะแต่ละแถวมีป้ายชนิดงานชิดขวาเพิ่มมา
+            className="glass fixed z-[60] flex max-h-[75dvh] w-100 max-w-[calc(100vw-16px)] flex-col rounded-xl shadow-2xl animate-scale-in"
           >
             <div className="flex items-center gap-2 border-b border-stone-200/60 px-4 py-2.5">
               <p className="text-sm font-semibold text-stone-800">การแจ้งเตือน</p>

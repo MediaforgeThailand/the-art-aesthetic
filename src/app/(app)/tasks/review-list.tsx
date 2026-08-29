@@ -5,8 +5,6 @@ import {
   CheckCheck,
   CheckCircle2,
   ClipboardCheck,
-  Clock3,
-  Image as ImageIcon,
   Link2,
   Undo2,
 } from "lucide-react";
@@ -14,29 +12,73 @@ import { Badge } from "@/components/ui";
 import { TASK_PRIORITY } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
-import {
-  AssigneeAvatar,
-  currentReviewerIds,
-  currentReviewerPersons,
-  profileName,
-  reviewStepOf,
-  reviewer1PartialApproved,
-  reviewWaitStart,
-  waitDurationLabel,
-} from "./task-card";
+import { ReviewPosterCard } from "./review-poster";
+import { currentReviewerIds, reviewStepOf } from "./task-card";
 
-/** รอนานเกิน 2 วันไหม — ไว้เน้นงานที่ค้างนานให้สะดุดตา (helper นอก component เลี่ยงกฎ purity) */
-function isLongWait(sinceIso: string | null): boolean {
-  if (!sinceIso) return false;
-  return Date.now() - Date.parse(sinceIso) > 2 * 24 * 3_600_000;
+/* ============================================================================
+   แท็บ "รอตรวจ" ของจอใหญ่ (≥lg)
+   ----------------------------------------------------------------------------
+   ผู้ใช้ 2026-08-29: "ทำให้ version desktop เห็นการ์ดตรวจงานเป็นแบบนี้เหมือนกัน
+   แต่แค่ design ในพื้นที่กว้าง" ⇒ เลิกใช้แถวลิสต์เดิม เปลี่ยนเป็น **กริดการ์ดโปสเตอร์
+   ชุดเดียวกับมือถือ** (review-poster) แค่ขยายเป็น size="md" และวางได้หลายคอลัมน์
+
+   ต่างจากมือถือแค่จุดเดียว: กลุ่ม "รอฉันตรวจ" ยังมีปุ่ม อนุมัติ/ตีกลับ/อนุมัติจบทันที
+   อยู่ **ใต้การ์ด (นอกตัวการ์ด)** เพราะจอกว้างมีที่พอ และผู้ตรวจต้องกดรัวได้เหมือนเดิม
+   — บนการ์ดยังห้ามมีปุ่ม (กติกาเดิมของ poster-card) และปุ่มชุดเต็มยังอยู่ในแผงรายละเอียด
+
+   แบ่ง 2 กลุ่มเหมือนเดิม:
+   1) รอฉันตรวจ (ฉันเป็นผู้ตรวจของทอดปัจจุบัน)
+   2) งานรอตรวจอื่นๆ ของทีม — read-only บอกว่า "ค้างอยู่ที่ใคร" + รอมานานเท่าไร
+      (ชิป/บรรทัดใต้ชื่อบนการ์ดบอกครบแล้ว) เรียงงานที่รอนานสุดขึ้นก่อน
+   ========================================================================== */
+
+/** กริดการ์ด — ปรับคอลัมน์ตามความกว้างที่เหลือ (แผงรายละเอียดเปิดอยู่ก็ยังพอดี) */
+const CARD_GRID =
+  "grid grid-cols-2 gap-x-4 gap-y-5 xl:grid-cols-3 2xl:grid-cols-4";
+
+/** บรรทัดข้อมูลย่อใต้การ์ดของกลุ่ม "รอฉันตรวจ" — ข้อมูลที่ช่วยตัดสินว่าจะตรวจใบไหนก่อน */
+function CardMeta({
+  task,
+  section,
+  today,
+}: {
+  task: TaskWithAssignee;
+  section: string | null;
+  today: string;
+}) {
+  const overdue = task.due_date !== null && task.due_date.slice(0, 10) < today;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-0.5 text-[11px] text-stone-500">
+      <Badge className={TASK_PRIORITY[task.priority].badge}>
+        {TASK_PRIORITY[task.priority].label}
+      </Badge>
+      {section && <span className="truncate text-stone-400">{section}</span>}
+      {task.due_date && (
+        <span
+          className={`inline-flex items-center gap-1 ${
+            overdue ? "font-medium text-rose-600" : ""
+          }`}
+        >
+          {overdue && <AlertCircle size={11} />}
+          ส่ง {formatDate(task.due_date)}
+        </span>
+      )}
+      {task.deliverable_url && (
+        <a
+          href={task.deliverable_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-sky-600 hover:underline"
+        >
+          <Link2 size={11} />
+          ลิงก์งาน
+        </a>
+      )}
+    </div>
+  );
 }
 
-/**
- * แท็บ "รอตรวจ" — เห็นภาพรวมงานรอตรวจทั้งทีม แบ่ง 2 กลุ่ม:
- * 1) รอฉันตรวจ (ฉันเป็นผู้ตรวจของทอดปัจจุบัน) — กดอนุมัติ/ตีกลับได้เลย
- * 2) งานรอตรวจอื่นๆ ของทีม — read-only บอกชัดว่า "ค้างอยู่ที่ใคร" (ผู้ตรวจทอดไหน) + รอมานานเท่าไร
- *    เรียงงานที่รอนานสุดขึ้นก่อน — ทั้งผู้ส่งงานและผู้ตรวจเปิดดูได้เหมือนกัน
- */
 export function ReviewList({
   queue,
   teamPending,
@@ -71,9 +113,7 @@ export function ReviewList({
     return (
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
         <ClipboardCheck size={40} strokeWidth={1.5} className="text-brand-200" />
-        <p className="text-sm font-medium text-stone-600">
-          ไม่มีงานรอตรวจ
-        </p>
+        <p className="text-sm font-medium text-stone-600">ไม่มีงานรอตรวจ</p>
         <p className="max-w-sm text-sm text-stone-400">
           เมื่อมีใครส่งงานเข้าตรวจ งานจะมาแสดงที่นี่ —
           ทั้งงานที่รอคุณตรวจ และงานของทีมที่ค้างอยู่ที่ผู้ตรวจคนอื่น
@@ -97,12 +137,8 @@ export function ReviewList({
             ไม่มีงานที่รอคุณตรวจตอนนี้
           </p>
         ) : (
-          <div className="space-y-2.5">
+          <div className={CARD_GRID}>
             {queue.map((task) => {
-              const overdue =
-                task.due_date !== null &&
-                task.due_date.slice(0, 10) < today;
-              const sec = sectionName(task.section_id);
               // งานตรวจ 2 ทอด — บอกว่าใบนี้อยู่ทอดไหน และอนุมัติแล้วจะเกิดอะไรต่อ
               const hasChain = task.reviewer2_id !== null;
               const step = reviewStepOf(task);
@@ -118,118 +154,26 @@ export function ReviewList({
               const briefStage = step <= 0;
               const isFinalStep =
                 !briefStage && (!hasChain || step >= 2) && pendingOthers.length === 0;
-              const partial1 = reviewer1PartialApproved(task);
-              const wait = waitDurationLabel(reviewWaitStart(task));
               return (
-                <div
-                  key={task.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`ตรวจงาน ${task.title}`}
-                  onClick={() => onRowClick(task)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onRowClick(task);
-                  }}
-                  className={`flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-white px-4 py-3 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
-                    selectedId === task.id
-                      ? "border-brand-400 ring-1 ring-brand-300"
-                      : "border-stone-200/90 hover:border-brand-300 hover:bg-brand-50/40"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1 basis-64">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        {step <= 0
-                          ? "รอผู้สั่ง brief ตรวจ"
-                          : hasChain
-                            ? `รอตรวจ · ลำดับ ${step}/2`
-                            : "รอตรวจ"}
-                      </span>
-                      {hasChain && step >= 2 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                          ลำดับ 1 อนุมัติแล้ว
-                        </span>
-                      )}
-                      {partial1 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                          ผู้ตรวจร่วมอนุมัติแล้ว — เหลือคุณ
-                        </span>
-                      )}
-                      {wait && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-stone-400">
-                          <Clock3 size={11} />
-                          {wait}
-                        </span>
-                      )}
-                      {sec && (
-                        <span className="text-xs text-stone-400">{sec}</span>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-sm font-medium text-stone-800">
-                      {task.title}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
-                      <span className="inline-flex items-center gap-1.5">
-                        <AssigneeAvatar assignee={task.assignee} size={6} />
-                        {task.assignee ? profileName(task.assignee) : "ไม่ระบุผู้ทำ"}
-                      </span>
-                      {task.due_date && (
-                        <span
-                          className={`inline-flex items-center gap-1 ${
-                            overdue ? "font-medium text-rose-600" : ""
-                          }`}
-                        >
-                          {overdue && <AlertCircle size={12} />}
-                          กำหนดส่ง {formatDate(task.due_date)}
-                        </span>
-                      )}
-                      <Badge className={TASK_PRIORITY[task.priority].badge}>
-                        {TASK_PRIORITY[task.priority].label}
-                      </Badge>
-                      {task.deliverable_url && (
-                        <a
-                          href={task.deliverable_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-sky-600 hover:underline"
-                        >
-                          <Link2 size={12} />
-                          ลิงก์งาน
-                        </a>
-                      )}
-                      {(task.files?.length ?? 0) > 0 && (
-                        <span className="inline-flex items-center gap-1 text-brand-600">
-                          <ImageIcon size={12} />
-                          มีไฟล์แนบ {task.files!.length} ไฟล์
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
+                <div key={task.id} className="flex flex-col gap-2">
+                  <ReviewPosterCard
+                    task={task}
+                    today={today}
+                    size="md"
+                    selected={selectedId === task.id}
+                    variant="queue"
+                    onClick={() => onRowClick(task)}
+                  />
+                  <CardMeta
+                    task={task}
+                    section={sectionName(task.section_id)}
+                    today={today}
+                  />
+                  {/* ปุ่มลงมือตรวจ — อยู่นอกการ์ด กดรัวได้โดยไม่ต้องเปิดแผงทีละใบ */}
+                  <div className="flex flex-col gap-1.5">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReject(task);
-                      }}
-                      title={
-                        briefStage
-                          ? "ส่งกลับให้ผู้รับงานแก้ก่อนเข้าสายตรวจจริง (ไม่นับเป็นข้อผิดพลาดใน KPI)"
-                          : "ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
-                      }
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95"
-                    >
-                      <Undo2 size={15} />
-                      {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับ"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onApprove(task);
-                      }}
+                      onClick={() => onApprove(task)}
                       title={
                         briefStage
                           ? "ผ่านแล้ว — ส่งงานเข้าสายตรวจจริงต่อ"
@@ -239,9 +183,9 @@ export function ReviewList({
                               ? undefined
                               : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย"
                       }
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
+                      className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-emerald-600 active:scale-95"
                     >
-                      <CheckCircle2 size={15} />
+                      <CheckCircle2 size={14} />
                       {briefStage
                         ? "ผ่าน → ส่งเข้าสายตรวจจริง"
                         : pendingOthers.length > 0
@@ -250,22 +194,34 @@ export function ReviewList({
                             ? "อนุมัติ"
                             : "อนุมัติ → ส่งต่อลำดับ 2"}
                     </button>
-                    {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ: ปิดงานเลย ข้ามคนที่ยังไม่ได้ตรวจ
-                        (ทอด 0 ไม่มี — ผู้สั่ง brief ปิดงานแทนผู้ตรวจจริงไม่ได้) */}
-                    {!briefStage && !isFinalStep && (
+                    <div className="flex gap-1.5">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onApproveBypass(task);
-                        }}
-                        title="อนุมัติจบทันทีโดยไม่ต้องรอคนที่ยังไม่ได้ตรวจ (มีกล่องยืนยันก่อน)"
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3.5 py-2 text-sm font-medium text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95"
+                        onClick={() => onReject(task)}
+                        title={
+                          briefStage
+                            ? "ส่งกลับให้ผู้รับงานแก้ก่อนเข้าสายตรวจจริง (ไม่นับเป็นข้อผิดพลาดใน KPI)"
+                            : "ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                        }
+                        className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95"
                       >
-                        <CheckCheck size={15} />
-                        อนุมัติจบทันที
+                        <Undo2 size={14} />
+                        {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับ"}
                       </button>
-                    )}
+                      {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ: ปิดงานเลย ข้ามคนที่ยังไม่ได้ตรวจ
+                          (ทอด 0 ไม่มี — ผู้สั่ง brief ปิดงานแทนผู้ตรวจจริงไม่ได้) */}
+                      {!briefStage && !isFinalStep && (
+                        <button
+                          type="button"
+                          onClick={() => onApproveBypass(task)}
+                          title="อนุมัติจบทันทีโดยไม่ต้องรอคนที่ยังไม่ได้ตรวจ (มีกล่องยืนยันก่อน)"
+                          className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-emerald-500 bg-white px-3 py-2 text-xs font-medium text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95"
+                        >
+                          <CheckCheck size={14} />
+                          จบทันที
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -291,123 +247,28 @@ export function ReviewList({
             ไม่มีงานอื่นที่รอตรวจอยู่
           </p>
         ) : (
-          <div className="space-y-2">
-            {teamPending.map((task) => {
-              const sec = sectionName(task.section_id);
-              const hasChain = task.reviewer2_id !== null;
-              const step = reviewStepOf(task);
-              // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์เฉพาะคนที่ยังไม่อนุมัติ (งานค้างอยู่ที่เขา)
-              const stuckWith = currentReviewerPersons(task);
-              const partial1 = reviewer1PartialApproved(task);
-              const wait = waitDurationLabel(reviewWaitStart(task));
-              const mine =
-                userId !== null &&
-                (task.assignee_id === userId || task.created_by === userId);
-              // รอนานเกิน 2 วัน = เน้นเหลืองเข้มให้สะดุดตา
-              const longWait = isLongWait(reviewWaitStart(task));
-              return (
-                <div
-                  key={task.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`ดูงานรอตรวจ ${task.title}`}
+          <div className={CARD_GRID}>
+            {teamPending.map((task) => (
+              <div key={task.id} className="flex flex-col gap-2">
+                <ReviewPosterCard
+                  task={task}
+                  today={today}
+                  size="md"
+                  selected={selectedId === task.id}
+                  variant="team"
+                  mine={
+                    userId !== null &&
+                    (task.assignee_id === userId || task.created_by === userId)
+                  }
                   onClick={() => onRowClick(task)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onRowClick(task);
-                  }}
-                  className={`flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border bg-white/80 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
-                    selectedId === task.id
-                      ? "border-brand-400 ring-1 ring-brand-300"
-                      : "border-stone-200/70 hover:border-brand-300 hover:bg-brand-50/40"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1 basis-64">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        {step <= 0
-                          ? "รอผู้สั่ง brief ตรวจ"
-                          : hasChain
-                            ? `รอตรวจ · ลำดับ ${step}/2`
-                            : "รอตรวจ"}
-                      </span>
-                      {hasChain && step >= 2 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                          ลำดับ 1 อนุมัติแล้ว
-                        </span>
-                      )}
-                      {partial1 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                          ลำดับ 1 อนุมัติแล้ว 1/2 คน
-                        </span>
-                      )}
-                      {mine && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
-                          งานของฉัน
-                        </span>
-                      )}
-                      {sec && (
-                        <span className="text-xs text-stone-400">{sec}</span>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-sm font-medium text-stone-800">
-                      {task.title}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
-                      <span
-                        className="inline-flex items-center gap-1.5"
-                        title={`ผู้รับผิดชอบ: ${
-                          task.assignee ? profileName(task.assignee) : "ไม่ระบุ"
-                        }`}
-                      >
-                        <AssigneeAvatar assignee={task.assignee} size={5} />
-                        {task.assignee ? profileName(task.assignee) : "ไม่ระบุผู้ทำ"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* ค้างอยู่ที่ใคร + รอมานานเท่าไร — จุดที่ทีมต้องเห็นชัดสุด */}
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50/80 px-2.5 py-1 text-xs font-medium text-amber-800">
-                      ค้างอยู่ที่
-                      {stuckWith.length === 0 ? (
-                        <>
-                          <AssigneeAvatar assignee={null} size={5} />
-                          <span className="max-w-28 truncate">
-                            ยังไม่ระบุผู้ตรวจ
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          {stuckWith.map((p) => (
-                            <AssigneeAvatar key={p.id} assignee={p} size={5} />
-                          ))}
-                          <span className="max-w-40 truncate">
-                            {stuckWith.map((p) => profileName(p)).join(" และ ")}
-                          </span>
-                        </>
-                      )}
-                      {hasChain && (
-                        <span className="text-[10px] font-semibold text-amber-600">
-                          (ลำดับ {step})
-                        </span>
-                      )}
-                    </span>
-                    {wait && (
-                      <span
-                        className={`inline-flex items-center gap-1 text-[11px] ${
-                          longWait
-                            ? "font-semibold text-amber-600"
-                            : "text-stone-400"
-                        }`}
-                      >
-                        <Clock3 size={11} />
-                        {wait}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                />
+                <CardMeta
+                  task={task}
+                  section={sectionName(task.section_id)}
+                  today={today}
+                />
+              </div>
+            ))}
           </div>
         )}
       </div>

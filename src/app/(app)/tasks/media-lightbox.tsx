@@ -71,7 +71,9 @@ export function MediaLightbox({
       role="dialog"
       aria-modal="true"
       aria-label="ดูไฟล์แนบ"
-      className="fixed inset-0 z-[80] flex flex-col bg-black/85 backdrop-blur-sm animate-fade-in"
+      // ห้ามใส่ backdrop-blur ที่ชั้นนี้: เบลอเต็มจอทับหน้าที่มีการ์ด/รูปเยอะ ต้อง composite ใหม่
+      // ทุกเฟรมที่วิดีโอวาด ทำให้เครื่องของทีมกระตุกเวลาเปิดคลิป — ใช้พื้นดำทึบแทน (ตาแทบไม่ต่าง)
+      className="fixed inset-0 z-[80] flex flex-col bg-black/95 animate-fade-in"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -202,6 +204,9 @@ function LightboxMedia({ item }: { item: LightboxItem }) {
         controls
         autoPlay
         playsInline
+        // preload="auto" = ให้เบราว์เซอร์ดึงล่วงหน้าเต็มที่ (ค่าปริยายบางเบราว์เซอร์ดึงแค่ metadata
+        // แล้วค่อยไล่โหลดตามการเล่น ซึ่งไฟล์บิตเรตสูงจะ buffer หมดเป็นระยะ = กระตุก)
+        preload="auto"
         className="max-h-full max-w-full rounded-lg shadow-2xl"
       />
     );

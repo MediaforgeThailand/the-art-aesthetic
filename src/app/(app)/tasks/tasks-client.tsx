@@ -29,6 +29,7 @@ import {
   CONTENT_FORMATS,
   DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
+  postOwnerIdOf,
   REVISION_KIND_ORDER,
   REVISION_KINDS,
   STORAGE_BUCKET_DOCUMENTS,
@@ -57,6 +58,7 @@ import {
   MobileFilterBar,
   MobileWorkFilterSheet,
 } from "./mobile-filters";
+import { MobileReviewList } from "./mobile-review";
 import { MobileTabs } from "./mobile-tabs";
 import { PersonSelect } from "./person-select";
 import { PostingList } from "./posting-list";
@@ -861,15 +863,17 @@ export function TasksClient({
     [approvedAll]
   );
 
-  /** คิวที่โชว์จริง = กรองตามผู้รับผิดชอบ — badge บนแท็บก็นับชุดนี้ เลขจะได้ตรงกับที่เห็นในลิสต์
+  /** คิวที่โชว์จริง = กรองตาม "คนที่ต้องโพส" — badge บนแท็บก็นับชุดนี้ เลขจะได้ตรงกับที่เห็นในลิสต์
+      เจ้าของคิว = ผู้สั่ง Brief ถ้าการ์ดมาจาก Brief ไม่งั้นผู้รับผิดชอบการ์ด (`postOwnerIdOf`,
+      กติกาผู้ใช้ 2026-08-29) — เกณฑ์เดียวกับที่ระบบ KPI ใช้ ห้ามกลับไปเช็ค assignee_id ตรงๆ
       ("ของฉัน" ที่ไม่รู้ว่าใคร (userId หาย) ตกกลับเป็นทั้งทีม — ดีกว่าโชว์คิวว่างให้เข้าใจผิดว่าไม่มีงานค้าง) */
   const postQueue = useMemo(() => {
     if (pqAssignee === "all") return postQueueAll;
     if (pqAssignee === "none")
-      return postQueueAll.filter((t) => t.assignee_id === null);
+      return postQueueAll.filter((t) => postOwnerIdOf(t) === null);
     const targetId = pqAssignee === "me" ? userId : pqAssignee;
     if (targetId === null) return postQueueAll;
-    return postQueueAll.filter((t) => t.assignee_id === targetId);
+    return postQueueAll.filter((t) => postOwnerIdOf(t) === targetId);
   }, [postQueueAll, pqAssignee, userId]);
 
   const approvedFiltered = useMemo(() => {
@@ -1171,13 +1175,26 @@ export function TasksClient({
     ]);
   };
 
-  /** ผู้ทำงานกด "ส่งตรวจงาน" / "ส่งตรวจแก้" — ปลายทางขึ้นกับสถานะของการ์ด (migration 0097):
+  /** ผู้ทำงานกด "ส่งตรวจงาน" / "ส่งตรวจแก้" — ปลายทางขึ้นกับสถานะของการ์ด (migration 0098):
 
       1. เคยถูกตีกลับ และคนตีกลับยังเป็นผู้ตรวจที่ค้างอยู่คนเดียว → ส่งกลับหาคนนั้นตรงๆ
          (ข้ามผู้สั่ง brief / ผู้ตรวจที่อนุมัติไปแล้ว — กติกา "ส่งตรวจแก้" ของผู้ใช้)
       2. การ์ดที่มาจาก brief และยังอยู่ทอด 0 → ผู้สั่ง brief ตรวจก่อน
       3. นอกนั้น → เข้าสายตรวจจริงตามเดิม */
   const submitForReview = (task: TaskWithAssignee) => {
+    // ลิงก์ Google Drive เป็นของบังคับตั้งแต่ 2026-08-29 — ผู้ตรวจต้องเปิดไฟล์จริงได้
+    // ทุกใบ ไม่ใช่ดูจากรูป preview อย่างเดียว (ปุ่มในแผงถูก disable ไว้แล้ว ตัวนี้เป็น
+    // กันชนอีกชั้น) — อยู่บนสุดของ submitForReview จึงครอบทั้ง 3 ทาง (ส่งตรวจแก้ /
+    // ให้ผู้สั่ง brief ตรวจ / เข้าสายตรวจจริง) แต่ไม่ไปบล็อก sendToRealReview ตอน
+    // ผู้สั่ง brief กดผ่าน; การ์ด brief เองยกเว้น (ลิงก์ของมันคือของอ้างอิง ไม่ใช่ตัวงาน)
+    const inBriefSection =
+      sections.find((s) => s.id === bucketOf(task))?.type === "brief";
+    if (!inBriefSection && (task.deliverable_url ?? "").trim() === "") {
+      showError(
+        "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้ — ใส่ได้ที่ช่อง \"ลิงก์งาน (Google Drive)\" ในแผงรายละเอียด"
+      );
+      return;
+    }
     const now = new Date().toISOString();
     const step = reviewStepOf(task);
     const pending = currentReviewerIds(task);
@@ -1522,7 +1539,7 @@ export function TasksClient({
       {
         recipient: task.assignee_id,
         type: "rejected",
-        // ประเภทเก็บเป็นคอลัมน์ (migration 0095) — กระดิ่งเอาไปทำป้าย "แก้คำผิด"/"แก้เพิ่มเติม"
+        // ประเภทเก็บเป็นคอลัมน์ (migration 0096) — กระดิ่งเอาไปทำป้าย "แก้คำผิด"/"แก้เพิ่มเติม"
         // ชิดขวาของแถว ไม่ต้องยัดคำนำหน้าปนกับเหตุผลในข้อความเหมือนเดิมอีกแล้ว
         revisionKind: kind,
         preview: rejectReason.trim() || null,
@@ -1559,12 +1576,17 @@ export function TasksClient({
 
   /** สลับสถานะ "โพส/ใช้งานแล้ว" (ปุ่มใหญ่ในแท็บรอโพส + การ์ดในแท็บงานเสร็จ)
       เก็บคนกดไว้ด้วย (posted_by) ให้รู้ว่าใครเป็นคนโพส — กดยกเลิกล้างทั้งเวลาและคนกด
-      งานที่ยังไม่ระบุประเภทชิ้นงาน (content_format) → เปิดกล่องติดประเภทก่อนค่อยบันทึกโพส
-      (จุดเดียวที่บังคับติด — งานที่ติดไว้แล้ว/กดจากแผงงานแล้ว โพสทันทีเหมือนเดิม) */
+      งานที่ยังระบุประเภทไม่ครบ → เปิดกล่องติดประเภทก่อนค่อยบันทึกโพส
+      **ทั้งประเภทชิ้นงาน (ภาพ/วิดีโอ) และหมวดเนื้อหา (สวย/หมอ/Before-After ...) เป็นข้อบังคับ**
+      (ผู้ใช้ 2026-08-29 — เดิมหมวดเป็น optional ทำให้กติกา KPI ที่เจาะหมวดนับไม่ได้);
+      ยกเว้นตอนที่ทีมยังไม่ได้สร้างหมวดไว้เลย ไม่งั้นจะกดโพสไม่ได้ทั้งระบบ */
   const togglePosted = (task: TaskWithAssignee) => {
     const unposting = task.posted_at !== null;
-    if (!unposting && task.content_format === null) {
-      setPostFormat(null);
+    const needsCategory =
+      task.content_category_id === null &&
+      contentCategories.some((c) => c.active);
+    if (!unposting && (task.content_format === null || needsCategory)) {
+      setPostFormat(task.content_format);
       setPostCategoryId(task.content_category_id ?? "");
       setPostTarget(task);
       return;
@@ -1814,7 +1836,7 @@ export function TasksClient({
     // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้สร้างการ์ด = ผู้สั่ง brief)
     //    ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (คนใน "จัดการผู้ตรวจ") — ไม่ใช่ผู้สั่ง brief
     //    แต่การ์ดเริ่มที่ "ทอด 0": graphic ทำเสร็จ → กดส่งตรวจ → ผู้สั่ง brief ตรวจก่อน
-    //    → ผ่านแล้วระบบส่งต่อเข้าสายตรวจจริงให้เอง (migration 0097)
+    //    → ผ่านแล้วระบบส่งต่อเข้าสายตรวจจริงให้เอง (migration 0098)
     const inSection = activeItems.filter(
       (t) => bucketOf(t) === creativesSectionId
     );
@@ -1828,7 +1850,7 @@ export function TasksClient({
       (briefCreatorId
         ? (profiles.find((p) => p.id === briefCreatorId) ?? null)
         : null);
-    // ทอด 0 = ผู้สั่ง brief ตรวจงานของ graphic ก่อนส่งเข้าสายตรวจจริง (migration 0097)
+    // ทอด 0 = ผู้สั่ง brief ตรวจงานของ graphic ก่อนส่งเข้าสายตรวจจริง (migration 0098)
     // ผู้สั่ง brief เป็นคนเดียวกับผู้ทำงานเอง = ไม่มีใครให้ตรวจก่อน เริ่มทอด 1 ตามปกติ
     const briefStep =
       briefCreatorId !== null && briefCreatorId !== task.assignee_id ? 0 : 1;
@@ -2588,7 +2610,7 @@ export function TasksClient({
           <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
             <div className="w-full sm:w-56">
               <PersonSelect
-                ariaLabel="กรองคิวรอโพสตามผู้รับผิดชอบ"
+                ariaLabel="กรองคิวรอโพสตามคนที่ต้องโพส"
                 value={pqAssignee}
                 onChange={setPqAssignee}
                 options={[
@@ -2602,7 +2624,7 @@ export function TasksClient({
                         },
                       ]
                     : []),
-                  { value: "none", label: "ไม่ระบุผู้รับผิดชอบ", profile: null },
+                  { value: "none", label: "ไม่รู้ว่าใครต้องโพส", profile: null },
                   ...profiles
                     .filter((p) => p.id !== userId)
                     .map((p) => ({ value: p.id, profile: p })),
@@ -2785,18 +2807,34 @@ export function TasksClient({
             </div>
           </>
         ) : tab === "review" ? (
-          <ReviewList
-            queue={reviewQueue}
-            teamPending={teamPendingReview}
-            sections={sections}
-            today={today}
-            userId={userId}
-            selectedId={selectedId}
-            onRowClick={(t) => setSelectedId(t.id)}
-            onApprove={approveTask}
-            onApproveBypass={requestApproveBypass}
-            onReject={requestReject}
-          />
+          <>
+            <div className="hidden lg:contents">
+              <ReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                sections={sections}
+                today={today}
+                userId={userId}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+                onApprove={approveTask}
+                onApproveBypass={requestApproveBypass}
+                onReject={requestReject}
+              />
+            </div>
+            {/* มือถือ: การ์ดโปสเตอร์ชุดเดียวกับบอร์ด — ปุ่มอนุมัติ/ตีกลับอยู่บนสุด
+                ของชีตรายละเอียดที่เลื่อนขึ้นมาตอนกดการ์ด (ไม่มีปุ่มบนการ์ด) */}
+            <div className="lg:hidden">
+              <MobileReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                userId={userId}
+                today={today}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+              />
+            </div>
+          </>
         ) : tab === "posting" ? (
           <PostingList
             tasks={postQueue}
@@ -3203,8 +3241,8 @@ export function TasksClient({
         </div>
       </Modal>
 
-      {/* ยืนยันโพส + ติดประเภทชิ้นงาน — เปิดเมื่อกด "โพสแล้ว" กับงานที่ยังไม่ระบุ content_format
-          (จุดเก็บข้อมูล KPI คอนเทนต์: ภาพ/วิดีโอ บังคับ, หมวดเนื้อหาไม่บังคับ) */}
+      {/* ยืนยันโพส + ติดประเภทชิ้นงาน — เปิดเมื่อกด "โพสแล้ว" กับงานที่ระบุประเภทไม่ครบ
+          (จุดเก็บข้อมูล KPI คอนเทนต์: **บังคับทั้งภาพ/วิดีโอ และหมวดเนื้อหา** ตั้งแต่ 2026-08-29) */}
       <Modal
         open={postTarget !== null}
         onClose={() => setPostTarget(null)}
@@ -3215,8 +3253,8 @@ export function TasksClient({
           <span className="font-medium text-stone-800">
             {postTarget?.title}
           </span>
-          &quot; ยังไม่ได้ระบุประเภทชิ้นงาน — ระบุก่อนบันทึกโพส
-          เพื่อให้นับเข้า KPI คอนเทนต์ได้
+          &quot; ยังระบุประเภทไม่ครบ — เลือกทั้งประเภทชิ้นงานและหมวดเนื้อหา
+          ก่อนบันทึกโพส เพื่อให้นับเข้า KPI คอนเทนต์ได้
         </p>
         <div className="mt-4">
           <Label htmlFor="post-format">ประเภทชิ้นงาน</Label>
@@ -3255,27 +3293,38 @@ export function TasksClient({
           </div>
         </div>
         <div className="mt-3">
-          <Label htmlFor="post-category">หมวดเนื้อหา (ไม่บังคับ)</Label>
+          <Label htmlFor="post-category">หมวดเนื้อหา</Label>
           <Select
             id="post-category"
             value={postCategoryId}
             onChange={(e) => setPostCategoryId(e.target.value)}
           >
-            <option value="">ไม่ระบุ</option>
+            <option value="">เลือกหมวด...</option>
             {contentCategories
-              .filter((c) => c.active)
+              .filter((c) => c.active || c.id === postCategoryId)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
           </Select>
+          <p className="mt-1 text-xs text-stone-400">
+            เช่น สวย / หมอ / Before-After — ใช้ตั้งเป้า KPI แบบเจาะหมวด
+            (เพิ่มหมวดใหม่ได้ที่หน้า &quot;ตั้งค่า KPI&quot;)
+          </p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setPostTarget(null)}>
             ยกเลิก
           </Button>
-          <Button disabled={postFormat === null} onClick={confirmMarkPosted}>
+          <Button
+            disabled={
+              postFormat === null ||
+              (postCategoryId === "" &&
+                contentCategories.some((c) => c.active))
+            }
+            onClick={confirmMarkPosted}
+          >
             บันทึกโพสแล้ว
           </Button>
         </div>

@@ -182,7 +182,54 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   await page.keyboard.press("Escape"); // ปิดตัวกรอง (มือถือเป็น bottom sheet)
   await settle(page, 300);
 
-  /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
+  /* ---------- มือถือ: แถบบนของระบบ Influencer = hamburger + drawer (2026-08-30) ----------
+       เมนูแถวล่างที่เลื่อนแนวนอนถูกถอดออก เมนูทั้งหมดอยู่ใน drawer ที่เปิดจากปุ่มมุมขวาบน */
+  if (mobile) {
+    await gotoPage(page, "/influencers");
+    await settle(page, 1000);
+    await openShotClose(
+      page,
+      project,
+      async () => {
+        await page
+          .getByRole("button", { name: "เปิดเมนูระบบ Influencer", exact: true })
+          .click();
+        return true;
+      },
+      "influ-drawer"
+    );
+
+    /* แผ่นตัวกรองของแต่ละหน้า — ปุ่มเดียวเปิดแผ่นสูง ~2/3 จอ (คำสั่งผู้ใช้ 2026-08-30)
+       assert ว่าเปิดได้ ไม่ล้นแนวนอน แล้ว Esc ปิด */
+    for (const [path, name] of [
+      ["/influencers", "influ-board-filters"],
+      ["/influ-hunting", "influ-hunting-filters"],
+      ["/influencers/contracts", "influ-followup-filters"],
+      ["/influ-cost", "influ-cost-filters"],
+    ] as const) {
+      await gotoPage(page, path);
+      await settle(page, 1000);
+      // ชื่อปุ่มมีตัวเลขจำนวนตัวกรองต่อท้ายได้ (เช่น "ตัวกรอง 2") — จับแบบ substring
+      const filterBtn = page.getByRole("button", { name: /ตัวกรอง/ }).first();
+      if ((await filterBtn.count()) === 0) continue;
+      await openShotClose(
+        page,
+        project,
+        async () => {
+          await filterBtn.click();
+          // แผ่นต้องเปิดจริง — เคยพลาดมาแล้วที่ state ของแผ่นถูกเมนู popup ปิดทับ
+          // (แค่ถ่ายรูปไม่พอ เพราะรูปที่ไม่มีแผ่นก็ผ่าน assert overflow ได้)
+          await expect(
+            page.locator('[role="dialog"][aria-modal="true"]').first()
+          ).toBeVisible({ timeout: 5_000 });
+          return true;
+        },
+        name
+      );
+    }
+  }
+
+  /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ (แอปทีม) ---------- */
   if (mobile) {
     await gotoPage(page, "/dashboard");
     await settle(page, 800);
@@ -236,14 +283,22 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
   // ตัวกรองเก็บใน localStorage ของ browser เทสต์เท่านั้น)
-  // ⚠️ ต้องกรอง :visible — ตั้งแต่ /tasks แยกชั้นมือถือ (mobile-filters.tsx) ปุ่มของ
-  // ฝั่งเดสก์ท็อปยังอยู่ใน DOM แต่ถูก `hidden lg:contents` ซ่อนไว้ตอนจอเล็ก
-  // (count() > 0 เฉยๆ จึงเจอปุ่มที่กดไม่ได้ แล้วรอจนหมดเวลา)
+  // ⚠️ จอเล็ก: แถบตัวกรองของจอใหญ่เป็น `hidden lg:flex` = ยังอยู่ใน DOM แต่มองไม่เห็น
+  // (locator แบบ CSS จะเจอแล้ว click ค้างรอ visible จนหมดเวลา) — มือถือต้องเปิดชีต
+  // "ตัวกรอง" ก่อน แล้วเลือกเฉพาะปุ่มที่มองเห็นจริงด้วย visible=true เสมอ
+  const openMobileFilterSheet = async (): Promise<boolean> => {
+    const btn = page.locator('button[aria-label="เปิดตัวกรอง"]');
+    if ((await btn.count()) === 0) return false;
+    await btn.first().click();
+    await settle(page, 500);
+    return true;
+  };
+  if (mobile) await openMobileFilterSheet();
   const personFilter = page
-    .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]:visible')
-    .first();
+    .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+    .locator("visible=true");
   if ((await personFilter.count()) > 0) {
-    await personFilter.click();
+    await personFilter.first().click();
     await settle(page, 400);
     const allOption = page.getByRole("option", {
       name: "ผู้รับผิดชอบ: ทั้งหมด",
@@ -254,6 +309,13 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     } else {
       await page.keyboard.press("Escape");
     }
+  }
+  if (mobile) {
+    // ชีตตัวกรองยังเปิดค้างอยู่ — ถ่ายไว้แล้วปิด
+    await page.screenshot({ path: shotPath(project, "tasks-filters-sheet") });
+    await expectNoHorizontalOverflow(page, "/tasks ชีตตัวกรอง");
+    await page.keyboard.press("Escape");
+    await settle(page, 400);
   }
 
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
@@ -266,20 +328,25 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, `/tasks แท็บ ${tab}`);
   }
 
-  // ตัวกรองผู้รับผิดชอบ (PersonSelect portal)
+  // ตัวกรองผู้รับผิดชอบ (PersonSelect portal) — จอเล็กอยู่ในชีต "ตัวกรอง"
   await openShotClose(
     page,
     project,
     async () => {
+      if (mobile && !(await openMobileFilterSheet())) return false;
       const btn = page
-        .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]:visible')
-        .first();
+        .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+        .locator("visible=true");
       if ((await btn.count()) === 0) return false;
-      await btn.click();
+      await btn.first().click();
       return true;
     },
     "tasks-filter-person"
   );
+  if (mobile) {
+    await page.keyboard.press("Escape"); // Escape แรกปิดเมนู — อีกทีปิดชีต
+    await settle(page, 400);
+  }
 
   // popover "ยกเว้น"
   await openShotClose(

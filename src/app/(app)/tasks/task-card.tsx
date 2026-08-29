@@ -33,7 +33,8 @@ import {
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
-import { isImagePath, isVideoPath } from "@/lib/media";
+import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
+import { useInView } from "@/lib/use-in-view";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
@@ -232,7 +233,7 @@ export function AssigneePicker({
   );
 }
 
-/* ---------- ทอดการตรวจ (migration 0097) ----------
+/* ---------- ทอดการตรวจ (migration 0098) ----------
    การ์ดที่มาจาก brief มี "ทอด 0" เพิ่มมาข้างหน้า = ผู้สั่ง brief ตรวจก่อน
    (graphic กดส่งตรวจ → ผู้สั่ง brief ดู → ผ่านแล้วผู้สั่ง brief ส่งเข้าสายตรวจจริง) */
 
@@ -467,6 +468,8 @@ function CardMediaThumb({ file }: { file: TaskFileRow }) {
 function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
+  // โหลดวิดีโอเฉพาะการ์ดที่เลื่อนมาถึง — กันชนโควตา media player ของเบราว์เซอร์
+  const [thumbRef, inView] = useInView();
   if (failed || broken) {
     // ไฟล์เปิดไม่ได้ (ถูกลบจาก storage/ไฟล์เสีย) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
     return (
@@ -484,18 +487,23 @@ function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   if (isVideoPath(file.file_path)) {
     return (
       <div
+        ref={thumbRef}
         className="relative w-full overflow-hidden rounded-md bg-stone-100"
         title={file.file_name ?? "วิดีโอ"}
       >
         {/* กว้างเต็มการ์ด สูงตามสัดส่วนจริง — วิดีโอแสดงเต็มเฟรม ไม่ถูก crop */}
-        <video
-          src={url}
-          className="h-auto w-full"
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setBroken(true)}
-        />
+        {inView ? (
+          <video
+            src={videoThumbSrc(url)}
+            className="h-auto w-full"
+            muted
+            playsInline
+            preload="metadata"
+            onError={() => setBroken(true)}
+          />
+        ) : (
+          <div className="h-28 w-full" />
+        )}
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white shadow-sm">
             <Play size={14} className="ml-0.5 fill-white" />

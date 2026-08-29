@@ -1,6 +1,6 @@
 // send-push — ส่ง Web Push ไปยังอุปกรณ์ที่ติดตั้งแอป (PWA) เมื่อมีแถวใน public.notifications
 //
-// เรียกจาก trigger `notifications_push_after_insert` ผ่าน net.http_post (ดู migration 0095)
+// เรียกจาก trigger `notifications_push_after_insert` ผ่าน net.http_post (ดู migration 0096)
 // auth: verify_jwt=false แต่ต้องส่ง header `x-push-secret` ตรงกับ vault secret 'push_secret'
 // secrets ใน Vault (อ่านผ่าน RPC get_app_secret — service role เท่านั้น):
 //   push_secret / push_function_url / vapid_private_key / vapid_subject

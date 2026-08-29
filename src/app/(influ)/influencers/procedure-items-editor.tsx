@@ -270,7 +270,9 @@ export function CostPriceInput({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/80 px-2 py-1 ${
+      /* max-sm:min-h-11 = เป้านิ้ว 44px บนจอเล็ก (ช่องนี้ใช้ทั้งแท็บรายละเอียดเคส
+         และตารางหน้า /influ-cost ซึ่งแตะกรอกจากมือถือกันจริง) */
+      className={`inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white/80 px-2 py-1 max-sm:min-h-11 ${
         disabled ? "opacity-60" : "focus-within:border-brand-400"
       } ${className}`}
     >
@@ -525,7 +527,7 @@ export function ProcedureItemsEditor({
                     if (e.key === "Enter")
                       (e.target as HTMLInputElement).blur();
                   }}
-                  className="min-w-[150px] flex-1 bg-transparent py-1.5 text-base text-stone-800 outline-none focus:rounded-md focus:bg-white/80 focus:px-1 sm:py-0 sm:text-sm"
+                  className="min-w-[150px] flex-1 bg-transparent py-1.5 text-base text-stone-800 outline-none focus:rounded-md focus:bg-white/80 focus:px-1 max-sm:min-h-11 sm:py-0 sm:text-sm"
                 />
               )}
               <span className="ml-auto flex items-center gap-1.5">
@@ -612,7 +614,7 @@ export function ProcedureItemsEditor({
             />
           </div>
         <div className="relative">
-          <div className="flex items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
+          <div className="flex items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 max-sm:min-h-11">
             <Search size={15} className="shrink-0 text-stone-400" />
             <input
               ref={inputRef}

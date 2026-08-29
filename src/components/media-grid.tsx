@@ -11,6 +11,7 @@
 import { Download, FileText, ImageOff, Play } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useInView } from "@/lib/use-in-view";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "@/app/(app)/tasks/media-lightbox";
 import { Badge, EmptyState } from "@/components/ui";
@@ -20,10 +21,13 @@ import {
   MEDIA_SOURCES,
   type MediaItem,
   mediaDisplayName,
+  videoThumbSrc,
 } from "@/lib/media";
 
 function MediaThumb({ item }: { item: MediaItem }) {
   const { url, failed } = useSignedUrl(item.filePath);
+  // คลังไฟล์มีวิดีโอได้เป็นร้อย — โหลดเฉพาะที่เลื่อนมาถึง (ดู useInView)
+  const [thumbRef, inView] = useInView();
 
   if (item.kind === "other") {
     return (
@@ -45,15 +49,17 @@ function MediaThumb({ item }: { item: MediaItem }) {
   }
   if (item.kind === "video") {
     return (
-      <div className="relative h-full w-full bg-black/80">
-        {/* preload=metadata: โหลดแค่เฟรมแรกพอทำ thumbnail ไม่ดึงทั้งไฟล์ */}
-        <video
-          src={url}
-          preload="metadata"
-          muted
-          playsInline
-          className="h-full w-full object-cover"
-        />
+      <div ref={thumbRef} className="relative h-full w-full bg-black/80">
+        {/* preload=metadata + `#t=` ใน videoThumbSrc: ดึงแค่เฟรมเดียวพอทำ thumbnail */}
+        {inView && (
+          <video
+            src={videoThumbSrc(url)}
+            preload="metadata"
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          />
+        )}
         <span className="absolute inset-0 flex items-center justify-center">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white">
             <Play size={16} fill="currentColor" />

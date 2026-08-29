@@ -1,10 +1,11 @@
 "use client";
 
 import { BadgeCheck, Link2, Paperclip, Send } from "lucide-react";
-import { CONTENT_FORMATS } from "@/lib/constants";
+import { CONTENT_FORMATS, postOwnerIdOf } from "@/lib/constants";
 import { formatDateBangkok } from "@/lib/format";
 import type {
   ContentCategoryRow,
+  ProfileRow,
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
@@ -18,6 +19,22 @@ import {
 /** เวลาที่ถือว่างานตรวจผ่าน — เริ่มนับคิวรอโพสจากจุดนี้ */
 function approvedAtOf(t: TaskWithAssignee): string {
   return t.approved_at ?? t.updated_at;
+}
+
+/**
+ * คนที่ต้องเป็นคนโพสการ์ดใบนี้ (กติกาผู้ใช้ 2026-08-29) — การ์ดที่มาจาก Brief เป็นของ
+ * ผู้สั่ง Brief ส่วนการ์ดที่ไม่มี Brief (ตัดเอง/สร้างเอง) เป็นของผู้รับผิดชอบการ์ด
+ * เกณฑ์อยู่ที่ `postOwnerIdOf` ที่เดียว (ระบบ KPI ใช้ตัวเดียวกัน)
+ */
+function postOwnerOf(t: TaskWithAssignee): {
+  person: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
+  fromBrief: boolean;
+} {
+  const fromBrief = t.brief_source_id !== null;
+  const ownerId = postOwnerIdOf(t);
+  if (ownerId === null) return { person: null, fromBrief };
+  const person = fromBrief ? (t.creator ?? null) : (t.assignee ?? null);
+  return { person, fromBrief };
 }
 
 /** รอโพสเกิน 2 วัน = ป้ายเตือนเหลืองเข้ม (เกณฑ์เดียวกับคิวรอตรวจ)
@@ -83,7 +100,9 @@ export function PostingList({
     <div className="px-4 pb-6 pt-1 sm:px-6">
       <p className="mb-3 text-xs text-stone-400">
         งานที่ตรวจผ่านแล้วและยังไม่ได้โพส {tasks.length} งาน —
-        โพสเสร็จแล้วกดปุ่มบนการ์ดเพื่อปิดคิว
+        โพสเสร็จแล้วกดปุ่มบนการ์ดเพื่อปิดคิว (ชื่อบนการ์ด = คนที่ต้องโพส:
+        การ์ดจาก Brief เป็นของผู้สั่ง Brief ส่วนการ์ดที่ไม่มี Brief
+        เป็นของผู้รับผิดชอบเอง)
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {tasks.map((task) => (
@@ -124,6 +143,7 @@ function PostingCard({
   const since = approvedAtOf(task);
   const wait = waitDurationLabel(since);
   const late = postWaitIsLate(since);
+  const owner = postOwnerOf(task);
   return (
     <div
       role="button"
@@ -161,11 +181,26 @@ function PostingCard({
       <CardMediaPreview files={files} />
 
       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-stone-500">
-        {task.assignee && (
-          <span className="inline-flex items-center gap-1.5">
-            <AssigneeAvatar assignee={task.assignee} size={5} />
-            {profileName(task.assignee)}
+        {/* ใครต้องเป็นคนโพส — การ์ดจาก Brief = ผู้สั่ง Brief, ไม่งั้น = ผู้รับผิดชอบการ์ด */}
+        {owner.person ? (
+          <span
+            className="inline-flex items-center gap-1.5"
+            title={
+              owner.fromBrief
+                ? "การ์ดนี้มาจาก Brief — ผู้สั่ง Brief เป็นคนโพส"
+                : "การ์ดนี้ไม่มี Brief — ผู้รับผิดชอบเป็นคนโพสเอง"
+            }
+          >
+            <AssigneeAvatar assignee={owner.person} size={5} />
+            {profileName(owner.person)}
+            {owner.fromBrief && (
+              <span className="rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-700">
+                ผู้สั่ง Brief
+              </span>
+            )}
           </span>
+        ) : (
+          <span className="text-amber-700">ไม่รู้ว่าใครต้องโพส</span>
         )}
         <span
           className="inline-flex items-center gap-1 text-emerald-700"
@@ -193,17 +228,19 @@ function PostingCard({
             {files.length}
           </span>
         )}
-        {/* ประเภทชิ้นงาน (KPI คอนเทนต์) — ยังไม่ระบุ = แจ้งไว้ว่าตอนกดโพสจะมีกล่องถาม */}
-        {task.content_format !== null ? (
+        {/* ประเภทชิ้นงาน + หมวดเนื้อหา (KPI คอนเทนต์) — ทั้งคู่บังคับตอนกดโพส
+            ระบุไม่ครบ = แจ้งไว้ว่าตอนกดโพสจะมีกล่องถามก่อน */}
+        {task.content_format !== null && contentCategoryName !== null ? (
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${CONTENT_FORMATS[task.content_format].chip}`}
           >
-            {CONTENT_FORMATS[task.content_format].label}
-            {contentCategoryName !== null && ` · ${contentCategoryName}`}
+            {CONTENT_FORMATS[task.content_format].label} · {contentCategoryName}
           </span>
         ) : (
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-            ยังไม่ระบุประเภท
+            {task.content_format === null
+              ? "ยังไม่ระบุประเภท"
+              : `${CONTENT_FORMATS[task.content_format].label} · ยังไม่ระบุหมวด`}
           </span>
         )}
       </div>

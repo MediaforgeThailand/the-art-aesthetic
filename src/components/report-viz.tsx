@@ -85,7 +85,11 @@ export function HeroCard({
           </div>
         </div>
         <div className="mt-1 flex flex-wrap items-baseline gap-2">
-          <p className="text-[26px] font-bold leading-tight tabular-nums text-stone-900">
+          {/* จอเล็กการ์ดเรียง 2 คอลัมน์ (กว้าง ~160px) — จำนวนเงินหลักล้านที่ 26px
+              ล้นออกนอกการ์ด: ย่อเหลือ 20px + ตัดขึ้นบรรทัดใหม่ได้ ส่วน ≥sm คงเดิม
+              (แยก max-sm:/sm: ทั้งคู่ ไม่ทับกันสักช่วง — คลาสที่คุม font-size
+              ตัวเดียวกันแพ้ชนะตามลำดับใน CSS ไม่ใช่ลำดับที่เขียน) */}
+          <p className="font-bold leading-tight tabular-nums break-words text-stone-900 max-sm:text-[20px] sm:text-[26px]">
             {value}
           </p>
           {delta}

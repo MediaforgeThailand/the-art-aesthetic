@@ -1,6 +1,6 @@
 "use client";
 
-/* Web Push — ให้แจ้งเตือนเด้งบนมือถือ/คอมแม้ไม่ได้เปิดเว็บค้างไว้ (migration 0095)
+/* Web Push — ให้แจ้งเตือนเด้งบนมือถือ/คอมแม้ไม่ได้เปิดเว็บค้างไว้ (migration 0096)
  *
  * ชิ้นส่วนทั้งเส้น:
  *   public/sw.js .................. service worker รับ push แล้ว showNotification
@@ -104,7 +104,7 @@ async function subscribeAndSave(): Promise<boolean> {
 
   // ผ่าน RPC ไม่ใช่ upsert ตรง — endpoint เป็นของ "เบราว์เซอร์" ไม่ใช่ของ "คน"
   // เครื่องที่ทีมใช้ร่วมกันแล้วสลับคนล็อกอินจะได้ endpoint เดิมที่มีเจ้าของเป็นคนก่อนหน้า
-  // ซึ่ง RLS มองไม่เห็น (ดู migration 0096)
+  // ซึ่ง RLS มองไม่เห็น (ดู migration 0097)
   const { error } = await supabase.rpc("register_push_subscription", {
     p_endpoint: json.endpoint,
     p_p256dh: json.keys.p256dh,

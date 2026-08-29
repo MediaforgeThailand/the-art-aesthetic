@@ -15,6 +15,7 @@ export type {
   ContentCategoryRow,
   ContentKpiRow,
   ContentKpiPeriod,
+  ContentKpiBasis,
   AppSettingRow,
   TaskCommentRow,
   TaskCommentWithAuthor,

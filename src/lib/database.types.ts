@@ -115,7 +115,7 @@ export type TaskRow = {
   /** บนการ์ด creative — ชี้กลับไปการ์ด brief ต้นทางที่สร้างมัน */
   brief_source_id: string | null;
   /** ผู้ตีกลับล่าสุด — งานที่แก้แล้วกด "ส่งตรวจแก้" จะวิ่งกลับมาที่คนนี้ตรงๆ (ข้ามผู้สั่ง brief);
-      ล้างตอนอนุมัติ/ยกเลิกส่งตรวจ/เปิดงานใหม่ — migration 0097 */
+      ล้างตอนอนุมัติ/ยกเลิกส่งตรวจ/เปิดงานใหม่ — migration 0098 */
   rejected_by: string | null;
   created_by: string | null;
   created_at: string;
@@ -182,6 +182,13 @@ export type ContentCategoryRow = {
     (แดชบอร์ดแปลงกติกา day เป็นเป้าทั้งเดือน = target × จำนวนวันของเดือนที่ดู) */
 export type ContentKpiPeriod = "month" | "day";
 
+/** ฐานการนับของกติกา KPI (migration 0095) — "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน:
+    'work'   = การ์ดชิ้นงานที่ตัวเองรับผิดชอบ นับตอนกดส่งตรวจ (พฤติกรรมเดิม / ค่า default)
+    'brief'  = การ์ด Brief ที่ตัวเองสั่ง นับตอนมีคนกด "รับงาน" (สำหรับ content ที่ brief อย่างเดียว)
+    'posted' = งานที่ตัวเองต้องเป็นคนโพส นับตอนกด "โพสแล้ว"
+    เจ้าของแต่ละฐานอยู่ที่ `postOwnerIdOf`/`CONTENT_KPI_BASES` ใน constants.ts */
+export type ContentKpiBasis = "work" | "brief" | "posted";
+
 /** กติกา KPI รายคนของทีมคอนเทนต์ — เป้าจำนวนชิ้นต่อคาบ (ไม่มีคอลัมน์เดือน = กติกายืน
     แดชบอร์ดคำนวณผลของเดือนที่เลือกจาก "วันส่งงาน" ของ tasks เอง)
     format null = ทุกฟอร์แมต, category_id null = ทุกหมวด — งานชิ้นเดียวนับได้หลายกติกาที่ตรงเงื่อนไข */
@@ -193,6 +200,8 @@ export type ContentKpiRow = {
   target: number;
   /** คาบของเป้า (migration 0087) — DB default 'month' */
   period: ContentKpiPeriod;
+  /** ฐานการนับ (migration 0095) — DB default 'work' (งานที่ทำเอง) */
+  basis: ContentKpiBasis;
   position: number;
   created_at: string;
   created_by: string | null;
@@ -238,7 +247,7 @@ export type NotificationType =
   | "brief_accepted";
 
 /** ระดับความสำคัญของแจ้งเตือน — primary = ต้องลงมือทำ (ป้ายเรืองแสง + เด้งเข้าเครื่อง)
-    secondary = แค่เกี่ยวข้อง (ขึ้นในกระดิ่งแบบเงียบ ไม่เด้ง) — migration 0097 */
+    secondary = แค่เกี่ยวข้อง (ขึ้นในกระดิ่งแบบเงียบ ไม่เด้ง) — migration 0098 */
 export type NotificationPriority = "primary" | "secondary";
 
 export type NotificationRow = {
@@ -1636,7 +1645,7 @@ export interface Database {
         Returns: Json;
       };
       /** ลงทะเบียนอุปกรณ์รับ Web Push ของคนที่ล็อกอินอยู่ (ย้ายเจ้าของ endpoint ให้เองเมื่อ
-          เครื่องเดิมสลับคนใช้ — ดู migration 0096) */
+          เครื่องเดิมสลับคนใช้ — ดู migration 0097) */
       register_push_subscription: {
         Args: {
           p_endpoint: string;

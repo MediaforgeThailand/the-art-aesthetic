@@ -9,8 +9,15 @@
  * (ต้นฉบับอยู่ใน Google Drive ของทีมอยู่แล้ว)
  *
  * วิธีทำ: ใช้ mediabunny (WebCodecs) แปลงเป็น **MP4 / H.264** ย่อด้านยาวสุดเหลือ
- * `VIDEO_MAX_DIMENSION` ที่คุณภาพ `VIDEO_QUALITY_LEVEL` — เสียงถูกคัดลอกต่อ (หรือแปลงให้เอง
+ * `VIDEO_MAX_DIMENSION` เฟรมเรตไม่เกิน `VIDEO_MAX_FPS` และ **กำหนดบิตเรตเป้าหมายเป็นตัวเลข**
+ * (คำนวณจากขนาดภาพ × เฟรมเรต ดู `targetBitrateFor`) — เสียงถูกคัดลอกต่อ (หรือแปลงให้เอง
  * ถ้าโค้ดเสียงเดิมใส่ MP4 ไม่ได้) จึงไม่มีทางได้คลิปเงียบ
+ *
+ * **ทำไมต้องคุมบิตเรตเป็นตัวเลข ไม่ใช่ระดับคุณภาพ (บทเรียน 2026-08-29):** ของเดิมส่งแค่
+ * `Quality('medium')` ที่ความละเอียด/เฟรมเรตเดิม — คลิปแนวตั้ง 1080x1920 60fps จากมือถือ
+ * จึงออกมาที่ ~6.6 Mbps (จาก 9.35 Mbps) ซึ่งยังสูงกว่าความเร็วที่ดึงไฟล์จาก Supabase (ซิดนีย์)
+ * มาถึงออฟฟิศได้จริง ผู้ตรวจกดเล่นแล้ว buffer หมดเป็นระยะ = "กระตุกมาก" (วัดจริง: เล่นได้ 7 วิ
+ * ในเวลา 15 วิ, สะดุด 4 ครั้ง, ตกเฟรม 164) — คุมบิตเรตตรงๆ เท่านั้นที่แก้อาการนี้ได้
  *
  * เลือก H.264 อย่างเดียวโดยตั้งใจ (ไม่ fallback ไป VP9/AV1/HEVC): ไฟล์ที่ได้ต้องเปิดดูได้
  * ในทุกเบราว์เซอร์ที่ทีมใช้ตรวจงาน — เครื่องไหน encode H.264 ไม่ได้ให้อัพไฟล์เดิมไปตามปกติ
@@ -25,9 +32,14 @@
  */
 
 import {
+  VIDEO_BITRATE_SLACK,
+  VIDEO_BITS_PER_PIXEL,
   VIDEO_COMPRESS_OVER_MB,
+  VIDEO_MAX_BITRATE,
   VIDEO_MAX_DIMENSION,
-  VIDEO_QUALITY_LEVEL,
+  VIDEO_MAX_FPS,
+  VIDEO_MIN_BITRATE,
+  VIDEO_SKIP_UNDER_MB,
 } from "@/lib/constants";
 
 const MB = 1024 * 1024;
@@ -40,6 +52,17 @@ function isCompressibleVideo(file: File): boolean {
 /** H.264 ต้องการความกว้าง/สูงเป็นเลขคู่ */
 function evenDim(value: number): number {
   return Math.max(2, Math.round(value / 2) * 2);
+}
+
+/**
+ * บิตเรตเป้าหมาย (bit/s) ของไฟล์หลังบีบ — คิดจากจำนวนพิกเซล × เฟรมเรต
+ * แล้วหนีบไว้ในกรอบ `VIDEO_MIN_BITRATE`–`VIDEO_MAX_BITRATE`
+ */
+function targetBitrateFor(width: number, height: number, fps: number): number {
+  const raw = width * height * fps * VIDEO_BITS_PER_PIXEL;
+  return Math.round(
+    Math.min(VIDEO_MAX_BITRATE, Math.max(VIDEO_MIN_BITRATE, raw))
+  );
 }
 
 /** เบราว์เซอร์รองรับ WebCodecs ครบทั้งขาถอดและขาเข้ารหัสหรือไม่ */
@@ -61,7 +84,7 @@ export async function compressVideoFile(
   onProgress?: (ratio: number) => void
 ): Promise<File> {
   if (!isCompressibleVideo(file)) return file;
-  if (file.size <= VIDEO_COMPRESS_OVER_MB * MB) return file;
+  if (file.size <= VIDEO_SKIP_UNDER_MB * MB) return file;
   if (!hasWebCodecs()) return file;
 
   let input: { dispose: () => void } | null = null;
@@ -106,6 +129,35 @@ export async function compressVideoFile(
 
     if (!(await canEncodeVideo("avc", { width, height }))) return file;
 
+    // อ่านสถิติจากตัวอย่างแพ็กเก็ตช่วงต้นไฟล์ (ไม่ต้องสแกนทั้งไฟล์) เพื่อรู้เฟรมเรตต้นทาง
+    // — พลาดก็ไม่เป็นไร ถือว่า 30fps ไว้ก่อน
+    const stats = await track.computePacketStats(120).catch(() => null);
+    const srcFps = stats?.averagePacketRate;
+    const fps = Math.min(
+      VIDEO_MAX_FPS,
+      srcFps && srcFps > 1 ? Math.round(srcFps) : VIDEO_MAX_FPS
+    );
+    const targetBitrate = targetBitrateFor(width, height, fps);
+
+    // บิตเรตต้นทาง: ใช้ "ขนาดไฟล์จริง ÷ ความยาว" เป็นหลัก (แม่นกว่าและรวมเสียงด้วย)
+    // ตกไปใช้ค่าจากตัวอย่างแพ็กเก็ตเมื่ออ่านความยาวจาก metadata ไม่ได้
+    const duration = await track.getDurationFromMetadata().catch(() => null);
+    const srcBitrate =
+      duration && duration > 0
+        ? (file.size * 8) / duration
+        : (stats?.averageBitrate ?? Infinity);
+
+    // ไฟล์ที่บิตเรตพอเหมาะและขนาดไม่ใหญ่อยู่แล้ว = เปิดดูได้ลื่นตั้งแต่ต้น ไม่ต้องบีบซ้ำ
+    // ให้เสียคุณภาพและเสียเวลารอ
+    if (
+      file.size <= VIDEO_COMPRESS_OVER_MB * MB &&
+      srcBitrate <= targetBitrate * VIDEO_BITRATE_SLACK &&
+      scale === 1 &&
+      (!srcFps || srcFps <= VIDEO_MAX_FPS * 1.2)
+    ) {
+      return file;
+    }
+
     const target = new BufferTarget();
     const conversion = await Conversion.init({
       input: source,
@@ -117,7 +169,15 @@ export async function compressVideoFile(
       video: {
         codec: "avc",
         ...resize,
-        quality: new Quality(VIDEO_QUALITY_LEVEL),
+        frameRate: fps,
+        // ⚠️ ต้องเป็น `{ bitrate }` เท่านั้น — `new Quality(ตัวเลข)` ของ mediabunny คือ
+        // "ระดับคุณภาพ 0–1" ไม่ใช่บิตเรต ใส่เลขบิตเรตลงไปตรงๆ จะได้ไฟล์เสียล้วนขนาด 2MB
+        // (เจอมาแล้วตอนทำฟีเจอร์นี้) ส่วน `new Quality('medium')` ปล่อยให้ตัวเข้ารหัสเลือก
+        // quantizer เอง = บิตเรตพุ่งตามความละเอียด/เฟรมเรตต้นทาง ซึ่งเป็นต้นเหตุอาการกระตุก
+        quality: new Quality({ bitrate: targetBitrate, bitrateMode: "variable" }),
+        // มาถึงตรงนี้แปลว่าไฟล์ต้นทาง "หนักเกินจะเล่นลื่น" แล้ว จึงต้องเข้ารหัสใหม่จริงๆ
+        // ไม่ใช่คัดลอกแพ็กเก็ตเดิมมาทั้งดุ้น (ซึ่งจะได้บิตเรตเท่าเดิม)
+        forceTranscode: true,
       },
       // เสียง: ไม่ตั้งค่าใดๆ = ไลบรารีคัดลอกของเดิมมาตรงๆ ถ้าใส่ MP4 ได้ (ไม่เสียคุณภาพ)
       // ไม่ได้ค่อยแปลงให้เอง

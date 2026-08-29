@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
+import { PageContainer } from "@/components/ui";
 import {
   canEditInflu,
   canManageInflu,
@@ -57,17 +58,21 @@ export default async function InfluCampaignsPage() {
 
   if (!canViewInflu(access)) return <AccessNotice />;
 
+  // ต้องครอบ PageContainer เหมือนหน้าอื่นในกลุ่ม — <main> ของ shell เป็น overflow-hidden
+  // หน้าที่ return client ตรงๆ จะถูกตัดตรงขอบจอและเลื่อนไม่ได้เลยบนมือถือ
   return (
-    <CampaignsClient
-      campaigns={(campaignsRes.data ?? []) as InfluCampaignDefRow[]}
-      members={
-        (membersRes.data ?? []) as unknown as CampaignMemberWithProfile[]
-      }
-      profiles={(profilesRes.data ?? []) as InfluProfileRow[]}
-      cases={(casesRes.data ?? []) as CampaignCaseLite[]}
-      canEdit={canEditInflu(access)}
-      canManage={canManageInflu(access)}
-      actor={{ id: access.uid, name: access.name }}
-    />
+    <PageContainer>
+      <CampaignsClient
+        campaigns={(campaignsRes.data ?? []) as InfluCampaignDefRow[]}
+        members={
+          (membersRes.data ?? []) as unknown as CampaignMemberWithProfile[]
+        }
+        profiles={(profilesRes.data ?? []) as InfluProfileRow[]}
+        cases={(casesRes.data ?? []) as CampaignCaseLite[]}
+        canEdit={canEditInflu(access)}
+        canManage={canManageInflu(access)}
+        actor={{ id: access.uid, name: access.name }}
+      />
+    </PageContainer>
   );
 }
