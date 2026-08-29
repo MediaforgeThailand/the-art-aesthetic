@@ -18,12 +18,14 @@ import type {
   InfluLinkRow,
   InfluProfileChannelRow,
   InfluProfileRow,
+  InfluScope,
   InfluServiceRow,
   InfluSignatureRow,
   InfluTaskRow,
   ProfileRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import type { CaseAssignee, InfluPerson } from "../assignees";
 import type {
   PriceCatalogEntry,
   PromoCatalogEntry,
@@ -76,6 +78,8 @@ export default async function InfluencerDetailPage({
     { data: doctors },
     { data: services },
     { data: campaigns },
+    { data: assignees },
+    { data: profiles },
   ] = await Promise.all([
     getAccess(),
     // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
@@ -158,6 +162,13 @@ export default async function InfluencerDetailPage({
       .from("influ_campaign_defs")
       .select("*")
       .order("created_at", { ascending: false }),
+    // ผู้รับผิดชอบของเคสนี้ (0095) — ทั้งตัวจัดการในหน้า และตัวตัดสินว่าใครได้แจ้งเตือน
+    supabase
+      .from("influ_assignees")
+      .select("user_id, scopes")
+      .eq("influencer_id", id),
+    // บัญชีทั้งหมด — ตัวเลือกตอนมอบหมายงาน + รูป/ชื่อของผู้รับผิดชอบ
+    supabase.from("profiles").select("id, full_name, email, avatar_path, job_title"),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -226,6 +237,20 @@ export default async function InfluencerDetailPage({
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}
         campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
+        assignees={
+          (assignees ?? []).map((a) => ({
+            userId: a.user_id,
+            scopes: (a.scopes ?? []) as InfluScope[],
+          })) as CaseAssignee[]
+        }
+        people={
+          (profiles ?? []).map((p) => ({
+            id: p.id,
+            name: p.full_name || p.email || "ไม่ทราบชื่อ",
+            avatarPath: p.avatar_path ?? null,
+            jobTitle: p.job_title ?? null,
+          })) as InfluPerson[]
+        }
         canManage={canEditInflu(access)}
         initialStage={initialStage}
       />

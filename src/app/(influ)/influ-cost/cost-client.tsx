@@ -22,16 +22,22 @@ import {
   Gift,
   Lock,
   Search,
-  SlidersHorizontal,
   Wallet,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { Badge, Card, EmptyState, Input } from "@/components/ui";
-import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  DateRangeInputs,
+  FilterChip,
+  FilterSection,
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+  type FilterSummaryChip,
+} from "@/components/influ-filter-panel";
+import { Badge, Card, EmptyState, Select } from "@/components/ui";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import {
   COST_USAGE_META,
   COST_USAGE_ORDER,
@@ -159,81 +165,203 @@ function SummaryTile({
   );
 }
 
-/* ---------- ตัวกรองรอง (support / ช่วงวันรับบริการ / เคสเก่า) ----------
-   ใช้ชุดเดียวกัน 2 ที่: แถว inline ใต้แถบเครื่องมือ (จอ ≥sm) และ bottom sheet
-   บนมือถือ — แยกเป็น component ระดับโมดูล กัน logic ตัวกรองแตกเป็นสองสำเนา */
+/* ---------- ตัวกรองของหน้านี้ ----------
+   ผู้ใช้ 2026-08-29: ทุกหน้าเหลือ "ปุ่มตัวกรองปุ่มเดียว" ที่กดแล้วแผงลอยขึ้นมา
+   (ของเดิมกระจายเป็น dropdown inline + bottom sheet คนละชุด) */
 
-function FilterControls({
-  supportFilter,
-  onSupportFilter,
-  dateFrom,
-  dateTo,
-  onDateFrom,
-  onDateTo,
-  includeOld,
-  onToggleOld,
-}: {
-  supportFilter: SupportFilter;
-  onSupportFilter: (v: SupportFilter) => void;
+export type CostFilters = {
+  /** "all" | "mine" | uid — ผู้รับผิดชอบเคส (influ_assignees) */
+  owner: string;
+  usage: "all" | CostUsage;
+  support: SupportFilter;
+  unpricedOnly: boolean;
   dateFrom: string;
   dateTo: string;
-  onDateFrom: (v: string) => void;
-  onDateTo: (v: string) => void;
+  /** true = รวมเคสเก่าที่นำเข้า (archive) + เคสที่ปฏิเสธ */
   includeOld: boolean;
-  onToggleOld: () => void;
-}) {
-  const seg = (v: SupportFilter, label: string) => (
-    <button
-      key={v}
-      type="button"
-      onClick={() => onSupportFilter(v)}
-      className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all max-sm:min-h-10 ${
-        supportFilter === v
-          ? "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm"
-          : "text-stone-500 hover:text-brand-700"
-      }`}
-    >
-      {label}
-    </button>
+};
+
+/** ค่าโรงงาน — เริ่มที่ "เคสของฉัน" ตามกติกาทุกหน้า */
+export const DEFAULT_COST_FILTERS: CostFilters = {
+  owner: "mine",
+  usage: "all",
+  support: "all",
+  unpricedOnly: false,
+  dateFrom: "",
+  dateTo: "",
+  includeOld: false,
+};
+
+function costFilterCount(f: CostFilters): number {
+  return (
+    (f.owner !== "all" ? 1 : 0) +
+    (f.usage !== "all" ? 1 : 0) +
+    (f.support !== "all" ? 1 : 0) +
+    (f.unpricedOnly ? 1 : 0) +
+    (f.dateFrom || f.dateTo ? 1 : 0) +
+    (f.includeOld ? 1 : 0)
   );
+}
+
+function costFilterChips(
+  f: CostFilters,
+  peopleById: Map<string, string>,
+  unpricedCount: number
+): FilterSummaryChip<CostFilters>[] {
+  const out: FilterSummaryChip<CostFilters>[] = [];
+  if (f.owner !== "all")
+    out.push({
+      key: "owner",
+      label:
+        f.owner === "mine"
+          ? "เคสของฉัน"
+          : `ผู้รับผิดชอบ: ${peopleById.get(f.owner) ?? "ไม่ทราบชื่อ"}`,
+      next: { ...f, owner: "all" },
+    });
+  if (f.usage !== "all")
+    out.push({
+      key: "usage",
+      label: COST_USAGE_META[f.usage].label,
+      next: { ...f, usage: "all" },
+    });
+  if (f.support !== "all")
+    out.push({
+      key: "support",
+      label: f.support === "supported" ? "แบรนด์ส่งของ" : "ไม่ได้ของ support",
+      next: { ...f, support: "all" },
+    });
+  if (f.unpricedOnly)
+    out.push({
+      key: "unpriced",
+      label: `ยังไม่กรอกต้นทุน (${unpricedCount})`,
+      next: { ...f, unpricedOnly: false },
+    });
+  if (f.dateFrom || f.dateTo)
+    out.push({
+      key: "date",
+      label: `วันรับบริการ ${f.dateFrom || "…"} – ${f.dateTo || "…"}`,
+      next: { ...f, dateFrom: "", dateTo: "" },
+    });
+  if (f.includeOld)
+    out.push({
+      key: "old",
+      label: "รวมเคสเก่า / ปฏิเสธ",
+      next: { ...f, includeOld: false },
+    });
+  return out;
+}
+
+function CostFilterSections({
+  filters,
+  onChange,
+  people,
+  meId,
+  unpricedCount,
+  usageCount,
+}: {
+  filters: CostFilters;
+  onChange: (f: CostFilters) => void;
+  people: { id: string; name: string }[];
+  meId: string | null;
+  unpricedCount: number;
+  usageCount: (u: CostUsage) => number;
+}) {
+  const set = (patch: Partial<CostFilters>) => onChange({ ...filters, ...patch });
   return (
     <>
-      <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 p-0.5">
-        <span className="pl-2 pr-0.5 text-[11px] text-stone-400">Support</span>
-        {seg("all", "ทั้งหมด")}
-        {seg("supported", "ได้ของ")}
-        {seg("unsupported", "ไม่ได้")}
-      </span>
-      <span className="inline-flex w-full items-center gap-1 rounded-full border border-stone-200 bg-white/70 py-0.5 pl-3 pr-1 text-[11px] whitespace-nowrap text-stone-400 sm:w-auto">
-        วันรับบริการ
-        <Input
-          type="date"
-          aria-label="วันรับบริการ ตั้งแต่"
-          value={dateFrom}
-          onChange={(e) => onDateFrom(e.target.value)}
-          className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 text-xs sm:flex-none"
-        />
-        <span>–</span>
-        <Input
-          type="date"
-          aria-label="วันรับบริการ ถึง"
-          value={dateTo}
-          onChange={(e) => onDateTo(e.target.value)}
-          className="w-auto min-w-0 flex-1 rounded-full border-transparent bg-transparent px-1.5 py-1 text-xs sm:flex-none"
-        />
-      </span>
-      <button
-        type="button"
-        onClick={onToggleOld}
-        title="รวมข้อมูลเก่าที่นำเข้า (archive) และเคสที่ปฏิเสธ"
-        className={`inline-flex cursor-pointer items-center rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
-          includeOld
-            ? "border-brand-300 bg-brand-50 text-brand-700"
-            : "border-stone-200 bg-white/60 text-stone-400 hover:text-stone-600"
-        }`}
+      <FilterSection
+        title="ผู้รับผิดชอบ"
+        hint="ค่าเริ่มต้นคือ “เคสของฉัน” — กดบันทึกเป็นค่าเริ่มต้นด้านล่างถ้าอยากเห็นทั้งทีมทุกครั้ง"
       >
-        รวมเคสเก่า / ปฏิเสธ
-      </button>
+        <Select
+          value={filters.owner}
+          onChange={(e) => set({ owner: e.target.value })}
+          aria-label="กรองตามผู้รับผิดชอบ"
+        >
+          <option value="all">ทุกคน</option>
+          {meId && <option value="mine">เคสของฉัน</option>}
+          {people
+            .filter((p) => p.id !== meId)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </Select>
+      </FilterSection>
+
+      <FilterSection title="สถานะการใช้บริการ">
+        <div className="flex flex-wrap gap-1.5">
+          {COST_USAGE_ORDER.map((u) => (
+            <FilterChip
+              key={u}
+              active={filters.usage === u}
+              onClick={() => set({ usage: filters.usage === u ? "all" : u })}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${COST_USAGE_META[u].dot}`} />
+              {COST_USAGE_META[u].label}
+              <span className="tabular-nums text-stone-400">{usageCount(u)}</span>
+            </FilterChip>
+          ))}
+        </div>
+      </FilterSection>
+
+      <FilterSection title="ต้นทุน">
+        <div className="flex flex-wrap gap-1.5">
+          <FilterChip
+            active={filters.unpricedOnly}
+            onClick={() => set({ unpricedOnly: !filters.unpricedOnly })}
+            title="รายการที่ทีมยังไม่ได้กรอกต้นทุน (ไม่นับของที่ผูก Price List หรือแบรนด์ support)"
+          >
+            ยังไม่กรอกต้นทุน
+            <span className="tabular-nums text-stone-400">{unpricedCount}</span>
+          </FilterChip>
+        </div>
+      </FilterSection>
+
+      <FilterSection title="แบรนด์ support">
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              ["all", "ทั้งหมด"],
+              ["supported", "ได้ของ"],
+              ["unsupported", "ไม่ได้"],
+            ] as [SupportFilter, string][]
+          ).map(([v, label]) => (
+            <FilterChip
+              key={v}
+              active={filters.support === v}
+              onClick={() => set({ support: v })}
+            >
+              {label}
+            </FilterChip>
+          ))}
+        </div>
+      </FilterSection>
+
+      <FilterSection
+        title="ช่วงวันรับบริการ"
+        hint="เคสที่ยังไม่เคาะวันจะไม่เข้าช่วงที่เลือก"
+      >
+        <DateRangeInputs
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          onFrom={(dateFrom) => set({ dateFrom })}
+          onTo={(dateTo) => set({ dateTo })}
+          labelFrom="วันรับบริการ ตั้งแต่"
+          labelTo="วันรับบริการ ถึง"
+        />
+      </FilterSection>
+
+      <FilterSection title="ข้อมูลเก่า">
+        <FilterChip
+          active={filters.includeOld}
+          onClick={() => set({ includeOld: !filters.includeOld })}
+          title="รวมข้อมูลเก่าที่นำเข้า (archive) และเคสที่ปฏิเสธ"
+        >
+          รวมเคสเก่า / ปฏิเสธ
+        </FilterChip>
+      </FilterSection>
     </>
   );
 }
@@ -329,10 +457,17 @@ function ItemRow({
 
 export function CostClient({
   items,
+  assignees,
+  people,
+  meId,
   canEdit,
   loadError,
 }: {
   items: CostItem[];
+  /** ผู้รับผิดชอบของทุกเคส (0095) — ตัวกรอง "เคสของฉัน" ของหน้านี้ */
+  assignees: { influencer_id: string; user_id: string }[];
+  people: { id: string; name: string }[];
+  meId: string | null;
   /** ระดับ "ดูเฉยๆ" = แก้ราคา/ติ๊ก support ไม่ได้ (ตัวเลขยังเห็นครบ) */
   canEdit: boolean;
   loadError: string | null;
@@ -348,24 +483,30 @@ export function CostClient({
   const [err, setErr] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [usageFilter, setUsageFilter] = useState<"all" | CostUsage>("all");
-  const [supportFilter, setSupportFilter] = useState<SupportFilter>("all");
-  const [unpricedOnly, setUnpricedOnly] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  // เคสเก่า (archive) + เคสที่ปฏิเสธ ซ่อนโดย default — ข้อมูลนำเข้าเก่าเยอะมาก
-  const [includeOld, setIncludeOld] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  /* ตัวกรองทั้งหมดอยู่ในปุ่มเดียว + บันทึกค่าเริ่มต้นของตัวเองได้ (กติกาทุกหน้าในระบบ) */
+  const filterApi = useInfluFilters<CostFilters>({
+    page: "cost",
+    userId: meId,
+    factory: DEFAULT_COST_FILTERS,
+  });
+  const { filters } = filterApi;
+  const setFilters = filterApi.setFilters;
 
-  /* Esc ปิดตัวกรอง — จำเป็นกับ bottom sheet บนมือถือ (จอใหญ่ได้ประโยชน์เดียวกัน) */
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFiltersOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [filtersOpen]);
+  const peopleById = useMemo(
+    () => new Map(people.map((p) => [p.id, p.name])),
+    [people]
+  );
+
+  /** ผู้รับผิดชอบต่อเคส (0095) — ตัวกรอง "เคสของฉัน" ของหน้านี้ */
+  const ownersByCase = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const a of assignees) {
+      const cur = m.get(a.influencer_id);
+      if (cur) cur.push(a.user_id);
+      else m.set(a.influencer_id, [a.user_id]);
+    }
+    return m;
+  }, [assignees]);
 
   const commitPrice = (id: string, price: number) => {
     setErr(null);
@@ -404,16 +545,21 @@ export function CostClient({
     return rows.filter((r) => {
       const inf = r.influencer;
       if (!inf) return false;
-      if (!includeOld && (inf.archived || inf.declined_at !== null))
+      if (!filters.includeOld && (inf.archived || inf.declined_at !== null))
         return false;
-      if (supportFilter === "supported" && !r.is_supported) return false;
-      if (supportFilter === "unsupported" && r.is_supported) return false;
-      if (unpricedOnly && !isUnpriced(r)) return false;
-      if (dateFrom || dateTo) {
+      if (filters.owner !== "all") {
+        const want = filters.owner === "mine" ? meId : filters.owner;
+        if (!want || !(ownersByCase.get(inf.id) ?? []).includes(want))
+          return false;
+      }
+      if (filters.support === "supported" && !r.is_supported) return false;
+      if (filters.support === "unsupported" && r.is_supported) return false;
+      if (filters.unpricedOnly && !isUnpriced(r)) return false;
+      if (filters.dateFrom || filters.dateTo) {
         // กรองช่วงวันเข้ารับบริการ — เคสที่ยังไม่เคาะวันไม่เข้าช่วง
         if (!inf.service_date) return false;
-        if (dateFrom && inf.service_date < dateFrom) return false;
-        if (dateTo && inf.service_date > dateTo) return false;
+        if (filters.dateFrom && inf.service_date < filters.dateFrom) return false;
+        if (filters.dateTo && inf.service_date > filters.dateTo) return false;
       }
       if (q) {
         const hay = `${influName(inf)} ${r.name}`.toLowerCase();
@@ -421,7 +567,7 @@ export function CostClient({
       }
       return true;
     });
-  }, [rows, search, supportFilter, unpricedOnly, dateFrom, dateTo, includeOld]);
+  }, [rows, search, filters, meId, ownersByCase]);
 
   // สรุปยอดแยกตามสถานะการใช้ (จาก base — ไม่ผูกกับตัวกรองสถานะ ตัวเลขบนการ์ดจึงนิ่ง
   // แม้กำลังกดการ์ดใบใดใบหนึ่งอยู่ ทำให้เทียบยอดข้ามสถานะได้ตลอด)
@@ -469,7 +615,7 @@ export function CostClient({
       const inf = r.influencer;
       if (!inf) continue;
       const usage = costUsageOf(inf);
-      if (usageFilter !== "all" && usage !== usageFilter) continue;
+      if (filters.usage !== "all" && usage !== filters.usage) continue;
       let g = byInflu.get(inf.id);
       if (!g) {
         g = {
@@ -517,26 +663,17 @@ export function CostClient({
         });
       return { usage, groups: list };
     }).filter((s) => s.groups.length > 0);
-  }, [base, usageFilter]);
-
-  /* ตัวกรองที่ถูกพับเก็บไว้ในปุ่ม — ต้องมีจุดบนปุ่มกันลืมว่าซ่อนของอยู่ */
-  const hiddenFilterActive =
-    supportFilter !== "all" || dateFrom !== "" || dateTo !== "" || includeOld;
-  const anyFilterActive =
-    hiddenFilterActive ||
-    unpricedOnly ||
-    usageFilter !== "all" ||
-    search.trim() !== "";
+  }, [base, filters.usage]);
 
   const clearFilters = () => {
     setSearch("");
-    setUsageFilter("all");
-    setSupportFilter("all");
-    setUnpricedOnly(false);
-    setDateFrom("");
-    setDateTo("");
-    setIncludeOld(false);
+    setFilters(DEFAULT_COST_FILTERS);
   };
+
+  const filterChips = useMemo(
+    () => costFilterChips(filters, peopleById, sums.unpricedCount),
+    [filters, peopleById, sums.unpricedCount]
+  );
 
   const usageTile = (
     u: CostUsage,
@@ -550,22 +687,11 @@ export function CostClient({
       label={COST_USAGE_META[u].label}
       value={formatCurrency(sums[u])}
       sub={`${sums.cases[u]} เคส`}
-      active={usageFilter === u}
-      onClick={() => setUsageFilter((cur) => (cur === u ? "all" : u))}
+      active={filters.usage === u}
+      onClick={() =>
+        setFilters((cur) => ({ ...cur, usage: cur.usage === u ? "all" : u }))
+      }
       delay={delay}
-    />
-  );
-
-  const filterControls = (
-    <FilterControls
-      supportFilter={supportFilter}
-      onSupportFilter={setSupportFilter}
-      dateFrom={dateFrom}
-      dateTo={dateTo}
-      onDateFrom={setDateFrom}
-      onDateTo={setDateTo}
-      includeOld={includeOld}
-      onToggleOld={() => setIncludeOld((v) => !v)}
     />
   );
 
@@ -618,51 +744,31 @@ export function CostClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setUnpricedOnly((v) => !v)}
-          title="รายการที่ทีมยังไม่ได้กรอกต้นทุน (ไม่นับของที่ผูก Price List หรือแบรนด์ support)"
-          className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-[0.97] sm:min-h-0 sm:text-xs ${
-            unpricedOnly
-              ? "border-amber-400 bg-amber-50 font-medium text-amber-700"
-              : "border-stone-200 bg-white/70 text-stone-500 hover:border-stone-300"
-          }`}
+        <InfluFilterButton
+          api={filterApi}
+          count={costFilterCount(filters)}
+          factory={DEFAULT_COST_FILTERS}
         >
-          ยังไม่กรอกต้นทุน ({sums.unpricedCount})
-        </button>
-        {anyFilterActive && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-2 text-xs text-stone-400 transition-colors hover:text-brand-700 sm:min-h-0"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((v) => !v)}
-          aria-label="ตัวกรองเพิ่มเติม"
-          title="ตัวกรอง: แบรนด์ support / ช่วงวันรับบริการ / เคสเก่า"
-          className={`relative ml-auto flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 ${
-            filtersOpen
-              ? "border-brand-300 bg-brand-50 text-brand-700"
-              : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
-          }`}
-        >
-          <SlidersHorizontal size={16} />
-          {hiddenFilterActive && (
-            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
-          )}
-        </button>
+          <CostFilterSections
+            filters={filters}
+            onChange={setFilters}
+            people={people}
+            meId={meId}
+            unpricedCount={sums.unpricedCount}
+            usageCount={(u) => sums.cases[u]}
+          />
+        </InfluFilterButton>
+        <span className="ml-auto text-xs text-stone-400">
+          {formatNumber(base.length)} รายการ
+        </span>
       </div>
 
-      {/* แถวตัวกรองรอง inline — เฉพาะจอ ≥sm (มือถือใช้ bottom sheet ท้ายไฟล์แทน) */}
-      {filtersOpen && (
-        <div className="mb-4 hidden flex-wrap items-center gap-2 animate-fade-in sm:flex">
-          {filterControls}
-        </div>
-      )}
+      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ต้องเห็นเสมอว่ากำลังกรองอะไร */}
+      <FilterSummary
+        chips={filterChips}
+        onChange={setFilters}
+        onClear={clearFilters}
+      />
 
       {/* ลิสต์แยก section ตามสถานะการใช้ */}
       {sections.length === 0 ? (
@@ -803,44 +909,6 @@ export function CostClient({
         </div>
       )}
 
-      {/* มือถือ: ตัวกรองรองเป็น bottom sheet เด้งจากขอบล่าง (แถว inline กินจอเกินไป)
-          ใช้ FilterControls ชุดเดียวกับจอ ≥sm; portal ปลอดภัยกับ SSR เพราะ filtersOpen
-          เริ่ม false — สไตล์ลอกจาก Modal (rounded-t-2xl + pb-safe) */}
-      {filtersOpen &&
-        createPortal(
-          <div className="sm:hidden">
-            <button
-              type="button"
-              aria-label="ปิดตัวกรอง"
-              onClick={() => setFiltersOpen(false)}
-              className="fixed inset-0 z-40 cursor-default bg-brand-900/30 backdrop-blur-sm animate-fade-in"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="ตัวกรองต้นทุน"
-              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-white/70 bg-white/95 shadow-2xl animate-slide-in-up"
-            >
-              <div className="flex items-center justify-between border-b border-brand-100/70 px-5 py-3">
-                <h2 className="text-base font-semibold text-stone-900">
-                  ตัวกรองต้นทุน
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="-mr-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 px-5 py-4 pb-safe-4">
-                {filterControls}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
     </div>
   );
 }

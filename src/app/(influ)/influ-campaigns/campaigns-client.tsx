@@ -28,6 +28,13 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  FilterChip,
+  FilterSection,
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
+import {
   Badge,
   Button,
   ConfirmDialog,
@@ -71,6 +78,20 @@ export type CampaignCaseLite = {
 /* ---------- ช่วงเวลาของแคมเปญ ---------- */
 
 type CampaignPhase = "off" | "upcoming" | "running" | "ended";
+
+/** ตัวกรองของหน้าแคมเปญ — ปุ่มเดียวเหมือนทุกหน้าในระบบ (ผู้ใช้ 2026-08-29)
+    ว่าง = แสดงทุกช่วง (หน้านี้ข้อมูลน้อย ไม่ต้องซ่อนอะไรเป็นค่าเริ่มต้น) */
+type CampaignFilters = { phases: CampaignPhase[]; mineOnly: boolean };
+const DEFAULT_CAMPAIGN_FILTERS: CampaignFilters = {
+  phases: [],
+  mineOnly: false,
+};
+const CAMPAIGN_PHASE_ORDER: CampaignPhase[] = [
+  "running",
+  "upcoming",
+  "ended",
+  "off",
+];
 
 const PHASE_META: Record<CampaignPhase, { label: string; chip: string }> = {
   running: {
@@ -651,6 +672,12 @@ export function CampaignsClient({
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const filterApi = useInfluFilters<CampaignFilters>({
+    page: "campaigns",
+    userId: actor.id,
+    factory: DEFAULT_CAMPAIGN_FILTERS,
+  });
+  const { filters, setFilters } = filterApi;
   /** null = ปิด, {campaign: null} = สร้างใหม่ */
   const [formFor, setFormFor] = useState<{
     campaign: InfluCampaignDefRow | null;
@@ -690,11 +717,25 @@ export function CampaignsClient({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return campaigns;
-    return campaigns.filter((c) =>
-      [c.name, c.tag, c.detail ?? ""].some((s) => s.toLowerCase().includes(q))
-    );
-  }, [campaigns, query]);
+    return campaigns.filter((c) => {
+      if (filters.phases.length && !filters.phases.includes(phaseOf(c)))
+        return false;
+      if (filters.mineOnly && c.created_by !== actor.id) return false;
+      if (!q) return true;
+      return [c.name, c.tag, c.detail ?? ""].some((s) =>
+        s.toLowerCase().includes(q)
+      );
+    });
+  }, [campaigns, query, filters, actor.id]);
+
+  const phaseCounts = useMemo(() => {
+    const m = new Map<CampaignPhase, number>();
+    for (const c of campaigns) {
+      const ph = phaseOf(c);
+      m.set(ph, (m.get(ph) ?? 0) + 1);
+    }
+    return m;
+  }, [campaigns]);
 
   const panelCampaign = campaigns.find((c) => c.id === panelId) ?? null;
 
@@ -736,6 +777,47 @@ export function CampaignsClient({
             className="rounded-full pl-9"
           />
         </div>
+        <InfluFilterButton
+          api={filterApi}
+          count={
+            (filters.phases.length ? 1 : 0) + (filters.mineOnly ? 1 : 0)
+          }
+          factory={DEFAULT_CAMPAIGN_FILTERS}
+        >
+          <FilterSection title="ช่วงเวลา" hint="ไม่เลือก = แสดงทุกแคมเปญ">
+            <div className="flex flex-wrap gap-1.5">
+              {CAMPAIGN_PHASE_ORDER.map((ph) => (
+                <FilterChip
+                  key={ph}
+                  active={filters.phases.includes(ph)}
+                  onClick={() =>
+                    setFilters({
+                      ...filters,
+                      phases: filters.phases.includes(ph)
+                        ? filters.phases.filter((x) => x !== ph)
+                        : [...filters.phases, ph],
+                    })
+                  }
+                >
+                  {PHASE_META[ph].label}
+                  <span className="tabular-nums text-stone-400">
+                    {phaseCounts.get(ph) ?? 0}
+                  </span>
+                </FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+          <FilterSection title="ผู้สร้าง">
+            <FilterChip
+              active={filters.mineOnly}
+              onClick={() =>
+                setFilters({ ...filters, mineOnly: !filters.mineOnly })
+              }
+            >
+              แคมเปญที่ฉันสร้าง
+            </FilterChip>
+          </FilterSection>
+        </InfluFilterButton>
         {canManage && (
           <Button
             className="sm:ml-auto"
@@ -745,6 +827,38 @@ export function CampaignsClient({
           </Button>
         )}
       </div>
+
+      <FilterSummary
+        chips={[
+          ...(filters.phases.length
+            ? [
+                {
+                  key: "phases",
+                  label: `ช่วง: ${CAMPAIGN_PHASE_ORDER.filter((p) =>
+                    filters.phases.includes(p)
+                  )
+                    .map((p) => PHASE_META[p].label)
+                    .join(", ")}`,
+                  next: { ...filters, phases: [] as CampaignPhase[] },
+                },
+              ]
+            : []),
+          ...(filters.mineOnly
+            ? [
+                {
+                  key: "mine",
+                  label: "แคมเปญที่ฉันสร้าง",
+                  next: { ...filters, mineOnly: false },
+                },
+              ]
+            : []),
+        ]}
+        onChange={setFilters}
+        onClear={() => {
+          setQuery("");
+          setFilters(DEFAULT_CAMPAIGN_FILTERS);
+        }}
+      />
 
       {filtered.length === 0 ? (
         <EmptyState

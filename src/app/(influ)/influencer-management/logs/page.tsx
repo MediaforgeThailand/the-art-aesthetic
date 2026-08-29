@@ -34,6 +34,7 @@ export default async function InfluLogsPage() {
       <LogsClient
         logs={(logs ?? []) as InfluActivityLogRow[]}
         limit={LOG_LIMIT}
+        meId={access.uid}
         loadError={error?.message ?? null}
       />
     </PageContainer>

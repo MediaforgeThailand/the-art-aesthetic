@@ -26,6 +26,7 @@ import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import {
+  INFLU_SCOPE_ORDER,
   INFLU_STAGE,
   procedureSummaryText,
 } from "@/lib/influ-constants";
@@ -276,6 +277,21 @@ export function NewCaseModal({
           .from("influencers")
           .update({ photo_path: dest })
           .eq("id", created.id);
+      }
+    }
+
+    // ผู้สร้าง = ผู้รับผิดชอบตั้งต้นของทุกขั้น (0095) — ปรับใครถือขั้นไหนได้ที่หน้าเคส
+    // ทำหลังสร้างเคสสำเร็จเสมอ ไม่งั้นการ์ดใหม่จะไม่มีเจ้าภาพและไม่มีใครได้แจ้งเตือน
+    if (me.id) {
+      const { error: asErr } = await supabase.from("influ_assignees").insert({
+        influencer_id: created.id,
+        user_id: me.id,
+        scopes: [...INFLU_SCOPE_ORDER],
+        created_by: me.id,
+      });
+      if (asErr) {
+        // ไม่บล็อคการสร้างเคส — บอกให้ไปกำหนดเองที่หน้าเคสแทน
+        console.warn("ตั้งผู้รับผิดชอบตั้งต้นไม่สำเร็จ:", asErr.message);
       }
     }
 

@@ -20,7 +20,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/logo";
-import { NotificationBell } from "@/components/notification-bell";
+import { InfluNotificationBell } from "@/components/influ-notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
 import { createClient } from "@/lib/supabase/client";
 import { useSignedUrl } from "@/lib/use-signed-url";
@@ -247,7 +247,9 @@ export function InfluShell({
               <ArrowLeft size={16} />
               <span className="hidden sm:inline">แอปหลัก</span>
             </Link>
-            {userId && <NotificationBell userId={userId} />}
+            {/* กระดิ่งของระบบนี้เอง (0095) — ไม่ใช่กระดิ่งของระบบ Task
+                แจ้งเตือนงาน Influ ทั้งหมดรวมงานค้างที่เคยเป็นแบนเนอร์เหลืองบนบอร์ด */}
+            {userId && <InfluNotificationBell userId={userId} />}
             <button
               type="button"
               onClick={() => setProfileOpen(true)}

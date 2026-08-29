@@ -13,14 +13,7 @@
  * - ไม่จำค่าใน localStorage — เปิดหน้ามาต้องเห็นทุกเคสที่ยังอยู่ในสัญญา
  */
 
-import { SlidersHorizontal, X } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import {
-  menuBox,
-  useAnchoredMenu,
-  type MenuBox,
-} from "@/components/anchored-menu";
+import { FilterChip, FilterSection } from "@/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
@@ -56,9 +49,10 @@ export type FollowFilters = {
   life: ContractLife;
 };
 
+/** ค่าโรงงาน — เริ่มที่ "เคสของฉัน" ตามกติกาทุกหน้า (ผู้ใช้ 2026-08-29) */
 export const DEFAULT_FOLLOW_FILTERS: FollowFilters = {
   statuses: [],
-  owner: "all",
+  owner: "mine",
   start: "all",
   startFrom: "",
   startTo: "",
@@ -234,43 +228,8 @@ function toggle<T>(list: T[], value: T): T[] {
     : [...list, value];
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="border-t border-stone-100 px-3 py-2.5 first:border-t-0">
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
-        {title}
-      </p>
-      {children}
-    </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm ${
-        active
-          ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-          : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function FollowFilterButton({
+/** เนื้อในแผงตัวกรองหน้า Follow Up — shell ใช้ InfluFilterButton ของกลาง */
+export function FollowFilterSections({
   filters,
   onChange,
   people,
@@ -283,91 +242,12 @@ export function FollowFilterButton({
   meId: string | null;
   statusCounts: Record<TrackStatus, number>;
 }) {
-  const [open, setOpen] = useState(false);
-  const [box, setBox] = useState<MenuBox | null>(null);
-  const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const place = (a: HTMLElement) =>
-    setBox(menuBox(a, { width: 344, maxHeight: 520 }));
-  useAnchoredMenu({
-    open,
-    anchorRef,
-    menuRef,
-    onClose: () => setOpen(false),
-    onReposition: place,
-  });
-
-  const count = followFilterCount(filters);
   const set = (patch: Partial<FollowFilters>) =>
     onChange({ ...filters, ...patch });
 
   return (
     <>
-      <button
-        ref={anchorRef}
-        type="button"
-        onClick={() => {
-          const a = anchorRef.current;
-          if (a) place(a);
-          setOpen((v) => !v);
-        }}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 ${
-          count > 0
-            ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-            : "border-stone-200 bg-white/70 text-stone-600 hover:border-stone-300"
-        }`}
-      >
-        <SlidersHorizontal size={15} />
-        ตัวกรอง
-        {count > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-semibold tabular-nums text-white">
-            {count}
-          </span>
-        )}
-      </button>
-
-      {open &&
-        box &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="dialog"
-            aria-label="ตัวกรองหน้า Follow Up"
-            style={{
-              position: "fixed",
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              maxHeight: box.height,
-            }}
-            className="z-[60] overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in"
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white/95 px-3 py-2 backdrop-blur">
-              <p className="text-sm font-semibold text-stone-700">ตัวกรอง</p>
-              <div className="flex items-center gap-1">
-                {count > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => onChange(DEFAULT_FOLLOW_FILTERS)}
-                    className="cursor-pointer rounded-lg px-2 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
-                  >
-                    ล้างทั้งหมด
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="flex cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-600 max-sm:h-11 max-sm:w-11 sm:h-7 sm:w-7"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            <Section title="สถานะการติดตาม">
+            <FilterSection title="สถานะการติดตาม">
               <div className="flex flex-wrap gap-1.5">
                 {TRACK_STATUS_ORDER.map((s) => (
                   <FilterChip
@@ -392,9 +272,9 @@ export function FollowFilterButton({
                   ไม่เลือก = แสดงทุกสถานะ
                 </p>
               )}
-            </Section>
+            </FilterSection>
 
-            <Section title="ผู้รับผิดชอบ">
+            <FilterSection title="ผู้รับผิดชอบ">
               <Select
                 value={filters.owner}
                 onChange={(e) => set({ owner: e.target.value })}
@@ -410,9 +290,9 @@ export function FollowFilterButton({
                     </option>
                   ))}
               </Select>
-            </Section>
+            </FilterSection>
 
-            <Section title="วันเริ่มนับสัญญา (วันที่ influ เข้ามา)">
+            <FilterSection title="วันเริ่มนับสัญญา (วันที่ influ เข้ามา)">
               <div className="flex flex-wrap gap-1.5">
                 {(
                   ["all", "30d", "90d", "180d", "custom"] as StartRange[]
@@ -457,9 +337,9 @@ export function FollowFilterButton({
                   </button>
                 </p>
               )}
-            </Section>
+            </FilterSection>
 
-            <Section title="ช่องทางที่ตั้งเป้าไว้">
+            <FilterSection title="ช่องทางที่ตั้งเป้าไว้">
               <div className="flex flex-wrap gap-1.5">
                 {INFLU_POST_PLATFORM_ORDER.filter((p) => p !== "other").map(
                   (p) => (
@@ -475,9 +355,9 @@ export function FollowFilterButton({
                   )
                 )}
               </div>
-            </Section>
+            </FilterSection>
 
-            <Section title="อายุสัญญา">
+            <FilterSection title="อายุสัญญา">
               <div className="flex flex-wrap gap-1.5">
                 {(
                   ["all", "active", "ending", "expired"] as ContractLife[]
@@ -491,10 +371,7 @@ export function FollowFilterButton({
                   </FilterChip>
                 ))}
               </div>
-            </Section>
-          </div>,
-          document.body
-        )}
+            </FilterSection>
     </>
   );
 }

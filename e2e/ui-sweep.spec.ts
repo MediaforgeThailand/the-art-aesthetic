@@ -149,7 +149,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, p.path);
   }
 
-  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (จอใหญ่ = แถว inline, มือถือ = bottom sheet) ---------- */
+  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (ปุ่มเดียว + แผงลอย ทุกขนาดจอ) ---------- */
   await gotoPage(page, "/influ-calendar");
   await settle(page, 1000);
 
@@ -172,14 +172,39 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   });
   await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
   await expectNoVerticalScroll("/influ-calendar มุมมองสัปดาห์");
-  await page.getByRole("button", { name: "ตัวกรองปฏิทิน", exact: true }).click();
+  // ทุกหน้าในระบบ Influ ใช้ปุ่ม "ตัวกรอง" ตัวเดียวกัน (InfluFilterButton, 2026-08-29)
+  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
   await settle(page, 400);
   await page.screenshot({
     path: shotPath(project, "influ-calendar-filters"),
     fullPage: true,
   });
   await expectNoHorizontalOverflow(page, "/influ-calendar ตัวกรอง");
-  await page.keyboard.press("Escape"); // ปิดตัวกรอง (มือถือเป็น bottom sheet)
+  await page.keyboard.press("Escape"); // ปิดแผงตัวกรอง
+  await settle(page, 300);
+
+  /* ---------- บอร์ดเคส: แผงตัวกรองรวม + กระดิ่งแจ้งเตือนของระบบ Influ (2026-08-29) ---------- */
+  await gotoPage(page, "/influencers");
+  await settle(page, 800);
+  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
+  await settle(page, 400);
+  await page.screenshot({
+    path: shotPath(project, "influ-board-filters"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influencers ตัวกรอง");
+  await page.keyboard.press("Escape");
+  await settle(page, 300);
+
+  // กระดิ่งของระบบ Influ (คนละตัวกับกระดิ่งของแอปทีม) — ชื่อมีจำนวนต่อท้ายได้
+  await page.getByRole("button", { name: /^การแจ้งเตือน/ }).first().click();
+  await settle(page, 600);
+  await page.screenshot({
+    path: shotPath(project, "influ-bell"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influencers กระดิ่ง");
+  await page.keyboard.press("Escape");
   await settle(page, 300);
 
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */

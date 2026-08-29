@@ -17,7 +17,10 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { useInfluLog } from "@/components/influ-log-provider";
+import {
+  useInfluLog,
+  useInfluNotify,
+} from "@/components/influ-log-provider";
 import { SignaturePad, SignatureSlot } from "@/components/signature-pad";
 import { Button, Card, ConfirmDialog, Input, Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
@@ -289,6 +292,7 @@ function MemoCopyStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -324,6 +328,15 @@ function MemoCopyStage({
       summary: next
         ? "ติ๊กว่าส่ง Memo ขออนุมัติแล้ว"
         : 'ยกเลิกการติ๊ก "ส่ง Memo แล้ว"',
+    });
+    notify({
+      type: "memo_sent",
+      scope: "memo",
+      title: next
+        ? `ส่ง Memo ขออนุมัติของ ${logNameOf(influencer)} แล้ว`
+        : `ยกเลิกสถานะ “ส่ง Memo แล้ว” ของ ${logNameOf(influencer)}`,
+      body: next ? "รออนุมัติ — ได้ไฟล์แล้วอัพกลับเข้าขั้น Memo" : null,
+      href: `/influencers/${influencer.id}?view=${INFLU_STAGE.memo}`,
     });
     router.refresh();
   };
@@ -456,6 +469,24 @@ function MemoCopyStage({
         skipped ? " — ผ่านขั้น Memo อัตโนมัติ" : ""
       }`,
     });
+    // ข้ามขั้น = งานตกไปที่ผู้รับผิดชอบขั้นสัญญา จึงยิงเป็น stage_forward ให้คนกลุ่มนั้นเด่น
+    notify(
+      skipped
+        ? {
+            type: "stage_forward",
+            scope: "contract",
+            title: `${logNameOf(influencer)} ผ่านขั้น Memo แล้ว → ขั้นสัญญา + วันรับบริการ`,
+            body: "Memo ที่อนุมัติแล้วถูกอัปโหลด — ขั้นต่อไปคือลงคิวหมอและเก็บสัญญาที่เซน",
+            href: `/influencers/${influencer.id}?view=${INFLU_STAGE.contractService}`,
+          }
+        : {
+            type: "memo_uploaded",
+            scope: "memo",
+            title: `เปลี่ยนไฟล์ Memo ของ ${logNameOf(influencer)}`,
+            body: file.name,
+            href: `/influencers/${influencer.id}?view=${INFLU_STAGE.memo}`,
+          }
+    );
     router.refresh();
   };
 
@@ -1141,6 +1172,7 @@ function ContractUploadStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [error, setError] = useState<string | null>(null);
   // path ของแม่แบบที่กำลังดาวน์โหลด (มี 2 ฉบับ) — null = ไม่มีอันไหนกำลังโหลด
   const [downloadingTpl, setDownloadingTpl] = useState<string | null>(null);
@@ -1262,6 +1294,25 @@ function ContractUploadStage({
           }`,
       meta: { file_path: path, replaced_path: oldPath },
     });
+    // อัพสัญญาครั้งแรก = เคสเข้าสู่การติดตาม → งานตกไปที่คนที่ถือ Follow Up
+    notify(
+      oldPath
+        ? {
+            type: "contract_uploaded",
+            scope: "contract",
+            title: `เปลี่ยนไฟล์สัญญาของ ${logNameOf(influencer)}`,
+            body: file.name,
+            href: `/influencers/${influencer.id}?view=${INFLU_STAGE.contractService}`,
+          }
+        : {
+            type: "contract_uploaded",
+            scope: "followup",
+            baseLevel: "update",
+            title: `${logNameOf(influencer)} เซนสัญญาแล้ว — เริ่มติดตามผลงาน`,
+            body: `เริ่มนับสัญญา ${formatDate(startDay)} · ตั้งเป้าโพสได้ที่หน้า Follow Up`,
+            href: "/influencers/contracts",
+          }
+    );
     router.refresh();
   };
 
@@ -1308,6 +1359,16 @@ function ContractUploadStage({
           : ""
       }`,
       meta: { file_path: oldPath, contract_start: influencer.contract_start },
+    });
+    notify({
+      type: "contract_removed",
+      scope: "contract",
+      baseLevel: "update",
+      title: `ลบไฟล์สัญญาของ ${logNameOf(influencer)}`,
+      body: influencer.contract_start
+        ? `ล้างวันเริ่มสัญญา (${formatDate(influencer.contract_start)}) — เคสหลุดจากหน้า Follow Up จนกว่าจะอัพสัญญาใหม่`
+        : null,
+      href: `/influencers/${influencer.id}?view=${INFLU_STAGE.contractService}`,
     });
     router.refresh();
   };

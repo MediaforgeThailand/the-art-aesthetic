@@ -6,6 +6,7 @@ import type {
   InfluPostPlatform,
   InfluProductTeam,
   InfluProspectStatus,
+  InfluScope,
   InfluSizeGroup,
   InfluTier,
 } from "./types";
@@ -362,6 +363,60 @@ export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
     short: "สัญญา/รับบริการ",
   },
 ];
+
+/* ---------- ขอบเขตงานของผู้รับผิดชอบ (0095) ----------
+   ผู้ใช้ 2026-08-29: "ในการเพิ่มผู้รับผิดชอบต้องการให้สามารถเลือกได้ว่า stage 1, 2, 3
+   ใครรับผิดชอบอันไหน เพื่อให้การแจ้งเตือนนั้นเด่น ... Follow Up นั้นมีหลายอย่างมาก"
+
+   2 ขั้นแรกตรงกับ INFLU_STAGE ส่วน followup ไม่ใช่ stage ใน pipeline (ถูกถอดที่ 0092)
+   แต่เป็นงานก้อนใหญ่ที่หน้า Follow Up ซึ่งต้องมีเจ้าภาพชัดเจน จึงนับเป็นขอบเขตที่ 3
+   **ไม่ถือ scope ไหนเลย = หัวหน้างาน/ผู้เกี่ยวข้อง** — ได้แจ้งเตือนทุกอย่างแต่ระดับ "อัพเดท" */
+
+export const INFLU_SCOPES: Record<
+  InfluScope,
+  { label: string; short: string; desc: string; chip: string; dot: string }
+> = {
+  memo: {
+    label: "1. Memo ขออนุมัติ",
+    short: "Memo",
+    desc: "ทำ/ส่ง Memo จนได้อนุมัติ",
+    chip: "border-sky-200 bg-sky-50 text-sky-700",
+    dot: "bg-sky-400",
+  },
+  contract: {
+    label: "2. สัญญา + รับบริการ",
+    short: "สัญญา",
+    desc: "เซนสัญญา ลงคิวหมอ วันเข้ารับบริการ",
+    chip: "border-violet-200 bg-violet-50 text-violet-700",
+    dot: "bg-violet-400",
+  },
+  followup: {
+    label: "3. Follow Up",
+    short: "Follow Up",
+    desc: "ตามให้โพสตามเป้า เก็บลิงก์ ปิดงาน",
+    chip: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-400",
+  },
+};
+
+export const INFLU_SCOPE_ORDER: InfluScope[] = ["memo", "contract", "followup"];
+
+/** ขอบเขตที่คุมขั้นงานเลขนั้น — ใช้ตัดสินว่าใครควรได้แจ้งเตือนระดับ "ต้องลงมือ"
+    (คืน null ถ้าเลขขั้นไม่ตรงกับขั้นไหน เช่นเลขที่หลุดมาจากข้อมูลเก่า) */
+export function scopeOfStage(stage: number): InfluScope | null {
+  if (stage === INFLU_STAGE.memo) return "memo";
+  if (stage === INFLU_STAGE.contractService) return "contract";
+  return null;
+}
+
+/** ป้ายสั้นของชุดขอบเขต — ว่าง = หัวหน้างาน/ผู้เกี่ยวข้อง (ไม่ได้ถือขั้นไหน) */
+export function scopeSummary(scopes: InfluScope[]): string {
+  if (scopes.length === 0) return "ผู้เกี่ยวข้อง";
+  if (scopes.length === INFLU_SCOPE_ORDER.length) return "ทุกขั้น";
+  return INFLU_SCOPE_ORDER.filter((s) => scopes.includes(s))
+    .map((s) => INFLU_SCOPES[s].short)
+    .join(" · ");
+}
 
 /* ---------- ผู้เซน memo (preset ตามแบบฟอร์มจริง — ผู้จัดทำเป็นคนใหม่ทุกครั้ง) ---------- */
 

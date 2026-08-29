@@ -36,7 +36,6 @@ import {
   RotateCcw,
   Timer,
   Trash2,
-  UserRound,
   UsersRound,
 } from "lucide-react";
 import { Fragment, useMemo, useRef, useState } from "react";
@@ -55,6 +54,11 @@ import {
 } from "@/lib/influ-constants";
 import type { InfluencerRow, InfluSizeGroup, InfluTaskRow } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
+import {
+  AssigneeStack,
+  type CaseAssignee,
+  type InfluPerson,
+} from "./assignees";
 import { type InfluLinkLite, SourceLinkQuickButton } from "./influ-links";
 
 /** แถว influencer สำหรับหน้า list — ตัด procedure_history ออก
@@ -394,7 +398,8 @@ export function InfluCardContent({
   overlay = false,
   links,
   hashtags,
-  ownerName,
+  assignees,
+  peopleById,
   deleting = false,
   needsBooking = false,
   onDelete,
@@ -405,8 +410,10 @@ export function InfluCardContent({
   today: string;
   /** true = การ์ดลอยใน DragOverlay ระหว่างลาก */
   overlay?: boolean;
-  /** ชื่อผู้รับผิดชอบ (จาก owner_id) — หลายทีมใช้บอร์ดร่วมกันจึงต้องเห็นว่าเคสนี้ของใคร */
-  ownerName?: string | null;
+  /** ผู้รับผิดชอบเคส (0095) — การ์ดแสดง "รูป" ของคนเหล่านี้แทนชื่อผู้สร้างแบบเดิม
+      (`owner_id` = ผู้สร้างการ์ด ยังเก็บอยู่ ดูได้ที่หน้าเคส) */
+  assignees?: CaseAssignee[];
+  peopleById?: Map<string, InfluPerson>;
   /** ลิงก์ไฟล์ source — มี = โชว์ปุ่มเปิด Google Drive บนการ์ด */
   links?: InfluLinkLite[];
   /** แฮชแท็กบังคับของเคส (0093) — undefined = หน้าที่เรียกไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
@@ -501,15 +508,17 @@ export function InfluCardContent({
                 <Phone size={11} /> {i.phone}
               </span>
             )}
-            {ownerName && (
-              <span
-                className="inline-flex items-center gap-1"
-                title={`ผู้รับผิดชอบเคสนี้ — ${ownerName}`}
-              >
-                <UserRound size={11} /> {ownerName}
-              </span>
-            )}
           </p>
+          {/* ผู้รับผิดชอบ = รูปโปรไฟล์ (ชี้เมาส์/แตะเพื่อดูชื่อ + ขอบเขตงาน) */}
+          {peopleById && (
+            <span className="mt-1.5 flex items-center">
+              <AssigneeStack
+                assignees={assignees ?? []}
+                peopleById={peopleById}
+                size={22}
+              />
+            </span>
+          )}
         </div>
         <div className="-mr-1.5 -mt-1.5 flex shrink-0 items-center">
           <SourceLinkQuickButton links={links} compact />
@@ -664,7 +673,8 @@ function SortableInfluCard({
   stats,
   links,
   hashtags,
-  ownerName,
+  assignees,
+  peopleById,
   today,
   deleting,
   needsBooking,
@@ -679,7 +689,8 @@ function SortableInfluCard({
   links: InfluLinkLite[] | undefined;
   /** แฮชแท็กบังคับของเคสนี้ (0093) — undefined = หน้าที่ไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
   hashtags?: CaseHashtag[];
-  ownerName?: string | null;
+  assignees?: CaseAssignee[];
+  peopleById?: Map<string, InfluPerson>;
   today: string;
   deleting: boolean;
   needsBooking: boolean;
@@ -718,7 +729,8 @@ function SortableInfluCard({
         stats={stats}
         links={links}
         hashtags={hashtags}
-        ownerName={ownerName}
+        assignees={assignees}
+        peopleById={peopleById}
         today={today}
         deleting={deleting}
         needsBooking={needsBooking}
@@ -738,7 +750,8 @@ function BoardColumn({
   statsByInflu,
   linksByInflu,
   hashtagsByInflu,
-  ownerNameById,
+  assigneesByInflu,
+  peopleById,
   bookingAlertIds,
   today,
   highlight,
@@ -755,7 +768,8 @@ function BoardColumn({
   linksByInflu?: Map<string, InfluLinkLite[]>;
   /** แฮชแท็กบังคับต่อเคส (0093) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
   hashtagsByInflu?: Map<string, CaseHashtag[]>;
-  ownerNameById?: Map<string, string>;
+  assigneesByInflu?: Map<string, CaseAssignee[]>;
+  peopleById?: Map<string, InfluPerson>;
   bookingAlertIds: ReadonlySet<string>;
   today: string;
   highlight: boolean;
@@ -814,7 +828,8 @@ function BoardColumn({
               stats={statsByInflu.get(i.id)}
               links={linksByInflu?.get(i.id)}
               hashtags={hashtagsByInflu?.get(i.id)}
-              ownerName={i.owner_id ? ownerNameById?.get(i.owner_id) : null}
+              assignees={assigneesByInflu?.get(i.id)}
+              peopleById={peopleById}
               today={today}
               deleting={deletingId === i.id}
               needsBooking={bookingAlertIds.has(i.id)}
@@ -838,7 +853,8 @@ export function InfluBoard({
   statsByInflu,
   linksByInflu,
   hashtagsByInflu,
-  ownerNameById,
+  assigneesByInflu,
+  peopleById,
   bookingAlertIds,
   today,
   deletingId,
@@ -856,8 +872,10 @@ export function InfluBoard({
   linksByInflu?: Map<string, InfluLinkLite[]>;
   /** แฮชแท็กบังคับต่อเคส (0093) — คำนวณที่ influencers-client แล้วส่งลงมาเป็น Map */
   hashtagsByInflu?: Map<string, CaseHashtag[]>;
-  /** ชื่อผู้รับผิดชอบต่อ uid — แปลง owner_id เป็นชื่อบนการ์ด */
-  ownerNameById?: Map<string, string>;
+  /** ผู้รับผิดชอบต่อเคส (0095) — กองรูปบนการ์ด */
+  assigneesByInflu?: Map<string, CaseAssignee[]>;
+  /** บัญชีตาม uid — ที่มาของรูป/ชื่อในกองรูป */
+  peopleById?: Map<string, InfluPerson>;
   /** id ของเคสที่ต้องติดป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" */
   bookingAlertIds: ReadonlySet<string>;
   today: string;
@@ -1047,7 +1065,8 @@ export function InfluBoard({
               statsByInflu={statsByInflu}
               linksByInflu={linksByInflu}
               hashtagsByInflu={hashtagsByInflu}
-              ownerNameById={ownerNameById}
+              assigneesByInflu={assigneesByInflu}
+              peopleById={peopleById}
               bookingAlertIds={bookingAlertIds}
               today={today}
               highlight={activeId !== null && overGroup === g}
@@ -1067,11 +1086,8 @@ export function InfluBoard({
           <InfluCardContent
             influ={activeInflu}
             stats={statsByInflu.get(activeInflu.id)}
-            ownerName={
-              activeInflu.owner_id
-                ? ownerNameById?.get(activeInflu.owner_id)
-                : null
-            }
+            assignees={assigneesByInflu?.get(activeInflu.id)}
+            peopleById={peopleById}
             today={today}
             needsBooking={bookingAlertIds.has(activeInflu.id)}
             overlay

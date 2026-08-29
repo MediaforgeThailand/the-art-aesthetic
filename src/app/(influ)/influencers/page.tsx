@@ -17,7 +17,9 @@ import type {
 } from "@/lib/types";
 import type { InfluTaskLite } from "./influ-board";
 import type { InfluLinkLite } from "./influ-links";
+import type { InfluPerson } from "./assignees";
 import {
+  type CaseAssigneeRow,
   type CaseProcedureLite,
   InfluencersClient,
   type InfluencerListRow,
@@ -57,6 +59,7 @@ export default async function InfluencersPage() {
     { data: services },
     { data: campaigns },
     { data: procedureItems },
+    { data: assignees },
   ] = await Promise.all([
       getAccess(),
       supabase
@@ -98,8 +101,8 @@ export default async function InfluencersPage() {
         .eq("active", true)
         .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
         .order("name", { ascending: true }),
-      // ชื่อผู้รับผิดชอบ (owner_id) — แสดงบนการ์ด + ตัวกรอง "เคสของฉัน"
-      supabase.from("profiles").select("id, full_name, email"),
+      // บัญชีทั้งหมด — รูป/ชื่อของผู้รับผิดชอบบนการ์ด + ตัวเลือกตอนมอบหมายงาน
+      supabase.from("profiles").select("id, full_name, email, avatar_path, job_title"),
       // โปรไฟล์ตัวบุคคล (0080) — ตัวเลือกตอน "สร้างนัดใหม่"
       supabase
         .from("influ_profiles")
@@ -120,6 +123,8 @@ export default async function InfluencersPage() {
       supabase
         .from("influ_procedure_items")
         .select("influencer_id, product_team, promo:promo_packages(sku)"),
+      // ผู้รับผิดชอบของทุกเคส (0095) — สิ่งที่การ์ดแสดงแทนชื่อผู้สร้างเดิม
+      supabase.from("influ_assignees").select("influencer_id, user_id, scopes"),
     ]);
   if (!canViewInflu(access)) return <AccessNotice />;
 
@@ -150,8 +155,11 @@ export default async function InfluencersPage() {
           (profiles ?? []).map((p) => ({
             id: p.id,
             name: p.full_name || p.email || "ไม่ทราบชื่อ",
-          })) as { id: string; name: string }[]
+            avatarPath: p.avatar_path ?? null,
+            jobTitle: p.job_title ?? null,
+          })) as InfluPerson[]
         }
+        assignees={(assignees ?? []) as CaseAssigneeRow[]}
         me={{
           id: access.uid,
           name: me?.full_name || me?.email || "",
