@@ -124,6 +124,11 @@ async function openShotClose(
   await settle(page, 300);
 }
 
+/** ทุก action ต้องมีเพดานเวลาของตัวเอง — ไม่งั้น locator ที่ไม่มีวันเจอ (หรือปุ่มที่ซ่อนอยู่)
+    จะรอเงียบจนหมดเวลาเทสต์ทั้งไฟล์ แล้วรายงานว่า "timeout" โดยไม่บอกว่าค้างตรงไหน
+    (บทเรียนเดียวกับ wellness-flow) — 30 วิ เผื่อ dev server คอมไพล์หน้าหนักๆ ครั้งแรก */
+test.use({ actionTimeout: 30_000 });
+
 test("sweep ทุกหน้า + กด feature หลักครบ", async ({ page }, testInfo) => {
   test.skip(!EMAIL || !PASSWORD, "ตั้ง E2E_EMAIL / E2E_PASSWORD ก่อนรัน");
   const project = testInfo.project.name;
@@ -261,8 +266,11 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
   // ตัวกรองเก็บใน localStorage ของ browser เทสต์เท่านั้น)
+  // ⚠️ ต้องกรอง `:visible` เสมอในหน้า /tasks — แถบเครื่องมือของจอใหญ่ถูก mount ทิ้งไว้
+  // ตลอดด้วย `hidden lg:contents` (และของมือถืออยู่ในชีตที่ปิดอยู่) ⇒ `count() > 0` เป็น
+  // จริงทั้งที่ปุ่มมองไม่เห็น แล้ว click() รอ actionability จนหมดเวลา
   const personFilter = page.locator(
-    'button[aria-label="กรองตามผู้รับผิดชอบ"]'
+    'button[aria-label="กรองตามผู้รับผิดชอบ"]:visible'
   );
   if ((await personFilter.count()) > 0) {
     await personFilter.click();
@@ -278,8 +286,14 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     }
   }
 
+  // แท็บบนมือถือมี badge จำนวนอยู่ในปุ่ม → accessible name เป็น "รอตรวจ 4"
+  // จับด้วย regex (ชื่อขึ้นต้นด้วยป้ายแท็บ) ไม่ใช่ชื่อเต็ม ไม่งั้นบนมือถือรอจนหมดเวลาเทสต์
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
-    await page.getByRole("button", { name: tab }).first().click();
+    await page
+      .getByRole("button", { name: new RegExp(`^${tab}`) })
+      .filter({ visible: true })
+      .first()
+      .click();
     await settle(page, 700);
     await page.screenshot({
       path: shotPath(project, `tasks-tab-${tab}`),
@@ -293,7 +307,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.locator('button[aria-label="กรองตามผู้รับผิดชอบ"]');
+      const btn = page.locator(
+        'button[aria-label="กรองตามผู้รับผิดชอบ"]:visible'
+      );
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
@@ -306,7 +322,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.getByRole("button", { name: /ยกเว้น/ }).first();
+      const btn = page
+        .getByRole("button", { name: /ยกเว้น/ })
+        .filter({ visible: true })
+        .first();
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
