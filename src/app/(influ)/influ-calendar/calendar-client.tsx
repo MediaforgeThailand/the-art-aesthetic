@@ -5,15 +5,22 @@
 //      วันที่เลือก = ช่องขาวตัวหนังสือสีแบรนด์ · วันที่มีคิว = ป้ายตัวเลขจำนวนคิวเกาะมุมเลขวัน
 //   2) ใต้ปฏิทิน (จอเล็ก) / คอลัมน์ขวา (จอ ≥lg) = การ์ดคิวรายวัน — แถบวันที่ไล่เฉดซ้ายมือ
 //      + รายการคิวของวันนั้นเรียงตามเวลาอยู่ขวามือ กดแถว = โมดัลรายละเอียด
-//   3) โหมดสัปดาห์ = แผ่นปฏิทินเหลือแถวเดียว + การ์ดคิวครบทั้ง 7 วันในคอลัมน์ agenda
+//   3) โหมดสัปดาห์ = แผ่นปฏิทินเหลือแถวเดียว (การ์ดข้างล่างยังเป็นของ "วันที่เลือก" วันเดียว)
 //   4) จอ ≥lg เพิ่มชิปคิวในช่องวัน (ตามความสูงช่องจริง) — กวาดตาเห็นทั้งเดือนโดยไม่ต้องกดทีละวัน
 // **state ของหน้ามีตัวเดียวคือ "วันที่เลือก"** — เดือน/สัปดาห์ที่โชว์คำนวณจากมัน จึงไม่มีทางเกิด
 // สภาพ "เลื่อนเดือนแล้วรายการข้างล่างเป็นของอีกเดือน"
 // แผงข้างลอยทับจอ (DaySidebar เดิม) ถูกถอดออก — รายละเอียด/ฟอร์มใช้ Modal ของระบบแทน
+//
+// ปรับตามผู้ใช้ 2026-08-29:
+//   · คอลัมน์ขวา/ใต้ปฏิทิน = **การ์ดของวันที่เลือกใบเดียว** (ถอด "คิวถัดไป" และลิสต์ 7 วัน
+//     ของโหมดสัปดาห์ออก — อยากดูวันไหนกดวันนั้นบนปฏิทิน)
+//   · แสดงเฉพาะ "คิวที่ลงในปฏิทินจริง" — การซ้อน influencers.service_date แบบอ่านอย่างเดียว
+//     (ชิป/แถว "จากเคส") ถูกถอดออกทั้งหมด
+//   · แถวคิวโชว์แค่ เวลา · ชื่อคนที่มา · แพทย์ (ชื่อหัตถการไปดูในโมดัลรายละเอียด)
+//   · เตือนเคสที่ "มาทำแล้วแต่เอกสารยังไม่เซน" — ดู unsignedContract
 
 import {
-  CalendarDays,
-  CalendarPlus,
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -24,7 +31,6 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Stethoscope,
   Trash2,
   X,
@@ -61,28 +67,19 @@ import { DoctorNameChip, DoctorSelect } from "../influencers/doctor-select";
 
 /* ---------- types ที่หน้า server ส่งลงมา ---------- */
 
-/** คิวบนปฏิทิน + ชื่อ influencer ที่ join มา (คิวเก่าอาจผูกกับคนที่ถูก archive แล้ว) */
+/** คิวบนปฏิทิน + ชื่อ influencer ที่ join มา (คิวเก่าอาจผูกกับคนที่ถูก archive แล้ว)
+    `contract_file_path` มาด้วยเพื่อเตือนเคสที่มาทำแล้วแต่ยังไม่เซนสัญญา (unsignedContract) */
 export type CalendarEvent = InfluCalendarEventRow & {
   influencer: Pick<
     InfluencerRow,
-    "id" | "first_name" | "last_name" | "nickname"
+    "id" | "first_name" | "last_name" | "nickname" | "contract_file_path"
   > | null;
 };
 
-/** influencer สำหรับตัวเลือกในฟอร์ม + วันเข้ารับบริการที่ซ้อนบนปฏิทิน */
+/** influencer สำหรับตัวเลือกในฟอร์มเพิ่ม/แก้คิว (doctor_name ใช้เติมแพทย์ให้อัตโนมัติ) */
 export type CalendarInflu = Pick<
   InfluencerRow,
-  | "id"
-  | "first_name"
-  | "last_name"
-  | "nickname"
-  | "round_no"
-  | "service_date"
-  | "doctor_name"
-  | "stage"
-  | "completed"
-  | "declined_at"
-  | "procedure_text"
+  "id" | "first_name" | "last_name" | "nickname" | "round_no" | "doctor_name"
 >;
 
 /* ---------- helper ระดับโมดูล ---------- */
@@ -133,7 +130,7 @@ const mondayIndex = (iso: string) => (dateOf(iso).getDay() + 6) % 7;
 
 /** join ชื่อ influ มาด้วยทุกครั้งที่ insert/update — state ฝั่งจอต้องมีชื่อไว้แสดงบนชิป */
 const EVENT_SELECT =
-  "*, influencer:influencers(id, first_name, last_name, nickname)";
+  "*, influencer:influencers(id, first_name, last_name, nickname, contract_file_path)";
 
 const nameOf = (
   i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname"> | null
@@ -160,6 +157,17 @@ const sortEvents = (a: CalendarEvent, b: CalendarEvent) => {
     return a.start_time.localeCompare(b.start_time);
   return a.title.localeCompare(b.title, "th");
 };
+
+/** คิว "มาทำแล้วแต่เอกสารยังไม่เซน" — เกิดนานๆ ครั้ง แต่ทีมต้องรู้ให้ทัน (ผู้ใช้ 2026-08-29)
+    เกณฑ์: คิว "รับบริการ" ที่ถึงวันแล้ว (วันนี้/เลยมาแล้ว) แต่เคสยังไม่มีไฟล์สัญญาที่เซน
+    — คิวในอนาคตยังไม่ผิดปกติ (มักเซนกันวันเข้ารับบริการ) จึงไม่นับ
+    เกณฑ์ "เซนแล้ว" = influencers.contract_file_path มีค่า (ตัวเดียวกับที่ทำให้เคส
+    เริ่มนับสัญญา — ดูขั้น "สัญญา + วันรับบริการ" ใน /influencers/[id]) */
+const unsignedContract = (e: CalendarEvent, today: string) =>
+  e.kind === "service" &&
+  e.influencer !== null &&
+  !e.influencer.contract_file_path &&
+  e.event_date <= today;
 
 /** ช่องวันทั้งหมดของเดือนที่ครอบวัน anchor (เติมช่องว่างหน้า/หลังให้ครบสัปดาห์ เริ่มวันจันทร์)
     — null = ช่องว่างนอกเดือน */
@@ -258,34 +266,19 @@ const formOf = (e: CalendarEvent): FormState => ({
   note: e.note ?? "",
 });
 
-/* ---------- รายการของหนึ่งวัน = คิวจริง + วันรับบริการที่มาจากเคส ---------- */
-
-type DayItem =
-  | { type: "event"; id: string; event: CalendarEvent }
-  | { type: "service"; id: string; influ: CalendarInflu };
-
-/** สิ่งที่ผู้ใช้กำลังเปิดดูรายละเอียด (โมดัล) */
-type DetailTarget =
-  | { type: "event"; id: string }
-  | { type: "service"; id: string };
-
-/* ---------- ชุดตัวกรอง (ชิปประเภท + วันรับบริการจากเคส + แพทย์) ----------
+/* ---------- ชุดตัวกรอง (ชิปประเภท + แพทย์) ----------
    ใช้ร่วม 2 ที่: แถว inline ใต้ toolbar (จอ ≥sm) และ bottom sheet บนมือถือ —
    แยกเป็น component ระดับโมดูล กัน logic ตัวกรองแตกเป็นสองสำเนา */
 
 function FilterControls({
   hiddenKinds,
   onToggleKind,
-  showServiceDates,
-  onToggleServiceDates,
   doctorOptions,
   doctorFilter,
   onDoctorFilter,
 }: {
   hiddenKinds: Set<InfluCalendarKind>;
   onToggleKind: (kind: InfluCalendarKind) => void;
-  showServiceDates: boolean;
-  onToggleServiceDates: () => void;
   doctorOptions: string[];
   doctorFilter: string;
   onDoctorFilter: (name: string) => void;
@@ -314,19 +307,6 @@ function FilterControls({
           </button>
         );
       })}
-      <button
-        type="button"
-        onClick={onToggleServiceDates}
-        title="สลับการแสดงวันเข้ารับบริการที่มาจากเคสในบอร์ดเคสดำเนินงาน"
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium transition-all active:scale-95 max-sm:min-h-11 ${
-          showServiceDates
-            ? "border-brand-300 bg-white/70 text-brand-700"
-            : "border-stone-200 bg-white/50 text-stone-400"
-        }`}
-      >
-        <Sparkles size={12} />
-        วันรับบริการจากเคส
-      </button>
       {doctorOptions.length > 0 && (
         <Select
           aria-label="กรองตามแพทย์"
@@ -346,69 +326,54 @@ function FilterControls({
   );
 }
 
-/* ---------- การ์ดคิวรายวัน (แถบวันที่ไล่เฉดซ้าย + รายการคิวขวา) ---------- */
+/* ---------- การ์ดคิวรายวัน (แถบวันที่ไล่เฉดซ้าย + รายการคิวขวา) ----------
+   แถวคิวโชว์แค่ เวลา · ชื่อคนที่มา · แพทย์ (คำสั่งผู้ใช้ 2026-08-29) —
+   ชื่อหัตถการ/สถานที่/หมายเหตุ อยู่ในโมดัลรายละเอียด */
 
 function DayCard({
   dateISO,
-  items,
+  events,
   today,
   doctors,
   canEdit,
   onOpen,
   onToggleDone,
-  onPickDay,
   onAdd,
 }: {
   dateISO: string;
-  items: DayItem[];
+  events: CalendarEvent[];
   today: string;
   doctors: DoctorRow[];
   canEdit: boolean;
-  onOpen: (target: DetailTarget) => void;
+  onOpen: (id: string) => void;
   /** ติ๊ก "เสร็จแล้ว" จากลิสต์ได้เลย ไม่ต้องเปิดโมดัล (พฤติกรรมเดิมของแผงข้าง) */
   onToggleDone: (event: CalendarEvent) => void;
-  /** กดแถบวันที่ = เลือกวันนั้นบนปฏิทิน (ใช้กับการ์ด "คิวถัดไป" / โหมดสัปดาห์) */
-  onPickDay?: () => void;
   /** ปุ่มเพิ่มคิวของวันนั้น (โชว์ตอนวันนั้นยังว่าง) */
   onAdd?: () => void;
 }) {
   const dayNum = Number(dateISO.slice(8));
   const isToday = dateISO === today;
-  const badge = (
-    <span
-      className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 px-2 py-3 text-cream sm:w-16 ${
-        isToday
-          ? "bg-gradient-to-b from-brand-600 to-brand-700"
-          : "bg-gradient-to-b from-brand-500 to-brand-600"
-      }`}
-    >
-      <span className="text-[11px] font-medium opacity-90">
-        {WEEKDAYS[mondayIndex(dateISO)]}
-      </span>
-      <span className="font-display text-2xl font-semibold leading-none">
-        {dayNum}
-      </span>
-      {isToday && <span className="text-[9px] opacity-90">วันนี้</span>}
-    </span>
-  );
 
   return (
     <article className="flex overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70">
-      {onPickDay ? (
-        <button
-          type="button"
-          onClick={onPickDay}
-          aria-label={`เลือก${thaiDayTitle(dateISO)}`}
-          className="flex cursor-pointer transition-opacity hover:opacity-90 active:scale-[0.98]"
-        >
-          {badge}
-        </button>
-      ) : (
-        badge
-      )}
+      <span
+        className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 px-2 py-3 text-cream sm:w-16 ${
+          isToday
+            ? "bg-gradient-to-b from-brand-600 to-brand-700"
+            : "bg-gradient-to-b from-brand-500 to-brand-600"
+        }`}
+      >
+        <span className="text-[11px] font-medium opacity-90">
+          {WEEKDAYS[mondayIndex(dateISO)]}
+        </span>
+        <span className="font-display text-2xl font-semibold leading-none">
+          {dayNum}
+        </span>
+        {isToday && <span className="text-[9px] opacity-90">วันนี้</span>}
+      </span>
 
       <div className="min-w-0 flex-1 divide-y divide-stone-100">
-        {items.length === 0 ? (
+        {events.length === 0 ? (
           <div className="flex flex-col items-start gap-2 px-4 py-4">
             <p className="text-sm text-stone-400">ยังไม่มีคิวในวันนี้</p>
             {canEdit && onAdd && (
@@ -422,133 +387,103 @@ function DayCard({
             )}
           </div>
         ) : (
-          items.map((item) =>
-            item.type === "event" ? (
+          events.map((ev) => {
+            const label = nameOf(ev.influencer) || ev.title;
+            const warn = unsignedContract(ev, today);
+            return (
               // แถวคิว = 2 ปุ่มเรียงกัน (ห้ามซ้อน button ใน button) — ปุ่มหลักเปิดรายละเอียด
               // ปุ่มขวาติ๊กเสร็จ/ยังไม่เสร็จได้จากลิสต์เลย
-              <div key={item.id} className="flex items-stretch">
+              <div key={ev.id} className="flex items-stretch">
                 <button
                   type="button"
-                  onClick={() => onOpen({ type: "event", id: item.id })}
+                  onClick={() => onOpen(ev.id)}
                   aria-label={`ดูรายละเอียดคิว ${calendarTimeLabel(
-                    item.event.start_time,
-                    item.event.end_time
-                  )} ${nameOf(item.event.influencer) || item.event.title}`}
+                    ev.start_time,
+                    ev.end_time
+                  )} ${label}`}
                   className={`flex min-w-0 flex-1 cursor-pointer items-start gap-3 py-3 pl-3.5 text-left transition-colors hover:bg-brand-50/60 max-sm:min-h-14 ${
-                    item.event.done ? "opacity-55" : ""
+                    ev.done ? "opacity-55" : ""
                   }`}
                 >
-                  <span className="flex w-[4.25rem] shrink-0 flex-col">
-                    <span className="text-sm font-semibold text-stone-800 tabular-nums">
-                      {shortTime(item.event.start_time) ?? "ทั้งวัน"}
+                  <span className="flex w-[5.25rem] shrink-0 flex-col">
+                    <span className="text-[13px] font-semibold text-stone-800 tabular-nums">
+                      {calendarTimeLabel(ev.start_time, ev.end_time)}
                     </span>
                     <span className="text-[11px] text-stone-400">
-                      {INFLU_CALENDAR_KINDS[item.event.kind].short}
+                      {INFLU_CALENDAR_KINDS[ev.kind].short}
                     </span>
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span
                         className={`h-2 w-2 shrink-0 rounded-full ${
-                          INFLU_CALENDAR_KINDS[item.event.kind].dot
+                          INFLU_CALENDAR_KINDS[ev.kind].dot
                         }`}
                       />
                       <span
                         className={`truncate text-[15px] font-medium text-stone-800 ${
-                          item.event.done ? "line-through" : ""
+                          ev.done ? "line-through" : ""
                         }`}
                       >
-                        {nameOf(item.event.influencer) || item.event.title}
+                        {label}
                       </span>
                     </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-stone-500">
-                      {item.event.influencer && (
-                        <span className="truncate">{item.event.title}</span>
-                      )}
-                      {item.event.doctor_name && (
-                        <DoctorNameChip
-                          name={item.event.doctor_name}
-                          doctors={doctors}
-                        />
-                      )}
-                    </span>
+                    {(ev.doctor_name || warn) && (
+                      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {ev.doctor_name && (
+                          <DoctorNameChip
+                            name={ev.doctor_name}
+                            doctors={doctors}
+                          />
+                        )}
+                        {warn && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                            <AlertTriangle size={11} /> ยังไม่เซนสัญญา
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </span>
                 </button>
                 {canEdit ? (
                   <button
                     type="button"
-                    onClick={() => onToggleDone(item.event)}
+                    onClick={() => onToggleDone(ev)}
                     title={
-                      item.event.done
+                      ev.done
                         ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
                         : "ทำเครื่องหมายว่าเสร็จแล้ว"
                     }
-                    aria-label={`${item.event.done ? "ยกเลิกสถานะเสร็จ" : "ทำเครื่องหมายว่าเสร็จ"}: ${
-                      nameOf(item.event.influencer) || item.event.title
-                    }`}
+                    aria-label={`${ev.done ? "ยกเลิกสถานะเสร็จ" : "ทำเครื่องหมายว่าเสร็จ"}: ${label}`}
                     className="flex w-12 shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-brand-50/60 active:scale-90"
                   >
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
-                        item.event.done
+                        ev.done
                           ? "border-emerald-400 bg-emerald-400 text-white"
                           : "border-stone-300 bg-white hover:border-brand-400"
                       }`}
                     >
-                      {item.event.done && <Check size={12} />}
+                      {ev.done && <Check size={12} />}
                     </span>
                   </button>
                 ) : (
                   <span className="flex w-12 shrink-0 items-center justify-center">
                     <span
-                      title={item.event.done ? "เสร็จแล้ว" : "ยังไม่เสร็จ"}
+                      title={ev.done ? "เสร็จแล้ว" : "ยังไม่เสร็จ"}
                       className={`flex h-5 w-5 items-center justify-center rounded border ${
-                        item.event.done
+                        ev.done
                           ? "border-emerald-300 bg-emerald-100 text-emerald-600"
                           : "border-stone-200 bg-stone-50"
                       }`}
                     >
-                      {item.event.done && <Check size={12} />}
+                      {ev.done && <Check size={12} />}
                     </span>
                   </span>
                 )}
               </div>
-            ) : (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onOpen({ type: "service", id: item.id })}
-                aria-label={`ดูรายละเอียดเคส ${nameOf(item.influ)}`}
-                className="flex w-full cursor-pointer items-start gap-3 bg-brand-50/40 px-3.5 py-3 text-left transition-colors hover:bg-brand-50 max-sm:min-h-14"
-              >
-                <span className="flex w-[4.25rem] shrink-0 flex-col">
-                  <span className="text-[13px] font-semibold text-brand-600">
-                    จากเคส
-                  </span>
-                  <span className="text-[11px] text-stone-400">ยังไม่ลงคิว</span>
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <Sparkles size={13} className="shrink-0 text-brand-400" />
-                    <span className="truncate text-[15px] font-medium text-stone-800">
-                      {nameOf(item.influ)}
-                    </span>
-                  </span>
-                  {(item.influ.procedure_text || item.influ.doctor_name) && (
-                    <span className="mt-1 block truncate text-[13px] text-stone-500">
-                      {[item.influ.procedure_text, item.influ.doctor_name]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  )}
-                </span>
-                <ChevronRight
-                  size={16}
-                  className="mt-1 shrink-0 text-stone-300"
-                />
-              </button>
-            )
-          )
+            );
+          })
         )}
       </div>
     </article>
@@ -559,6 +494,7 @@ function DayCard({
 
 function EventDetailModal({
   event,
+  today,
   doctors,
   canEdit,
   error,
@@ -568,6 +504,7 @@ function EventDetailModal({
   onClose,
 }: {
   event: CalendarEvent;
+  today: string;
   doctors: DoctorRow[];
   canEdit: boolean;
   error: string | null;
@@ -578,6 +515,7 @@ function EventDetailModal({
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const meta = INFLU_CALENDAR_KINDS[event.kind];
+  const unsigned = unsignedContract(event, today);
 
   return (
     <Modal open onClose={onClose} title={thaiDayTitle(event.event_date)}>
@@ -655,6 +593,30 @@ function EventDetailModal({
           )}
         </dl>
 
+        {/* เตือน "มาทำแล้วแต่เอกสารยังไม่เซน" — เกิดนานๆ ครั้ง แต่ปล่อยไว้แล้วเคสค้าง
+            (อัพไฟล์สัญญา = ระบบเริ่มนับสัญญา + สร้าง checklist ให้เอง) */}
+        {unsigned && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
+              <AlertTriangle size={14} className="shrink-0" />
+              เคสนี้ยังไม่มีไฟล์สัญญาที่เซน
+            </p>
+            <p className="mt-1 text-xs text-amber-700">
+              คิวรับบริการถึงวันแล้ว ({formatDate(event.event_date)})
+              แต่ยังไม่ได้อัพไฟล์สัญญาที่เซนในหน้าเคส —
+              เคสจะยังไม่เริ่มนับสัญญาและไม่ขึ้นในหน้า Follow Up
+            </p>
+            {event.influencer && (
+              <Link
+                href={`/influencers/${event.influencer.id}`}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 max-sm:min-h-11"
+              >
+                เปิดเคสไปอัพไฟล์สัญญา <ExternalLink size={12} />
+              </Link>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
             {error}
@@ -710,77 +672,6 @@ function EventDetailModal({
             </Button>
           </div>
         )}
-      </div>
-    </Modal>
-  );
-}
-
-/* ---------- โมดัลรายละเอียดวันรับบริการที่มาจากเคส (อ่านอย่างเดียว) ---------- */
-
-function ServiceDetailModal({
-  influ,
-  doctors,
-  canEdit,
-  onCreateQueue,
-  onClose,
-}: {
-  influ: CalendarInflu;
-  doctors: DoctorRow[];
-  canEdit: boolean;
-  onCreateQueue: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={thaiDayTitle(influ.service_date ?? todayISO())}
-    >
-      <div className="space-y-4">
-        <Badge className="border border-dashed border-brand-300 bg-white/70 text-brand-700">
-          <Sparkles size={11} /> วันรับบริการจากเคส (ยังไม่ได้ลงคิวในปฏิทิน)
-        </Badge>
-        <h3 className="text-base font-semibold text-stone-900">
-          {nameOf(influ)}
-        </h3>
-
-        <dl className="space-y-2.5 text-sm">
-          <div className="flex gap-2">
-            <dt className="w-20 shrink-0 text-xs text-stone-400">หัตถการ</dt>
-            <dd className="min-w-0 flex-1 text-stone-700">
-              {influ.procedure_text || (
-                <span className="text-stone-400">ยังไม่ระบุ</span>
-              )}
-            </dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-20 shrink-0 text-xs text-stone-400">แพทย์</dt>
-            <dd className="flex min-w-0 flex-1 items-center gap-1 text-stone-700">
-              {influ.doctor_name ? (
-                <DoctorNameChip name={influ.doctor_name} doctors={doctors} />
-              ) : (
-                <>
-                  <Stethoscope size={13} className="shrink-0 text-stone-400" />
-                  <span className="text-stone-400">ยังไม่ระบุ</span>
-                </>
-              )}
-            </dd>
-          </div>
-        </dl>
-
-        <div className="flex flex-wrap gap-2">
-          {canEdit && (
-            <Button className="px-3 py-1.5 text-xs" onClick={onCreateQueue}>
-              <CalendarPlus size={14} /> สร้างคิวจากเคสนี้
-            </Button>
-          )}
-          <Link
-            href={`/influencers/${influ.id}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11"
-          >
-            เปิดเคส <ExternalLink size={12} />
-          </Link>
-        </div>
       </div>
     </Modal>
   );
@@ -1013,7 +904,8 @@ export function CalendarClient({
   const [view, setView] = useState<"month" | "week">("month");
   /** **state เดียวของหน้า** — เดือน/สัปดาห์ที่โชว์คำนวณจากวันที่เลือกนี้ */
   const [selected, setSelected] = useState(today);
-  const [detail, setDetail] = useState<DetailTarget | null>(null);
+  /** id ของคิวที่กำลังเปิดรายละเอียด (null = ปิด) */
+  const [detail, setDetail] = useState<string | null>(null);
   /** ฟอร์มที่เปิดอยู่ (null = ปิด) — เก็บทั้งก้อนเพื่อ prefill ตอนแก้/สร้างจากเคส */
   const [formState, setFormState] = useState<FormState | null>(null);
   const [search, setSearch] = useState("");
@@ -1022,7 +914,6 @@ export function CalendarClient({
   const [hiddenKinds, setHiddenKinds] = useState<Set<InfluCalendarKind>>(
     () => new Set()
   );
-  const [showServiceDates, setShowServiceDates] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1053,60 +944,30 @@ export function CalendarClient({
     });
   }, [events, search, hiddenKinds, doctorFilter]);
 
-  /* ---- วันเข้ารับบริการจากเคส (ซ้อนแบบอ่านอย่างเดียว)
-         ข้ามคนที่มีคิวประเภท "รับบริการ" ในวันเดียวกันอยู่แล้ว — กันแสดงซ้ำ ---- */
-  const visibleServices = useMemo(() => {
-    if (!showServiceDates) return [] as CalendarInflu[];
-    const q = search.trim().toLowerCase();
-    return influencers.filter((i) => {
-      if (!i.service_date || i.declined_at) return false;
-      if (doctorFilter && i.doctor_name !== doctorFilter) return false;
-      if (
-        q !== "" &&
-        !nameOf(i).toLowerCase().includes(q) &&
-        !(i.doctor_name ?? "").toLowerCase().includes(q)
-      )
-        return false;
-      // เทียบกับคิวที่ "มองเห็นอยู่จริง" ไม่ใช่ events ดิบ — ไม่งั้นพอซ่อนชนิด "รับบริการ"
-      // หรือกรองแพทย์ (ชื่อแพทย์ในคิวแก้แยกจากในเคสได้) คิวจะหายจากกริดแต่ยังกดทับ
-      // ไม่ให้ชิปวันรับบริการโผล่ = เคสนั้นหายไปทั้งคู่
-      return !visibleEvents.some(
-        (e) =>
-          e.influencer_id === i.id &&
-          e.event_date === i.service_date &&
-          e.kind === "service"
-      );
-    });
-  }, [influencers, visibleEvents, showServiceDates, search, doctorFilter]);
-
-  /** รายการของแต่ละวัน (คิวจริงเรียงตามเวลา → วันรับบริการจากเคสต่อท้าย) */
-  const itemsByDate = useMemo(() => {
-    const map = new Map<string, DayItem[]>();
-    const evByDate = new Map<string, CalendarEvent[]>();
+  /** คิวของแต่ละวัน เรียงตามเวลา — ปฏิทินแสดงเฉพาะคิวที่ถูกลงในปฏิทินจริง
+      (การซ้อน influencers.service_date แบบอ่านอย่างเดียวถูกถอดออก 2026-08-29) */
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
     for (const e of visibleEvents) {
-      const list = evByDate.get(e.event_date);
+      const list = map.get(e.event_date);
       if (list) list.push(e);
-      else evByDate.set(e.event_date, [e]);
+      else map.set(e.event_date, [e]);
     }
-    for (const [iso, list] of evByDate) {
-      map.set(
-        iso,
-        list
-          .sort(sortEvents)
-          .map((e) => ({ type: "event", id: e.id, event: e }) as DayItem)
-      );
-    }
-    for (const i of visibleServices) {
-      const iso = i.service_date as string;
-      const item: DayItem = { type: "service", id: i.id, influ: i };
-      const list = map.get(iso);
-      if (list) list.push(item);
-      else map.set(iso, [item]);
-    }
+    for (const list of map.values()) list.sort(sortEvents);
     return map;
-  }, [visibleEvents, visibleServices]);
+  }, [visibleEvents]);
 
-  const itemsOf = (iso: string) => itemsByDate.get(iso) ?? [];
+  const eventsOf = (iso: string) => eventsByDate.get(iso) ?? [];
+
+  /** คิวที่ "มาทำแล้วแต่ยังไม่เซนสัญญา" — คิดจากคิวทั้งหมด ไม่ผูกตัวกรอง
+      (สัญญาณเตือนต้องเห็นครบเสมอ กติกาเดียวกับป้าย "รอลงคิวหมอ" บนบอร์ดเคส) */
+  const unsignedQueues = useMemo(
+    () =>
+      events
+        .filter((e) => unsignedContract(e, today))
+        .sort((a, b) => b.event_date.localeCompare(a.event_date)),
+    [events, today]
+  );
 
   const monthMode = view === "month";
   const cells = useMemo(() => monthCells(selected), [selected]);
@@ -1284,29 +1145,13 @@ export function CalendarClient({
   };
 
   /** มีตัวกรองใดถูกปรับจากค่าเริ่มต้นไหม — โชว์จุดบนปุ่ม "ตัวกรอง" กันลืมว่าซ่อนของอยู่ */
-  const filterActive =
-    hiddenKinds.size > 0 || doctorFilter !== "" || !showServiceDates;
+  const filterActive = hiddenKinds.size > 0 || doctorFilter !== "";
 
-  const detailEvent =
-    detail?.type === "event"
-      ? (events.find((e) => e.id === detail.id) ?? null)
-      : null;
-  const detailService =
-    detail?.type === "service"
-      ? (influencers.find((i) => i.id === detail.id) ?? null)
-      : null;
+  const detailEvent = detail
+    ? (events.find((e) => e.id === detail) ?? null)
+    : null;
 
-  /** การ์ด "คิวถัดไป" — วันถัดจากที่เลือกซึ่งมีคิวจริง (สูงสุด 4 ใบ) */
-  const nextDays = useMemo(
-    () =>
-      [...itemsByDate.keys()]
-        .filter((d) => d > selected)
-        .sort()
-        .slice(0, 4),
-    [itemsByDate, selected]
-  );
-
-  const selectedItems = itemsOf(selected);
+  const selectedEvents = eventsOf(selected);
 
   return (
     <>
@@ -1318,6 +1163,36 @@ export function CalendarClient({
       {actionError && (
         <div className="mb-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           {actionError}
+        </div>
+      )}
+      {/* เตือนเคสที่มาทำแล้วแต่เอกสารยังไม่เซน — เกิดนานๆ ครั้ง จึงไม่ค่อยโผล่
+          กดชิปแล้วเด้งไปที่คิวนั้นเลย (เลือกวัน + เปิดโมดัลรายละเอียด) */}
+      {unsignedQueues.length > 0 && (
+        <div className="mb-2.5 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 animate-fade-in">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
+            <AlertTriangle size={15} className="shrink-0" />
+            มีคิวรับบริการที่ถึงวันแล้วแต่เคสยังไม่มีไฟล์สัญญาที่เซน{" "}
+            {unsignedQueues.length} คิว
+          </p>
+          {/* จำกัดความสูง — จอ ≥lg หน้านี้ห้ามมี scroll แนวตั้ง (แบนเนอร์โตไม่ได้) */}
+          <div className="mt-1.5 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+            {unsignedQueues.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => {
+                  setSelected(e.event_date);
+                  setDetail(e.id);
+                }}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 max-sm:min-h-10"
+              >
+                {nameOf(e.influencer) || e.title}
+                <span className="text-amber-600 tabular-nums">
+                  {formatDate(e.event_date)}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {!canEdit && (
@@ -1366,7 +1241,7 @@ export function CalendarClient({
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
           aria-label="ตัวกรองปฏิทิน"
-          title="ตัวกรอง: ประเภทคิว / แพทย์ / วันรับบริการจากเคส"
+          title="ตัวกรอง: ประเภทคิว / แพทย์"
           className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 lg:h-8 lg:w-8 ${
             filtersOpen
               ? "border-brand-300 bg-brand-50 text-brand-700"
@@ -1395,8 +1270,6 @@ export function CalendarClient({
           <FilterControls
             hiddenKinds={hiddenKinds}
             onToggleKind={toggleKind}
-            showServiceDates={showServiceDates}
-            onToggleServiceDates={() => setShowServiceDates((v) => !v)}
             doctorOptions={doctorOptions}
             doctorFilter={doctorFilter}
             onDoctorFilter={setDoctorFilter}
@@ -1488,12 +1361,12 @@ export function CalendarClient({
                     className={`h-14 ${monthMode ? "lg:h-auto" : "lg:h-24"}`}
                   />
                 );
-              const items = itemsOf(iso);
+              const evs = eventsOf(iso);
               const isSelected = iso === selected;
               const isToday = iso === today;
               const sunday = idx % 7 === 6;
-              const shown = items.slice(0, chipCapacity);
-              const hidden = items.length - shown.length;
+              const shown = evs.slice(0, chipCapacity);
+              const hidden = evs.length - shown.length;
               return (
                 <button
                   key={iso}
@@ -1501,7 +1374,7 @@ export function CalendarClient({
                   onClick={() => setSelected(iso)}
                   aria-label={`เปิดคิววันที่ ${formatDate(iso)}`}
                   aria-current={isSelected ? "date" : undefined}
-                  title={`${thaiDayTitle(iso)} — ${items.length} คิว`}
+                  title={`${thaiDayTitle(iso)} — ${evs.length} คิว`}
                   className={`flex h-14 min-w-0 cursor-pointer flex-col items-center gap-1 overflow-hidden rounded-xl px-0.5 py-1 transition-all active:scale-95 lg:px-1 ${
                     monthMode ? "lg:h-auto lg:min-h-0" : "lg:h-24"
                   } ${
@@ -1524,7 +1397,7 @@ export function CalendarClient({
                     >
                       {Number(iso.slice(8))}
                     </span>
-                    {items.length > 0 && (
+                    {evs.length > 0 && (
                       <span
                         className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none shadow-sm ${
                           isSelected
@@ -1532,7 +1405,7 @@ export function CalendarClient({
                             : "bg-white text-brand-700"
                         }`}
                       >
-                        {items.length}
+                        {evs.length}
                       </span>
                     )}
                   </span>
@@ -1540,40 +1413,35 @@ export function CalendarClient({
                   {/* ชิปคิวในช่อง — โชว์เท่าที่ความสูงช่องรับไหว (จอเล็กช่องเตี้ย = ไม่มีชิป) */}
                   {chipCapacity > 0 && (
                     <span className="hidden w-full min-w-0 flex-col gap-0.5 lg:flex">
-                      {shown.map((item) =>
-                        item.type === "event" ? (
+                      {shown.map((ev) => (
+                        <span
+                          key={ev.id}
+                          className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-tight text-brand-900 ${
+                            ev.done
+                              ? "bg-white/50 line-through opacity-70"
+                              : "bg-white/90"
+                          }`}
+                        >
                           <span
-                            key={item.id}
-                            className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-tight text-brand-900 ${
-                              item.event.done
-                                ? "bg-white/50 line-through opacity-70"
-                                : "bg-white/90"
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              INFLU_CALENDAR_KINDS[ev.kind].dot
                             }`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                INFLU_CALENDAR_KINDS[item.event.kind].dot
-                              }`}
+                          />
+                          <span className="shrink-0 font-semibold tabular-nums">
+                            {shortTime(ev.start_time) ?? "—"}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {nickOf(ev.influencer) || ev.title}
+                          </span>
+                          {/* เตือนเคสที่มาทำแล้วแต่ยังไม่มีไฟล์สัญญา */}
+                          {unsignedContract(ev, today) && (
+                            <AlertTriangle
+                              size={10}
+                              className="shrink-0 text-amber-600"
                             />
-                            <span className="shrink-0 font-semibold tabular-nums">
-                              {shortTime(item.event.start_time) ?? "—"}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate">
-                              {nickOf(item.event.influencer) || item.event.title}
-                            </span>
-                          </span>
-                        ) : (
-                          <span
-                            key={item.id}
-                            className="flex w-full items-center gap-1 rounded border border-dashed border-white/70 px-1 py-0.5 text-[11px] leading-tight text-cream"
-                          >
-                            <span className="shrink-0 font-semibold">จากเคส</span>
-                            <span className="min-w-0 flex-1 truncate">
-                              {nickOf(item.influ)}
-                            </span>
-                          </span>
-                        )
-                      )}
+                          )}
+                        </span>
+                      ))}
                       {hidden > 0 && (
                         <span className="px-1 text-left text-[10px] font-medium leading-tight text-cream/80">
                           +{hidden} คิว
@@ -1587,94 +1455,43 @@ export function CalendarClient({
           </div>
         </section>
 
-        {/* ---------------- การ์ดคิวรายวัน ---------------- */}
+        {/* ---------------- การ์ดคิวของ "วันที่เลือก" ----------------
+            ผู้ใช้ 2026-08-29: ให้เหลือการ์ดของวันที่เลือกใบเดียว (เดิมมี "คิวถัดไป" อีก 4 ใบ
+            และโหมดสัปดาห์กาง 7 ใบ) — อยากดูวันอื่นให้กดวันบนปฏิทิน ทั้ง 2 โหมดจึงใช้ก้อนนี้ร่วมกัน */}
         <section className="mt-4 space-y-2.5 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:pr-0.5">
-          {view === "month" ? (
-            <>
-              <div className="flex flex-wrap items-baseline gap-x-2 px-1">
-                <h3 className="text-sm font-semibold tracking-wide text-brand-700">
-                  {selected === today ? "วันนี้" : "วันที่เลือก"}
-                </h3>
-                <span className="text-xs text-stone-500">
-                  {thaiDayTitle(selected)}
-                </span>
-                <span className="text-xs text-stone-400">
-                  · {selectedItems.length} คิว
-                </span>
-                {/* ทางลัดเพิ่มคิวของวันที่เลือก — ปุ่มบน toolbar อยู่สุดหน้าจอ พอเลื่อนลงมา
-                    อ่านการ์ดคิวบนมือถือแล้วมันหลุดจอไปแล้ว */}
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => openForm()}
-                    className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-10"
-                  >
-                    <Plus size={13} /> เพิ่มคิว
-                  </button>
-                )}
-              </div>
+          <div className="flex flex-wrap items-baseline gap-x-2 px-1">
+            <h3 className="text-sm font-semibold tracking-wide text-brand-700">
+              {selected === today ? "วันนี้" : "วันที่เลือก"}
+            </h3>
+            <span className="text-xs text-stone-500">
+              {thaiDayTitle(selected)}
+            </span>
+            <span className="text-xs text-stone-400">
+              · {selectedEvents.length} คิว
+            </span>
+            {/* ทางลัดเพิ่มคิวของวันที่เลือก — ปุ่มบน toolbar อยู่สุดหน้าจอ พอเลื่อนลงมา
+                อ่านการ์ดคิวบนมือถือแล้วมันหลุดจอไปแล้ว */}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => openForm()}
+                className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 max-sm:min-h-10"
+              >
+                <Plus size={13} /> เพิ่มคิว
+              </button>
+            )}
+          </div>
 
-              <DayCard
-                dateISO={selected}
-                items={selectedItems}
-                today={today}
-                doctors={doctors}
-                canEdit={canEdit}
-                onOpen={setDetail}
-                onToggleDone={(e) => void toggleDone(e)}
-                onAdd={() => openForm()}
-              />
-
-              {nextDays.length > 0 && (
-                <>
-                  <div className="flex items-center gap-2 px-1 pt-2">
-                    <CalendarDays size={13} className="text-stone-400" />
-                    <h3 className="text-xs font-semibold tracking-wide text-stone-500">
-                      คิวถัดไป
-                    </h3>
-                  </div>
-                  {nextDays.map((d) => (
-                    <DayCard
-                      key={d}
-                      dateISO={d}
-                      items={itemsOf(d)}
-                      today={today}
-                      doctors={doctors}
-                      canEdit={canEdit}
-                      onOpen={setDetail}
-                      onToggleDone={(e) => void toggleDone(e)}
-                      onPickDay={() => setSelected(d)}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-baseline gap-x-2 px-1">
-                <h3 className="text-sm font-semibold tracking-wide text-brand-700">
-                  ทั้งสัปดาห์
-                </h3>
-                <span className="text-xs text-stone-500">
-                  {weekLabel(weekDays)}
-                </span>
-              </div>
-              {weekDays.map((d) => (
-                <DayCard
-                  key={d}
-                  dateISO={d}
-                  items={itemsOf(d)}
-                  today={today}
-                  doctors={doctors}
-                  canEdit={canEdit}
-                  onOpen={setDetail}
-                  onToggleDone={(e) => void toggleDone(e)}
-                  onPickDay={() => setSelected(d)}
-                  onAdd={d === selected ? () => openForm() : undefined}
-                />
-              ))}
-            </>
-          )}
+          <DayCard
+            dateISO={selected}
+            events={selectedEvents}
+            today={today}
+            doctors={doctors}
+            canEdit={canEdit}
+            onOpen={setDetail}
+            onToggleDone={(e) => void toggleDone(e)}
+            onAdd={() => openForm()}
+          />
         </section>
       </div>
 
@@ -1713,8 +1530,6 @@ export function CalendarClient({
                 <FilterControls
                   hiddenKinds={hiddenKinds}
                   onToggleKind={toggleKind}
-                  showServiceDates={showServiceDates}
-                  onToggleServiceDates={() => setShowServiceDates((v) => !v)}
                   doctorOptions={doctorOptions}
                   doctorFilter={doctorFilter}
                   onDoctorFilter={setDoctorFilter}
@@ -1729,6 +1544,7 @@ export function CalendarClient({
         <EventDetailModal
           key={detailEvent.id}
           event={detailEvent}
+          today={today}
           doctors={doctors}
           canEdit={canEdit}
           error={actionError}
@@ -1738,25 +1554,6 @@ export function CalendarClient({
           }}
           onDelete={() => deleteEvent(detailEvent.id)}
           onToggleDone={() => void toggleDone(detailEvent)}
-          onClose={() => setDetail(null)}
-        />
-      )}
-
-      {detailService && (
-        <ServiceDetailModal
-          key={detailService.id}
-          influ={detailService}
-          doctors={doctors}
-          canEdit={canEdit}
-          onCreateQueue={() =>
-            openForm({
-              kind: "service",
-              date: detailService.service_date ?? selected,
-              influencerId: detailService.id,
-              doctor: detailService.doctor_name ?? "",
-              title: detailService.procedure_text ?? "",
-            })
-          }
           onClose={() => setDetail(null)}
         />
       )}

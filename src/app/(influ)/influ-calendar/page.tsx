@@ -19,18 +19,19 @@ export default async function InfluCalendarPage() {
       // ดึงคิวทั้งหมด แล้วแบ่งเดือนฝั่ง client (ปฏิทินเดินเดือนไปมาได้โดยไม่ต้องโหลดใหม่)
       // — ตารางนี้โตช้ามาก (หลักร้อยแถว/ปี); ถ้าวันหนึ่งใหญ่เกินค่อยเปลี่ยนเป็นดึงเป็นช่วงเดือน
       // ชื่อ influ join มาด้วย เพราะคิวเก่าอาจผูกกับคนที่ถูก archive แล้ว (ไม่อยู่ในลิสต์ตัวเลือก)
+      // `contract_file_path` join มาเพื่อเตือนเคสที่ "มาทำแล้วแต่ยังไม่เซนสัญญา" (ดู
+      // unsignedContract ใน calendar-client) — ไม่ได้เอามาแสดงเป็นข้อมูลบนหน้า
       supabase
         .from("influ_calendar_events")
         .select(
-          "*, influencer:influencers(id, first_name, last_name, nickname)"
+          "*, influencer:influencers(id, first_name, last_name, nickname, contract_file_path)"
         )
         .order("event_date", { ascending: true }),
-      // ตัวเลือก influencer ของฟอร์ม + วันเข้ารับบริการจากเคส (ซ้อนบนปฏิทินแบบอ่านอย่างเดียว)
+      // ตัวเลือก influencer ของฟอร์มเพิ่ม/แก้คิว (doctor_name ใช้เติมแพทย์ให้อัตโนมัติ
+      // ตอนเลือกคน + เป็นตัวเลือกในตัวกรองแพทย์)
       supabase
         .from("influencers")
-        .select(
-          "id, first_name, last_name, nickname, round_no, service_date, doctor_name, stage, completed, declined_at, procedure_text"
-        )
+        .select("id, first_name, last_name, nickname, round_no, doctor_name")
         .eq("archived", false)
         .order("first_name", { ascending: true }),
       // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มคิว + รูปโปรไฟล์ในแผงข้าง
