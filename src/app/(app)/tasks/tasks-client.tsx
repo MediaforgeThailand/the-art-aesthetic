@@ -56,6 +56,7 @@ import {
   MobileFilterBar,
   MobileWorkFilterSheet,
 } from "./mobile-filters";
+import { MobileReviewList } from "./mobile-review";
 import { MobileTabs } from "./mobile-tabs";
 import { PersonSelect } from "./person-select";
 import { PostingList } from "./posting-list";
@@ -2582,18 +2583,34 @@ export function TasksClient({
             </div>
           </>
         ) : tab === "review" ? (
-          <ReviewList
-            queue={reviewQueue}
-            teamPending={teamPendingReview}
-            sections={sections}
-            today={today}
-            userId={userId}
-            selectedId={selectedId}
-            onRowClick={(t) => setSelectedId(t.id)}
-            onApprove={approveTask}
-            onApproveBypass={requestApproveBypass}
-            onReject={requestReject}
-          />
+          <>
+            <div className="hidden lg:contents">
+              <ReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                sections={sections}
+                today={today}
+                userId={userId}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+                onApprove={approveTask}
+                onApproveBypass={requestApproveBypass}
+                onReject={requestReject}
+              />
+            </div>
+            {/* มือถือ: การ์ดโปสเตอร์ชุดเดียวกับบอร์ด — ปุ่มอนุมัติ/ตีกลับอยู่บนสุด
+                ของชีตรายละเอียดที่เลื่อนขึ้นมาตอนกดการ์ด (ไม่มีปุ่มบนการ์ด) */}
+            <div className="lg:hidden">
+              <MobileReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                userId={userId}
+                today={today}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+              />
+            </div>
+          </>
         ) : tab === "posting" ? (
           <PostingList
             tasks={postQueue}
