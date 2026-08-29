@@ -236,11 +236,22 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
   // ตัวกรองเก็บใน localStorage ของ browser เทสต์เท่านั้น)
-  const personFilter = page.locator(
-    'button[aria-label="กรองตามผู้รับผิดชอบ"]'
-  );
+  // ⚠️ จอเล็ก: แถบตัวกรองของจอใหญ่เป็น `hidden lg:flex` = ยังอยู่ใน DOM แต่มองไม่เห็น
+  // (locator แบบ CSS จะเจอแล้ว click ค้างรอ visible จนหมดเวลา) — มือถือต้องเปิดชีต
+  // "ตัวกรอง" ก่อน แล้วเลือกเฉพาะปุ่มที่มองเห็นจริงด้วย visible=true เสมอ
+  const openMobileFilterSheet = async (): Promise<boolean> => {
+    const btn = page.locator('button[aria-label="เปิดตัวกรอง"]');
+    if ((await btn.count()) === 0) return false;
+    await btn.first().click();
+    await settle(page, 500);
+    return true;
+  };
+  if (mobile) await openMobileFilterSheet();
+  const personFilter = page
+    .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+    .locator("visible=true");
   if ((await personFilter.count()) > 0) {
-    await personFilter.click();
+    await personFilter.first().click();
     await settle(page, 400);
     const allOption = page.getByRole("option", {
       name: "ผู้รับผิดชอบ: ทั้งหมด",
@@ -251,6 +262,13 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     } else {
       await page.keyboard.press("Escape");
     }
+  }
+  if (mobile) {
+    // ชีตตัวกรองยังเปิดค้างอยู่ — ถ่ายไว้แล้วปิด
+    await page.screenshot({ path: shotPath(project, "tasks-filters-sheet") });
+    await expectNoHorizontalOverflow(page, "/tasks ชีตตัวกรอง");
+    await page.keyboard.press("Escape");
+    await settle(page, 400);
   }
 
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
@@ -263,18 +281,25 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, `/tasks แท็บ ${tab}`);
   }
 
-  // ตัวกรองผู้รับผิดชอบ (PersonSelect portal)
+  // ตัวกรองผู้รับผิดชอบ (PersonSelect portal) — จอเล็กอยู่ในชีต "ตัวกรอง"
   await openShotClose(
     page,
     project,
     async () => {
-      const btn = page.locator('button[aria-label="กรองตามผู้รับผิดชอบ"]');
+      if (mobile && !(await openMobileFilterSheet())) return false;
+      const btn = page
+        .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+        .locator("visible=true");
       if ((await btn.count()) === 0) return false;
-      await btn.click();
+      await btn.first().click();
       return true;
     },
     "tasks-filter-person"
   );
+  if (mobile) {
+    await page.keyboard.press("Escape"); // Escape แรกปิดเมนู — อีกทีปิดชีต
+    await settle(page, 400);
+  }
 
   // popover "ยกเว้น"
   await openShotClose(

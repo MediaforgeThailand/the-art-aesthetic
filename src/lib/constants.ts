@@ -1,6 +1,7 @@
 import type {
   AnalysisCategory,
   ContentFormat,
+  ContentKpiBasis,
   ContentKpiPeriod,
   PriceGroup,
   RevisionKind,
@@ -505,6 +506,79 @@ export const CONTENT_KPI_PERIODS: Record<
 };
 
 export const CONTENT_KPI_PERIOD_ORDER: ContentKpiPeriod[] = ["month", "day"];
+
+/* ---------- ฐานการนับของกติกา KPI (migration 0095) ----------
+   "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน — content ที่ brief อย่างเดียวไม่มีการ์ด creative ของตัวเอง
+   เลยเคยได้ KPI 0 ตลอด; แต่ละกติกาจึงเลือกได้ว่านับจากอะไร (ดู `kpiEventsOf` ใน kpi-utils.ts) */
+export const CONTENT_KPI_BASES: Record<
+  ContentKpiBasis,
+  {
+    /** ชื่อเต็มในหน้าตั้งค่า */
+    label: string;
+    /** ป้ายสั้นบนชิป/ตาราง */
+    short: string;
+    /** อธิบายว่านับตอนไหน + ใครเป็นเจ้าของผลงาน */
+    desc: string;
+    chip: string;
+    dot: string;
+  }
+> = {
+  work: {
+    label: "ชิ้นงานที่ทำเอง",
+    short: "ส่งงาน",
+    desc: "นับตอนกดส่งตรวจ — การ์ดชิ้นงานที่ตัวเองเป็นผู้รับผิดชอบ",
+    chip: "bg-stone-100 text-stone-700",
+    dot: "bg-stone-500",
+  },
+  brief: {
+    label: "Brief ที่ถูกรับงาน",
+    short: "Brief",
+    desc: "นับตอนมีคนกด “รับงาน” จากการ์ด Brief ที่ตัวเองเป็นคนสั่ง",
+    chip: "bg-amber-100 text-amber-800",
+    dot: "bg-amber-500",
+  },
+  posted: {
+    label: "งานที่ต้องโพส",
+    short: "โพส",
+    desc: "นับตอนกด “โพสแล้ว” — การ์ดจาก Brief เป็นของผู้สั่ง Brief ส่วนการ์ดที่ไม่มี Brief เป็นของผู้รับผิดชอบเอง",
+    chip: "bg-emerald-100 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+};
+
+export const CONTENT_KPI_BASIS_ORDER: ContentKpiBasis[] = [
+  "work",
+  "brief",
+  "posted",
+];
+
+/**
+ * เจ้าของ "คิวโพส" ของการ์ดหนึ่ง — กติกาผู้ใช้ 2026-08-29:
+ * การ์ดที่มาจาก Brief → **ผู้สั่ง Brief** เป็นคนถือ KPI การโพส (created_by ของการ์ด creative
+ * ถูกตั้งเป็นผู้สั่ง Brief ตอนกดรับงาน) · การ์ดที่ไม่มี Brief (คนตัดเอง/สร้างการ์ดเอง)
+ * → ผู้รับผิดชอบการ์ดต้องเป็นคนโพสเอง
+ *
+ * ใช้ร่วมกันทั้งคิว "รอโพส" ในหน้า /tasks และการนับ KPI ฐาน 'posted'
+ * — **ห้ามเขียนเงื่อนไขนี้ซ้ำที่อื่น** ไม่งั้นสองที่จะนับคนละคนเมื่อกติกาเปลี่ยน
+ */
+export function postOwnerIdOf(t: {
+  brief_source_id: string | null;
+  created_by: string | null;
+  assignee_id: string | null;
+}): string | null {
+  return t.brief_source_id !== null ? t.created_by : t.assignee_id;
+}
+
+/**
+ * ฟอร์แมตชิ้นงานที่เดาได้จากการ์ด Brief — การ์ด Brief มักไม่มี `content_format`
+ * (ช่องนั้นติดตอนโพส) แต่มี `brief_content_type` (graphic|video) อยู่แล้ว
+ * กติกา KPI ฐาน 'brief' ที่เจาะฟอร์แมตจึงเทียบกับค่านี้เป็นตัวสำรอง
+ */
+export function briefFormatOf(briefContentType: string | null): ContentFormat | null {
+  if (briefContentType === "video") return "video";
+  if (briefContentType === "graphic") return "image";
+  return null;
+}
 
 /* ---------- ย่อไฟล์ก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้

@@ -1776,7 +1776,8 @@ export function TaskPanel({
           </FieldRow>
 
           {/* ประเภทชิ้นงานคอนเทนต์ (ภาพ/วิดีโอ) + หมวดเนื้อหา — ใช้นับ KPI ทีมคอนเทนต์
-              ปกติถูกบังคับติดตอนกด "โพสแล้ว" — ช่องนี้ไว้ติดล่วงหน้า/แก้ทีหลัง */}
+              **ทั้งสองช่องถูกบังคับตอนกด "โพสแล้ว"** (ผู้ใช้ 2026-08-29 — เดิมหมวดเป็น optional)
+              ช่องนี้ไว้ติดล่วงหน้า/แก้ทีหลัง */}
           <FieldRow label="ชิ้นงาน" htmlFor="task-content-format">
             <select
               id="task-content-format"
@@ -1793,7 +1794,7 @@ export function TaskPanel({
               }
               className={bareSelectSm}
             >
-              <option value="">ไม่ระบุ</option>
+              <option value="">ยังไม่ระบุ (ต้องระบุก่อนโพส)</option>
               {CONTENT_FORMAT_ORDER.map((f) => (
                 <option key={f} value={f}>
                   {CONTENT_FORMATS[f].label}
@@ -1816,7 +1817,7 @@ export function TaskPanel({
               }
               className={bareSelectSm}
             >
-              <option value="">ไม่ระบุ</option>
+              <option value="">ยังไม่ระบุ (ต้องระบุก่อนโพส)</option>
               {contentCategories
                 .filter(
                   (c) => c.active || c.id === task.content_category_id

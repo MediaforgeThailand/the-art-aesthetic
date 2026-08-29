@@ -14,7 +14,7 @@ import type { ProfileLite, TrackedTask } from "./kpi-utils";
 export async function loadKpiData() {
   const supabase = await createClient();
 
-  // ดึงเฉพาะงานที่เคยส่งตรวจ/ตรวจผ่าน/โพสแล้ว คอลัมน์เท่าที่ใช้
+  // ดึงเฉพาะงานที่เคยส่งตรวจ/ตรวจผ่าน/โพสแล้ว/เป็น Brief ที่ถูกรับงาน คอลัมน์เท่าที่ใช้
   // — ไม่โหลด join/description มาทั้งก้อนแบบหน้า /tasks
   // embed task_files (เฉพาะ file_path) ให้ตัววิเคราะห์จำนวนชิ้นงานนับไฟล์ภาพ/วิดีโอต่อการ์ดได้
   const fetchTasks = async () => {
@@ -24,11 +24,13 @@ export async function loadKpiData() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "id, title, assignee_id, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id, files:task_files(file_path)"
+          "id, title, assignee_id, created_by, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id, brief_accepted_at, brief_source_id, brief_content_type, files:task_files(file_path)"
         )
         .is("deleted_at", null)
+        // brief_accepted_at เข้ามาด้วยตั้งแต่ 0095 — การ์ด Brief ที่ถูกรับงานคือ KPI ของผู้สั่ง Brief
+        // (การ์ดพวกนี้ไม่เคยส่งตรวจ/โพส เงื่อนไขเดิมจึงกรองทิ้งหมด)
         .or(
-          "posted_at.not.is.null,review_status.eq.approved,review_submitted_at.not.is.null"
+          "posted_at.not.is.null,review_status.eq.approved,review_submitted_at.not.is.null,brief_accepted_at.not.is.null"
         )
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
