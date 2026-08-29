@@ -50,6 +50,14 @@ import { AnalysisList } from "./analysis-list";
 import { ApprovedList } from "./approved-list";
 import { KanbanBoard, type QuickAddPlacement } from "./board";
 import { ExcludeFilter } from "./exclude-filter";
+import { MobileBoard } from "./mobile-board";
+import {
+  MobileApprovedFilterSheet,
+  MobileFilterBar,
+  MobileWorkFilterSheet,
+} from "./mobile-filters";
+import { MobileReviewList } from "./mobile-review";
+import { MobileTabs } from "./mobile-tabs";
 import { PersonSelect } from "./person-select";
 import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
@@ -624,6 +632,20 @@ export function TasksClient({
           : statusCounts.all;
   const hiddenCount = Math.max(0, statusTotal - filtered.length);
 
+  /* ---------- ตัวกรองบนมือถือ (<lg): ชีตที่เลื่อนขึ้นมาจากขอบล่าง ---------- */
+
+  /** ชีตตัวกรองที่เปิดอยู่ — null = ปิด (แท็บละชุด ไม่ปนกัน) */
+  const [filterSheet, setFilterSheet] = useState<"work" | "approved" | null>(
+    null
+  );
+  /** จำนวนตัวกรองที่เปิดอยู่ของแท็บบันทึกงาน (ไม่นับช่องค้นหาที่เห็นอยู่แล้วบนแถบ) */
+  const workFilterCount =
+    (assigneeFilter !== "all" ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0) +
+    (dueFrom !== "" || dueTo !== "" ? 1 : 0) +
+    excludeAssignees.length +
+    excludeStatuses.length;
+
   /** งานที่ section หายไป (null/ไม่รู้จัก) ถูกพักไว้ที่คอลัมน์แรก — กติกาเดียวกับตอนลบ section */
   const bucketOf = (t: TaskWithAssignee): string | null => {
     if (t.section_id && sections.some((s) => s.id === t.section_id)) {
@@ -790,6 +812,13 @@ export function TasksClient({
     setApFrom("");
     setApTo("");
   };
+
+  /** จำนวนตัวกรองที่เปิดอยู่ของแท็บ "งานเสร็จ" — ป้ายบนปุ่มตัวกรองฝั่งมือถือ */
+  const apFilterCount =
+    (apAssignee !== "all" ? 1 : 0) +
+    (apReviewer !== "all" ? 1 : 0) +
+    (apPosted !== "all" ? 1 : 0) +
+    (apFrom !== "" || apTo !== "" ? 1 : 0);
 
   const approvedAll = useMemo(
     () => activeItems.filter((t) => t.review_status === "approved"),
@@ -2050,13 +2079,32 @@ export function TasksClient({
       {/* ฝั่งซ้าย: หัวข้อ + ตัวกรอง + บอร์ด — แผงรายละเอียดอยู่นอกคอลัมน์นี้จึงสูงเต็มจอ */}
       <div className="flex min-w-0 flex-1 flex-col">
       {/* ส่วนหัว + ตัวกรอง — ชิดซ้าย ให้พื้นที่ที่เหลือเป็นของบอร์ด */}
-      <div className="shrink-0 px-4 pt-5 sm:px-6">
-        <div className="mb-3 animate-fade-in-up">
+      <div className="shrink-0 px-3 pt-2 sm:px-6 lg:px-4 lg:pt-5">
+        {/* หัวข้อหน้าเป็นของจอใหญ่เท่านั้น — บนมือถือแถบเมนูล่างไฮไลต์ "งาน" อยู่แล้ว
+            และพื้นที่แนวตั้งมีค่ากว่า (บอร์ดในภาพที่ผู้ใช้ส่งมาเหลือที่นิดเดียว) */}
+        <div className="mb-3 hidden animate-fade-in-up lg:block">
           <h1 className="text-xl font-semibold text-stone-900">Task</h1>
         </div>
 
+        {/* แท็บเวอร์ชันมือถือ — grid 5 ช่องพอดีจอ ไม่ต้องเลื่อนแนวนอน */}
+        <div className="mb-2 lg:hidden">
+          <MobileTabs
+            tab={tab}
+            onChange={setTab}
+            reviewCount={reviewQueue.length}
+            postingCount={postQueue.length}
+            approvedCount={approvedAll.length}
+            trashCount={trashedItems.length}
+            isAdmin={isAdmin}
+            onManageReviewers={() => {
+              setShow1bPicker(false);
+              setReviewerModalOpen(true);
+            }}
+          />
+        </div>
+
         {/* แท็บ: บันทึกงาน / รอฉันตรวจ — จอแคบเลื่อนแนวนอนได้ ไม่ดันตกบรรทัด */}
-        <div className="mb-3 flex gap-1 overflow-x-auto [scrollbar-width:none]">
+        <div className="mb-3 hidden gap-1 overflow-x-auto [scrollbar-width:none] lg:flex">
           <button
             type="button"
             onClick={() => setTab("work")}
@@ -2198,8 +2246,41 @@ export function TasksClient({
           </div>
         )}
 
+        {/* มือถือ: แถวเดียว = ค้นหา + ปุ่มตัวกรอง (ที่เหลืออยู่ในชีตที่เลื่อนขึ้นจากขอบล่าง) */}
         {tab === "work" && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
+          <div className="mb-2 space-y-1.5 lg:hidden">
+            <MobileFilterBar
+              search={search}
+              onSearch={setSearch}
+              placeholder="ค้นหางาน..."
+              activeCount={workFilterCount}
+              onOpen={() => setFilterSheet("work")}
+            />
+            {hiddenCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
+                  <EyeOff size={12} className="shrink-0" />
+                  <span className="truncate">
+                    แสดง {filtered.length} จาก {statusTotal} · ซ่อน{" "}
+                    {hiddenCount}
+                  </span>
+                </span>
+                {hasFilter && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="shrink-0 cursor-pointer text-[11px] text-stone-400 underline underline-offset-2"
+                  >
+                    ล้างตัวกรอง
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "work" && (
+        <div className="mb-3 hidden flex-wrap items-center gap-3 animate-fade-in-up lg:flex">
           <div className="relative min-w-56 flex-1 sm:max-w-xs">
             <Search
               size={16}
@@ -2303,7 +2384,7 @@ export function TasksClient({
 
         {tab === "posting" && (
           <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
-            <div className="w-56">
+            <div className="w-full sm:w-56">
               <PersonSelect
                 ariaLabel="กรองคิวรอโพสตามผู้รับผิดชอบ"
                 value={pqAssignee}
@@ -2341,7 +2422,19 @@ export function TasksClient({
         )}
 
         {tab === "approved" && (
-          <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
+          <div className="mb-2 lg:hidden">
+            <MobileFilterBar
+              search={apSearch}
+              onSearch={setApSearch}
+              placeholder="ค้นหางานที่ตรวจแล้ว..."
+              activeCount={apFilterCount}
+              onOpen={() => setFilterSheet("approved")}
+            />
+          </div>
+        )}
+
+        {tab === "approved" && (
+          <div className="mb-3 hidden flex-wrap items-center gap-3 animate-fade-in-up lg:flex">
             <div className="relative min-w-56 flex-1 sm:max-w-xs">
               <Search
                 size={16}
@@ -2446,41 +2539,78 @@ export function TasksClient({
       {/* เนื้อหา — บอร์ดเลื่อนได้ทั้งแนวนอน+แนวตั้งทั้งจอ (คอลัมน์ไม่ scroll ในตัวเอง), แท็บรอตรวจ scroll แนวตั้ง */}
       <div
         className={`min-h-0 flex-1 ${
-          tab === "work" ? "overflow-auto" : "overflow-y-auto"
+          tab === "work"
+            ? // มือถือ: บอร์ดปาดข้างคุม scroll ในตัวเอง (overflow-hidden) / จอใหญ่: เลื่อนทั้งบอร์ดเหมือนเดิม
+              "overflow-hidden lg:overflow-auto"
+            : "overflow-y-auto"
         }`}
       >
         {tab === "work" ? (
-          <KanbanBoard
-            sections={sections}
-            tasksBySection={tasksBySection}
-            taskById={taskById}
-            today={today}
-            selectedId={selectedId}
-            profiles={profiles}
-            onAssign={assignTask}
-            onMoveTask={moveTask}
-            onReorderSections={reorderSections}
-            onCardClick={(t) => setSelectedId(t.id)}
-            onQuickAdd={(sectionId, title, placement) =>
-              void quickAdd(sectionId, title, placement)
-            }
-            onRenameSection={renameSection}
-            onToggleSectionType={toggleSectionType}
-            onDeleteSection={requestDeleteSection}
-          />
+          <>
+            {/* lg:contents = ตัว wrapper หายไปจาก layout ตอนจอใหญ่ ทำให้ KanbanBoard
+                ยังเป็นลูกโดยตรงของกล่อง scroll (min-h-full ของบอร์ดจึงยังอ้างอิงถูกตัว) */}
+            <div className="hidden lg:contents">
+              <KanbanBoard
+                sections={sections}
+                tasksBySection={tasksBySection}
+                taskById={taskById}
+                today={today}
+                selectedId={selectedId}
+                profiles={profiles}
+                onAssign={assignTask}
+                onMoveTask={moveTask}
+                onReorderSections={reorderSections}
+                onCardClick={(t) => setSelectedId(t.id)}
+                onQuickAdd={(sectionId, title, placement) =>
+                  void quickAdd(sectionId, title, placement)
+                }
+                onRenameSection={renameSection}
+                onToggleSectionType={toggleSectionType}
+                onDeleteSection={requestDeleteSection}
+              />
+            </div>
+            <div className="h-full lg:hidden">
+              <MobileBoard
+                sections={sections}
+                tasksBySection={tasksBySection}
+                today={today}
+                selectedId={selectedId}
+                onCardClick={(t) => setSelectedId(t.id)}
+                onQuickAdd={(sectionId, title, placement) =>
+                  void quickAdd(sectionId, title, placement)
+                }
+              />
+            </div>
+          </>
         ) : tab === "review" ? (
-          <ReviewList
-            queue={reviewQueue}
-            teamPending={teamPendingReview}
-            sections={sections}
-            today={today}
-            userId={userId}
-            selectedId={selectedId}
-            onRowClick={(t) => setSelectedId(t.id)}
-            onApprove={approveTask}
-            onApproveBypass={requestApproveBypass}
-            onReject={requestReject}
-          />
+          <>
+            <div className="hidden lg:contents">
+              <ReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                sections={sections}
+                today={today}
+                userId={userId}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+                onApprove={approveTask}
+                onApproveBypass={requestApproveBypass}
+                onReject={requestReject}
+              />
+            </div>
+            {/* มือถือ: การ์ดโปสเตอร์ชุดเดียวกับบอร์ด — ปุ่มอนุมัติ/ตีกลับอยู่บนสุด
+                ของชีตรายละเอียดที่เลื่อนขึ้นมาตอนกดการ์ด (ไม่มีปุ่มบนการ์ด) */}
+            <div className="lg:hidden">
+              <MobileReviewList
+                queue={reviewQueue}
+                teamPending={teamPendingReview}
+                userId={userId}
+                today={today}
+                selectedId={selectedId}
+                onRowClick={(t) => setSelectedId(t.id)}
+              />
+            </div>
+          </>
         ) : tab === "posting" ? (
           <PostingList
             tasks={postQueue}
@@ -2547,7 +2677,8 @@ export function TasksClient({
             confirm !== null ||
             reviewerModalOpen ||
             rejectTarget !== null ||
-            postTarget !== null
+            postTarget !== null ||
+            filterSheet !== null
           }
           onPatch={patchTask}
           onAssign={assignTask}
@@ -2566,6 +2697,52 @@ export function TasksClient({
           onSetBriefContentType={setBriefContentType}
         />
       )}
+
+      {/* ชีตตัวกรองของมือถือ — เลื่อนขึ้นมาจากขอบล่าง (Modal ของระบบเป็น bottom sheet ที่ <sm) */}
+      <MobileWorkFilterSheet
+        open={filterSheet === "work"}
+        onClose={() => setFilterSheet(null)}
+        profiles={profiles}
+        userId={userId}
+        meProfile={meProfile}
+        assigneeFilter={assigneeFilter}
+        onAssigneeFilter={setAssigneeFilter}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+        statusCounts={statusCounts}
+        dueFrom={dueFrom}
+        dueTo={dueTo}
+        onDueFrom={setDueFrom}
+        onDueTo={setDueTo}
+        excludeAssignees={excludeAssignees}
+        excludeStatuses={excludeStatuses}
+        onToggleExcludeAssignee={toggleExcludeAssignee}
+        onToggleExcludeStatus={toggleExcludeStatus}
+        hasFilter={hasFilter}
+        onClear={clearFilters}
+        resultCount={filtered.length}
+      />
+      <MobileApprovedFilterSheet
+        open={filterSheet === "approved"}
+        onClose={() => setFilterSheet(null)}
+        profiles={profiles}
+        reviewerOptions={apReviewerOptions}
+        userId={userId}
+        meProfile={meProfile}
+        assignee={apAssignee}
+        onAssignee={setApAssignee}
+        reviewer={apReviewer}
+        onReviewer={setApReviewer}
+        posted={apPosted}
+        onPosted={setApPosted}
+        from={apFrom}
+        to={apTo}
+        onFrom={setApFrom}
+        onTo={setApTo}
+        hasFilter={hasApFilter}
+        onClear={clearApFilters}
+        resultCount={approvedFiltered.length}
+      />
 
       {/* จัดการผู้ตรวจ: เพิ่ม/ลบ roster + ตั้งผู้ตรวจอัตโนมัติของฉัน */}
       <Modal

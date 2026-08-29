@@ -5,6 +5,8 @@ import {
   ArrowUpRight,
   CheckCheck,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   ExternalLink,
   Inbox,
@@ -132,9 +134,134 @@ function FieldRow({
   );
 }
 
+/* ============================================================================
+   แผงรายละเอียด = bottom sheet ลากได้ บนมือถือ (<lg)
+   ----------------------------------------------------------------------------
+   ของเดิมเป็น overlay เต็มจอทับบอร์ด — กดการ์ดทีเดียวบอร์ดหายทั้งหน้า ต้องกด
+   "กลับ" ทุกครั้งเพื่อดูใบถัดไป. เวอร์ชันนี้เลื่อนขึ้นมาจากขอบล่างแค่ครึ่งจอ
+   (ยังเห็นการ์ดที่เลือกอยู่ด้านหลัง) แล้วลากที่จับขึ้นเพื่อขยายเต็มจอ /
+   ลากลงเพื่อย่อหรือปิด
+
+   กติกาการทำงาน (อย่าเปลี่ยนเป็น state ที่อ่าน matchMedia):
+   - ความสูง/ตำแหน่งคุมด้วย CSS ล้วน — ระดับชีตส่งผ่านตัวแปร `--sheet-y`
+     ที่ถูกใช้เฉพาะใน `max-lg:` เท่านั้น จอ ≥lg จึงเป็นแผงข้างขวาเหมือนเดิมเป๊ะ
+     (ถ้าย้ายไปใช้ inline transform จะต้องเดา breakpoint ด้วย JS แล้วมีเฟรมแรก
+     ที่วาดผิดฝั่งให้เห็นวูบ)
+   - ระหว่างลากขยับเฉพาะ transform (ไม่แตะ layout) ส่วนช่องว่างท้ายเนื้อหา
+     (`--sheet-pad`) ผูกกับ "ระดับที่ลงล็อกแล้ว" เท่านั้น — ตัวชีตสูงเต็มจอเสมอ
+     ถ้าไม่มีช่องว่างนี้ เนื้อหาท่อนท้ายจะจมอยู่ใต้ขอบจอตอนชีตอยู่ระดับครึ่ง
+   ========================================================================== */
+
+/** สัดส่วนที่ชีตถูกดันลงตอนอยู่ระดับ "ครึ่งจอ" (ค่าเริ่มต้นตอนกดการ์ด) */
+const SHEET_HALF_PCT = 42;
+/** ลากลงเลยสัดส่วนนี้ของความสูงชีตแล้วปล่อย = ปิดแผงไปเลย */
+const SHEET_DISMISS_RATIO = 0.78;
+/** ลากขึ้นจนเหลือน้อยกว่าสัดส่วนนี้แล้วปล่อย = ขยายเต็มจอ */
+const SHEET_EXPAND_RATIO = 0.21;
+
+function useBottomSheet(
+  onClose: () => void,
+  ref: React.RefObject<HTMLElement | null>
+) {
+  const [snap, setSnap] = useState<"half" | "full">("half");
+  /** ระยะที่กำลังลากอยู่ (px) — null = ไม่ได้ลาก ใช้ระดับตาม snap */
+  const [dragY, setDragY] = useState<number | null>(null);
+  /** เฟรมแรกชีตยังอยู่ใต้ขอบจอ แล้วค่อยเลื่อนขึ้น = แอนิเมชันเปิด (ไม่ใช้ keyframe
+      เพราะ keyframe จะแย่งคุม transform กับตัวแปร --sheet-y) */
+  const [entered, setEntered] = useState(false);
+  // เก็บ onClose ไว้ใน ref (อัพเดตใน effect ไม่ใช่ตอน render) — ผู้เรียกส่ง arrow ใหม่ทุก render
+  // ผูกเป็น dependency ตรงๆ ไม่ได้ และตัว handler ลากต้องเรียกค่าล่าสุดเสมอ
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
+  const drag = useRef<{
+    startY: number;
+    base: number;
+    height: number;
+    moved: boolean;
+  } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    const el = ref.current;
+    // ปุ่มในหัวชีต (ปิด/ขยาย) ต้องกดได้ตามปกติ — ไม่เริ่มลากจากตรงนั้น
+    if (!el || (e.target as HTMLElement).closest("button")) return;
+    const height = el.getBoundingClientRect().height;
+    const base = snap === "full" ? 0 : (height * SHEET_HALF_PCT) / 100;
+    drag.current = { startY: e.clientY, base, height, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragY(base);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const delta = e.clientY - d.startY;
+    if (Math.abs(delta) > 3) d.moved = true;
+    setDragY(Math.min(Math.max(d.base + delta, 0), d.height));
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    const y = Math.min(
+      Math.max(d.base + (e.clientY - d.startY), 0),
+      d.height
+    );
+    setDragY(null);
+    // แตะเฉยๆ ไม่ได้ลาก = สลับระดับ (ที่จับทำหน้าที่เป็นปุ่มไปในตัว)
+    if (!d.moved) {
+      setSnap((s) => (s === "full" ? "half" : "full"));
+      return;
+    }
+    if (y > d.height * SHEET_DISMISS_RATIO) {
+      closeRef.current();
+      return;
+    }
+    setSnap(y < d.height * SHEET_EXPAND_RATIO ? "full" : "half");
+  };
+
+  const style = {
+    "--sheet-y": !entered
+      ? "100%"
+      : dragY !== null
+        ? `${dragY}px`
+        : snap === "full"
+          ? "0%"
+          : `${SHEET_HALF_PCT}%`,
+    // ผูกกับ snap อย่างเดียว (ไม่ผูก dragY) — ไม่งั้น padding เปลี่ยนทุกเฟรมที่ลาก = reflow รัวๆ
+    "--sheet-pad": snap === "full" ? "0px" : `${SHEET_HALF_PCT}dvh`,
+  } as React.CSSProperties;
+
+  return {
+    snap,
+    style,
+    /** คลาสของ aside เฉพาะส่วนที่เปลี่ยนตามการลาก */
+    motionClass:
+      dragY !== null
+        ? "max-lg:transition-none"
+        : "max-lg:transition-transform max-lg:duration-300 max-lg:ease-out",
+    toggle: () => setSnap((s) => (s === "full" ? "half" : "full")),
+    handleProps: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+    },
+  };
+}
+
 /**
  * แผงรายละเอียดงานฝั่งขวาแบบ Asana — สูงเต็มจอ, field ไร้กล่อง, งานย่อย + ความคิดเห็น
  * mount ด้วย key={task.id} เพื่อรีเซ็ต draft เมื่อสลับงาน
+ * (มือถือ = bottom sheet ลากได้ — ดูหัวข้อด้านบน)
  */
 export function TaskPanel({
   task,
@@ -218,6 +345,7 @@ export function TaskPanel({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const asideRef = useRef<HTMLElement>(null);
+  const sheet = useBottomSheet(onClose, asideRef);
   const me = profiles.find((p) => p.id === userId) ?? null;
   // ผู้ตรวจของทอดปัจจุบันที่ "ยังไม่อนุมัติ" — ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม)
   // ต้องอนุมัติครบทุกคนก่อนงานจึงผ่านทอด 1; ทอด 2 = reviewer2_id
@@ -1053,25 +1181,59 @@ export function TaskPanel({
   /* ---------- render ---------- */
 
   return (
-    <aside
-      ref={asideRef}
-      tabIndex={-1}
-      aria-label="รายละเอียดงาน"
-      // มือถือ: overlay เต็มจอทับบอร์ด / จอใหญ่ (≥lg): แผงข้างขวาแบบเดิม
-      className="fixed inset-0 z-50 flex w-full flex-col bg-white/95 shadow-xl outline-none backdrop-blur-2xl animate-slide-in-right lg:static lg:z-auto lg:h-full lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-white/60 lg:bg-white/80"
-    >
-      {/* มือถือ: แถบ "กลับ" เต็มความกว้างบนสุด — ปุ่ม X เดิมเล็กเกินไปและมักถูกปุ่มตรวจงานที่ wrap หลายบรรทัดดันหลุดสายตา */}
-      <div className="shrink-0 border-b border-stone-200/60 bg-white/70 px-2 pt-safe lg:hidden">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="กลับไปที่รายการงาน"
-          className="flex min-h-11 w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-brand-700 transition-colors active:bg-brand-50"
+    <>
+      {/* ฉากหลังของชีต (มือถือ) — ยังเห็นบอร์ดจางๆ ด้านหลัง แตะเพื่อปิด
+          z-50 เท่ากับตัวชีตแต่มาก่อนใน DOM จึงอยู่ใต้ชีตเสมอ และคลุมแถบเมนูล่าง (z-40) */}
+      <div
+        aria-hidden
+        onClick={onClose}
+        className="fixed inset-0 z-50 bg-brand-900/25 animate-fade-in lg:hidden"
+      />
+      <aside
+        ref={asideRef}
+        tabIndex={-1}
+        aria-label="รายละเอียดงาน"
+        style={sheet.style}
+        // มือถือ: bottom sheet ลากได้ (ระดับคุมด้วย --sheet-y) / จอใหญ่ (≥lg): แผงข้างขวาแบบเดิม
+        // มือถือใช้พื้นทึบ (ไม่ใช่ /95 + blur) — ชีตวางทับบอร์ดที่มีรูปเต็มการ์ด
+        // พื้นโปร่ง 5% ทำให้เห็นเงาการ์ดหลังตัวหนังสือ อ่านยากและดูสกปรก
+        className={`fixed inset-x-0 bottom-0 z-50 flex h-[calc(100dvh-env(safe-area-inset-top,0px))] w-full flex-col overflow-hidden rounded-t-2xl border-t border-white/70 bg-white pb-safe shadow-2xl outline-none max-lg:translate-y-[var(--sheet-y)] lg:static lg:z-auto lg:h-full lg:w-[26rem] lg:shrink-0 lg:rounded-none lg:border-t-0 lg:border-l lg:border-white/60 lg:bg-white/80 lg:pb-0 lg:shadow-xl lg:backdrop-blur-2xl lg:animate-slide-in-right ${sheet.motionClass}`}
+      >
+        {/* มือถือ: ที่จับชีต — ลากขึ้น = เต็มจอ, ลากลง = ย่อ/ปิด, แตะเฉยๆ = สลับระดับ
+            touch-none จำเป็น ไม่งั้นเบราว์เซอร์แย่งลากไปเลื่อนหน้าแทน */}
+        <div
+          {...sheet.handleProps}
+          className="shrink-0 touch-none select-none border-b border-stone-200/60 bg-white/70 px-2 pt-safe lg:hidden"
         >
-          <ArrowLeft size={20} />
-          กลับ
-        </button>
-      </div>
+          <div className="flex items-center justify-center py-2">
+            <span className="h-1.5 w-10 rounded-full bg-stone-300" />
+          </div>
+          <div className="flex items-center gap-1 pb-1">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="ปิดรายละเอียดงาน กลับไปที่บอร์ด"
+              className="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-brand-700 transition-colors active:bg-brand-50"
+            >
+              <ArrowLeft size={20} />
+              กลับ
+            </button>
+            <button
+              type="button"
+              onClick={sheet.toggle}
+              aria-label={
+                sheet.snap === "full" ? "ย่อแผงลงครึ่งจอ" : "ขยายแผงเต็มจอ"
+              }
+              className="ml-auto flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors active:bg-stone-100"
+            >
+              {sheet.snap === "full" ? (
+                <ChevronDown size={20} />
+              ) : (
+                <ChevronUp size={20} />
+              )}
+            </button>
+          </div>
+        </div>
 
       {/* header — เซคชัน brief: ปุ่ม "รับงาน" / งานปกติ: ส่งตรวจ → รอตรวจ → อนุมัติ */}
       <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/60 px-4 py-3">
@@ -1919,6 +2081,13 @@ export function TaskPanel({
             {formatDateTime(task.posted_at)}
           </p>
         )}
+        {/* ช่องว่างท้ายเนื้อหาเท่าส่วนที่ชีตจมอยู่ใต้ขอบจอ — ตัวชีตสูงเต็มจอเสมอ
+            ถ้าไม่มีตัวนี้ ท่อนท้ายจะเลื่อนขึ้นมาอ่านไม่ได้ตอนชีตอยู่ระดับครึ่งจอ */}
+        <div
+          aria-hidden
+          style={{ height: "var(--sheet-pad)" }}
+          className="lg:hidden"
+        />
       </div>
 
       {panelError && (
@@ -2122,7 +2291,8 @@ export function TaskPanel({
         }}
         onClose={() => setConfirmRemoveFile(null)}
       />
-    </aside>
+      </aside>
+    </>
   );
 }
 

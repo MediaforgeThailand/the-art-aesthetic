@@ -378,7 +378,8 @@ export function CompleteToggle({
 const signedUrlCache = new Map<string, { url: string; at: number }>();
 const SIGNED_URL_CACHE_MS = 50 * 60 * 1000; // ขอใหม่ก่อน URL หมดอายุจริง (1 ชม.)
 
-function useCachedSignedUrl(path: string): {
+/** ใช้ร่วมกับการ์ดโปสเตอร์บนมือถือ (mobile-board) — cache เดียวกัน ไม่ขอ URL ซ้ำตอนสลับมุมมอง */
+export function useCachedSignedUrl(path: string): {
   url: string | null;
   failed: boolean;
 } {
