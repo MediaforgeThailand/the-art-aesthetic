@@ -283,9 +283,12 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
   // ตัวกรองเก็บใน localStorage ของ browser เทสต์เท่านั้น)
-  const personFilter = page.locator(
-    'button[aria-label="กรองตามผู้รับผิดชอบ"]'
-  );
+  // visible=true เสมอ: จอเล็กแถวตัวกรองเดสก์ท็อปยังอยู่ใน DOM (ถูกซ่อนด้วย CSS)
+  // — เช็คแค่ count() แล้วกดจะค้างรอ "element to be visible" จนหมดเวลาเทสต์
+  const personFilter = page
+    .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+    .locator("visible=true")
+    .first();
   if ((await personFilter.count()) > 0) {
     await personFilter.click();
     await settle(page, 400);
@@ -301,7 +304,11 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
-    await page.getByRole("button", { name: tab }).first().click();
+    await page
+      .getByRole("button", { name: tab })
+      .locator("visible=true")
+      .first()
+      .click();
     await settle(page, 700);
     await page.screenshot({
       path: shotPath(project, `tasks-tab-${tab}`),
@@ -315,7 +322,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.locator('button[aria-label="กรองตามผู้รับผิดชอบ"]');
+      const btn = page
+        .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]')
+        .locator("visible=true")
+        .first();
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
@@ -328,7 +338,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.getByRole("button", { name: /ยกเว้น/ }).first();
+      const btn = page
+        .getByRole("button", { name: /ยกเว้น/ })
+        .locator("visible=true")
+        .first();
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
@@ -381,7 +394,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        const btn = page.getByRole("button", { name: a.label }).first();
+        const btn = page
+          .getByRole("button", { name: a.label })
+          .locator("visible=true")
+          .first();
         if ((await btn.count()) === 0) return false;
         await btn.click();
         return true;

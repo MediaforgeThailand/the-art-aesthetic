@@ -1708,7 +1708,7 @@ export function TaskPanel({
                       value={influQuery}
                       onChange={(e) => setInfluQuery(e.target.value)}
                       placeholder="ค้นหาชื่อ / ชื่อเล่น..."
-                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
@@ -2031,7 +2031,7 @@ export function TaskPanel({
                     setAddingSub(false);
                     if (t !== "") void addSubtask(t);
                   }}
-                  className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                  className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
                 />
               </div>
             ) : (
@@ -2131,7 +2131,7 @@ export function TaskPanel({
               aria-label="ลิงก์ไฟล์แนบ"
               placeholder="วางลิงก์ไฟล์ที่แก้ไข (Google Drive)..."
               onChange={(e) => setLinkDraft(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
         )}
@@ -2194,7 +2194,7 @@ export function TaskPanel({
                 void sendComment();
               }
             }}
-            className="min-h-9 min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-stone-100 px-3.5 py-2 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="min-h-9 min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-stone-100 px-3.5 py-2 text-sm leading-6 text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
           <button
             type="button"

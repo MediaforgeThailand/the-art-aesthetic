@@ -345,7 +345,7 @@ export function OptionPicker({
                       void create();
                     }
                   }}
-                  className="w-full rounded-md border border-stone-300/80 bg-white px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+                  className="w-full rounded-md border border-stone-300/80 bg-white px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
                 />
               ) : (
                 <button
@@ -483,7 +483,7 @@ export function TagPicker({
                 }}
                 placeholder="ค้นหา / พิมพ์ชื่อแท็กใหม่"
                 /* text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS จะซูมหน้าเข้าเองและไม่ซูมกลับ */
-                className="w-full rounded-md border border-stone-300/80 bg-white px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+                className="w-full rounded-md border border-stone-300/80 bg-white px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
               />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">

@@ -1281,7 +1281,7 @@ export function MyTasksClient({
               placeholder="ค้นหาชื่องาน/โน้ต"
               aria-label="ค้นหา"
               /* text-base บนจอเล็ก — ต่ำกว่า 16px แล้ว iOS ซูมหน้าเข้าเองและไม่ซูมกลับ */
-              className="w-40 border-none bg-transparent text-base text-stone-900 placeholder:text-stone-400 focus:outline-none sm:w-48 sm:text-sm"
+              className="w-40 border-none bg-transparent text-base text-stone-900 placeholder:text-stone-500 focus:outline-none sm:w-48 sm:text-sm"
             />
             <button
               type="button"
@@ -1597,7 +1597,7 @@ function AddCategoryInline({
             setOpen(false);
           }
         }}
-        className="w-64 max-w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+        className="w-64 max-w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
       />
       <Button onClick={() => void submit()} loading={saving} className="shrink-0">
         <Plus size={16} />
@@ -1714,7 +1714,7 @@ function GroupSection({
                 setEditing(false);
               }
             }}
-            className={`min-w-0 max-w-[16rem] border-b-2 border-brand-400 bg-transparent py-0.5 text-base font-bold placeholder:font-normal placeholder:text-stone-400 focus:outline-none sm:text-[17px] ${group.text}`}
+            className={`min-w-0 max-w-[16rem] border-b-2 border-brand-400 bg-transparent py-0.5 text-base font-bold placeholder:font-normal placeholder:text-stone-500 focus:outline-none sm:text-[17px] ${group.text}`}
           />
         ) : (
           <button
@@ -1822,7 +1822,7 @@ function GroupSection({
                         onAdd(el.value);
                         el.value = "";
                       }}
-                      className="w-full border-none bg-transparent py-2 text-base text-stone-900 placeholder:text-stone-400 focus:outline-none sm:text-sm"
+                      className="w-full border-none bg-transparent py-2 text-base text-stone-900 placeholder:text-stone-500 focus:outline-none sm:text-sm"
                     />
                   ) : group.drop || group.tagId ? (
                     // ชวนให้ลากเฉพาะกลุ่มที่รับ drop ได้จริง — กลุ่มที่เงื่อนไขมาจากวันที่
