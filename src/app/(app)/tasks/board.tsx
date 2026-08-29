@@ -86,7 +86,7 @@ function TaskComposer({
             }
           }}
           onBlur={() => commit(false)}
-          className="min-w-0 flex-1 resize-none border-none bg-transparent text-sm font-medium leading-snug text-stone-900 placeholder:text-stone-400 focus:outline-none"
+          className="min-w-0 flex-1 resize-none border-none bg-transparent text-sm font-medium leading-snug text-stone-900 placeholder:text-stone-500 focus:outline-none"
         />
       </div>
       <div className="mt-2 pl-6">

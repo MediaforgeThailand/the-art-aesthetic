@@ -197,7 +197,7 @@ export function DoctorSelect({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="พิมพ์ค้นหาชื่อหมอ..."
-                className="w-full rounded-md border border-stone-200 bg-white px-2 py-2 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+                className="w-full rounded-md border border-stone-200 bg-white px-2 py-2 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
               />
             </div>
             <div className="flex-1 overflow-y-auto p-1.5">

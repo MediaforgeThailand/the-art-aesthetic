@@ -221,7 +221,7 @@ export function ProcedurePicker({
               void addNewToTeam(q);
             }
           }}
-          className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-400 transition-colors focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 sm:text-sm"
+          className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-500 transition-colors focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 sm:text-sm"
         />
         {open && !disabled && (
           <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
@@ -242,7 +242,7 @@ export function ProcedurePicker({
                     {c.name}
                   </span>
                   {c.aliases && (
-                    <span className="block truncate text-[11px] text-stone-400">
+                    <span className="block truncate text-[11px] text-stone-500">
                       {c.aliases}
                     </span>
                   )}
@@ -291,11 +291,6 @@ export function ProcedurePicker({
           {err}
         </p>
       )}
-      <p className="mt-1.5 text-xs text-stone-400">
-        เลือกทีมก่อนแล้วค้นหาเมนูของทีมนั้น · เลือกจากเมนู = ได้ราคาอ้างอิงเป็นต้นทุนตั้งต้น
-        · พิมพ์ชื่อใหม่ = เพิ่มเข้าเมนูของทีมให้ค้นเจอครั้งหน้า (ต้นทุน ฿0
-        ไปกรอกทีหลังที่หน้า Influencer Cost)
-      </p>
     </div>
   );
 }

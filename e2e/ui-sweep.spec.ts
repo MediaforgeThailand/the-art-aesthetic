@@ -319,7 +319,11 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   }
 
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
-    await page.getByRole("button", { name: tab }).first().click();
+    await page
+      .getByRole("button", { name: tab })
+      .locator("visible=true")
+      .first()
+      .click();
     await settle(page, 700);
     await page.screenshot({
       path: shotPath(project, `tasks-tab-${tab}`),
@@ -353,7 +357,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.getByRole("button", { name: /ยกเว้น/ }).first();
+      const btn = page
+        .getByRole("button", { name: /ยกเว้น/ })
+        .locator("visible=true")
+        .first();
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
@@ -406,7 +413,10 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       page,
       project,
       async () => {
-        const btn = page.getByRole("button", { name: a.label }).first();
+        const btn = page
+          .getByRole("button", { name: a.label })
+          .locator("visible=true")
+          .first();
         if ((await btn.count()) === 0) return false;
         await btn.click();
         return true;

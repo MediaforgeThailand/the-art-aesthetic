@@ -473,7 +473,7 @@ function QuickAddRow({ onAdd }: { onAdd: (title: string) => void }) {
           setActive(false);
           if (t !== "") onAdd(t);
         }}
-        className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+        className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
       />
     </div>
   );

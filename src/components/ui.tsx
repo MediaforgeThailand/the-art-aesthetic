@@ -70,8 +70,10 @@ export function Card({
 
 /* text-base บนจอเล็ก: iOS Safari ซูมหน้าเข้าอัตโนมัติเมื่อโฟกัสช่องที่ฟอนต์ < 16px
    แล้วไม่ซูมกลับ — ผู้ใช้ต้องถ่างนิ้วออกเองทุกครั้งที่กรอกฟอร์ม (จอ ≥sm ใช้ 14px ตามเดิม) */
+// placeholder เป็น stone-500 ไม่ใช่ 400 — 400 บนพื้นขาวได้คอนทราสต์ ~2.9:1
+// (ต่ำกว่าเกณฑ์ 4.5:1) ทีมอ่านข้อความในช่องไม่ออกจนคิดว่าจอเบลอ (ผู้ใช้ 2026-08-30)
 const controlBase =
-  "w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-400 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 disabled:text-stone-400 sm:text-sm";
+  "w-full rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 text-base text-stone-900 placeholder:text-stone-500 transition-colors duration-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 disabled:text-stone-400 sm:text-sm";
 
 export function Input({
   className = "",
@@ -124,7 +126,7 @@ export function InlineInput({
     <input
       // text-base บนจอเล็กเหมือน controlBase — ช่องนี้ปล่อยให้ผู้เรียกกำหนดฟอนต์เองมาตลอด
       // ทำให้ composer/rename โดน iOS ซูมเข้าแล้วไม่ซูมกลับทุกครั้งที่แตะ
-      className={`w-full rounded-md border border-brand-300 bg-white text-base text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm ${className}`}
+      className={`w-full rounded-md border border-brand-300 bg-white text-base text-stone-900 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm ${className}`}
       {...props}
     />
   );

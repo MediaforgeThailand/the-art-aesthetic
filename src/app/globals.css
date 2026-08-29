@@ -31,6 +31,13 @@
   /* ป้ายเตือนแบบ "เรืองแสง" — ใช้กับเรื่องที่ต้องสะดุดตาจริงๆ เท่านั้น
      (ตอนนี้: เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ) */
   --animate-glow-amber: glow-amber 1.8s ease-in-out infinite;
+  /* เรืองแสงตามสีตัวอักษรของตัวเอง (currentColor) — ใช้กับป้ายที่ต้องสะดุดตา
+     แต่มีหลายสี เช่นป้ายชนิดงานในกระดิ่งแจ้งเตือน (ตรวจงาน/แก้คำผิด/กล่าวถึง) */
+  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
+  /* คำใบ้ "ปาดเปลี่ยนกลุ่มได้" บนบอร์ด Influ ของจอเล็ก — ลูกศรขยับเบาๆ
+     (บอร์ดปาดข้างไม่มีสัญญาณอะไรบอกเลยว่ามีกลุ่มถัดไปอยู่นอกจอ) */
+  --animate-swipe-nudge: swipe-nudge 1.7s ease-in-out infinite;
+  --animate-swipe-nudge-left: swipe-nudge-left 1.7s ease-in-out infinite;
 
   @keyframes fade-in {
     from {
@@ -84,6 +91,21 @@
         0 0 14px 2px rgba(245, 158, 11, 0.6);
     }
   }
+  /* เรืองแสงเป็นจังหวะตามสีตัวอักษรของ element เอง — ป้ายสีไหนก็เรืองสีนั้น
+     (ใช้ color-mix เพราะ currentColor ปรับความโปร่งใสเองไม่ได้) */
+  @keyframes glow-pulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 transparent,
+        0 0 5px 0 color-mix(in oklab, currentColor 30%, transparent);
+    }
+    50% {
+      box-shadow:
+        0 0 0 3px color-mix(in oklab, currentColor 14%, transparent),
+        0 0 12px 2px color-mix(in oklab, currentColor 55%, transparent);
+    }
+  }
   @keyframes slide-in-up {
     from {
       opacity: 0;
@@ -101,6 +123,28 @@
     }
     to {
       transform: translateX(0);
+    }
+  }
+  @keyframes swipe-nudge {
+    0%,
+    100% {
+      transform: translateX(0);
+      opacity: 0.45;
+    }
+    50% {
+      transform: translateX(4px);
+      opacity: 1;
+    }
+  }
+  @keyframes swipe-nudge-left {
+    0%,
+    100% {
+      transform: translateX(0);
+      opacity: 0.45;
+    }
+    50% {
+      transform: translateX(-4px);
+      opacity: 1;
     }
   }
 }
@@ -268,5 +312,18 @@ body::before {
     box-shadow:
       0 0 0 4px rgba(245, 158, 11, 0.16),
       0 0 14px 2px rgba(245, 158, 11, 0.6);
+  }
+  .animate-glow-pulse {
+    animation: none;
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, currentColor 14%, transparent),
+      0 0 12px 2px color-mix(in oklab, currentColor 55%, transparent);
+  }
+
+  /* ลูกศรคำใบ้ยังอยู่ครบ (ทึบเต็มที่) แค่ไม่ขยับ */
+  .animate-swipe-nudge,
+  .animate-swipe-nudge-left {
+    animation: none;
+    opacity: 1;
   }
 }
