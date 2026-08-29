@@ -236,9 +236,12 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
 
   // สลับตัวกรองผู้รับผิดชอบเป็น "ทั้งหมด" ให้เห็นการ์ดจริงของทีม (อ่านอย่างเดียว —
   // ตัวกรองเก็บใน localStorage ของ browser เทสต์เท่านั้น)
-  const personFilter = page.locator(
-    'button[aria-label="กรองตามผู้รับผิดชอบ"]'
-  );
+  // ⚠️ ต้องกรอง :visible — ตั้งแต่ /tasks แยกชั้นมือถือ (mobile-filters.tsx) ปุ่มของ
+  // ฝั่งเดสก์ท็อปยังอยู่ใน DOM แต่ถูก `hidden lg:contents` ซ่อนไว้ตอนจอเล็ก
+  // (count() > 0 เฉยๆ จึงเจอปุ่มที่กดไม่ได้ แล้วรอจนหมดเวลา)
+  const personFilter = page
+    .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]:visible')
+    .first();
   if ((await personFilter.count()) > 0) {
     await personFilter.click();
     await settle(page, 400);
@@ -268,7 +271,9 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     page,
     project,
     async () => {
-      const btn = page.locator('button[aria-label="กรองตามผู้รับผิดชอบ"]');
+      const btn = page
+        .locator('button[aria-label="กรองตามผู้รับผิดชอบ"]:visible')
+        .first();
       if ((await btn.count()) === 0) return false;
       await btn.click();
       return true;
