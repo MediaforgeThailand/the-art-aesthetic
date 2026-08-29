@@ -1840,76 +1840,54 @@ export function TaskPanel({
           </FieldRow>
         </div>
 
-        {/* ลิงก์ Google Drive — ยกออกมาเป็นกล่องของตัวเองเหนือ "รายละเอียด"
-            (ผู้ใช้ 2026-08-29: "ทำให้ช่องใส่ลิงค์ google drive ชัดเจนกว่านี้ ... และหลังจากนี้
-            บังคับอัพโหลด google drive ด้วย") ของเดิมเป็น input ไร้กรอบซ่อนอยู่ในหัวข้อ
-            "ไฟล์งานที่ Approve แล้ว" คนเลื่อนผ่านไม่เห็น — งานปกติต้องมีลิงก์ก่อนกดส่งตรวจ */}
-        <div className="border-t border-stone-200/70 px-2 pt-2.5">
-          <div
-            className={`rounded-xl border px-3 py-2.5 transition-colors ${
-              driveMissing
-                ? "border-amber-300 bg-amber-50/80"
-                : "border-sky-200 bg-sky-50/60"
-            }`}
-          >
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <Link2
-                size={15}
-                className={`shrink-0 ${
-                  driveMissing ? "text-amber-600" : "text-sky-600"
-                }`}
-              />
+        {/* ลิงก์ Google Drive — แถวของตัวเองเหนือ "รายละเอียด" (ผู้ใช้ 2026-08-29)
+            ของเดิมเป็น input ไร้กรอบซ่อนอยู่ในหัวข้อ "ไฟล์งานที่ Approve แล้ว" คนเลื่อนผ่านไม่เห็น
+            **ห้ามครอบกล่องสีทับ (กรอบในกรอบ) และห้ามมีคำอธิบายใต้ช่อง** — ชื่อหัวข้อ + badge
+            "จำเป็น" บอกครบแล้ว (คำเตือนตอนยังไม่ใส่อยู่บนปุ่มส่งตรวจงานอีกที) */}
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <div className="mb-1 flex items-center gap-1.5 px-2">
+            <Link2 size={15} className="shrink-0 text-stone-400" />
+            <span className="text-sm font-medium text-stone-500">
+              {isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"}
+            </span>
+            {!isBrief && (
               <span
-                className={`text-xs font-semibold ${
-                  driveMissing ? "text-amber-800" : "text-sky-800"
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  driveMissing
+                    ? "bg-rose-100 text-rose-600"
+                    : "bg-stone-100 text-stone-500"
                 }`}
               >
-                {isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"}
+                จำเป็น
               </span>
-              {isBrief ? (
-                <span className="text-[10px] text-stone-400">ถ้ามี</span>
-              ) : (
-                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
-                  จำเป็น
-                </span>
-              )}
-              {task.deliverable_url && (
-                <a
-                  href={task.deliverable_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="เปิดลิงก์งาน"
-                  className="ml-auto inline-flex min-h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-sky-300 bg-white px-2 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100 active:scale-[0.97] max-sm:min-h-9"
-                >
-                  <ExternalLink size={13} />
-                  เปิดลิงก์
-                </a>
-              )}
-            </div>
-            <input
-              value={deliverableDraft}
-              aria-label={
-                isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
-              }
-              placeholder={
-                isBrief
-                  ? "วางลิงก์อ้างอิงประกอบ Brief (ถ้ามี)..."
-                  : "วางลิงก์ Google Drive ของงานที่นี่..."
-              }
-              onChange={(e) => setDeliverableDraft(e.target.value)}
-              onBlur={saveDeliverableUrl}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
-              // text-base ที่จอเล็ก — ช่องกรอก < 16px ทำให้ iOS ซูมเข้าแล้วไม่ซูมกลับ
-              className="w-full rounded-lg border border-stone-300/90 bg-white px-2.5 py-2 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
-            />
-            {driveMissing && (
-              <p className="mt-1.5 text-[11px] font-medium text-amber-700">
-                ยังไม่ได้ใส่ลิงก์ — ต้องใส่ก่อนจึงจะกด &quot;ส่งตรวจงาน&quot; ได้
-              </p>
+            )}
+            {task.deliverable_url && (
+              <a
+                href={task.deliverable_url}
+                target="_blank"
+                rel="noreferrer"
+                title="เปิดลิงก์งาน"
+                className="ml-auto inline-flex min-h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-sky-200 bg-white px-2 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-50 active:scale-[0.97] max-sm:min-h-9"
+              >
+                <ExternalLink size={13} />
+                เปิดลิงก์
+              </a>
             )}
           </div>
+          <input
+            value={deliverableDraft}
+            aria-label={
+              isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
+            }
+            placeholder="วางลิงก์..."
+            onChange={(e) => setDeliverableDraft(e.target.value)}
+            onBlur={saveDeliverableUrl}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            // text-base ที่จอเล็ก — ช่องกรอก < 16px ทำให้ iOS ซูมเข้าแล้วไม่ซูมกลับ
+            className="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-base text-stone-800 transition-colors placeholder:text-stone-400 hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
+          />
         </div>
 
         {/* description */}
