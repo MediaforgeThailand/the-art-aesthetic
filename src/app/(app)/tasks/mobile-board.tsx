@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import type { QuickAddPlacement } from "./board";
-import { PosterCard } from "./mobile-card";
+import { PosterCard } from "./poster-card";
 
 /* ============================================================================
    บอร์ดเวอร์ชันมือถือ (<lg) — "ปาดข้างแบบการ์ด Tinder"

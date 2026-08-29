@@ -59,6 +59,7 @@ import type {
   TaskSubtaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import { videoThumbSrc } from "@/lib/media";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "./media-lightbox";
 import { PersonSelect } from "./person-select";
@@ -2637,7 +2638,7 @@ function DeliverableFileThumb({
           ) : isVid ? (
             <>
               <video
-                src={url}
+                src={videoThumbSrc(url)}
                 className="h-full w-full object-cover"
                 muted
                 playsInline
