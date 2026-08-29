@@ -13,8 +13,13 @@
  *    (กันนับซ้ำกับกติกาที่เจาะหมวดของฟอร์แมตเดียวกัน — convention เดียวกับ hint ใน /content-kpi)
  */
 
+import { briefFormatOf, postOwnerIdOf } from "@/lib/constants";
 import { isImagePath, isVideoPath, thaiDayOf } from "@/lib/media";
-import type { ContentFormat, ContentKpiRow } from "@/lib/types";
+import type {
+  ContentFormat,
+  ContentKpiBasis,
+  ContentKpiRow,
+} from "@/lib/types";
 
 /* ---------- types ที่หน้า server ส่งลงมา ---------- */
 
@@ -30,6 +35,14 @@ export type TrackedTask = {
   completed: boolean;
   content_format: ContentFormat | null;
   content_category_id: string | null;
+  /** ผู้สร้างการ์ด — การ์ด creative ที่มาจาก Brief ช่องนี้คือ "ผู้สั่ง Brief" (migration 0095 ใช้หาเจ้าของคิวโพส) */
+  created_by: string | null;
+  /** เวลาที่มีคนกด "รับงาน" บนการ์ด Brief — ฐานการนับ 'brief' ของผู้สั่ง Brief */
+  brief_accepted_at: string | null;
+  /** การ์ด creative ที่เกิดจาก Brief จะชี้กลับการ์ด Brief ต้นทาง (null = ไม่ได้มาจาก Brief) */
+  brief_source_id: string | null;
+  /** ชนิดงานที่สั่งบนการ์ด Brief (graphic|video) — ใช้เดาฟอร์แมตของ event ฐาน 'brief' */
+  brief_content_type: string | null;
   /** ไฟล์ที่อัพโหลดในการ์ด (task_files) — ตัววิเคราะห์จำนวนชิ้นงานใช้นับภาพ/วิดีโอจริง */
   files: { file_path: string }[];
 };
@@ -174,6 +187,135 @@ export const WORK_STATES: Record<
   },
 };
 
+/* ---------- "ผลงาน 1 ชิ้น" ของแต่ละคน = KPI event (migration 0095) ---------- */
+
+/**
+ * งาน 1 การ์ดสร้าง "ผลงาน" ให้คนได้มากกว่า 1 แบบ และคนละคนกัน — ผู้ใช้ 2026-08-29:
+ * content บางคนทำหน้าที่ brief อย่างเดียว KPI ของเขาคือ "การ์ด Brief ที่มีคนกดรับงาน"
+ * ไม่ใช่การ์ด creative; ส่วนการโพส ถ้าการ์ดมาจาก Brief คนสั่ง Brief เป็นคนถือ KPI การโพส
+ * แต่ถ้าไม่มี Brief (ตัดเอง/สร้างการ์ดเอง) คนรับผิดชอบต้องโพสเอง
+ *
+ * ทุกการนับของระบบ KPI ผ่านตัวนี้ที่เดียว — เพิ่มฐานใหม่ต้องแก้ 3 ที่:
+ * type `ContentKpiBasis`, ตาราง `CONTENT_KPI_BASES` และ check constraint (migration ใหม่)
+ */
+export type KpiEvent = {
+  t: TrackedTask;
+  basis: ContentKpiBasis;
+  /** เจ้าของผลงานชิ้นนี้ (profile id) — คนละคนได้ตามฐาน */
+  ownerId: string | null;
+  /** เวลาที่ผลงานชิ้นนี้เกิด (epoch ms) — ใช้จัดลงเดือน/ช่องวัน */
+  ms: number;
+  /** วันในเดือนที่กำลังดู (0-based) — ตั้งค่าเฉพาะ event ที่ตกอยู่ในเดือนนั้น */
+  dayIndex: number;
+};
+
+const parseMs = (raw: string | null): number | null => {
+  if (raw === null) return null;
+  const ms = Date.parse(raw);
+  return Number.isNaN(ms) ? null : ms;
+};
+
+/** ผลงานทุกแบบที่การ์ดใบนี้สร้างขึ้น (ยังไม่ผูกเดือน — computeKpiMonth เป็นคนคัดต่อ) */
+export function kpiEventsOf(
+  t: TrackedTask
+): { basis: ContentKpiBasis; ownerId: string | null; ms: number }[] {
+  const out: { basis: ContentKpiBasis; ownerId: string | null; ms: number }[] =
+    [];
+  const work = workTimeOf(t);
+  if (work !== null)
+    out.push({ basis: "work", ownerId: t.assignee_id, ms: work });
+  const brief = parseMs(t.brief_accepted_at);
+  if (brief !== null)
+    out.push({ basis: "brief", ownerId: t.created_by, ms: brief });
+  const posted = parseMs(t.posted_at);
+  if (posted !== null)
+    out.push({ basis: "posted", ownerId: postOwnerIdOf(t), ms: posted });
+  return out;
+}
+
+/**
+ * ฟอร์แมตของ event ตามฐาน — การ์ด Brief มักยังไม่มี `content_format`
+ * (ช่องนั้นถูกบังคับติดตอนกด "โพสแล้ว") จึงตกไปเดาจาก `brief_content_type` แทน
+ */
+export function kpiFormatOf(
+  t: TrackedTask,
+  basis: ContentKpiBasis
+): ContentFormat | null {
+  if (basis === "brief")
+    return t.content_format ?? briefFormatOf(t.brief_content_type);
+  return t.content_format;
+}
+
+/** event นี้เข้าเงื่อนไขกติกา KPI แถวนี้ไหม — null ในกติกา = ไม่จำกัด */
+export function ruleMatchesEvent(e: KpiEvent, r: ContentKpiRow): boolean {
+  if (r.basis !== e.basis) return false;
+  if (r.format !== null && kpiFormatOf(e.t, e.basis) !== r.format) return false;
+  if (r.category_id !== null && e.t.content_category_id !== r.category_id)
+    return false;
+  return true;
+}
+
+/** ฐานที่คนคนนี้ถูกวัดผล — ไม่มีกติกาเลย = ใช้ 'work' (พฤติกรรมเดิมของระบบ) */
+export function basesOf(rules: ContentKpiRow[] | undefined): Set<ContentKpiBasis> {
+  if (!rules || rules.length === 0) return new Set<ContentKpiBasis>(["work"]);
+  return new Set(rules.map((r) => r.basis));
+}
+
+/* ---------- คิวโพสที่ค้าง (นับวันจากที่อนุมัติครบแล้ว) ---------- */
+
+/**
+ * จำนวนวันที่งานค้างคิวโพส — นับจาก "วันที่อนุมัติครบ" ถึงวันนี้ (เวลาไทย, นับเป็นวันเต็ม)
+ * เทียบเป็น "วันตามปฏิทิน" ทั้งสองฝั่ง จึงไม่แกว่งตามเวลาที่เปิดหน้า และไม่แตะ Date.now()
+ */
+export function pendingDays(
+  approvedAt: string | null,
+  today: { year: number; month: number; day: number }
+): number {
+  if (approvedAt === null) return 0;
+  const from = Date.parse(`${thaiDayOf(approvedAt)}T00:00:00+07:00`);
+  const now = Date.parse(
+    `${today.year}-${pad2(today.month)}-${pad2(today.day)}T00:00:00+07:00`
+  );
+  if (Number.isNaN(from) || Number.isNaN(now)) return 0;
+  return Math.max(0, Math.round((now - from) / 86400000));
+}
+
+export type PostBacklogItem = { t: TrackedTask; days: number };
+
+/** สถิติคิวโพสของคนหนึ่ง (เจ้าของคิว = `postOwnerIdOf`) */
+export type PostStat = {
+  /** งานที่ตรวจผ่านในเดือนที่เลือก และคนนี้เป็นคนที่ต้องโพส */
+  due: number;
+  /** ในจำนวนนั้น โพสไปแล้วกี่ชิ้น */
+  done: number;
+  /** คิวค้างสด ณ วันนี้ (ทุกเดือน ไม่ผูกเดือนที่เลือก) — ตัวเลข "ดองไว้กี่ชิ้น" */
+  backlog: number;
+  /** วันค้างรวมของคิวค้าง (ผลบวกของทุกชิ้น) */
+  backlogDays: number;
+  /** ค้างนานสุดกี่วัน */
+  oldestDays: number;
+  /** รายการงานค้าง เรียงค้างนานสุดก่อน — ใช้ในป๊อปอัพ */
+  items: PostBacklogItem[];
+};
+
+export function emptyPostStat(): PostStat {
+  return {
+    due: 0,
+    done: 0,
+    backlog: 0,
+    backlogDays: 0,
+    oldestDays: 0,
+    items: [],
+  };
+}
+
+/** คิวค้างของคนหนึ่ง พร้อมโปรไฟล์ — ป๊อปอัพ "ใครดองงานโพสไว้บ้าง" ใช้ชุดนี้ */
+export type PostBacklogGroup = {
+  ownerId: string | null;
+  profile: ProfileLite | undefined;
+  stat: PostStat;
+};
+
 /* ---------- heatmap ของช่องวัน ---------- */
 
 export type HeatLevel = 0 | 1 | 2 | 3 | 4;
@@ -280,14 +422,6 @@ export const HEAT_SCALE: HeatLevel[] = [1, 2, 3, 4];
 
 /* ---------- กติกา KPI ---------- */
 
-/** งานชิ้นนี้เข้าเงื่อนไขกติกา KPI แถวนี้ไหม — null ในกติกา = ไม่จำกัด */
-export function matchesRule(t: TrackedTask, r: ContentKpiRow): boolean {
-  if (r.format !== null && t.content_format !== r.format) return false;
-  if (r.category_id !== null && t.content_category_id !== r.category_id)
-    return false;
-  return true;
-}
-
 /** เป้าที่ "ควรทำได้ถึงวันนี้" — target × (วันที่ผ่านไป ÷ วันทั้งเดือน) ปัดลง (ต้นเดือนไม่โดนธงแดงฟรี) */
 export function expectedByNow(
   target: number,
@@ -313,30 +447,57 @@ export function expectedOf(
     : expectedByNow(rule.target, elapsedDays, daysInMonth);
 }
 
-/**
- * กติกาที่ใช้คิด "เป้ารวม" ของคนหนึ่ง — กติกาทุกฟอร์แมต·ทุกหมวดถ้ามี (เป็นร่มคลุมทั้งหมด)
- * ไม่งั้นรวมกติกาที่ระบุฟอร์แมตแต่ไม่เจาะหมวด; ไม่มีทั้งคู่ค่อยรวมทุกกติกา
- */
-export function overallRulesOf(rules: ContentKpiRow[]): ContentKpiRow[] {
-  const anyAny = rules.find((r) => r.format === null && r.category_id === null);
-  if (anyAny !== undefined) return [anyAny];
-  const fmtRules = rules.filter(
-    (r) => r.format !== null && r.category_id === null
-  );
-  return fmtRules.length > 0 ? fmtRules : rules;
+/** ฐานทั้งหมดที่ชุดกติกานี้ใช้ (เรียงตามลำดับที่เจอ) */
+function basisList(rules: ContentKpiRow[]): ContentKpiBasis[] {
+  return [...new Set(rules.map((r) => r.basis))];
 }
 
-/** เป้าของฟอร์แมตหนึ่ง — กติกา "ฟอร์แมตนี้·ทุกหมวด" เป็นร่ม ไม่งั้นรวมกติกาที่เจาะหมวด */
+/**
+ * กติกาที่ใช้คิด "เป้ารวม" ของคนหนึ่ง — คิดแยกทีละฐาน (คนหนึ่งมีได้ทั้งเป้าส่งงานและเป้าโพส
+ * ซึ่งเป็นคนละผลงานกัน จึงต้องบวกกัน ไม่ใช่เลือกอันใดอันหนึ่ง):
+ * ในแต่ละฐาน — กติกาทุกฟอร์แมต·ทุกหมวดถ้ามี (ร่มคลุมทั้งฐาน) ไม่งั้นรวมกติกาที่ระบุ
+ * ฟอร์แมตแต่ไม่เจาะหมวด; ไม่มีทั้งคู่ค่อยรวมทุกกติกาของฐานนั้น
+ */
+export function overallRulesOf(rules: ContentKpiRow[]): ContentKpiRow[] {
+  const out: ContentKpiRow[] = [];
+  for (const basis of basisList(rules)) {
+    const inBasis = rules.filter((r) => r.basis === basis);
+    const anyAny = inBasis.find(
+      (r) => r.format === null && r.category_id === null
+    );
+    if (anyAny !== undefined) {
+      out.push(anyAny);
+      continue;
+    }
+    const fmtRules = inBasis.filter(
+      (r) => r.format !== null && r.category_id === null
+    );
+    out.push(...(fmtRules.length > 0 ? fmtRules : inBasis));
+  }
+  return out;
+}
+
+/** แถวที่ใช้คิดผลรวมของชุดกติกาย่อยหนึ่ง — ต่อฐาน: แถวที่ไม่เจาะหมวดเป็นร่ม (กันนับซ้ำ) */
+function umbrellaRules(rules: ContentKpiRow[]): ContentKpiRow[] {
+  const out: ContentKpiRow[] = [];
+  for (const basis of basisList(rules)) {
+    const inBasis = rules.filter((r) => r.basis === basis);
+    const broad = inBasis.filter((r) => r.category_id === null);
+    out.push(...(broad.length > 0 ? broad : inBasis));
+  }
+  return out;
+}
+
+/** เป้าของฟอร์แมตหนึ่ง — รวมทุกฐาน โดยในแต่ละฐานใช้แถว "ทุกหมวด" เป็นร่ม */
 export function formatTargetOf(
   rules: ContentKpiRow[],
   format: ContentFormat,
   daysInMonth: number
 ): number {
-  const broad = rules.find((r) => r.format === format && r.category_id === null);
-  if (broad) return monthTargetOf(broad, daysInMonth);
-  return rules
-    .filter((r) => r.format === format)
-    .reduce((s, r) => s + monthTargetOf(r, daysInMonth), 0);
+  return umbrellaRules(rules.filter((r) => r.format === format)).reduce(
+    (s, r) => s + monthTargetOf(r, daysInMonth),
+    0
+  );
 }
 
 /** เป้าถึงวันนี้ของฟอร์แมตหนึ่ง — logic เดียวกับ formatTargetOf */
@@ -346,11 +507,10 @@ export function formatExpectedOf(
   elapsedDays: number,
   daysInMonth: number
 ): number {
-  const broad = rules.find((r) => r.format === format && r.category_id === null);
-  if (broad) return expectedOf(broad, elapsedDays, daysInMonth);
-  return rules
-    .filter((r) => r.format === format)
-    .reduce((s, r) => s + expectedOf(r, elapsedDays, daysInMonth), 0);
+  return umbrellaRules(rules.filter((r) => r.format === format)).reduce(
+    (s, r) => s + expectedOf(r, elapsedDays, daysInMonth),
+    0
+  );
 }
 
 /* ---------- จำนวนชิ้นงาน (การ์ด vs ไฟล์ที่อัพจริง) ---------- */
@@ -420,18 +580,33 @@ export const STATUS_RANK: Record<PersonStatus, number> = {
   done: 2,
 };
 
+const EMPTY_BASIS_COUNTS = (): Record<ContentKpiBasis, number> => ({
+  work: 0,
+  brief: 0,
+  posted: 0,
+});
+
 export type PersonStat = {
   profile: ProfileLite;
   rules: ContentKpiRow[];
   ruleStats: RuleStat[];
-  /** งานที่ส่งในเดือนที่เลือก (เรียงตามเวลาส่ง) */
+  /** ฐานที่คนนี้ถูกวัดผล (ไม่มีกติกา = 'work') */
+  bases: ContentKpiBasis[];
+  /** ผลงานที่นับ KPI ในเดือนนี้ (ตามฐานของเขาเอง) เรียงตามเวลา */
+  events: KpiEvent[];
+  /** การ์ดชิ้นงานที่ตัวเองรับผิดชอบและส่งตรวจในเดือนนี้ (ฐาน 'work' เสมอ ไม่ว่าจะถูกวัดผลด้วยฐานไหน) */
   tasks: TrackedTask[];
+  /** จำนวนผลงานที่นับ KPI = events.length */
   doneTotal: number;
+  /** งานที่ส่งตรวจเอง (= tasks.length) — คนละตัวกับ doneTotal เมื่อคนนี้ถูกวัดด้วยฐาน brief/posted */
+  submitted: number;
+  /** ผลงานแยกตามฐาน — โชว์เป็นบรรทัดย่อยเมื่อคนนี้มีหลายฐาน */
+  basisCounts: Record<ContentKpiBasis, number>;
   approved: number;
   waiting: number;
   sent: number;
   posted: number;
-  /** จำนวนวันในเดือนที่มีการส่งงานอย่างน้อย 1 ชิ้น */
+  /** จำนวนวันในเดือนที่มีผลงานอย่างน้อย 1 ชิ้น */
   activeDays: number;
   lastTotal: number;
   lastMetRules: number;
@@ -442,18 +617,22 @@ export type PersonStat = {
     ContentFormat,
     { done: number; target: number; expected: number }
   >;
-  /** งานในเดือนที่ยังไม่ติดประเภทชิ้นงาน */
+  /** ผลงานในเดือนที่ยังระบุประเภทชิ้นงาน/หมวดเนื้อหาไม่ครบ */
   untagged: number;
   pieces: PieceAgg;
-  /** ตรวจผ่านแล้วแต่ยังไม่กดโพส — คิวค้างทั้งหมด ไม่ผูกเดือน */
-  pending: number;
+  /** คิวโพสของคนนี้ (เจ้าของคิวตาม postOwnerIdOf) — due/done ผูกเดือน, backlog เป็นคิวสด */
+  post: PostStat;
   status: PersonStatus;
   behindRules: number;
 };
 
 /** ยอดรวมทั้งทีมของเดือนที่เลือก — หน้าภาพรวมใช้เป็นบรรทัด "KPI รวม" */
 export type TeamTotals = {
+  /** งานที่ส่งตรวจในเดือนนี้ทั้งทีม (ฐาน 'work' ล้วน) */
   submitted: number;
+  /** ผลงานที่นับ KPI ทั้งทีม (รวมทุกฐานตามที่แต่ละคนถูกตั้งไว้) */
+  credited: number;
+  creditedByBasis: Record<ContentKpiBasis, number>;
   approved: number;
   waiting: number;
   sent: number;
@@ -466,15 +645,16 @@ export type TeamTotals = {
     ContentFormat,
     { done: number; target: number; expected: number }
   >;
-  /** งานทั้งทีมที่ยังไม่ติดประเภท — เข้ากติกาที่เจาะภาพ/วิดีโอไม่ได้จนกว่าจะติดประเภท */
+  /** งานทั้งทีมที่ยังระบุประเภทไม่ครบ — เข้ากติกาที่เจาะภาพ/วิดีโอ/หมวดไม่ได้จนกว่าจะระบุ */
   untagged: number;
-  pendingPost: number;
+  /** คิวโพสรวมทั้งทีม */
+  post: PostStat;
   peopleWithTarget: number;
   behindPeople: number;
   donePeople: number;
 };
 
-/** งาน 1 ชิ้นพร้อมเวลาส่ง + วันในเดือน (0-based) — ปฏิทินใช้จัดลงช่อง */
+/** งาน 1 ชิ้นพร้อมเวลาส่ง + วันในเดือน (0-based) — ใช้ในตัววิเคราะห์ที่นับเฉพาะการส่งงาน */
 export type TaskAt = { t: TrackedTask; ms: number; dayIndex: number };
 
 export type KpiMonth = {
@@ -484,14 +664,20 @@ export type KpiMonth = {
   /** วันที่ผ่านไปของเดือนที่เลือก — เดือนอดีต = ทั้งเดือน, เดือนอนาคต = 0 */
   elapsedDays: number;
   isCurrentMonth: boolean;
-  inMonth: TaskAt[];
+  /** ผลงานที่นับ KPI ของทุกคนในเดือนนี้ (ปฏิทิน/ตัวกรองคนใช้ชุดนี้) เรียงตามเวลา */
+  inMonth: KpiEvent[];
   personStats: PersonStat[];
   statsById: Map<string, PersonStat>;
   /** ทุกคนที่มีเป้า หรือมีผลงานในเดือนนี้ — ใช้เป็นตัวเลือก "เลือกคน" */
   people: ProfileLite[];
-  /** คนที่ส่งงานในเดือนนี้แต่ยังไม่ถูกตั้งเป้า */
+  /** คนที่มีผลงานในเดือนนี้แต่ยังไม่ถูกตั้งเป้า */
   offRadar: { id: string; profile: ProfileLite | undefined; count: number }[];
+  /** งานที่ระบุประเภทไม่ครบ (ไม่มีฟอร์แมต หรือไม่มีหมวดเนื้อหา) */
   untagged: TrackedTask[];
+  /** คิวโพสค้างของทั้งทีม แยกตามเจ้าของคิว เรียงค้างนานรวมมากสุดก่อน */
+  postBacklog: PostBacklogGroup[];
+  /** คิวโพสรายคน (ทุกคนที่มีคิว ไม่ใช่แค่คนที่ถูกตั้งเป้า) — แผงข้างหน้าปฏิทินใช้ */
+  postById: Map<string, PostStat>;
   team: TeamTotals;
 };
 
@@ -502,6 +688,11 @@ const EMPTY_FORMATS = (): Record<
   image: { done: 0, target: 0, expected: 0 },
   video: { done: 0, target: 0, expected: 0 },
 });
+
+/** ระบุประเภทครบหรือยัง — ผู้ใช้ 2026-08-29 สั่งให้ "ประเภทของชิ้น" เป็นข้อบังคับ ไม่ใช่ option */
+export function isUntagged(t: TrackedTask): boolean {
+  return t.content_format === null || t.content_category_id === null;
+}
 
 /**
  * คิดสถิติทั้งเดือนของทีมในที่เดียว — ทั้งหน้าปฏิทินและหน้าภาพรวมเรียกตัวนี้
@@ -527,9 +718,7 @@ export function computeKpiMonth({
   const daysInMonth = Math.round((bounds.end - bounds.start) / 86400000);
   const prev = shiftMonth(year, month, -1);
   const prevBounds = monthBounds(prev.year, prev.month);
-  const prevDays = Math.round(
-    (prevBounds.end - prevBounds.start) / 86400000
-  );
+  const prevDays = Math.round((prevBounds.end - prevBounds.start) / 86400000);
 
   const ymKey = year * 12 + month;
   const nowKey = today.year * 12 + today.month;
@@ -541,50 +730,7 @@ export function computeKpiMonth({
         ? 0
         : Math.min(today.day, daysInMonth);
 
-  const inMonth: TaskAt[] = [];
-  const prevMonth: TrackedTask[] = [];
-  for (const t of tasks) {
-    const ms = workTimeOf(t);
-    if (ms === null) continue;
-    if (ms >= bounds.start && ms < bounds.end) {
-      inMonth.push({
-        t,
-        ms,
-        dayIndex: Math.floor((ms - bounds.start) / 86400000),
-      });
-    } else if (ms >= prevBounds.start && ms < prevBounds.end) {
-      prevMonth.push(t);
-    }
-  }
-  inMonth.sort((a, b) => a.ms - b.ms);
-
-  const byAssignee = new Map<string, TaskAt[]>();
-  for (const at of inMonth) {
-    if (at.t.assignee_id === null) continue;
-    const list = byAssignee.get(at.t.assignee_id);
-    if (list) list.push(at);
-    else byAssignee.set(at.t.assignee_id, [at]);
-  }
-
-  const prevByAssignee = new Map<string, TrackedTask[]>();
-  for (const t of prevMonth) {
-    if (t.assignee_id === null) continue;
-    const list = prevByAssignee.get(t.assignee_id);
-    if (list) list.push(t);
-    else prevByAssignee.set(t.assignee_id, [t]);
-  }
-
-  /** งานตรวจผ่านแล้วแต่ยังไม่กด "โพสแล้ว" — คิวค้าง ไม่ผูกเดือน */
-  const pendingPostByAssignee = new Map<string, number>();
-  for (const t of tasks) {
-    if (t.posted_at !== null || t.review_status !== "approved") continue;
-    if (t.assignee_id === null) continue;
-    pendingPostByAssignee.set(
-      t.assignee_id,
-      (pendingPostByAssignee.get(t.assignee_id) ?? 0) + 1
-    );
-  }
-
+  /* กติกาของแต่ละคน — ต้องรู้ก่อนคัด event เพราะ "ผลงานที่นับ" ขึ้นกับฐานที่เขาถูกตั้งไว้ */
   const rulesByPerson = new Map<string, ContentKpiRow[]>();
   for (const r of kpis) {
     const list = rulesByPerson.get(r.profile_id);
@@ -594,23 +740,168 @@ export function computeKpiMonth({
   for (const list of rulesByPerson.values())
     list.sort((a, b) => a.position - b.position);
 
+  const basesByPerson = new Map<string, Set<ContentKpiBasis>>();
+  const basesFor = (ownerId: string | null): Set<ContentKpiBasis> => {
+    if (ownerId === null) return basesOf(undefined);
+    const cached = basesByPerson.get(ownerId);
+    if (cached) return cached;
+    const set = basesOf(rulesByPerson.get(ownerId));
+    basesByPerson.set(ownerId, set);
+    return set;
+  };
+
+  /* คัด event ของเดือนที่ดู + เดือนก่อน — เอาเฉพาะฐานที่เจ้าของคนนั้นถูกวัดผลจริง
+     (ไม่งั้นการ์ดใบเดียวจะโผล่ทั้งตอนส่งงานและตอนโพส แล้วยอด "ผลงาน" เกินจริง) */
+  const inMonth: KpiEvent[] = [];
+  const prevMonthEvents: KpiEvent[] = [];
+  /** งานที่ส่งตรวจในเดือน (ฐาน work ล้วน ไม่สนว่าถูกวัดผลไหม) — ใช้กับสถิติ ส่ง/ผ่าน/รอตรวจ */
+  const workInMonth: TaskAt[] = [];
+  const workPrevMonth: TrackedTask[] = [];
+
+  for (const t of tasks) {
+    for (const raw of kpiEventsOf(t)) {
+      const inThis = raw.ms >= bounds.start && raw.ms < bounds.end;
+      const inPrev = raw.ms >= prevBounds.start && raw.ms < prevBounds.end;
+      if (!inThis && !inPrev) continue;
+      if (raw.basis === "work") {
+        if (inThis)
+          workInMonth.push({
+            t,
+            ms: raw.ms,
+            dayIndex: Math.floor((raw.ms - bounds.start) / 86400000),
+          });
+        else workPrevMonth.push(t);
+      }
+      if (!basesFor(raw.ownerId).has(raw.basis)) continue;
+      const event: KpiEvent = {
+        t,
+        basis: raw.basis,
+        ownerId: raw.ownerId,
+        ms: raw.ms,
+        dayIndex: Math.floor(
+          (raw.ms - (inThis ? bounds.start : prevBounds.start)) / 86400000
+        ),
+      };
+      if (inThis) inMonth.push(event);
+      else prevMonthEvents.push(event);
+    }
+  }
+  inMonth.sort((a, b) => a.ms - b.ms);
+  workInMonth.sort((a, b) => a.ms - b.ms);
+
+  const byOwner = new Map<string, KpiEvent[]>();
+  for (const e of inMonth) {
+    if (e.ownerId === null) continue;
+    const list = byOwner.get(e.ownerId);
+    if (list) list.push(e);
+    else byOwner.set(e.ownerId, [e]);
+  }
+
+  const prevByOwner = new Map<string, KpiEvent[]>();
+  for (const e of prevMonthEvents) {
+    if (e.ownerId === null) continue;
+    const list = prevByOwner.get(e.ownerId);
+    if (list) list.push(e);
+    else prevByOwner.set(e.ownerId, [e]);
+  }
+
+  const workByAssignee = new Map<string, TrackedTask[]>();
+  for (const { t } of workInMonth) {
+    if (t.assignee_id === null) continue;
+    const list = workByAssignee.get(t.assignee_id);
+    if (list) list.push(t);
+    else workByAssignee.set(t.assignee_id, [t]);
+  }
+
+  /* ---------- คิวโพส (เจ้าของ = ผู้สั่ง Brief ถ้าการ์ดมาจาก Brief ไม่งั้นผู้รับผิดชอบ) ---------- */
+  const postByOwner = new Map<string, PostStat>();
+  const teamPost = emptyPostStat();
+  const bumpPost = (ownerId: string | null, apply: (p: PostStat) => void) => {
+    apply(teamPost);
+    if (ownerId === null) return;
+    let cur = postByOwner.get(ownerId);
+    if (!cur) {
+      cur = emptyPostStat();
+      postByOwner.set(ownerId, cur);
+    }
+    apply(cur);
+  };
+  for (const t of tasks) {
+    if (t.review_status !== "approved") continue;
+    const ownerId = postOwnerIdOf(t);
+    const approvedMs = parseMs(t.approved_at);
+    if (
+      approvedMs !== null &&
+      approvedMs >= bounds.start &&
+      approvedMs < bounds.end
+    ) {
+      bumpPost(ownerId, (p) => {
+        p.due += 1;
+        if (t.posted_at !== null) p.done += 1;
+      });
+    }
+    if (t.posted_at === null) {
+      const days = pendingDays(t.approved_at, today);
+      bumpPost(ownerId, (p) => {
+        p.backlog += 1;
+        p.backlogDays += days;
+        p.oldestDays = Math.max(p.oldestDays, days);
+        p.items.push({ t, days });
+      });
+    }
+  }
+  const sortBacklog = (p: PostStat) => {
+    p.items.sort(
+      (a, b) => b.days - a.days || a.t.title.localeCompare(b.t.title, "th")
+    );
+  };
+  sortBacklog(teamPost);
+  for (const p of postByOwner.values()) sortBacklog(p);
+
+  const profileById = new Map(profiles.map((p) => [p.id, p]));
+  const postBacklog: PostBacklogGroup[] = [...postByOwner.entries()]
+    .filter(([, stat]) => stat.backlog > 0)
+    .map(([ownerId, stat]) => ({
+      ownerId,
+      profile: profileById.get(ownerId),
+      stat,
+    }))
+    .sort(
+      (a, b) =>
+        b.stat.backlogDays - a.stat.backlogDays ||
+        b.stat.backlog - a.stat.backlog
+    );
+  // งานค้างที่ไม่รู้ว่าใครต้องโพส (ไม่มีผู้รับผิดชอบ/ผู้สร้าง) — ต่อท้ายลิสต์ ไม่ปล่อยให้หายเงียบ
+  const orphanBacklog = teamPost.items.filter(
+    (i) => postOwnerIdOf(i.t) === null
+  );
+  if (orphanBacklog.length > 0) {
+    const stat = emptyPostStat();
+    stat.backlog = orphanBacklog.length;
+    stat.backlogDays = orphanBacklog.reduce((s, i) => s + i.days, 0);
+    stat.oldestDays = orphanBacklog.reduce((s, i) => Math.max(s, i.days), 0);
+    stat.items = orphanBacklog;
+    postBacklog.push({ ownerId: null, profile: undefined, stat });
+  }
+
+  /* ---------- สถิติรายคน ---------- */
   const personStats: PersonStat[] = [];
   for (const profile of profiles) {
     const rules = rulesByPerson.get(profile.id);
     if (!rules) continue;
-    const doneAt = byAssignee.get(profile.id) ?? [];
-    const done = doneAt.map((a) => a.t);
-    const prevDone = prevByAssignee.get(profile.id) ?? [];
+    const events = byOwner.get(profile.id) ?? [];
+    const prevEvents = prevByOwner.get(profile.id) ?? [];
+    const workTasks = workByAssignee.get(profile.id) ?? [];
 
     const ruleStats: RuleStat[] = rules.map((rule) => {
-      const count = done.filter((t) => matchesRule(t, rule)).length;
+      const count = events.filter((e) => ruleMatchesEvent(e, rule)).length;
       const target = monthTargetOf(rule, daysInMonth);
       const expected = expectedOf(rule, elapsedDays, daysInMonth);
       return {
         rule,
         target,
         done: count,
-        lastDone: prevDone.filter((t) => matchesRule(t, rule)).length,
+        lastDone: prevEvents.filter((e) => ruleMatchesEvent(e, rule)).length,
         expected,
         behind: Math.max(0, expected - count),
         met: count >= target,
@@ -621,14 +912,23 @@ export function computeKpiMonth({
     const formats = EMPTY_FORMATS();
     for (const f of ["image", "video"] as const) {
       formats[f] = {
-        done: done.filter((t) => t.content_format === f).length,
+        done: events.filter((e) => kpiFormatOf(e.t, e.basis) === f).length,
         target: formatTargetOf(rules, f, daysInMonth),
         expected: formatExpectedOf(rules, f, elapsedDays, daysInMonth),
       };
     }
 
+    // ชิ้นงาน/ไฟล์ นับจากการ์ดที่ไม่ซ้ำ (คนที่ถูกวัดหลายฐานอาจได้การ์ดใบเดียวสองครั้ง)
     const pieces = emptyPieceAgg();
-    for (const t of done) addToPieceAgg(pieces, t);
+    const seenCards = new Set<string>();
+    for (const e of events) {
+      if (seenCards.has(e.t.id)) continue;
+      seenCards.add(e.t.id);
+      addToPieceAgg(pieces, e.t);
+    }
+
+    const basisCounts = EMPTY_BASIS_COUNTS();
+    for (const e of events) basisCounts[e.basis] += 1;
 
     const behindRules = ruleStats.filter((r) => r.behind > 0).length;
     const allMet = ruleStats.length > 0 && ruleStats.every((r) => r.met);
@@ -637,17 +937,21 @@ export function computeKpiMonth({
       profile,
       rules,
       ruleStats,
-      tasks: done,
-      doneTotal: done.length,
-      approved: done.filter((t) => workStateOf(t) === "approved").length,
-      waiting: done.filter((t) => workStateOf(t) === "waiting").length,
-      sent: done.filter((t) => workStateOf(t) === "sent").length,
-      posted: done.filter((t) => t.posted_at !== null).length,
-      activeDays: new Set(doneAt.map((a) => a.dayIndex)).size,
-      lastTotal: prevDone.length,
+      bases: basisList(rules),
+      events,
+      tasks: workTasks,
+      doneTotal: events.length,
+      submitted: workTasks.length,
+      basisCounts,
+      approved: workTasks.filter((t) => workStateOf(t) === "approved").length,
+      waiting: workTasks.filter((t) => workStateOf(t) === "waiting").length,
+      sent: workTasks.filter((t) => workStateOf(t) === "sent").length,
+      posted: events.filter((e) => e.t.posted_at !== null).length,
+      activeDays: new Set(events.map((e) => e.dayIndex)).size,
+      lastTotal: prevEvents.length,
       lastMetRules: rules.filter(
         (rule) =>
-          prevDone.filter((t) => matchesRule(t, rule)).length >=
+          prevEvents.filter((e) => ruleMatchesEvent(e, rule)).length >=
           monthTargetOf(rule, prevDays)
       ).length,
       overallTarget: overallRules.reduce(
@@ -659,9 +963,9 @@ export function computeKpiMonth({
         0
       ),
       formats,
-      untagged: done.filter((t) => t.content_format === null).length,
+      untagged: events.filter((e) => isUntagged(e.t)).length,
       pieces,
-      pending: pendingPostByAssignee.get(profile.id) ?? 0,
+      post: postByOwner.get(profile.id) ?? emptyPostStat(),
       status: allMet ? "done" : behindRules > 0 ? "behind" : "ontrack",
       behindRules,
     });
@@ -677,16 +981,15 @@ export function computeKpiMonth({
 
   // ตัวเลือก "เลือกคน" = คนที่ถูกตั้งเป้า หรือมีผลงานในเดือนนี้ (เรียงตามลำดับรายชื่อ server)
   const people = profiles.filter(
-    (p) => rulesByPerson.has(p.id) || byAssignee.has(p.id)
+    (p) => rulesByPerson.has(p.id) || byOwner.has(p.id)
   );
 
-  const profileById = new Map(profiles.map((p) => [p.id, p]));
-  const offRadar = [...byAssignee.keys()]
+  const offRadar = [...byOwner.keys()]
     .filter((id) => !rulesByPerson.has(id))
     .map((id) => ({
       id,
       profile: profileById.get(id),
-      count: byAssignee.get(id)?.length ?? 0,
+      count: byOwner.get(id)?.length ?? 0,
     }))
     .sort((a, b) => b.count - a.count);
 
@@ -703,19 +1006,33 @@ export function computeKpiMonth({
     }
   }
 
+  const creditedByBasis = EMPTY_BASIS_COUNTS();
+  for (const e of inMonth) creditedByBasis[e.basis] += 1;
+
+  const untaggedTasks: TrackedTask[] = [];
+  const seenUntagged = new Set<string>();
+  for (const e of inMonth) {
+    if (!isUntagged(e.t) || seenUntagged.has(e.t.id)) continue;
+    seenUntagged.add(e.t.id);
+    untaggedTasks.push(e.t);
+  }
+
   const team: TeamTotals = {
-    submitted: inMonth.length,
-    approved: inMonth.filter(({ t }) => workStateOf(t) === "approved").length,
-    waiting: inMonth.filter(({ t }) => workStateOf(t) === "waiting").length,
-    sent: inMonth.filter(({ t }) => workStateOf(t) === "sent").length,
-    posted: inMonth.filter(({ t }) => t.posted_at !== null).length,
-    prevSubmitted: prevMonth.length,
+    submitted: workInMonth.length,
+    credited: inMonth.length,
+    creditedByBasis,
+    approved: workInMonth.filter(({ t }) => workStateOf(t) === "approved")
+      .length,
+    waiting: workInMonth.filter(({ t }) => workStateOf(t) === "waiting").length,
+    sent: workInMonth.filter(({ t }) => workStateOf(t) === "sent").length,
+    posted: workInMonth.filter(({ t }) => t.posted_at !== null).length,
+    prevSubmitted: workPrevMonth.length,
     overallDone: personStats.reduce((s, p) => s + p.doneTotal, 0),
     overallTarget: personStats.reduce((s, p) => s + p.overallTarget, 0),
     overallExpected: personStats.reduce((s, p) => s + p.expectedOverall, 0),
     formats: teamFormats,
-    untagged: inMonth.filter(({ t }) => t.content_format === null).length,
-    pendingPost: [...pendingPostByAssignee.values()].reduce((s, n) => s + n, 0),
+    untagged: untaggedTasks.length,
+    post: teamPost,
     peopleWithTarget: personStats.length,
     behindPeople: personStats.filter((s) => s.status === "behind").length,
     donePeople: personStats.filter((s) => s.status === "done").length,
@@ -732,9 +1049,9 @@ export function computeKpiMonth({
     statsById,
     people,
     offRadar,
-    untagged: inMonth
-      .filter(({ t }) => t.content_format === null)
-      .map(({ t }) => t),
+    untagged: untaggedTasks,
+    postBacklog,
+    postById: postByOwner,
     team,
   };
 }

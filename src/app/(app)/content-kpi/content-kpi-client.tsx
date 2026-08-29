@@ -26,6 +26,8 @@ import {
 import {
   CONTENT_FORMAT_ORDER,
   CONTENT_FORMATS,
+  CONTENT_KPI_BASES,
+  CONTENT_KPI_BASIS_ORDER,
   CONTENT_KPI_PERIOD_ORDER,
   CONTENT_KPI_PERIODS,
 } from "@/lib/constants";
@@ -33,6 +35,7 @@ import { createClient } from "@/lib/supabase/client";
 import type {
   ContentCategoryRow,
   ContentFormat,
+  ContentKpiBasis,
   ContentKpiRow,
 } from "@/lib/types";
 
@@ -48,7 +51,7 @@ function personName(p: ProfileLite): string {
   return p.full_name?.trim() || p.email || "ไม่ทราบชื่อ";
 }
 
-/** ป้ายเงื่อนไขของกติกา เช่น "วิดีโอ · หมอ" — ใช้ในข้อความยืนยันลบ */
+/** ป้ายเงื่อนไขของกติกา เช่น "ส่งงาน · วิดีโอ · หมอ" — ใช้ในข้อความยืนยันลบ */
 function ruleLabel(rule: ContentKpiRow, cats: ContentCategoryRow[]): string {
   const fmt =
     rule.format === null ? "ทุกฟอร์แมต" : CONTENT_FORMATS[rule.format].label;
@@ -56,7 +59,7 @@ function ruleLabel(rule: ContentKpiRow, cats: ContentCategoryRow[]): string {
     rule.category_id === null
       ? "ทุกหมวด"
       : (cats.find((c) => c.id === rule.category_id)?.name ?? "หมวดที่ถูกลบ");
-  return `${fmt} · ${cat}`;
+  return `${CONTENT_KPI_BASES[rule.basis].label} · ${fmt} · ${cat}`;
 }
 
 /**
@@ -186,7 +189,9 @@ export function ContentKpiClient({
 
   const addRule = async (
     profileId: string,
-    init?: Partial<Pick<ContentKpiRow, "format" | "category_id" | "target">>
+    init?: Partial<
+      Pick<ContentKpiRow, "format" | "category_id" | "target" | "basis">
+    >
   ) => {
     const mine = rules.filter((r) => r.profile_id === profileId);
     const position =
@@ -198,6 +203,8 @@ export function ContentKpiClient({
         format: init?.format ?? null,
         category_id: init?.category_id ?? null,
         target: init?.target ?? 1,
+        // basis ไม่ส่ง = พึ่ง DB default 'work' (ชิ้นงานที่ทำเอง — พฤติกรรมเดิมของระบบ)
+        ...(init?.basis ? { basis: init.basis } : {}),
         position,
         created_by: userId,
       })
@@ -400,7 +407,8 @@ export function ContentKpiClient({
             <h2 className="text-sm font-semibold text-stone-800">
               เป้า KPI รายคน{" "}
               <span className="font-normal text-stone-400">
-                (เลือกได้ว่าเป้าเป็น "ต่อเดือน" หรือ "ต่อวัน" — นับจากวันส่งงาน)
+                (เลือกได้ว่านับจากอะไร — ส่งงาน / Brief ที่ถูกรับ / งานที่ต้องโพส
+                และเป้าเป็น &quot;ต่อเดือน&quot; หรือ &quot;ต่อวัน&quot;)
               </span>
             </h2>
             {isAdmin && peopleWithoutRules.length > 0 && (
@@ -452,6 +460,11 @@ export function ContentKpiClient({
                   0
                 ),
               })).filter((t) => t.total > 0);
+              // ฐานที่คนนี้ถูกวัดผล — คนที่ brief อย่างเดียวต้องเห็นชัดว่ากติกาเขาไม่ได้นับการ์ด creative
+              const basisTotals = CONTENT_KPI_BASIS_ORDER.map((b) => ({
+                basis: b,
+                count: mine.filter((r) => r.basis === b).length,
+              })).filter((b) => b.count > 0);
               return (
                 <Card key={person.id} className="p-4 sm:p-5">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -465,6 +478,20 @@ export function ContentKpiClient({
                           .map((t) => `${t.total} ${t.unit}`)
                           .join(" + ")}`}
                     </span>
+                    <span className="flex flex-wrap items-center gap-1">
+                      {basisTotals.map((b) => (
+                        <span
+                          key={b.basis}
+                          title={CONTENT_KPI_BASES[b.basis].desc}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${CONTENT_KPI_BASES[b.basis].chip}`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${CONTENT_KPI_BASES[b.basis].dot}`}
+                          />
+                          {CONTENT_KPI_BASES[b.basis].label} {b.count}
+                        </span>
+                      ))}
+                    </span>
                   </div>
                   {/* กติกาเป็นการ์ดสั้นใน grid — ผู้ใช้ 2026-08-26: แถวยาวเต็มจออ่านยาก */}
                   <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-3">
@@ -474,51 +501,73 @@ export function ContentKpiClient({
                         className="rounded-xl border border-stone-200/80 bg-white/70 p-2.5"
                       >
                         <div className="flex items-start gap-1">
-                          <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5">
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            {/* ฐานการนับ (migration 0095) — ตัวชี้ขาดว่า "ผลงาน 1 ชิ้น" ของคนนี้คืออะไร */}
                             <Select
-                              value={rule.format ?? "any"}
+                              value={rule.basis}
                               disabled={!isAdmin}
-                              aria-label="ฟอร์แมตชิ้นงาน"
+                              aria-label="นับจาก"
                               onChange={(e) =>
                                 void patchRule(rule.id, {
-                                  format:
-                                    e.target.value === "any"
-                                      ? null
-                                      : (e.target.value as ContentFormat),
+                                  basis: e.target.value as ContentKpiBasis,
                                 })
                               }
                             >
-                              <option value="any">ทุกฟอร์แมต</option>
-                              {CONTENT_FORMAT_ORDER.map((f) => (
-                                <option key={f} value={f}>
-                                  {CONTENT_FORMATS[f].label}
+                              {CONTENT_KPI_BASIS_ORDER.map((b) => (
+                                <option key={b} value={b}>
+                                  นับจาก: {CONTENT_KPI_BASES[b].label}
                                 </option>
                               ))}
                             </Select>
-                            <Select
-                              value={rule.category_id ?? "any"}
-                              disabled={!isAdmin}
-                              aria-label="หมวดเนื้อหา"
-                              onChange={(e) =>
-                                void patchRule(rule.id, {
-                                  category_id:
-                                    e.target.value === "any"
-                                      ? null
-                                      : e.target.value,
-                                })
-                              }
-                            >
-                              <option value="any">ทุกหมวด</option>
-                              {cats
-                                .filter(
-                                  (c) => c.active || c.id === rule.category_id
-                                )
-                                .map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <Select
+                                value={rule.format ?? "any"}
+                                disabled={!isAdmin}
+                                aria-label="ฟอร์แมตชิ้นงาน"
+                                onChange={(e) =>
+                                  void patchRule(rule.id, {
+                                    format:
+                                      e.target.value === "any"
+                                        ? null
+                                        : (e.target.value as ContentFormat),
+                                  })
+                                }
+                              >
+                                <option value="any">ทุกฟอร์แมต</option>
+                                {CONTENT_FORMAT_ORDER.map((f) => (
+                                  <option key={f} value={f}>
+                                    {CONTENT_FORMATS[f].label}
                                   </option>
                                 ))}
-                            </Select>
+                              </Select>
+                              <Select
+                                value={rule.category_id ?? "any"}
+                                disabled={!isAdmin}
+                                aria-label="หมวดเนื้อหา"
+                                onChange={(e) =>
+                                  void patchRule(rule.id, {
+                                    category_id:
+                                      e.target.value === "any"
+                                        ? null
+                                        : e.target.value,
+                                  })
+                                }
+                              >
+                                <option value="any">ทุกหมวด</option>
+                                {cats
+                                  .filter(
+                                    (c) => c.active || c.id === rule.category_id
+                                  )
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                              </Select>
+                            </div>
+                            <p className="text-[10px] leading-4 text-stone-400">
+                              {CONTENT_KPI_BASES[rule.basis].desc}
+                            </p>
                           </div>
                           {isAdmin && (
                             <button
@@ -601,13 +650,32 @@ export function ContentKpiClient({
             })
           )}
 
-          <p className="text-xs leading-5 text-stone-400">
-            งาน 1 ชิ้นนับให้ทุกกติกาที่เข้าเงื่อนไข — เช่นตั้ง "วิดีโอ · ทุกหมวด
-            = 2" คู่กับ "วิดีโอ · หมอ = 1" คลิปหมอ 1 ชิ้นจะนับทั้งสองแถว
-            (ตรงกับวิธีคิด "วิดีโอ 2 ชิ้น และต้องเป็นคลิปหมออย่างน้อย 1") ·
-            เป้าแบบ "ต่อวัน" แดชบอร์ดจะคูณจำนวนวันของเดือนเป็นเป้าทั้งเดือนให้เอง
-            (เช่น 1 ชิ้น/วัน = 30–31 ชิ้น/เดือน และเป้าถึงวันนี้ = จำนวนวันที่ผ่านไป)
-          </p>
+          <div className="space-y-2 text-xs leading-5 text-stone-400">
+            <p>
+              งาน 1 ชิ้นนับให้ทุกกติกาที่เข้าเงื่อนไข — เช่นตั้ง &quot;วิดีโอ ·
+              ทุกหมวด = 2&quot; คู่กับ &quot;วิดีโอ · หมอ = 1&quot; คลิปหมอ 1
+              ชิ้นจะนับทั้งสองแถว (ตรงกับวิธีคิด &quot;วิดีโอ 2 ชิ้น
+              และต้องเป็นคลิปหมออย่างน้อย 1&quot;) · เป้าแบบ &quot;ต่อวัน&quot;
+              แดชบอร์ดจะคูณจำนวนวันของเดือนเป็นเป้าทั้งเดือนให้เอง (เช่น 1 ชิ้น/วัน =
+              30–31 ชิ้น/เดือน และเป้าถึงวันนี้ = จำนวนวันที่ผ่านไป)
+            </p>
+            <p>
+              <span className="font-semibold text-stone-500">
+                &quot;นับจาก&quot; คืออะไร:
+              </span>{" "}
+              คนที่ทำชิ้นงานเองใช้ &quot;ชิ้นงานที่ทำเอง&quot; (นับตอนกดส่งตรวจ) ·
+              คนที่ทำหน้าที่ brief อย่างเดียวใช้ &quot;Brief ที่ถูกรับงาน&quot;
+              (การ์ด Brief ที่ตัวเองสั่งและมีคนกดรับงาน = เสร็จ 1 ชิ้น) ·
+              ส่วน &quot;งานที่ต้องโพส&quot; นับตอนกด &quot;โพสแล้ว&quot;
+              โดยการ์ดที่มาจาก Brief เป็นของผู้สั่ง Brief
+              ส่วนการ์ดที่ไม่มี Brief (ตัดเอง/สร้างการ์ดเอง) เป็นของผู้รับผิดชอบการ์ดเอง
+            </p>
+            <p>
+              กติกาฐาน &quot;Brief&quot; ที่เจาะฟอร์แมตจะเทียบกับชนิดงานที่เลือกไว้บน
+              การ์ด Brief (Graphic = ภาพ, Video = วิดีโอ) เพราะการ์ด Brief
+              ยังไม่มีประเภทชิ้นงานจนกว่าจะถึงตอนโพส
+            </p>
+          </div>
         </div>
       </div>
 
