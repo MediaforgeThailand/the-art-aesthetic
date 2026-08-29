@@ -480,22 +480,29 @@ export function HuntingClient({
           platformOptions={platformOptions}
           statusCounts={statusCounts}
           overdueCount={overdueList.length}
+          resultCount={filtered.length}
         />
         {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้ว
             ขึ้นโปรไฟล์ที่นี่ก่อน แล้วค่อยไปสร้างนัดที่บอร์ดเคส */}
         {me.canEdit && (
+          // จอเล็ก: ยุบเหลือไอคอน (ยังมี aria-label ข้อความเดิม — e2e จับด้วยชื่อนี้)
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3.5 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
+              aria-label="เพิ่มโปรไฟล์"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3.5 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:h-11 max-sm:w-11 max-sm:justify-center max-sm:px-0"
             >
               <IdCard size={16} />
-              เพิ่มโปรไฟล์
+              <span className="max-sm:hidden">เพิ่มโปรไฟล์</span>
             </button>
-            <Button onClick={() => setPanel({ mode: "create" })}>
+            <Button
+              onClick={() => setPanel({ mode: "create" })}
+              aria-label="เพิ่มรายชื่อ"
+              className="max-sm:w-11 max-sm:!px-0"
+            >
               <UserRoundPlus size={16} />
-              เพิ่มรายชื่อ
+              <span className="max-sm:hidden">เพิ่มรายชื่อ</span>
             </Button>
           </div>
         )}
@@ -533,20 +540,21 @@ export function HuntingClient({
         </p>
       )}
 
+      {/* ถึงกำหนดตาม — ทั้งแถบเป็นปุ่มเดียว (มือถือ: 2 บรรทัด + ปุ่มลิงก์แยกกินความสูงเปล่าๆ) */}
       {overdueList.length > 0 && filters.followup !== "overdue" && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 animate-fade-in">
-          <CalendarClock size={15} className="text-amber-600" />
-          <p className="text-sm text-amber-800">
+        <button
+          type="button"
+          onClick={() => setFilters((f) => ({ ...f, followup: "overdue" }))}
+          className="mb-4 flex w-full cursor-pointer items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-left transition-colors hover:bg-amber-100 active:scale-[0.99] animate-fade-in max-sm:min-h-11"
+        >
+          <CalendarClock size={15} className="shrink-0 text-amber-600" />
+          <span className="min-w-0 flex-1 text-sm text-amber-800">
             ถึงกำหนดตามแล้ว {overdueList.length} รายชื่อ
-          </p>
-          <button
-            type="button"
-            onClick={() => setFilters((f) => ({ ...f, followup: "overdue" }))}
-            className="inline-flex cursor-pointer items-center text-sm font-medium text-amber-700 underline-offset-2 hover:underline max-sm:min-h-11"
-          >
+          </span>
+          <span className="shrink-0 text-sm font-medium text-amber-700 underline-offset-2">
             ดูเฉพาะที่ถึงกำหนด
-          </button>
-        </div>
+          </span>
+        </button>
       )}
 
       {items.length === 0 && !loadError ? (
