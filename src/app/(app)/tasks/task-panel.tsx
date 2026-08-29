@@ -408,6 +408,9 @@ export function TaskPanel({
   // (งานเก่าที่ไม่รู้ผู้สั่ง (created_by ว่าง) ไม่ล็อก — ให้ส่งได้ตามปกติ)
   const canSubmitReview =
     !isFromBrief || task.created_by === null || task.created_by === userId;
+  /** งานปกติต้องมีลิงก์ Google Drive ก่อนส่งตรวจ (การ์ด brief ไม่บังคับ — ลิงก์ของมันคือ
+      "ของอ้างอิงประกอบ" ไม่ใช่ตัวงาน); เช็คซ้ำอีกชั้นใน submitForReview ของ tasks-client */
+  const driveMissing = !isBrief && (task.deliverable_url ?? "").trim() === "";
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptionsBase =
@@ -1335,18 +1338,25 @@ export function TaskPanel({
           <button
             type="button"
             onClick={() => onSubmitReview(task)}
-            disabled={!task.reviewer_id || !canSubmitReview}
+            disabled={!task.reviewer_id || !canSubmitReview || driveMissing}
             title={
               !canSubmitReview
                 ? `ผู้สั่ง brief (${briefCreator ? profileName(briefCreator) : "-"}) เป็นคนกดส่งตรวจ — คุยตรวจทานงานกันในแชทด้านล่างก่อน`
-                : task.reviewer_id
-                  ? undefined
-                  : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
+                : driveMissing
+                  ? "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้"
+                  : task.reviewer_id
+                    ? undefined
+                    : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
             }
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
           >
             <SendHorizontal size={15} />
-            {canSubmitReview ? "ส่งตรวจงาน" : "รอผู้สั่ง brief ส่งตรวจ"}
+            {/* ป้ายต้องบอกเหตุผลเอง — ทัชสกรีนไม่มี hover จึงไม่เห็น title ที่อธิบายว่าติดอะไร */}
+            {!canSubmitReview
+              ? "รอผู้สั่ง brief ส่งตรวจ"
+              : driveMissing
+                ? "ใส่ลิงก์ Drive ก่อนส่งตรวจ"
+                : "ส่งตรวจงาน"}
           </button>
         )}
 
@@ -1830,6 +1840,78 @@ export function TaskPanel({
           </FieldRow>
         </div>
 
+        {/* ลิงก์ Google Drive — ยกออกมาเป็นกล่องของตัวเองเหนือ "รายละเอียด"
+            (ผู้ใช้ 2026-08-29: "ทำให้ช่องใส่ลิงค์ google drive ชัดเจนกว่านี้ ... และหลังจากนี้
+            บังคับอัพโหลด google drive ด้วย") ของเดิมเป็น input ไร้กรอบซ่อนอยู่ในหัวข้อ
+            "ไฟล์งานที่ Approve แล้ว" คนเลื่อนผ่านไม่เห็น — งานปกติต้องมีลิงก์ก่อนกดส่งตรวจ */}
+        <div className="border-t border-stone-200/70 px-2 pt-2.5">
+          <div
+            className={`rounded-xl border px-3 py-2.5 transition-colors ${
+              driveMissing
+                ? "border-amber-300 bg-amber-50/80"
+                : "border-sky-200 bg-sky-50/60"
+            }`}
+          >
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <Link2
+                size={15}
+                className={`shrink-0 ${
+                  driveMissing ? "text-amber-600" : "text-sky-600"
+                }`}
+              />
+              <span
+                className={`text-xs font-semibold ${
+                  driveMissing ? "text-amber-800" : "text-sky-800"
+                }`}
+              >
+                {isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"}
+              </span>
+              {isBrief ? (
+                <span className="text-[10px] text-stone-400">ถ้ามี</span>
+              ) : (
+                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
+                  จำเป็น
+                </span>
+              )}
+              {task.deliverable_url && (
+                <a
+                  href={task.deliverable_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="เปิดลิงก์งาน"
+                  className="ml-auto inline-flex min-h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-sky-300 bg-white px-2 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100 active:scale-[0.97] max-sm:min-h-9"
+                >
+                  <ExternalLink size={13} />
+                  เปิดลิงก์
+                </a>
+              )}
+            </div>
+            <input
+              value={deliverableDraft}
+              aria-label={
+                isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
+              }
+              placeholder={
+                isBrief
+                  ? "วางลิงก์อ้างอิงประกอบ Brief (ถ้ามี)..."
+                  : "วางลิงก์ Google Drive ของงานที่นี่..."
+              }
+              onChange={(e) => setDeliverableDraft(e.target.value)}
+              onBlur={saveDeliverableUrl}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              // text-base ที่จอเล็ก — ช่องกรอก < 16px ทำให้ iOS ซูมเข้าแล้วไม่ซูมกลับ
+              className="w-full rounded-lg border border-stone-300/90 bg-white px-2.5 py-2 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
+            />
+            {driveMissing && (
+              <p className="mt-1.5 text-[11px] font-medium text-amber-700">
+                ยังไม่ได้ใส่ลิงก์ — ต้องใส่ก่อนจึงจะกด &quot;ส่งตรวจงาน&quot; ได้
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* description */}
         <div className="border-t border-stone-200/70 pt-2.5">
           <p className="mb-1 px-2 text-sm font-medium text-stone-500">
@@ -1900,39 +1982,9 @@ export function TaskPanel({
               <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
             )}
           </p>
+          {/* ช่องลิงก์ Drive ย้ายไปเป็นกล่องของตัวเองเหนือ "รายละเอียด" แล้ว —
+              ตรงนี้เหลือเฉพาะไฟล์รูป/วิดีโอที่อัพเข้าระบบ */}
           <div className="space-y-2 px-2">
-            <div className="flex items-center gap-1.5">
-              <Link2 size={15} className="shrink-0 text-stone-400" />
-              <input
-                value={deliverableDraft}
-                aria-label={
-                  isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
-                }
-                placeholder={
-                  isBrief
-                    ? "วางลิงก์อ้างอิงประกอบ Brief (ถ้ามี)..."
-                    : "วางลิงก์ Google Drive ของงานที่ได้รับอนุมัติ..."
-                }
-                onChange={(e) => setDeliverableDraft(e.target.value)}
-                onBlur={saveDeliverableUrl}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-                className={bareControl}
-              />
-              {task.deliverable_url && (
-                <a
-                  href={task.deliverable_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="เปิดลิงก์งาน"
-                  className="shrink-0 rounded-lg p-1.5 text-sky-600 transition-colors hover:bg-sky-50"
-                >
-                  <ExternalLink size={15} />
-                </a>
-              )}
-            </div>
-
             {files.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
                 {files.map((f, i) => (
