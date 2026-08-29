@@ -182,7 +182,54 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   await page.keyboard.press("Escape"); // ปิดตัวกรอง (มือถือเป็น bottom sheet)
   await settle(page, 300);
 
-  /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ ---------- */
+  /* ---------- มือถือ: แถบบนของระบบ Influencer = hamburger + drawer (2026-08-30) ----------
+       เมนูแถวล่างที่เลื่อนแนวนอนถูกถอดออก เมนูทั้งหมดอยู่ใน drawer ที่เปิดจากปุ่มมุมขวาบน */
+  if (mobile) {
+    await gotoPage(page, "/influencers");
+    await settle(page, 1000);
+    await openShotClose(
+      page,
+      project,
+      async () => {
+        await page
+          .getByRole("button", { name: "เปิดเมนูระบบ Influencer", exact: true })
+          .click();
+        return true;
+      },
+      "influ-drawer"
+    );
+
+    /* แผ่นตัวกรองของแต่ละหน้า — ปุ่มเดียวเปิดแผ่นสูง ~2/3 จอ (คำสั่งผู้ใช้ 2026-08-30)
+       assert ว่าเปิดได้ ไม่ล้นแนวนอน แล้ว Esc ปิด */
+    for (const [path, name] of [
+      ["/influencers", "influ-board-filters"],
+      ["/influ-hunting", "influ-hunting-filters"],
+      ["/influencers/contracts", "influ-followup-filters"],
+      ["/influ-cost", "influ-cost-filters"],
+    ] as const) {
+      await gotoPage(page, path);
+      await settle(page, 1000);
+      // ชื่อปุ่มมีตัวเลขจำนวนตัวกรองต่อท้ายได้ (เช่น "ตัวกรอง 2") — จับแบบ substring
+      const filterBtn = page.getByRole("button", { name: /ตัวกรอง/ }).first();
+      if ((await filterBtn.count()) === 0) continue;
+      await openShotClose(
+        page,
+        project,
+        async () => {
+          await filterBtn.click();
+          // แผ่นต้องเปิดจริง — เคยพลาดมาแล้วที่ state ของแผ่นถูกเมนู popup ปิดทับ
+          // (แค่ถ่ายรูปไม่พอ เพราะรูปที่ไม่มีแผ่นก็ผ่าน assert overflow ได้)
+          await expect(
+            page.locator('[role="dialog"][aria-modal="true"]').first()
+          ).toBeVisible({ timeout: 5_000 });
+          return true;
+        },
+        name
+      );
+    }
+  }
+
+  /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ (แอปทีม) ---------- */
   if (mobile) {
     await gotoPage(page, "/dashboard");
     await settle(page, 800);

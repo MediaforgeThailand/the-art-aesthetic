@@ -12,7 +12,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Badge, Card, EmptyState } from "@/components/ui";
+import {
+  ActiveFilterChips,
+  FilterButton,
+  FilterChip,
+  FilterGroup,
+  FilterSheet,
+} from "@/components/filter-sheet";
+import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
   contractEndDate,
@@ -167,6 +174,28 @@ export function InfluGalleryClient({
       { key: "expired", label: "หมดสัญญาแล้ว", count: contractCounts.expired },
     ];
 
+  /* จอเล็ก: ชิปสถานะสัญญาพับอยู่ในแผ่นเลื่อนขึ้นจากขอบล่าง เหลือแค่ [ค้นหา][ตัวกรอง]
+     บนแถบ — ชิป 3 ตัวพร้อมตัวเลขกินความกว้างเกินจอ 375px จนตกบรรทัดที่สอง
+     (ไม่นับคำค้นเป็นตัวกรอง — ช่องค้นหาอยู่นอกแผ่น เห็นค่าที่พิมพ์อยู่แล้ว) */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const mobileFilterCount = contractFilter === "all" ? 0 : 1;
+  const clearFilters = () => {
+    setSearch("");
+    setContractFilter("all");
+  };
+  const mobileFilterChips =
+    contractFilter === "all"
+      ? []
+      : [
+          {
+            key: "contract",
+            label:
+              contractChips.find((c) => c.key === contractFilter)?.label ??
+              "สถานะสัญญา",
+            onClear: () => setContractFilter("all"),
+          },
+        ];
+
   return (
     <>
       {loadError && (
@@ -175,16 +204,41 @@ export function InfluGalleryClient({
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
+      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (เปิดแผ่นด้านล่าง) */}
+      <div className="mb-3 flex items-center gap-2 animate-fade-in-up sm:hidden">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+          />
+          <Input
+            type="search"
+            placeholder="ค้นหาชื่อ หรือหัตถการ"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <FilterButton
+          count={mobileFilterCount}
+          onClick={() => setFiltersOpen(true)}
+        />
+      </div>
+
+      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ตัวกรองพับอยู่ในแผ่นแล้ว ต้องมีอะไรบอกว่ากำลังกรองอะไรค้างไว้
+          ไม่งั้นคนอ่านนึกว่ารายชื่อหายไป (บทเรียนเดียวกับ my-tasks / Hunting) */}
+      <ActiveFilterChips items={mobileFilterChips} className="mb-3 sm:hidden" />
+
+      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
         <div className="relative min-w-56 flex-1 sm:max-w-sm">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
           />
-          <input
+          <Input
             type="search"
             placeholder="ค้นหาชื่อ หรือหัตถการ..."
-            className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 sm:text-sm placeholder:text-stone-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -197,7 +251,7 @@ export function InfluGalleryClient({
                 key={chip.key}
                 type="button"
                 onClick={() => setContractFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] max-sm:min-h-11 ${
+                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
                   active
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
@@ -213,6 +267,33 @@ export function InfluGalleryClient({
           })}
         </div>
       </div>
+
+      {/* แผ่นตัวกรองของจอเล็ก — ตัวเลือกชุดเดียวกับแถบ ≥sm ด้านบน
+          (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) */}
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={clearFilters}
+        clearDisabled={search === "" && contractFilter === "all"}
+        resultCount={filtered.length}
+        resultNoun="คน"
+      >
+        <FilterGroup
+          label="สถานะสัญญา"
+          hint="นับจากสัญญาของรอบล่าสุดที่เซนแล้ว — คนที่ยังไม่มีสัญญาจะไม่เข้าทั้งสองกลุ่ม"
+        >
+          {contractChips.map((chip) => (
+            <FilterChip
+              key={chip.key}
+              active={contractFilter === chip.key}
+              onClick={() => setContractFilter(chip.key)}
+              count={chip.count}
+            >
+              {chip.label}
+            </FilterChip>
+          ))}
+        </FilterGroup>
+      </FilterSheet>
 
       {influencers.length === 0 ? (
         <Card>
@@ -286,8 +367,15 @@ function InfluCard({
   const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
 
   return (
-    <Link href={`/influencers/${i.id}`} className="group">
-      <Card className="overflow-hidden p-0 transition-transform group-hover:-translate-y-1">
+    /* ลิงก์ทั้งการ์ดเป็น "ชั้นซ้อน" (absolute inset-0) ไม่ใช่ตัวครอบ — ปุ่มเปิดไฟล์ Source
+       ต้องเป็นพี่น้องของลิงก์ เพราะ HTML ห้ามซ้อน <button> ใน <a>
+       **ลิงก์ต้องอยู่ "ข้างใน" Card**: utility `glass` ของ Card ตั้ง backdrop-filter ที่ ≥lg
+       ซึ่งสร้าง stacking context ⇒ ถ้าลิงก์เป็นพี่น้องนอก Card มันจะวาดทับปุ่ม z-10 ที่ติดอยู่
+       ข้างใน (ปุ่มไฟล์ Source กดไม่ได้บนคอม ส่วนมือถือไม่เป็นเพราะ <lg ถอด backdrop-filter)
+       transform ตอน hover อยู่ที่กล่องนอกไม่ใช่ Card — ถ้า Card เป็นตัวขยับจะสร้าง
+       stacking context ใหม่ตอน hover แล้วเจอปัญหาเดิมอีกทาง */
+    <div className="relative transition-transform hover:-translate-y-1">
+      <Card className="relative overflow-hidden p-0">
         {/* รูป influencer */}
         <div className="relative aspect-[4/3] bg-gradient-to-b from-brand-100 to-brand-200">
           {photoUrl ? (
@@ -362,8 +450,13 @@ function InfluCard({
                 <UsersRound size={12} /> {followerText}
               </span>
             )}
-            {/* ปุ่มเปิดไฟล์ source — อยู่ในการ์ดที่เป็นลิงก์ จึง stopPropagation เปิดแท็บใหม่เอง */}
-            <SourceLinkQuickButton links={quickLinks} />
+            {/* ปุ่มเปิดไฟล์ source — z-10 ให้ลอยเหนือชั้นลิงก์ที่คลุมทั้งการ์ด
+                (render เฉพาะตอนมีลิงก์ ไม่งั้นได้ span ว่างที่ยังกิน gap ของ flex) */}
+            {quickLinks && (
+              <span className="relative z-10 inline-flex">
+                <SourceLinkQuickButton links={quickLinks} />
+              </span>
+            )}
           </div>
 
           {/* อายุสัญญาคงเหลือ — บอกเป็น "เดือน + วัน" */}
@@ -414,7 +507,12 @@ function InfluCard({
             </p>
           )}
         </div>
+        <Link
+          href={`/influencers/${i.id}`}
+          aria-label={`เปิดเคสของ ${influName(i)}`}
+          className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        />
       </Card>
-    </Link>
+    </div>
   );
 }

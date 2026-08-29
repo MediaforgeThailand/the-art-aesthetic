@@ -21,6 +21,7 @@
 import { SlidersHorizontal, Star, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { FilterSheet } from "@/components/filter-sheet";
 import {
   menuBox,
   useAnchoredMenu,
@@ -344,7 +345,11 @@ function FilterChip({
   );
 }
 
-export function HuntFilterButton({
+/* ---------- เนื้อในของตัวกรอง — ใช้ร่วม 2 ที่ ----------
+   จอ ≥sm = เมนู popup ยึดปุ่ม (useAnchoredMenu) · จอเล็ก = แผ่นเลื่อนขึ้นจากขอบล่าง
+   (FilterSheet) ตามคำสั่งผู้ใช้ 2026-08-30 — แยกออกมาเป็น component เดียวกัน
+   ไม่งั้นตัวกรองแตกเป็นสองสำเนาแล้วหลุดกันแน่ */
+function HuntFilterBody({
   filters,
   onChange,
   people,
@@ -361,7 +366,192 @@ export function HuntFilterButton({
   statusCounts: Record<InfluProspectStatus, number>;
   overdueCount: number;
 }) {
+  const set = (patch: Partial<HuntFilters>) => onChange({ ...filters, ...patch });
+  return (
+    <>
+      {/* สถานะ — ว่าง = 4 สถานะที่ยังเดินอยู่ (ปฏิเสธซ่อนตามค่าเริ่มต้นเดิม) */}
+      <Section title="สถานะ">
+        <div className="flex flex-wrap gap-1.5">
+          {INFLU_PROSPECT_STATUS_ORDER.map((s) => (
+            <FilterChip
+              key={s}
+              active={filters.statuses.includes(s)}
+              onClick={() => set({ statuses: toggle(filters.statuses, s) })}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${INFLU_PROSPECT_STATUSES[s].dot}`}
+              />
+              {INFLU_PROSPECT_STATUSES[s].label}
+              <span className="tabular-nums text-stone-400">
+                {statusCounts[s] ?? 0}
+              </span>
+            </FilterChip>
+          ))}
+        </div>
+        {filters.statuses.length === 0 && (
+          <p className="mt-1.5 text-[11px] text-stone-400">
+            ไม่เลือก = แสดง 4 สถานะที่ยังเดินอยู่ (ซ่อนที่ปฏิเสธ)
+          </p>
+        )}
+      </Section>
+
+      <Section title="ผู้รับผิดชอบ">
+        <Select
+          value={filters.owner}
+          onChange={(e) => set({ owner: e.target.value })}
+          aria-label="กรองตามผู้รับผิดชอบ"
+        >
+          <option value="all">ทุกคน</option>
+          {meId && <option value="mine">รายชื่อของฉัน</option>}
+          {people
+            .filter((p) => p.id !== meId)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </Select>
+      </Section>
+
+      <Section title="การตามงาน">
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            ["all", "overdue", "scheduled", "none"] as HuntFollowupFilter[]
+          ).map((k) => (
+            <FilterChip
+              key={k}
+              active={filters.followup === k}
+              onClick={() => set({ followup: k })}
+            >
+              {FOLLOWUP_LABELS[k]}
+              {k === "overdue" && overdueCount > 0 && (
+                <span className="tabular-nums text-stone-400">
+                  {overdueCount}
+                </span>
+              )}
+            </FilterChip>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="วันที่สร้างรายชื่อ">
+        <div className="flex flex-wrap gap-1.5">
+          {(["all", "7d", "30d", "90d", "custom"] as HuntCreatedRange[]).map(
+            (k) => (
+              <FilterChip
+                key={k}
+                active={filters.created === k}
+                onClick={() => set({ created: k })}
+              >
+                {CREATED_LABELS[k]}
+              </FilterChip>
+            )
+          )}
+        </div>
+        {filters.created === "custom" && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <input
+              type="date"
+              value={filters.createdFrom}
+              onChange={(e) => set({ createdFrom: e.target.value })}
+              aria-label="สร้างตั้งแต่วันที่"
+              className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
+            />
+            <span className="shrink-0 text-xs text-stone-400">ถึง</span>
+            <input
+              type="date"
+              value={filters.createdTo}
+              onChange={(e) => set({ createdTo: e.target.value })}
+              aria-label="สร้างถึงวันที่"
+              className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
+            />
+          </div>
+        )}
+      </Section>
+
+      <Section title="ช่องทาง">
+        <div className="flex flex-wrap gap-1.5">
+          {platformOptions.map((name) => (
+            <FilterChip
+              key={name}
+              active={filters.platforms.includes(name)}
+              onClick={() =>
+                set({ platforms: toggle(filters.platforms, name) })
+              }
+            >
+              {name}
+            </FilterChip>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="ระดับผู้ติดตาม">
+        <div className="flex flex-wrap gap-1.5">
+          {INFLU_TIER_ORDER.map((t) => (
+            <FilterChip
+              key={t}
+              active={filters.tiers.includes(t)}
+              onClick={() => set({ tiers: toggle(filters.tiers, t) })}
+            >
+              {INFLU_TIERS[t].label}
+              <span className="text-[10px] text-stone-400">
+                {INFLU_TIERS[t].range}
+              </span>
+            </FilterChip>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="ดาวความน่าสนใจ">
+        <div className="flex flex-wrap gap-1.5">
+          <FilterChip
+            active={filters.minRating === 0}
+            onClick={() => set({ minRating: 0 })}
+          >
+            ทั้งหมด
+          </FilterChip>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <FilterChip
+              key={n}
+              active={filters.minRating === n}
+              onClick={() => set({ minRating: n })}
+            >
+              <Star size={11} className="fill-amber-400 text-amber-400" />
+              {n} ขึ้นไป
+            </FilterChip>
+          ))}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+export function HuntFilterButton({
+  filters,
+  onChange,
+  people,
+  meId,
+  platformOptions,
+  statusCounts,
+  overdueCount,
+  resultCount,
+}: {
+  filters: HuntFilters;
+  onChange: (f: HuntFilters) => void;
+  people: { id: string; name: string }[];
+  meId: string | null;
+  platformOptions: string[];
+  statusCounts: Record<InfluProspectStatus, number>;
+  overdueCount: number;
+  /** จำนวนรายชื่อหลังกรอง — โชว์บนปุ่มปิดแผ่นของจอเล็ก */
+  resultCount: number;
+}) {
+  /* **state ของเมนู popup (≥sm) กับแผ่นของจอเล็กต้องแยกกันเด็ดขาด** — ใช้ตัวเดียวกันแล้วพังทั้งคู่:
+     (1) FilterSheet ปิดตัวเองทันทีเมื่อจอ ≥sm ⇒ popup ของเดสก์ท็อปถูกปิดในเฟรมเดียวกับที่เพิ่งเปิด
+     (2) useAnchoredMenu ปิดเมนูเมื่อ pointerdown นอก menuRef ⇒ แตะชิปในแผ่น (คนละ portal)
+         ถูกนับเป็น "แตะข้างนอก" แผ่นหุบก่อน click จะยิงถึงชิป */
   const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [box, setBox] = useState<MenuBox | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -376,7 +566,6 @@ export function HuntFilterButton({
   });
 
   const count = huntFilterCount(filters);
-  const set = (patch: Partial<HuntFilters>) => onChange({ ...filters, ...patch });
 
   return (
     <>
@@ -384,12 +573,17 @@ export function HuntFilterButton({
         ref={anchorRef}
         type="button"
         onClick={() => {
+          // อ่านความกว้างตอน "กด" ไม่ใช่ตอน render — กัน hydration mismatch
+          if (window.matchMedia("(max-width: 639.98px)").matches) {
+            setSheetOpen((v) => !v);
+            return;
+          }
           const a = anchorRef.current;
           if (a) place(a);
           setOpen((v) => !v);
         }}
         aria-haspopup="dialog"
-        aria-expanded={open}
+        aria-expanded={open || sheetOpen}
         className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 ${
           count > 0
             ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
@@ -419,7 +613,7 @@ export function HuntFilterButton({
               width: box.width,
               maxHeight: box.height,
             }}
-            className="z-[60] overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in"
+            className="z-[60] overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in max-sm:hidden"
           >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white/95 px-3 py-2 backdrop-blur">
               <p className="text-sm font-semibold text-stone-700">ตัวกรอง</p>
@@ -444,162 +638,38 @@ export function HuntFilterButton({
               </div>
             </div>
 
-            {/* สถานะ — ว่าง = 4 สถานะที่ยังเดินอยู่ (ปฏิเสธซ่อนตามค่าเริ่มต้นเดิม) */}
-            <Section title="สถานะ">
-              <div className="flex flex-wrap gap-1.5">
-                {INFLU_PROSPECT_STATUS_ORDER.map((s) => (
-                  <FilterChip
-                    key={s}
-                    active={filters.statuses.includes(s)}
-                    onClick={() => set({ statuses: toggle(filters.statuses, s) })}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${INFLU_PROSPECT_STATUSES[s].dot}`}
-                    />
-                    {INFLU_PROSPECT_STATUSES[s].label}
-                    <span className="tabular-nums text-stone-400">
-                      {statusCounts[s] ?? 0}
-                    </span>
-                  </FilterChip>
-                ))}
-              </div>
-              {filters.statuses.length === 0 && (
-                <p className="mt-1.5 text-[11px] text-stone-400">
-                  ไม่เลือก = แสดง 4 สถานะที่ยังเดินอยู่ (ซ่อนที่ปฏิเสธ)
-                </p>
-              )}
-            </Section>
-
-            <Section title="ผู้รับผิดชอบ">
-              <Select
-                value={filters.owner}
-                onChange={(e) => set({ owner: e.target.value })}
-                aria-label="กรองตามผู้รับผิดชอบ"
-              >
-                <option value="all">ทุกคน</option>
-                {meId && <option value="mine">รายชื่อของฉัน</option>}
-                {people
-                  .filter((p) => p.id !== meId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </Select>
-            </Section>
-
-            <Section title="การตามงาน">
-              <div className="flex flex-wrap gap-1.5">
-                {(
-                  ["all", "overdue", "scheduled", "none"] as HuntFollowupFilter[]
-                ).map((k) => (
-                  <FilterChip
-                    key={k}
-                    active={filters.followup === k}
-                    onClick={() => set({ followup: k })}
-                  >
-                    {FOLLOWUP_LABELS[k]}
-                    {k === "overdue" && overdueCount > 0 && (
-                      <span className="tabular-nums text-stone-400">
-                        {overdueCount}
-                      </span>
-                    )}
-                  </FilterChip>
-                ))}
-              </div>
-            </Section>
-
-            <Section title="วันที่สร้างรายชื่อ">
-              <div className="flex flex-wrap gap-1.5">
-                {(["all", "7d", "30d", "90d", "custom"] as HuntCreatedRange[]).map(
-                  (k) => (
-                    <FilterChip
-                      key={k}
-                      active={filters.created === k}
-                      onClick={() => set({ created: k })}
-                    >
-                      {CREATED_LABELS[k]}
-                    </FilterChip>
-                  )
-                )}
-              </div>
-              {filters.created === "custom" && (
-                <div className="mt-2 flex items-center gap-1.5">
-                  <input
-                    type="date"
-                    value={filters.createdFrom}
-                    onChange={(e) => set({ createdFrom: e.target.value })}
-                    aria-label="สร้างตั้งแต่วันที่"
-                    className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
-                  />
-                  <span className="shrink-0 text-xs text-stone-400">ถึง</span>
-                  <input
-                    type="date"
-                    value={filters.createdTo}
-                    onChange={(e) => set({ createdTo: e.target.value })}
-                    aria-label="สร้างถึงวันที่"
-                    className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
-                  />
-                </div>
-              )}
-            </Section>
-
-            <Section title="ช่องทาง">
-              <div className="flex flex-wrap gap-1.5">
-                {platformOptions.map((name) => (
-                  <FilterChip
-                    key={name}
-                    active={filters.platforms.includes(name)}
-                    onClick={() =>
-                      set({ platforms: toggle(filters.platforms, name) })
-                    }
-                  >
-                    {name}
-                  </FilterChip>
-                ))}
-              </div>
-            </Section>
-
-            <Section title="ระดับผู้ติดตาม">
-              <div className="flex flex-wrap gap-1.5">
-                {INFLU_TIER_ORDER.map((t) => (
-                  <FilterChip
-                    key={t}
-                    active={filters.tiers.includes(t)}
-                    onClick={() => set({ tiers: toggle(filters.tiers, t) })}
-                  >
-                    {INFLU_TIERS[t].label}
-                    <span className="text-[10px] text-stone-400">
-                      {INFLU_TIERS[t].range}
-                    </span>
-                  </FilterChip>
-                ))}
-              </div>
-            </Section>
-
-            <Section title="ดาวความน่าสนใจ">
-              <div className="flex flex-wrap gap-1.5">
-                <FilterChip
-                  active={filters.minRating === 0}
-                  onClick={() => set({ minRating: 0 })}
-                >
-                  ทั้งหมด
-                </FilterChip>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <FilterChip
-                    key={n}
-                    active={filters.minRating === n}
-                    onClick={() => set({ minRating: n })}
-                  >
-                    <Star size={11} className="fill-amber-400 text-amber-400" />
-                    {n} ขึ้นไป
-                  </FilterChip>
-                ))}
-              </div>
-            </Section>
+            <HuntFilterBody
+              filters={filters}
+              onChange={onChange}
+              people={people}
+              meId={meId}
+              platformOptions={platformOptions}
+              statusCounts={statusCounts}
+              overdueCount={overdueCount}
+            />
           </div>,
           document.body
         )}
+
+      {/* จอเล็ก: แผ่นเลื่อนขึ้นจากขอบล่าง (FilterSheet ซ่อนตัวเองที่ ≥sm) */}
+      <FilterSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onClear={() => onChange(DEFAULT_HUNT_FILTERS)}
+        clearDisabled={count === 0}
+        resultCount={resultCount}
+        resultNoun="รายชื่อ"
+      >
+        <HuntFilterBody
+          filters={filters}
+          onChange={onChange}
+          people={people}
+          meId={meId}
+          platformOptions={platformOptions}
+          statusCounts={statusCounts}
+          overdueCount={overdueCount}
+        />
+      </FilterSheet>
     </>
   );
 }

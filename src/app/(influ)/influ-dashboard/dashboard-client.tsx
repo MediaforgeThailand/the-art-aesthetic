@@ -93,6 +93,13 @@ function influName(i: DashInflu): string {
   return i.nickname ? `${full} (${i.nickname})` : full;
 }
 
+/**
+ * ตัวเลขบนแกนของกราฟ 6 เดือน — จอเล็กย่อเหลือ 10px ให้ป้ายเดือนทั้ง 6 ช่อง
+ * กับหลักเงินบนแกนซ้ายอยู่ครบไม่โดนตัด (คลาส CSS ชนะ attribute font-size ของ
+ * recharts จึงคุมตาม breakpoint ได้ และถ้าคลาสไม่ทำงานก็ตกกลับเป็น 12px เท่าเดิม)
+ */
+const CHART_TICK = { ...AXIS_TICK, className: "max-sm:text-[10px]" };
+
 /** จำนวนวันจากวันนี้ (เวลาไทย) ถึงวันที่เป้าหมาย — ติดลบ = ผ่านมาแล้ว */
 function daysFromToday(dateIso: string, todayIso: string): number {
   return Math.round(
@@ -345,7 +352,8 @@ export function DashboardClient({
                 <li key={i.id}>
                   <Link
                     href={`/influencers/${i.id}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 transition-colors hover:bg-white/60"
+                    // เป้านิ้ว: ทั้งแถวเป็นลิงก์เปิดเคส — จอเล็กสูงอย่างน้อย 44px
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 transition-colors hover:bg-white/60 max-sm:min-h-11"
                   >
                     <span className="w-20 shrink-0 text-xs font-medium tabular-nums text-brand-700">
                       {formatDate(i.service_date)}
@@ -397,7 +405,8 @@ export function DashboardClient({
                 <li key={influ.id}>
                   <Link
                     href={`/influencers/${influ.id}`}
-                    className="flex items-center gap-3 py-2 transition-colors hover:bg-white/60"
+                    // เป้านิ้ว 44px บนจอเล็ก (แถวเดิมสูง ~36px) — ทั้งแถวเป็นลิงก์เปิดเคส
+                    className="flex items-center gap-3 py-2 transition-colors hover:bg-white/60 max-sm:min-h-11"
                   >
                     <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
                       {influName(influ)}
@@ -442,7 +451,8 @@ export function DashboardClient({
                 <li key={influ.id}>
                   <Link
                     href={`/influencers/${influ.id}`}
-                    className="flex items-center gap-3 py-2 transition-colors hover:bg-white/60"
+                    // เป้านิ้ว 44px บนจอเล็ก — ทั้งแถวเป็นลิงก์เปิดเคส
+                    className="flex items-center gap-3 py-2 transition-colors hover:bg-white/60 max-sm:min-h-11"
                   >
                     <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
                       {influName(influ)}
@@ -518,16 +528,20 @@ export function DashboardClient({
                 <XAxis
                   dataKey="month"
                   tickFormatter={(v) => formatMonthKey(String(v))}
-                  tick={AXIS_TICK}
+                  tick={CHART_TICK}
+                  // interval=0: บังคับให้เห็นครบทั้ง 6 เดือน — ค่าปริยายของ recharts
+                  // จะซ่อนป้ายที่ชนกันเองบนจอแคบ กลายเป็นกราฟที่อ่านไม่รู้ว่าเดือนไหน
+                  interval={0}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   tickFormatter={(v) => compactBaht(Number(v))}
-                  tick={AXIS_TICK}
+                  tick={CHART_TICK}
                   axisLine={false}
                   tickLine={false}
-                  width={52}
+                  // 40px พอสำหรับ "350K"/"1.2M" และคืนความกว้างให้พื้นที่แท่งบนจอ 375px
+                  width={40}
                 />
                 <Tooltip
                   cursor={{ fill: "#faf6f3" }}
