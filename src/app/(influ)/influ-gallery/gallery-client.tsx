@@ -472,8 +472,15 @@ function InfluCard({
   const stageInfo = INFLU_STAGES.find((s) => s.step === i.stage);
 
   return (
-    <Link href={`/influencers/${i.id}`} className="group">
-      <Card className="overflow-hidden p-0 transition-transform group-hover:-translate-y-1">
+    /* ลิงก์ทั้งการ์ดเป็น "ชั้นซ้อน" (absolute inset-0) ไม่ใช่ตัวครอบ — ปุ่มเปิดไฟล์ Source
+       ต้องเป็นพี่น้องของลิงก์ เพราะ HTML ห้ามซ้อน <button> ใน <a>
+       **ลิงก์ต้องอยู่ "ข้างใน" Card**: utility `glass` ของ Card ตั้ง backdrop-filter ที่ ≥lg
+       ซึ่งสร้าง stacking context ⇒ ถ้าลิงก์เป็นพี่น้องนอก Card มันจะวาดทับปุ่ม z-10 ที่ติดอยู่
+       ข้างใน (ปุ่มไฟล์ Source กดไม่ได้บนคอม ส่วนมือถือไม่เป็นเพราะ <lg ถอด backdrop-filter)
+       transform ตอน hover อยู่ที่กล่องนอกไม่ใช่ Card — ถ้า Card เป็นตัวขยับจะสร้าง
+       stacking context ใหม่ตอน hover แล้วเจอปัญหาเดิมอีกทาง */
+    <div className="relative transition-transform hover:-translate-y-1">
+      <Card className="relative overflow-hidden p-0">
         {/* รูป influencer */}
         <div className="relative aspect-[4/3] bg-gradient-to-b from-brand-100 to-brand-200">
           {photoUrl ? (
@@ -548,8 +555,13 @@ function InfluCard({
                 <UsersRound size={12} /> {followerText}
               </span>
             )}
-            {/* ปุ่มเปิดไฟล์ source — อยู่ในการ์ดที่เป็นลิงก์ จึง stopPropagation เปิดแท็บใหม่เอง */}
-            <SourceLinkQuickButton links={quickLinks} />
+            {/* ปุ่มเปิดไฟล์ source — z-10 ให้ลอยเหนือชั้นลิงก์ที่คลุมทั้งการ์ด
+                (render เฉพาะตอนมีลิงก์ ไม่งั้นได้ span ว่างที่ยังกิน gap ของ flex) */}
+            {quickLinks && (
+              <span className="relative z-10 inline-flex">
+                <SourceLinkQuickButton links={quickLinks} />
+              </span>
+            )}
           </div>
 
           {/* อายุสัญญาคงเหลือ — บอกเป็น "เดือน + วัน" */}
@@ -600,7 +612,12 @@ function InfluCard({
             </p>
           )}
         </div>
+        <Link
+          href={`/influencers/${i.id}`}
+          aria-label={`เปิดเคสของ ${influName(i)}`}
+          className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        />
       </Card>
-    </Link>
+    </div>
   );
 }

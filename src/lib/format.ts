@@ -68,6 +68,60 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   });
 }
 
+/* ตารางชื่อวัน/เดือนคงที่ — ไม่ใช้ toLocaleDateString เพราะ locale ของแต่ละเครื่อง
+   ให้คำต่างกัน (บางเครื่องได้ "วันเสาร์" บางเครื่องได้ "ส.") และ SSR/CSR อาจไม่ตรงกัน */
+const THAI_WEEKDAYS = [
+  "อาทิตย์",
+  "จันทร์",
+  "อังคาร",
+  "พุธ",
+  "พฤหัสบดี",
+  "ศุกร์",
+  "เสาร์",
+];
+const THAI_MONTHS_SHORT = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค.",
+];
+
+/** เวลาบนรายการแจ้งเตือน เช่น "เสาร์ 29 ส.ค. · 14:25"
+    ขึ้นต้นด้วยชื่อวันเพราะคนอ่านกระดิ่งอยากรู้ก่อนว่า "วันไหน" ไม่ใช่ "วันที่เท่าไร"
+    — ปีไม่แสดง (การแจ้งเตือนเป็นเรื่องสดๆ) ตรึงโซนเวลาไทยเหมือน helper ตัวอื่น */
+export function formatNotiTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "-";
+  const [y, m, day] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(d)
+    .split("-")
+    .map(Number);
+  // หาวันในสัปดาห์จาก "วันตามปฏิทินไทย" ผ่าน Date.UTC — ใช้ epoch ของเที่ยงคืนไทย
+  // ตรงๆ ไม่ได้ เพราะค่านั้นตกไปอยู่วัน UTC ก่อนหน้า (คลาดไป 1 วัน)
+  const weekday = THAI_WEEKDAYS[new Date(Date.UTC(y, m - 1, day)).getUTCDay()];
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
+  return `${weekday} ${day} ${THAI_MONTHS_SHORT[m - 1]} · ${time}`;
+}
+
 /** ชื่อเดือนสั้นภาษาไทยจาก key "YYYY-MM" เช่น "ก.ค. 69" */
 export function formatMonthKey(key: string): string {
   const [y, m] = key.split("-").map(Number);

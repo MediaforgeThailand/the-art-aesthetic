@@ -387,7 +387,8 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
     });
 
   return (
-    <Card className="p-5">
+    // จอเล็กบีบขอบการ์ดลง — แถวหมอมีทั้งรูป ชื่อ และปุ่ม 44px 3 ปุ่มในบรรทัดเดียว
+    <Card className="p-3 sm:p-5">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setFormFor({ doctor: null })}>
@@ -416,7 +417,8 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
           {sorted.map((d) => (
             <div
               key={d.id}
-              className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/70 ${
+              // flex-wrap: จอแคบปุ่ม 44px 3 ปุ่มตกลงมาบรรทัดล่างแทนที่จะบีบชื่อจนอ่านไม่ออก
+              className={`flex flex-wrap items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/70 max-sm:gap-y-2 ${
                 d.active ? "" : "opacity-55"
               }`}
             >
@@ -425,6 +427,7 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
                 type="button"
                 onClick={() => pickPhoto(d)}
                 title="เปลี่ยนรูปโปรไฟล์"
+                aria-label={`เปลี่ยนรูปโปรไฟล์ของ ${d.name}`}
                 className="group relative shrink-0 cursor-pointer rounded-full active:scale-95"
               >
                 <DoctorAvatar doctor={d} size="lg" />
@@ -444,12 +447,13 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
                 </p>
                 {d.license_no ? (
                   <p
-                    className="mt-0.5 flex items-center gap-1 text-xs text-stone-400"
+                    className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-stone-400"
                     title={`เลขใบประกอบวิชาชีพ ${d.license_no} — แฮชแท็ก #DR${d.license_no}`}
                   >
-                    <BadgeCheck size={11} className="text-emerald-500" />
-                    ว. {d.license_no}
-                    <span className="font-mono text-stone-400">
+                    <BadgeCheck size={11} className="shrink-0 text-emerald-500" />
+                    {/* เลขใบ ปว. + แฮชแท็กยาวกว่าช่องบนจอแคบ — ตัดท้ายแทนดันแถวจนล้น */}
+                    <span className="truncate">ว. {d.license_no}</span>
+                    <span className="truncate font-mono text-stone-400">
                       · #DR{d.license_no}
                     </span>
                   </p>
@@ -460,37 +464,49 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
                 )}
               </div>
 
-              <button
-                type="button"
-                title="แก้ข้อมูล (ตามแก้ชื่อในเคส/คิวเดิมให้)"
-                onClick={() => {
-                  setFormFor({ doctor: d });
-                  setError(null);
-                }}
-                className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-8 sm:w-8"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                type="button"
-                title={
-                  d.active
-                    ? "ซ่อนจากตัวเลือก (หมอที่ไม่ได้รับเคสแล้ว)"
-                    : "แสดงในตัวเลือก"
-                }
-                onClick={() => void toggleActive(d)}
-                className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-8 sm:w-8"
-              >
-                {d.active ? <Eye size={14} /> : <EyeOff size={14} />}
-              </button>
-              <button
-                type="button"
-                title="ลบออกจากทะเบียน"
-                onClick={() => setConfirmDelete(d)}
-                className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90 sm:h-8 sm:w-8"
-              >
-                <Trash2 size={14} />
-              </button>
+              {/* กลุ่มปุ่มจัดการ — จอแคบตกลงมาทั้งกลุ่มในบรรทัดล่าง: ต้องมี w-full
+                  ถึงจะดัน flex-wrap ให้ทำงาน (ช่องชื่อเป็น flex-1 ยุบได้เรื่อยๆ
+                  ปุ่ม 44px 3 ปุ่มจึงบีบชื่อจนอ่านไม่ออกแทนที่จะขึ้นบรรทัดใหม่) */}
+              <div className="flex items-center gap-2.5 max-sm:w-full max-sm:justify-end">
+                <button
+                  type="button"
+                  title="แก้ข้อมูล (ตามแก้ชื่อในเคส/คิวเดิมให้)"
+                  aria-label={`แก้ข้อมูล ${d.name}`}
+                  onClick={() => {
+                    setFormFor({ doctor: d });
+                    setError(null);
+                  }}
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:h-11 max-sm:w-11"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  type="button"
+                  title={
+                    d.active
+                      ? "ซ่อนจากตัวเลือก (หมอที่ไม่ได้รับเคสแล้ว)"
+                      : "แสดงในตัวเลือก"
+                  }
+                  aria-label={
+                    d.active
+                      ? `ซ่อน ${d.name} จากตัวเลือก`
+                      : `แสดง ${d.name} ในตัวเลือก`
+                  }
+                  onClick={() => void toggleActive(d)}
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 max-sm:h-11 max-sm:w-11"
+                >
+                  {d.active ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+                <button
+                  type="button"
+                  title="ลบออกจากทะเบียน"
+                  aria-label={`ลบ ${d.name} ออกจากทะเบียน`}
+                  onClick={() => setConfirmDelete(d)}
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-400 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90 max-sm:h-11 max-sm:w-11"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import type { QuickAddPlacement } from "./board";
-import { PosterCard } from "./mobile-card";
+import { PosterCard } from "./poster-card";
 
 /* ============================================================================
    บอร์ดเวอร์ชันมือถือ (<lg) — "ปาดข้างแบบการ์ด Tinder"
@@ -65,7 +65,7 @@ function MobileComposer({
           }
           if (e.key === "Escape") onClose();
         }}
-        className="min-h-11 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-base text-stone-900 placeholder:text-stone-400 focus:outline-none"
+        className="min-h-11 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-base text-stone-900 placeholder:text-stone-500 focus:outline-none"
       />
       <button
         type="button"

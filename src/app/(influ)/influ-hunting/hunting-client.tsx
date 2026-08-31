@@ -480,13 +480,15 @@ export function HuntingClient({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="ค้นหาชื่อ / ช่องทาง / หัตถการ..."
-            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
         <InfluFilterButton
           api={filterApi}
           count={huntFilterCount(filters)}
           factory={DEFAULT_HUNT_FILTERS}
+          resultCount={filtered.length}
+          resultNoun="รายชื่อ"
         >
           <HuntFilterSections
             filters={filters}
@@ -501,18 +503,24 @@ export function HuntingClient({
         {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้ว
             ขึ้นโปรไฟล์ที่นี่ก่อน แล้วค่อยไปสร้างนัดที่บอร์ดเคส */}
         {me.canEdit && (
+          // จอเล็ก: ยุบเหลือไอคอน (ยังมี aria-label ข้อความเดิม — e2e จับด้วยชื่อนี้)
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3.5 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
+              aria-label="เพิ่มโปรไฟล์"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3.5 py-2 text-sm font-medium text-brand-700 transition-all duration-200 hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:h-11 max-sm:w-11 max-sm:justify-center max-sm:px-0"
             >
               <IdCard size={16} />
-              เพิ่มโปรไฟล์
+              <span className="max-sm:hidden">เพิ่มโปรไฟล์</span>
             </button>
-            <Button onClick={() => setPanel({ mode: "create" })}>
+            <Button
+              onClick={() => setPanel({ mode: "create" })}
+              aria-label="เพิ่มรายชื่อ"
+              className="max-sm:w-11 max-sm:!px-0"
+            >
               <UserRoundPlus size={16} />
-              เพิ่มรายชื่อ
+              <span className="max-sm:hidden">เพิ่มรายชื่อ</span>
             </Button>
           </div>
         )}

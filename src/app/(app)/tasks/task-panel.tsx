@@ -49,6 +49,7 @@ import type {
   ContentCategoryRow,
   ContentFormat,
   InfluencerLite,
+  NotificationPriority,
   NotificationType,
   TaskCommentRow,
   TaskCommentWithAuthor,
@@ -59,17 +60,20 @@ import type {
   TaskSubtaskRow,
   TaskWithAssignee,
 } from "@/lib/types";
+import { videoThumbSrc } from "@/lib/media";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "./media-lightbox";
 import { PersonSelect } from "./person-select";
 import {
   AssigneeAvatar,
+  briefReviewerId,
   CompleteToggle,
   currentReviewerIds,
   isImagePath,
   isVideoPath,
   type ProfileOption,
   profileName,
+  reviewStepOf,
   reviewWaitStart,
   waitDurationLabel,
 } from "./task-card";
@@ -353,7 +357,8 @@ export function TaskPanel({
   const isReviewer = userId !== null && stepReviewerIds.includes(userId);
   // งานนี้ตรวจเป็นทอด (มีผู้ตรวจลำดับ 2 ติดอยู่กับงาน)
   const hasChain = task.reviewer2_id !== null;
-  const reviewStep = task.review_step ?? 1;
+  // 0 = ทอดของผู้สั่ง brief (graphic ส่งให้ผู้สั่ง brief ตรวจก่อนเข้าสายตรวจจริง)
+  const reviewStep = reviewStepOf(task);
   // ทอดแรกยังมีคนอื่นที่ยังไม่อนุมัติอีกไหม (นอกจากฉัน) — ถ้ามี การกดอนุมัติของฉันยังไม่ผ่านทอด 1
   // ไม่นับช่องที่ผู้ตรวจเป็นเจ้าของงานเอง (ผ่านอัตโนมัติ — งานเก่าที่ยังไม่ถูก stamp ก็ไม่ต้องรอ)
   const pendingOthers =
@@ -404,10 +409,21 @@ export function TaskPanel({
   const briefCreator = briefSource
     ? (profiles.find((p) => p.id === briefSource.created_by) ?? null)
     : (task.creator ?? null);
-  // งานจาก brief: ผู้สั่ง brief ตรวจทาน/คุยในแชทก่อน แล้วเป็นคนกด "ส่งตรวจ" เอง
-  // (งานเก่าที่ไม่รู้ผู้สั่ง (created_by ว่าง) ไม่ล็อก — ให้ส่งได้ตามปกติ)
-  const canSubmitReview =
-    !isFromBrief || task.created_by === null || task.created_by === userId;
+  // งานจาก brief (migration 0098): graphic เป็นคนกด "ส่งตรวจ" เอง แล้วผู้สั่ง brief
+  // เป็นผู้ตรวจคนแรก (ทอด 0) — ผ่านแล้วระบบส่งต่อเข้าสายตรวจจริงให้เอง
+  // (เดิมผู้สั่ง brief เป็นคนกดส่งตรวจ ปุ่มจึงถูกล็อกไว้สำหรับคนอื่น — กติกานั้นถูกถอดแล้ว)
+  const brieferId = briefReviewerId(task);
+  const briefStage = reviewStep <= 0 && brieferId !== null;
+  const brieferPerson = brieferId
+    ? (briefCreator?.id === brieferId
+        ? briefCreator
+        : (profiles.find((p) => p.id === brieferId) ?? null))
+    : null;
+  // ส่งกลับหลังถูกตีกลับ = "ส่งตรวจแก้" (วิ่งกลับหาคนตีกลับตรงๆ ถ้าเขายังค้างอยู่คนเดียว)
+  const isResubmit = task.rejected_by !== null;
+  /** งานปกติต้องมีลิงก์ Google Drive ก่อนส่งตรวจ (การ์ด brief ไม่บังคับ — ลิงก์ของมันคือ
+      "ของอ้างอิงประกอบ" ไม่ใช่ตัวงาน); เช็คซ้ำอีกชั้นใน submitForReview ของ tasks-client */
+  const driveMissing = !isBrief && (task.deliverable_url ?? "").trim() === "";
 
   // ตัวเลือกผู้ตรวจ = roster + ผู้ตรวจปัจจุบันของงาน (ถ้าถูกเอาออกจาก roster ไปแล้ว ให้ยังแสดงค่าเดิมได้)
   const reviewerOptionsBase =
@@ -938,7 +954,7 @@ export function TaskPanel({
   const [linkDraft, setLinkDraft] = useState("");
   const [showLinkInput, setShowLinkInput] = useState(false);
   const commentFileRef = useRef<HTMLInputElement>(null);
-  const commentsEndRef = useRef<HTMLDivElement>(null);
+  const commentsTopRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   /* ---------- @mention — พิมพ์ @ ในช่องแชทเพื่อแท็กคน (แจ้งเตือนคนนั้น) ---------- */
@@ -1051,7 +1067,7 @@ export function TaskPanel({
     setShowLinkInput(false);
     setAttachFile(null);
     window.setTimeout(
-      () => commentsEndRef.current?.scrollIntoView({ block: "nearest" }),
+      () => commentsTopRef.current?.scrollIntoView({ block: "nearest" }),
       50
     );
 
@@ -1121,6 +1137,7 @@ export function TaskPanel({
       actor_id: string | null;
       task_id: string;
       type: NotificationType;
+      priority: NotificationPriority;
       preview: string;
     }[] = [];
     for (const p of mentioned) {
@@ -1130,16 +1147,22 @@ export function TaskPanel({
         actor_id: userId,
         task_id: task.id,
         type: "mention",
+        priority: "primary",
         preview,
       });
     }
-    // ผู้ตรวจลำดับ 2 ต้องอยู่ในรายชื่อด้วย — ตอนงานอยู่ทอด 2 เขาคือคนที่งานค้างอยู่จริง
-    for (const rid of [
-      task.assignee_id,
-      task.created_by,
-      task.reviewer_id,
-      task.reviewer2_id,
-    ]) {
+    // เจ้าของงาน + ผู้ตรวจของ "ทอดปัจจุบัน" = คนที่งานค้างอยู่จริง → แจ้งเตือนแบบเด่น
+    // ส่วนคนที่แค่เกี่ยวข้อง (ผู้สั่ง brief, คนที่เคยตีกลับ) ได้แบบเงียบ —
+    // ผู้ตรวจลำดับ 2 จึงไม่ถูกกวนจนกว่างานจะมาถึงทอดของเขา (หรือเป็นงานที่เขาตีกลับเอง)
+    const loud = new Set<string>([
+      ...(task.assignee_id ? [task.assignee_id] : []),
+      ...currentReviewerIds(task),
+    ]);
+    const quiet = new Set<string>([
+      ...(task.created_by ? [task.created_by] : []),
+      ...(task.rejected_by ? [task.rejected_by] : []),
+    ]);
+    for (const rid of [...loud, ...quiet]) {
       if (!rid || rid === userId || seen.has(rid)) continue;
       seen.add(rid);
       notiRows.push({
@@ -1147,6 +1170,7 @@ export function TaskPanel({
         actor_id: userId,
         task_id: task.id,
         type: "comment",
+        priority: loud.has(rid) ? "primary" : "secondary",
         preview,
       });
     }
@@ -1271,7 +1295,9 @@ export function TaskPanel({
                 type="button"
                 onClick={() => onApprove(task)}
                 title={
-                  pendingOthers.length > 0
+                  briefStage
+                    ? "คุณเป็นผู้สั่ง brief — ผ่านแล้วระบบจะส่งงานเข้าสายตรวจจริงให้เอง"
+                    : pendingOthers.length > 0
                     ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนอนุมัติก่อนไปต่อ"
                     : hasChain && reviewStep < 2
                       ? `อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 (${
@@ -1284,15 +1310,19 @@ export function TaskPanel({
                 <CheckCircle2 size={15} />
                 {pendingOthers.length > 0
                   ? "อนุมัติ (รอผู้ตรวจร่วมอีกคน)"
-                  : hasChain
-                    ? reviewStep < 2
-                      ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
-                      : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
-                    : "อนุมัติ"}
+                  : briefStage
+                    ? "ผ่าน → ส่งเข้าสายตรวจจริง"
+                    : hasChain
+                      ? reviewStep < 2
+                        ? "อนุมัติ (ลำดับ 1 — ส่งต่อลำดับ 2)"
+                        : "อนุมัติ (ลำดับ 2 — ขั้นสุดท้าย)"
+                      : "อนุมัติ"}
               </button>
               {/* bypass — ทอดแรกที่ยังมีคนอื่นต้องตรวจต่อ (ผู้ตรวจร่วมยังไม่อนุมัติ และ/หรือ มีลำดับ 2):
                   ปิดงานเลย ข้ามทุกคนที่ยังไม่ได้ตรวจ */}
-              {reviewStep < 2 && (hasChain || pendingOthers.length > 0) && (
+              {reviewStep >= 1 &&
+                reviewStep < 2 &&
+                (hasChain || pendingOthers.length > 0) && (
                 <button
                   type="button"
                   onClick={() => onApproveBypass(task)}
@@ -1306,17 +1336,25 @@ export function TaskPanel({
               <button
                 type="button"
                 onClick={() => onReject(task)}
-                title="ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                title={
+                  briefStage
+                    ? "ขอให้ผู้รับผิดชอบแก้ก่อนส่งตรวจจริง (บันทึกในแชท แต่ไม่นับ KPI)"
+                    : "ตีกลับให้ผู้รับผิดชอบแก้ไข (นับเป็นการแก้ไข 1 ครั้ง)"
+                }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-600 transition-all duration-200 hover:bg-rose-50 active:scale-[0.97]"
               >
                 <Undo2 size={15} />
-                ตีกลับให้แก้ไข
+                {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับให้แก้ไข"}
               </button>
             </>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
               <Clock3 size={15} />
-              {hasChain ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2` : "รอตรวจ"}
+              {briefStage
+                ? `รอ${brieferPerson ? profileName(brieferPerson) : "ผู้สั่ง brief"} ตรวจก่อนส่งเข้าสายตรวจ`
+                : hasChain
+                  ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep}/2`
+                  : "รอตรวจ"}
               {partial1 && (
                 <span className="text-xs font-normal opacity-75">
                   · ลำดับ 1 อนุมัติแล้ว 1/2 คน
@@ -1331,22 +1369,33 @@ export function TaskPanel({
           )
         ) : (
           // งานปกติต้องส่งตรวจก่อนเท่านั้น (ไม่มีทางลัด "เสร็จแล้ว")
-          // งานจาก brief: เฉพาะผู้สั่ง brief กดส่งตรวจได้ (ตรวจทานกับทีมในแชทให้จบก่อน)
+          // งานจาก brief: graphic กดเอง → ผู้สั่ง brief ตรวจก่อน (ทอด 0) จึงยังไม่ต้องมีผู้ตรวจจริง
           <button
             type="button"
             onClick={() => onSubmitReview(task)}
-            disabled={!task.reviewer_id || !canSubmitReview}
+            disabled={driveMissing || (!briefStage && !task.reviewer_id)}
             title={
-              !canSubmitReview
-                ? `ผู้สั่ง brief (${briefCreator ? profileName(briefCreator) : "-"}) เป็นคนกดส่งตรวจ — คุยตรวจทานงานกันในแชทด้านล่างก่อน`
-                : task.reviewer_id
-                  ? undefined
-                  : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
+              driveMissing
+                ? "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้"
+                : briefStage
+                  ? `ส่งให้ ${brieferPerson ? profileName(brieferPerson) : "ผู้สั่ง brief"} ตรวจก่อน — ผ่านแล้วระบบจะส่งเข้าสายตรวจจริงให้เอง`
+                  : task.reviewer_id
+                    ? isResubmit
+                      ? "ส่งงานที่แก้แล้วกลับไปหาผู้ตรวจที่ตีกลับ"
+                      : undefined
+                    : "เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้"
             }
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1.5 text-sm font-medium text-cream shadow-sm transition-all duration-200 hover:from-brand-600 hover:to-brand-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:from-stone-300 disabled:to-stone-300 disabled:shadow-none"
           >
             <SendHorizontal size={15} />
-            {canSubmitReview ? "ส่งตรวจงาน" : "รอผู้สั่ง brief ส่งตรวจ"}
+            {/* ป้ายต้องบอกเหตุผลเอง — ทัชสกรีนไม่มี hover จึงไม่เห็น title ที่อธิบายว่าติดอะไร */}
+            {driveMissing
+              ? "ใส่ลิงก์ Drive ก่อนส่งตรวจ"
+              : isResubmit
+                ? "ส่งตรวจแก้"
+                : briefStage
+                  ? "ส่งให้ผู้สั่ง brief ตรวจ"
+                  : "ส่งตรวจงาน"}
           </button>
         )}
 
@@ -1517,6 +1566,37 @@ export function TaskPanel({
                     {t.label}
                   </button>
                 ))}
+              </div>
+            </FieldRow>
+          )}
+
+          {/* ผู้ตรวจก่อนส่งเข้าสายตรวจจริง = ผู้สั่ง brief (ทอด 0, migration 0098)
+              read-only — มาจากผู้สร้างการ์ด brief ต้นทาง เลือกใหม่ไม่ได้ */}
+          {!isBrief && isFromBrief && brieferId !== null && (
+            <FieldRow label="ผู้ตรวจก่อนส่ง">
+              <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-0.5">
+                <AssigneeAvatar assignee={brieferPerson} size={5} />
+                <span className="min-w-0 truncate text-xs text-stone-800">
+                  {brieferPerson ? profileName(brieferPerson) : "-"}
+                </span>
+                <span className="shrink-0 text-[11px] text-stone-400">
+                  (ผู้สั่ง brief)
+                </span>
+                {briefStage ? (
+                  task.review_status === "pending" ? (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                      กำลังตรวจ
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-stone-400">
+                      รอ graphic ส่งตรวจ
+                    </span>
+                  )
+                ) : (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                    ✓ ผ่านแล้ว
+                  </span>
+                )}
               </div>
             </FieldRow>
           )}
@@ -1708,7 +1788,7 @@ export function TaskPanel({
                       value={influQuery}
                       onChange={(e) => setInfluQuery(e.target.value)}
                       placeholder="ค้นหาชื่อ / ชื่อเล่น..."
-                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
@@ -1776,7 +1856,8 @@ export function TaskPanel({
           </FieldRow>
 
           {/* ประเภทชิ้นงานคอนเทนต์ (ภาพ/วิดีโอ) + หมวดเนื้อหา — ใช้นับ KPI ทีมคอนเทนต์
-              ปกติถูกบังคับติดตอนกด "โพสแล้ว" — ช่องนี้ไว้ติดล่วงหน้า/แก้ทีหลัง */}
+              **ทั้งสองช่องถูกบังคับตอนกด "โพสแล้ว"** (ผู้ใช้ 2026-08-29 — เดิมหมวดเป็น optional)
+              ช่องนี้ไว้ติดล่วงหน้า/แก้ทีหลัง */}
           <FieldRow label="ชิ้นงาน" htmlFor="task-content-format">
             <select
               id="task-content-format"
@@ -1793,7 +1874,7 @@ export function TaskPanel({
               }
               className={bareSelectSm}
             >
-              <option value="">ไม่ระบุ</option>
+              <option value="">ยังไม่ระบุ (ต้องระบุก่อนโพส)</option>
               {CONTENT_FORMAT_ORDER.map((f) => (
                 <option key={f} value={f}>
                   {CONTENT_FORMATS[f].label}
@@ -1816,7 +1897,7 @@ export function TaskPanel({
               }
               className={bareSelectSm}
             >
-              <option value="">ไม่ระบุ</option>
+              <option value="">ยังไม่ระบุ (ต้องระบุก่อนโพส)</option>
               {contentCategories
                 .filter(
                   (c) => c.active || c.id === task.content_category_id
@@ -1828,6 +1909,56 @@ export function TaskPanel({
                 ))}
             </select>
           </FieldRow>
+        </div>
+
+        {/* ลิงก์ Google Drive — แถวของตัวเองเหนือ "รายละเอียด" (ผู้ใช้ 2026-08-29)
+            ของเดิมเป็น input ไร้กรอบซ่อนอยู่ในหัวข้อ "ไฟล์งานที่ Approve แล้ว" คนเลื่อนผ่านไม่เห็น
+            **ห้ามครอบกล่องสีทับ (กรอบในกรอบ) และห้ามมีคำอธิบายใต้ช่อง** — ชื่อหัวข้อ + badge
+            "จำเป็น" บอกครบแล้ว (คำเตือนตอนยังไม่ใส่อยู่บนปุ่มส่งตรวจงานอีกที) */}
+        <div className="border-t border-stone-200/70 pt-2.5">
+          <div className="mb-1 flex items-center gap-1.5 px-2">
+            <Link2 size={15} className="shrink-0 text-stone-400" />
+            <span className="text-sm font-medium text-stone-500">
+              {isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"}
+            </span>
+            {!isBrief && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  driveMissing
+                    ? "bg-rose-100 text-rose-600"
+                    : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                จำเป็น
+              </span>
+            )}
+            {task.deliverable_url && (
+              <a
+                href={task.deliverable_url}
+                target="_blank"
+                rel="noreferrer"
+                title="เปิดลิงก์งาน"
+                className="ml-auto inline-flex min-h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-sky-200 bg-white px-2 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-50 active:scale-[0.97] max-sm:min-h-9"
+              >
+                <ExternalLink size={13} />
+                เปิดลิงก์
+              </a>
+            )}
+          </div>
+          <input
+            value={deliverableDraft}
+            aria-label={
+              isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
+            }
+            placeholder="วางลิงก์..."
+            onChange={(e) => setDeliverableDraft(e.target.value)}
+            onBlur={saveDeliverableUrl}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            // text-base ที่จอเล็ก — ช่องกรอก < 16px ทำให้ iOS ซูมเข้าแล้วไม่ซูมกลับ
+            className="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-base text-stone-800 transition-colors placeholder:text-stone-400 hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
+          />
         </div>
 
         {/* description */}
@@ -1900,39 +2031,9 @@ export function TaskPanel({
               <span className="text-xs text-stone-400">{files.length} ไฟล์</span>
             )}
           </p>
+          {/* ช่องลิงก์ Drive ย้ายไปเป็นกล่องของตัวเองเหนือ "รายละเอียด" แล้ว —
+              ตรงนี้เหลือเฉพาะไฟล์รูป/วิดีโอที่อัพเข้าระบบ */}
           <div className="space-y-2 px-2">
-            <div className="flex items-center gap-1.5">
-              <Link2 size={15} className="shrink-0 text-stone-400" />
-              <input
-                value={deliverableDraft}
-                aria-label={
-                  isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
-                }
-                placeholder={
-                  isBrief
-                    ? "วางลิงก์อ้างอิงประกอบ Brief (ถ้ามี)..."
-                    : "วางลิงก์ Google Drive ของงานที่ได้รับอนุมัติ..."
-                }
-                onChange={(e) => setDeliverableDraft(e.target.value)}
-                onBlur={saveDeliverableUrl}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-                className={bareControl}
-              />
-              {task.deliverable_url && (
-                <a
-                  href={task.deliverable_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="เปิดลิงก์งาน"
-                  className="shrink-0 rounded-lg p-1.5 text-sky-600 transition-colors hover:bg-sky-50"
-                >
-                  <ExternalLink size={15} />
-                </a>
-              )}
-            </div>
-
             {files.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
                 {files.map((f, i) => (
@@ -2031,7 +2132,7 @@ export function TaskPanel({
                     setAddingSub(false);
                     if (t !== "") void addSubtask(t);
                   }}
-                  className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                  className="min-w-0 flex-1 border-none bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
                 />
               </div>
             ) : (
@@ -2053,7 +2154,9 @@ export function TaskPanel({
             พูดคุย
           </p>
           <div className="space-y-2.5">
-            {(comments ?? []).map((c) => (
+            {/* ข้อความล่าสุดอยู่บนสุด — เก็บใน DB เรียงเก่า→ใหม่เหมือนเดิม กลับด้านตอนแสดงผลเท่านั้น */}
+            <div ref={commentsTopRef} />
+            {[...(comments ?? [])].reverse().map((c) => (
               <CommentItem
                 key={c.id}
                 comment={c}
@@ -2066,7 +2169,6 @@ export function TaskPanel({
                 ยังไม่มีข้อความ — เริ่มคุยเรื่องงานนี้ได้เลย
               </p>
             )}
-            <div ref={commentsEndRef} />
           </div>
         </div>
 
@@ -2131,7 +2233,7 @@ export function TaskPanel({
               aria-label="ลิงก์ไฟล์แนบ"
               placeholder="วางลิงก์ไฟล์ที่แก้ไข (Google Drive)..."
               onChange={(e) => setLinkDraft(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
         )}
@@ -2194,7 +2296,7 @@ export function TaskPanel({
                 void sendComment();
               }
             }}
-            className="min-h-9 min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-stone-100 px-3.5 py-2 text-sm leading-6 text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="min-h-9 min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-stone-100 px-3.5 py-2 text-sm leading-6 text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
           <button
             type="button"
@@ -2637,7 +2739,7 @@ function DeliverableFileThumb({
           ) : isVid ? (
             <>
               <video
-                src={url}
+                src={videoThumbSrc(url)}
                 className="h-full w-full object-cover"
                 muted
                 playsInline

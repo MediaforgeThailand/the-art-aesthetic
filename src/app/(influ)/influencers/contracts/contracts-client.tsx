@@ -17,7 +17,7 @@
 
 import { Check, FileSignature, Search, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   FilterSummary,
   InfluFilterButton,
@@ -276,6 +276,18 @@ export function ContractsClient({
         : [...f.statuses, s],
     }));
 
+  /* กดช่องวันในปฏิทิน = ตั้งตัวกรอง day — แต่ผลลัพธ์อยู่ใต้ heatmap ลงไปอีกหลายจอ
+     บนมือถือ (คนกดแล้วนึกว่าไม่มีอะไรเกิดขึ้น) ⇒ เลื่อนไปที่ลิสต์ให้เลย
+     รอ 1 เฟรมให้ลิสต์ re-render ตามตัวกรองใหม่ก่อน ไม่งั้นเลื่อนไปที่ความสูงเดิม */
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const selectDay = (day: string) => {
+    setFilters((f) => ({ ...f, day }));
+    if (day)
+      requestAnimationFrame(() =>
+        listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
+  };
+
   /* ---- mutations (optimistic + log + router.refresh) ---- */
 
   const patchInflu = (
@@ -495,7 +507,7 @@ export function ContractsClient({
         months={months}
         onMonthsChange={setMonths}
         selectedDay={filters.day}
-        onSelectDay={(day) => setFilters((f) => ({ ...f, day }))}
+        onSelectDay={selectDay}
         statusFilter={filters.statuses}
         onToggleStatus={toggleStatus}
       />
@@ -512,13 +524,15 @@ export function ContractsClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ / รหัส Influ / โน้ต"
-            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-300 focus:outline-none sm:text-sm"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none sm:text-sm"
           />
         </div>
         <InfluFilterButton
           api={filterApi}
           count={followFilterCount(filters)}
           factory={DEFAULT_FOLLOW_FILTERS}
+          resultCount={filtered.length}
+          resultNoun="เคส"
         >
           <FollowFilterSections
             filters={filters}
@@ -537,62 +551,66 @@ export function ContractsClient({
       <FilterSummary chips={filterChips} onChange={setFilters} onClear={clearAll} />
 
       {/* ---------- ลิสต์ ---------- */}
-      {sections.length === 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800 animate-fade-in">
-          <span>ตัวกรองซ่อนรายการทั้งหมดอยู่ — ข้อมูลยังอยู่ครบ</span>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="cursor-pointer rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-700 max-sm:min-h-11"
-          >
-            แสดงทั้งหมด
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {sections.map(({ status, rows: groupRows }) => {
-            const meta = TRACK_STATUSES[status];
-            return (
-              <section key={status} className="flex animate-fade-in-up">
-                <div className={`w-1.5 shrink-0 rounded-l-xl ${meta.dot}`} />
-                <div className="glass min-w-0 flex-1 overflow-x-auto rounded-l-none rounded-r-xl">
-                  <div className="sm:min-w-[1030px]">
-                    <div className="flex flex-wrap items-baseline gap-2 px-4 pb-1.5 pt-3">
-                      <h2 className="text-sm font-semibold text-stone-800">
-                        {meta.label}
-                      </h2>
-                      <span className="text-xs text-stone-400">
-                        {formatNumber(groupRows.length)} เคส · {meta.hint}
-                      </span>
-                    </div>
-                    <div className="hidden items-center border-y border-brand-100/60 bg-white/40 px-4 py-1.5 text-[11px] font-medium text-stone-400 sm:flex">
-                      <div
-                        className="grid min-w-0 flex-1 gap-3"
-                        style={{ gridTemplateColumns: GRID_COLS }}
-                      >
-                        <span>Influencer</span>
-                        <span>คลิปตามสัญญา (ลงจริง/เป้า)</span>
-                        <span>อายุสัญญา</span>
-                        <span>ผลลัพธ์ (ไม่บังคับ)</span>
-                        <span>ผู้รับผิดชอบ</span>
+      {/* ref อยู่ที่กล่องนอกสุด (ไม่ใช่ในกิ่ง if) — กดวันในปฏิทินแล้วเลื่อนมาถึงเสมอ
+          ทั้งตอนมีผลลัพธ์และตอนตัวกรองซ่อนหมด; scroll-mt เผื่อขอบบนไม่ให้ชนพอดีเป๊ะ */}
+      <div ref={listRef} className="scroll-mt-3">
+        {sections.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800 animate-fade-in">
+            <span>ตัวกรองซ่อนรายการทั้งหมดอยู่ — ข้อมูลยังอยู่ครบ</span>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="cursor-pointer rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-700 max-sm:min-h-11"
+            >
+              แสดงทั้งหมด
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sections.map(({ status, rows: groupRows }) => {
+              const meta = TRACK_STATUSES[status];
+              return (
+                <section key={status} className="flex animate-fade-in-up">
+                  <div className={`w-1.5 shrink-0 rounded-l-xl ${meta.dot}`} />
+                  <div className="glass min-w-0 flex-1 overflow-x-auto rounded-l-none rounded-r-xl">
+                    <div className="sm:min-w-[1030px]">
+                      <div className="flex flex-wrap items-baseline gap-2 px-4 pb-1.5 pt-3">
+                        <h2 className="text-sm font-semibold text-stone-800">
+                          {meta.label}
+                        </h2>
+                        <span className="text-xs text-stone-400">
+                          {formatNumber(groupRows.length)} เคส · {meta.hint}
+                        </span>
                       </div>
-                      <span className="w-11 shrink-0" />
+                      <div className="hidden items-center border-y border-brand-100/60 bg-white/40 px-4 py-1.5 text-[11px] font-medium text-stone-400 sm:flex">
+                        <div
+                          className="grid min-w-0 flex-1 gap-3"
+                          style={{ gridTemplateColumns: GRID_COLS }}
+                        >
+                          <span>Influencer</span>
+                          <span>คลิปตามสัญญา (ลงจริง/เป้า)</span>
+                          <span>อายุสัญญา</span>
+                          <span>ผลลัพธ์ (ไม่บังคับ)</span>
+                          <span>ผู้รับผิดชอบ</span>
+                        </div>
+                        <span className="w-11 shrink-0" />
+                      </div>
+                      {groupRows.map((r) => (
+                        <TrackRowLine
+                          key={r.influ.id}
+                          r={r}
+                          today={today}
+                          onOpen={(mode) => setPanel({ id: r.influ.id, mode })}
+                        />
+                      ))}
                     </div>
-                    {groupRows.map((r) => (
-                      <TrackRowLine
-                        key={r.influ.id}
-                        r={r}
-                        today={today}
-                        onOpen={(mode) => setPanel({ id: r.influ.id, mode })}
-                      />
-                    ))}
                   </div>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {panelRow && panel && (
         <TrackingPanel
@@ -715,8 +733,10 @@ function TrackRowLine({
           </span>
         </span>
 
-        {/* ผลลัพธ์ (ส่วนรอง ไม่ force) */}
-        <span className="flex items-center gap-1.5 text-xs">
+        {/* ผลลัพธ์ (ส่วนรอง ไม่ force) — ซ่อนบนจอเล็กเหมือนคอลัมน์ผู้รับผิดชอบ:
+            หัวตารางซ่อนอยู่แล้ว และแถวมือถือควรเหลือแต่ชื่อ/คลิป/อายุสัญญาที่ต้องตาม
+            (ดูครบได้ในแผงติดตาม) */}
+        <span className="hidden items-center gap-1.5 text-xs sm:flex">
           {i.followup_mode === "custom" ? (
             <span className="text-stone-400">แพ็คเกจเฉพาะ</span>
           ) : r.photoTasks.length === 0 ? (

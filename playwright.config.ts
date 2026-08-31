@@ -20,6 +20,10 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "off",
+    // ทุก action ต้องมีเพดานเวลาของตัวเอง — บทเรียน 2026-08-29: sweep กดปุ่มที่ *มีใน DOM
+    // แต่ถูก CSS ซ่อนบนจอเล็ก* (แถวตัวกรองเดสก์ท็อปของ /tasks) แล้ว Playwright รอ
+    // "element to be visible" เงียบๆ จนหมดเวลาเทสต์ทั้งก้อน 10 นาที ไม่ได้ทดสอบอะไรต่อเลย
+    actionTimeout: 30_000,
   },
   projects: [
     {

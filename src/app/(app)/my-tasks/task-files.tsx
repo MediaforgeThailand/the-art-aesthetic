@@ -18,7 +18,7 @@ import { useRef, useState } from "react";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "@/app/(app)/tasks/media-lightbox";
 import { formatFileSize } from "@/lib/format";
-import { isImagePath, isVideoPath } from "@/lib/media";
+import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
 import type { ListTaskFileRow } from "@/lib/types";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
 
@@ -57,9 +57,9 @@ function Thumb({ file }: { file: ListTaskFileRow }) {
   if (isVideo) {
     return (
       <span className="relative block h-full w-full bg-black/80">
-        {/* preload=metadata: ดึงแค่เฟรมแรกพอทำ thumbnail ไม่โหลดวิดีโอทั้งไฟล์ */}
+        {/* preload=metadata + `#t=` ใน videoThumbSrc: ดึงแค่เฟรมเดียวพอทำ thumbnail */}
         <video
-          src={url}
+          src={videoThumbSrc(url)}
           preload="metadata"
           muted
           playsInline

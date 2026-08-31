@@ -131,7 +131,9 @@ export default async function InfluencersPage() {
   const me = (profiles ?? []).find((p) => p.id === access.uid);
 
   return (
-    <PageContainer>
+    // จอเล็กบอร์ดเป็น pager ปาดข้าง — ต้องกั้นความสูงให้รางกินที่ที่เหลือพอดีจอ
+    // (แต่ละกลุ่มเลื่อนแนวตั้งในตัวเอง ไม่ใช่ทั้งหน้าเลื่อนยาวลงไป)
+    <PageContainer className="max-md:flex max-md:h-full max-md:flex-col">
       <InfluencersClient
         influencers={(influencers ?? []) as InfluencerListRow[]}
         tasks={(tasks ?? []) as InfluTaskLite[]}

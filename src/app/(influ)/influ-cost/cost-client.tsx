@@ -12,6 +12,11 @@
  * ชิปงานค้าง + ปุ่มตัวกรองที่พับ support/ช่วงวัน/เคสเก่าไว้ข้างใน) → ลิสต์เป็นตาราง
  * จัดกลุ่มตามสถานะแบบเดียวกับ Hunting/my-tasks (คอลัมน์ตรงกันทุกแถว อ่านราคาไล่ลง
  * แนวดิ่งได้ — ของเดิมเป็นการ์ด 2 คอลัมน์ที่ราคา/ปุ่ม support ลอยไปคนละที่ทุกแถว)
+ *
+ * มือถือ (2026-08-30): แถบเครื่องมือเหลือ [ค้นหา][ปุ่มตัวกรอง] — ตัวกรองรองทั้งหมด
+ * (รวมชิป "ยังไม่กรอกต้นทุน") ย้ายเข้า `FilterSheet` กลางของระบบ แทน bottom sheet ที่
+ * หน้านี้เคยเขียน portal เองซึ่งไม่มีเพดานความสูง/ไม่ล็อค scroll (ตัวกรองยาวแล้วปุ่มตกใต้ fold)
+ * ตัวกรองที่เปิดค้างอยู่ถูกสรุปเป็น ActiveFilterChips ใต้แถบ — กดกากบาทปลดทีละอันได้
  */
 
 import {
@@ -665,6 +670,16 @@ export function CostClient({
     }).filter((s) => s.groups.length > 0);
   }, [base, filters.usage]);
 
+  /** จำนวนรายการที่เหลือหลังกรอง — โชว์บนปุ่มปิดแผ่น ให้เห็นผลก่อนกดกลับไปดูลิสต์ */
+  const shownCount = useMemo(
+    () =>
+      sections.reduce(
+        (n, s) => n + s.groups.reduce((m, g) => m + g.items.length, 0),
+        0
+      ),
+    [sections]
+  );
+
   const clearFilters = () => {
     setSearch("");
     setFilters(DEFAULT_COST_FILTERS);
@@ -728,11 +743,10 @@ export function CostClient({
         {usageTile("used", CheckCircle2, "bg-emerald-50 text-emerald-600", 120)}
       </div>
 
-      {/* แถบเครื่องมือแถวเดียว — ตัวกรองรองถูกพับเก็บไว้ในปุ่มขวาสุด */}
+      {/* แถบเครื่องมือแถวเดียว — ตัวกรองรองถูกพับเก็บไว้ในปุ่มขวาสุด
+          จอเล็กเหลือ [ค้นหา][ปุ่มตัวกรอง] เท่านั้น (ชิป/ปุ่มที่เหลือย้ายเข้าแผ่น) */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {/* จอเล็กให้ช่องค้นหากินเต็มบรรทัด แล้วชิป/ปุ่มไหลลงแถวถัดไป
-            (บีบให้อยู่บรรทัดเดียวกันแล้ว placeholder โดนตัดจนอ่านไม่ออก) */}
-        <div className="relative w-full sm:w-64">
+        <div className="relative min-w-52 flex-1 sm:w-64 sm:flex-none">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -741,13 +755,14 @@ export function CostClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ influ / โปรแกรม"
-            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
         <InfluFilterButton
           api={filterApi}
           count={costFilterCount(filters)}
           factory={DEFAULT_COST_FILTERS}
+          resultCount={shownCount}
         >
           <CostFilterSections
             filters={filters}

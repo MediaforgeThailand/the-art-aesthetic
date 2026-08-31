@@ -1,7 +1,9 @@
 import type {
   AnalysisCategory,
   ContentFormat,
+  ContentKpiBasis,
   ContentKpiPeriod,
+  NotificationType,
   PriceGroup,
   RevisionKind,
   TaskPriority,
@@ -417,9 +419,13 @@ export const PAYMENT_METHODS = [
 
 export const STORAGE_BUCKET_DOCUMENTS = "documents";
 
-/* ---------- ตีกลับงาน 2 แบบ (migration 0063) ----------
-   ต่างกันที่ "นับเป็นข้อผิดพลาดไหม" เท่านั้น — ทั้งคู่ดึงงานกลับเป็น "กำลังทำ" เหมือนกัน
-   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload */
+/* ---------- ตีกลับงาน (migration 0063 + 'brief' ที่ 0097) ----------
+   ทุกแบบดึงงานกลับเป็น "กำลังทำ" เหมือนกัน ต่างกันที่ "นับเป็นข้อผิดพลาดไหม"
+   countsAsError = true จะถูกนับใน KPI รายคนหน้า Team Workload
+
+   ⚠️ 'brief' = ตีกลับของ "ผู้สั่ง brief" ในทอด 0 — ไม่มีปุ่มให้เลือก (จึงไม่อยู่ใน
+   REVISION_KIND_ORDER) ระบบใส่ให้เองตอนผู้สั่ง brief กดตีกลับ และ **ไม่นับ KPI**
+   เพราะยังไม่ผ่านสายตาผู้ตรวจจริง (กติกาผู้ใช้ 2026-08-29) */
 export const REVISION_KINDS: Record<
   RevisionKind,
   {
@@ -445,12 +451,100 @@ export const REVISION_KINDS: Record<
     chip: "border border-sky-200 bg-sky-50 text-sky-700",
     dot: "bg-sky-500",
   },
+  brief: {
+    label: "ผู้สั่ง brief ขอแก้",
+    hint: "ผู้สั่ง brief ขอให้แก้ก่อนส่งตรวจจริง — บันทึกในแชท แต่ไม่นับเป็นข้อผิดพลาด",
+    countsAsError: false,
+    chip: "border border-amber-200 bg-amber-50 text-amber-700",
+    dot: "bg-amber-500",
+  },
 };
 
+/** ตัวเลือกในกล่อง "ตีกลับ" ของผู้ตรวจจริง — 'brief' ไม่อยู่ในนี้โดยตั้งใจ
+    (ผู้สั่ง brief กดตีกลับได้ปุ่มเดียว ระบบใส่ชนิดให้เอง) */
 export const REVISION_KIND_ORDER: RevisionKind[] = ["mistake", "addition"];
 
 /** ประเภทของแถวเดิมที่ไม่มีค่า (ตีกลับก่อน migration 0063) — ถือเป็นคำผิดตามเดิม */
 export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
+
+/* ---------- ป้ายชนิดงานในกระดิ่งแจ้งเตือน (migration 0096) ----------
+   ทุกแถวในกระดิ่งติดป้ายชิดขวาบอกว่า "เรื่องนี้คืออะไร" อ่านได้ตั้งแต่ยังไม่อ่านข้อความ
+
+   loud = เรื่องที่ต้องลงมือทำต่อ (ป้ายเรืองแสงด้วย animate-glow-pulse ตามสีตัวเอง)
+   loud = false = เรื่องที่แค่ "เราเกี่ยวข้องอยู่ด้วย" — ป้ายเงียบๆ ไม่แย่งสายตา
+   กติกาผู้ใช้ 2026-08-29: อย่าให้ทุกอย่างเด่นเท่ากัน ไม่งั้นเท่ากับไม่มีอะไรเด่น */
+export type NotificationBadgeKey =
+  | "review_request"
+  | "rejected_mistake"
+  | "rejected_addition"
+  | "rejected_brief"
+  | "mention"
+  | "assign"
+  | "approved"
+  | "comment"
+  | "brief_accepted";
+
+export const NOTIFICATION_BADGES: Record<
+  NotificationBadgeKey,
+  { label: string; chip: string; loud: boolean }
+> = {
+  review_request: {
+    label: "ตรวจงาน",
+    chip: "border-amber-300 bg-amber-50 text-amber-700",
+    loud: true,
+  },
+  rejected_mistake: {
+    label: "แก้คำผิด",
+    chip: "border-rose-300 bg-rose-50 text-rose-700",
+    loud: true,
+  },
+  rejected_addition: {
+    label: "แก้เพิ่มเติม",
+    chip: "border-sky-300 bg-sky-50 text-sky-700",
+    loud: true,
+  },
+  rejected_brief: {
+    label: "แก้ก่อนส่งตรวจ",
+    chip: "border-amber-300 bg-amber-50 text-amber-700",
+    loud: true,
+  },
+  mention: {
+    label: "กล่าวถึงคุณ",
+    chip: "border-violet-300 bg-violet-50 text-violet-700",
+    loud: true,
+  },
+  assign: {
+    label: "งานใหม่",
+    chip: "border-brand-300 bg-brand-50 text-brand-700",
+    loud: true,
+  },
+  approved: {
+    label: "อนุมัติแล้ว",
+    chip: "border-emerald-200 bg-emerald-50 text-emerald-600",
+    loud: false,
+  },
+  comment: {
+    label: "ความคิดเห็น",
+    chip: "border-stone-200 bg-stone-50 text-stone-500",
+    loud: false,
+  },
+  brief_accepted: {
+    label: "รับงาน brief",
+    chip: "border-stone-200 bg-stone-50 text-stone-500",
+    loud: false,
+  },
+};
+
+/** ชนิด "rejected" แตกเป็น 3 ป้ายตาม revision_kind — ที่เหลือแมปตรงตัว */
+export function notificationBadgeKey(
+  type: NotificationType,
+  revisionKind: RevisionKind | null
+): NotificationBadgeKey {
+  if (type !== "rejected") return type;
+  if (revisionKind === "addition") return "rejected_addition";
+  if (revisionKind === "brief") return "rejected_brief";
+  return "rejected_mistake";
+}
 
 /* ---------- คลังลิงก์ผลวิเคราะห์ (migration 0065) ----------
    แท็บ "ผลวิเคราะห์" หน้า Task — ลิงก์ Canva ราย สัปดาห์/เดือน ที่หัวหน้าทีมแปะแชร์ */
@@ -506,6 +600,79 @@ export const CONTENT_KPI_PERIODS: Record<
 
 export const CONTENT_KPI_PERIOD_ORDER: ContentKpiPeriod[] = ["month", "day"];
 
+/* ---------- ฐานการนับของกติกา KPI (migration 0095) ----------
+   "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน — content ที่ brief อย่างเดียวไม่มีการ์ด creative ของตัวเอง
+   เลยเคยได้ KPI 0 ตลอด; แต่ละกติกาจึงเลือกได้ว่านับจากอะไร (ดู `kpiEventsOf` ใน kpi-utils.ts) */
+export const CONTENT_KPI_BASES: Record<
+  ContentKpiBasis,
+  {
+    /** ชื่อเต็มในหน้าตั้งค่า */
+    label: string;
+    /** ป้ายสั้นบนชิป/ตาราง */
+    short: string;
+    /** อธิบายว่านับตอนไหน + ใครเป็นเจ้าของผลงาน */
+    desc: string;
+    chip: string;
+    dot: string;
+  }
+> = {
+  work: {
+    label: "ชิ้นงานที่ทำเอง",
+    short: "ส่งงาน",
+    desc: "นับตอนกดส่งตรวจ — การ์ดชิ้นงานที่ตัวเองเป็นผู้รับผิดชอบ",
+    chip: "bg-stone-100 text-stone-700",
+    dot: "bg-stone-500",
+  },
+  brief: {
+    label: "Brief ที่ถูกรับงาน",
+    short: "Brief",
+    desc: "นับตอนมีคนกด “รับงาน” จากการ์ด Brief ที่ตัวเองเป็นคนสั่ง",
+    chip: "bg-amber-100 text-amber-800",
+    dot: "bg-amber-500",
+  },
+  posted: {
+    label: "งานที่ต้องโพส",
+    short: "โพส",
+    desc: "นับตอนกด “โพสแล้ว” — การ์ดจาก Brief เป็นของผู้สั่ง Brief ส่วนการ์ดที่ไม่มี Brief เป็นของผู้รับผิดชอบเอง",
+    chip: "bg-emerald-100 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+};
+
+export const CONTENT_KPI_BASIS_ORDER: ContentKpiBasis[] = [
+  "work",
+  "brief",
+  "posted",
+];
+
+/**
+ * เจ้าของ "คิวโพส" ของการ์ดหนึ่ง — กติกาผู้ใช้ 2026-08-29:
+ * การ์ดที่มาจาก Brief → **ผู้สั่ง Brief** เป็นคนถือ KPI การโพส (created_by ของการ์ด creative
+ * ถูกตั้งเป็นผู้สั่ง Brief ตอนกดรับงาน) · การ์ดที่ไม่มี Brief (คนตัดเอง/สร้างการ์ดเอง)
+ * → ผู้รับผิดชอบการ์ดต้องเป็นคนโพสเอง
+ *
+ * ใช้ร่วมกันทั้งคิว "รอโพส" ในหน้า /tasks และการนับ KPI ฐาน 'posted'
+ * — **ห้ามเขียนเงื่อนไขนี้ซ้ำที่อื่น** ไม่งั้นสองที่จะนับคนละคนเมื่อกติกาเปลี่ยน
+ */
+export function postOwnerIdOf(t: {
+  brief_source_id: string | null;
+  created_by: string | null;
+  assignee_id: string | null;
+}): string | null {
+  return t.brief_source_id !== null ? t.created_by : t.assignee_id;
+}
+
+/**
+ * ฟอร์แมตชิ้นงานที่เดาได้จากการ์ด Brief — การ์ด Brief มักไม่มี `content_format`
+ * (ช่องนั้นติดตอนโพส) แต่มี `brief_content_type` (graphic|video) อยู่แล้ว
+ * กติกา KPI ฐาน 'brief' ที่เจาะฟอร์แมตจึงเทียบกับค่านี้เป็นตัวสำรอง
+ */
+export function briefFormatOf(briefContentType: string | null): ContentFormat | null {
+  if (briefContentType === "video") return "video";
+  if (briefContentType === "graphic") return "image";
+  return null;
+}
+
 /* ---------- ย่อไฟล์ก่อนอัพโหลด ----------
    เพดานขนาดไฟล์อยู่ที่ `MAX_UPLOAD_BYTES` ใน `@/lib/upload` ที่เดียว (ต้องตรงกับค่าที่ตั้งไว้
    ใน Supabase Dashboard → Storage → Settings; **ห้ามตั้งด้วย SQL** — เคยทำอัพโหลดพังทั้งระบบ) */
@@ -516,13 +683,29 @@ export const IMAGE_COMPRESS_OVER_MB = 1;
 /** ด้านยาวสุดของรูปหลังย่อ — พอสำหรับดูตรวจงานบนจอ 4K โดยไฟล์เล็กลงหลายเท่า */
 export const IMAGE_MAX_DIMENSION = 2560;
 
-/** วิดีโอที่ใหญ่กว่านี้จะถูกบีบในเบราว์เซอร์ก่อนอัพ (`compressVideoFile` ใน @/lib/video-compress)
- *  ตั้งไว้สูงกว่าฝั่งรูปมาก เพราะการแปลงวิดีโอกินเวลา — คลิปเล็กไม่คุ้มที่จะให้ผู้ใช้รอ */
+/** วิดีโอที่ใหญ่กว่านี้จะถูกบีบเสมอ (`compressVideoFile` ใน @/lib/video-compress) */
 export const VIDEO_COMPRESS_OVER_MB = 20;
+
+/** วิดีโอที่เล็กกว่านี้ปล่อยผ่านเสมอ — โหลดทันอยู่แล้ว ไม่คุ้มที่จะให้ผู้ใช้รอแปลง
+ *  (ระหว่าง 2 ค่านี้ ตัดสินจาก "บิตเรต" ว่าเปิดดูแล้วจะสะดุดหรือไม่) */
+export const VIDEO_SKIP_UNDER_MB = 3;
 
 /** ด้านยาวสุดของวิดีโอหลังบีบ — 1080p พอสำหรับตรวจงาน (ต้นฉบับ 4K จากมือถือเล็กลงหลายเท่า) */
 export const VIDEO_MAX_DIMENSION = 1920;
 
-/** ระดับคุณภาพที่ส่งให้ตัวเข้ารหัส — 'medium' ให้ภาพพอดูงานได้โดยไฟล์เล็กลงมาก
- *  (ขยับเป็น 'high' ถ้าทีมบอกว่าภาพแตกจนตรวจงานไม่ได้) */
-export const VIDEO_QUALITY_LEVEL = "medium" as const;
+/** เฟรมเรตสูงสุดของไฟล์หลังบีบ — คลิปจากมือถือมักเป็น 50/60fps ซึ่งกินแบนด์วิดท์และ
+ *  แรงถอดรหัสเกือบเท่าตัวโดยไม่ช่วยการตรวจงานเลย */
+export const VIDEO_MAX_FPS = 30;
+
+/** บิตต่อพิกเซลต่อเฟรมที่ใช้คำนวณ "บิตเรตเป้าหมาย" ของไฟล์หลังบีบ
+ *  (H.264 ที่ ~0.04 = 1080x1920@30fps ราว 2.5 Mbps — คมพอตรวจงานและสตรีมทันบนเน็ตออฟฟิศ)
+ *  ตัวเลขนี้คือหัวใจของการแก้อาการ "กดเล่นแล้วกระตุก": ไฟล์ที่บิตเรตสูงกว่าความเร็วเน็ต
+ *  จะเล่นไปโหลดไปแล้ว buffer หมดเป็นระยะ ไม่ว่าเครื่องผู้ตรวจจะแรงแค่ไหน */
+export const VIDEO_BITS_PER_PIXEL = 0.04;
+
+/** ขอบบน–ล่างของบิตเรตเป้าหมาย (bit/s) — กันคลิปจอใหญ่พุ่งเกินเน็ต และกันคลิปจอเล็กแตกเกินไป */
+export const VIDEO_MIN_BITRATE = 600_000;
+export const VIDEO_MAX_BITRATE = 2_800_000;
+
+/** บีบก็ต่อเมื่อบิตเรตต้นทางสูงกว่าเป้าหมายเกินเท่านี้ — ไฟล์ที่ดีอยู่แล้วไม่ต้องเสียคุณภาพซ้ำ */
+export const VIDEO_BITRATE_SLACK = 1.25;

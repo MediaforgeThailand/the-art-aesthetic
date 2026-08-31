@@ -13,7 +13,7 @@
  */
 
 import { CalendarRange, Target } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
   cellsByDate,
@@ -64,6 +64,15 @@ export function FollowupHeatmap({
     [today, months]
   );
 
+  /* จอเล็กเรียงเดือนแนวนอนแบบ snap (1 เดือน = 1 หน้า) แทนการซ้อนลงมาจนสูงหลายจอ
+     — เปิดมาต้องอยู่ที่ "เดือนล่าสุด" ซึ่ง monthGrids วางไว้ท้ายสุด ไม่ใช่เดือนเก่าสุด
+     จอ ≥sm กางเป็น flex-wrap ไม่มี scroll แนวนอน คำสั่งนี้จึงไม่มีผลกับเดสก์ท็อป */
+  const monthsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = monthsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [grids]);
+
   const totals = useMemo(() => {
     const byStatus = {
       overdue: 0,
@@ -99,14 +108,17 @@ export function FollowupHeatmap({
           </h2>
           <p className="min-w-0 flex-1 text-xs text-stone-400">
             สีของช่อง = ความคืบหน้าการลงคลิปตามเป้า · กดช่องเพื่อดูเฉพาะเคสวันนั้น
+            {/* บอกวิธีดูเดือนอื่นเฉพาะจอเล็ก — ที่นั่นเดือนเรียงแนวนอนไม่ได้กางให้เห็นครบ */}
+            <span className="sm:hidden"> · ปัดซ้าย-ขวาเพื่อดูเดือนอื่น</span>
           </p>
-          <div className="flex gap-1 rounded-full bg-stone-100/80 p-1">
+          {/* จอเล็ก: ปุ่มช่วงเดือนกินเต็มแถวและแบ่งกันคนละส่วน — เป้านิ้วกว้างพอกดไม่พลาด */}
+          <div className="flex gap-1 rounded-full bg-stone-100/80 p-1 max-sm:w-full">
             {HEATMAP_RANGES.map((r) => (
               <button
                 key={r.key}
                 type="button"
                 onClick={() => onMonthsChange(r.key)}
-                className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
+                className={`cursor-pointer rounded-full px-3 py-1 font-medium transition-all active:scale-[0.97] max-sm:min-h-11 max-sm:flex-1 max-sm:text-sm sm:text-xs ${
                   months === r.key
                     ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
                     : "text-stone-500 hover:bg-white/70 hover:text-stone-700"
@@ -118,9 +130,16 @@ export function FollowupHeatmap({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-x-5 gap-y-4">
+        <div
+          ref={monthsRef}
+          className="flex gap-x-5 gap-y-4 max-sm:snap-x max-sm:snap-mandatory max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pb-1 sm:flex-wrap"
+        >
           {grids.map((g) => (
-            <div key={g.key} className="w-full min-w-0 sm:w-auto">
+            <div
+              key={g.key}
+              // จอเล็ก: 1 เดือนกว้างเต็มการ์ด = 1 หน้า snap (ช่องวันจึงยังกว้าง ~46px กดง่าย)
+              className="min-w-0 max-sm:w-full max-sm:shrink-0 max-sm:snap-start sm:w-auto"
+            >
               <p className="mb-1 text-[11px] font-medium text-stone-500">
                 {monthLabel(g)}
               </p>
@@ -151,7 +170,7 @@ export function FollowupHeatmap({
                     return (
                       <span
                         key={date}
-                        className={`flex aspect-square w-full items-center justify-center rounded-md text-[10px] tabular-nums sm:aspect-auto sm:h-7 sm:w-7 ${HEAT_CELL.empty} ${
+                        className={`flex aspect-square w-full items-center justify-center rounded-md tabular-nums max-sm:text-xs sm:aspect-auto sm:h-7 sm:w-7 sm:text-[10px] ${HEAT_CELL.empty} ${
                           date === today ? "ring-1 ring-stone-400" : ""
                         }`}
                       >
@@ -173,7 +192,7 @@ export function FollowupHeatmap({
                       aria-label={title}
                       aria-pressed={selected}
                       onClick={() => onSelectDay(selected ? "" : date)}
-                      className={`flex aspect-square w-full cursor-pointer items-center justify-center rounded-md text-[10px] font-medium tabular-nums transition-all hover:scale-110 hover:shadow-sm sm:aspect-auto sm:h-7 sm:w-7 ${HEAT_CELL[heatLevelOf(cell)]} ${
+                      className={`flex aspect-square w-full cursor-pointer items-center justify-center rounded-md font-medium tabular-nums transition-all hover:scale-110 hover:shadow-sm max-sm:text-xs sm:aspect-auto sm:h-7 sm:w-7 sm:text-[10px] ${HEAT_CELL[heatLevelOf(cell)]} ${
                         selected
                           ? "ring-2 ring-brand-500 ring-offset-1"
                           : date === today
@@ -184,7 +203,9 @@ export function FollowupHeatmap({
                       <span className="flex flex-col items-center leading-none">
                         <span>{day}</span>
                         {count > 1 && (
-                          <span className="text-[8px] opacity-80">×{count}</span>
+                          <span className="opacity-80 max-sm:text-[10px] sm:text-[8px]">
+                            ×{count}
+                          </span>
                         )}
                       </span>
                     </button>
@@ -256,7 +277,7 @@ export function FollowupHeatmap({
               >
                 <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
                 <span
-                  className={`min-w-0 flex-1 truncate text-xs ${
+                  className={`min-w-0 flex-1 truncate max-sm:text-sm sm:text-xs ${
                     active ? "font-medium text-brand-700" : "text-stone-600"
                   }`}
                 >

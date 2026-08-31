@@ -133,6 +133,8 @@ export function PersonTab({
     let addition = 0;
     for (const r of revisions) {
       if (!mine.has(r.task_id)) continue;
+      // ผู้สั่ง brief ขอแก้ก่อนส่งตรวจ — ไม่ใช่การตีกลับของผู้ตรวจจริง จึงไม่นับทั้งสองช่อง
+      if (r.revision_kind === "brief") continue;
       if (REVISION_KINDS[r.revision_kind ?? DEFAULT_REVISION_KIND].countsAsError) {
         mistake += 1;
       } else {

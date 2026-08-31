@@ -396,7 +396,7 @@ export function NewCaseModal({
                     value={profileQuery}
                     onChange={(e) => setProfileQuery(e.target.value)}
                     placeholder="ค้นหาจากชื่อ / ชื่อเล่น / เบอร์..."
-                    className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
+                    className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
                   />
                 </div>
                 <div className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white">
@@ -448,14 +448,10 @@ export function NewCaseModal({
                 <span className="font-mono text-sm text-stone-500">
                   INF-XXXXX
                 </span>
-                <span className="ml-auto text-xs text-stone-400">
+                <span className="ml-auto text-xs text-stone-500">
                   ออกให้อัตโนมัติ
                 </span>
               </div>
-              <p className="mt-1 text-xs text-stone-400">
-                ระบบออกรหัสให้ตอนกดสร้าง (ไม่ซ้ำกับเคสอื่น) —
-                ใช้เป็นแฮชแท็กประจำเคสในโพสของ influ
-              </p>
             </div>
             <div>
               <Label htmlFor="nc-contact">ช่องทางการติดต่อ</Label>
@@ -466,9 +462,6 @@ export function NewCaseModal({
                 onChange={(e) => setContactChannel(e.target.value)}
                 placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
               />
-              <p className="mt-1 text-xs text-stone-400">
-                ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ (แก้ทีหลังได้ที่แท็บรายละเอียดเคส)
-              </p>
             </div>
           </div>
 
@@ -488,11 +481,6 @@ export function NewCaseModal({
                 </option>
               ))}
             </Select>
-            <p className="mt-1 text-xs text-stone-400">
-              {selectedCampaign
-                ? `เคสนี้ต้องติดแท็ก #${selectedCampaign.tag} ในโพสด้วย`
-                : "เลือกได้ถ้าเคสนี้อยู่ในแคมเปญ — จะเพิ่มแฮชแท็กของแคมเปญให้อัตโนมัติ"}
-            </p>
           </div>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -522,12 +510,6 @@ export function NewCaseModal({
                 disabled={saving}
               />
             </div>
-            {consultOnly && (
-              <p className="mt-1 text-xs text-amber-700">
-                เคสรอปรึกษา = ทำ Memo ได้เลยโดยยังไม่ระบุหัตถการ —
-                เมื่อปรึกษาแพทย์แล้วให้กลับมาเพิ่มหัตถการและเอาติ๊กนี้ออกที่แท็บรายละเอียดเคส
-              </p>
-            )}
           </div>
           <div>
             <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
@@ -542,10 +524,6 @@ export function NewCaseModal({
               onChange={(e) => setTalentFee(e.target.value)}
               placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
             />
-            <p className="mt-1 text-xs text-stone-400">
-              กรอกเฉพาะเคสที่ influ คิดเงิน — จะขึ้นเป็นบรรทัด &quot;ค่าตัว&quot;
-              ในข้อความ Memo ที่คัดลอกไปทำเอกสาร
-            </p>
             {(() => {
               // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert
               const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
@@ -568,9 +546,6 @@ export function NewCaseModal({
                 value={serviceDate}
                 onChange={(e) => setServiceDate(e.target.value)}
               />
-              <p className="mt-1 text-xs text-stone-400">
-                ยังไม่เคาะวันได้ — มาเติมทีหลังที่แท็บรายละเอียดเคส
-              </p>
             </div>
             <div>
               <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>

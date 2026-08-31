@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Card, EmptyState, Input, Select } from "@/components/ui";
+import { Card, EmptyState, Input, Modal, Select } from "@/components/ui";
 import { CONTENT_FORMATS } from "@/lib/constants";
 import {
   MEDIA_RANGES,
@@ -23,11 +23,20 @@ import type {
   ContentFormat,
   ContentKpiRow,
 } from "@/lib/types";
-import { KpiViewTabs, PaceBar, PersonAvatar, StatBox, StatusPill } from "../kpi-ui";
+import {
+  BasisChip,
+  KpiViewTabs,
+  PaceBar,
+  PersonAvatar,
+  PostBacklogModal,
+  StatBox,
+  StatusPill,
+} from "../kpi-ui";
 import {
   addToPieceAgg,
   computeKpiMonth,
   emptyPieceAgg,
+  emptyPostStat,
   monthLabel,
   pad2,
   paceTone,
@@ -48,7 +57,7 @@ import {
  * (เพิ่ม/ลดคอลัมน์ต้องแก้ GRID_COLS + SORT_COLUMNS + เซลล์ในแถว พร้อมกันเสมอ)
  */
 const GRID_COLS =
-  "grid grid-cols-[minmax(11rem,1.6fr)_9rem_6rem_6rem_6rem_4.5rem_4.5rem_5rem_4.5rem_5.5rem]";
+  "grid grid-cols-[minmax(11rem,1.6fr)_9rem_6rem_6rem_6rem_4.5rem_4.5rem_5rem_6rem_4.5rem_5.5rem]";
 
 /** คอลัมน์ของตารางจำนวนชิ้นงาน (การ์ด vs ไฟล์) — ชุดเดียวใช้ทั้งหัวตารางและแถว */
 const PIECE_COLS =
@@ -70,6 +79,7 @@ type SortKey =
   | "submitted"
   | "approved"
   | "waiting"
+  | "posted"
   | "files"
   | "prev";
 
@@ -86,11 +96,14 @@ function sortValue(s: PersonStat, key: SortKey): number {
     case "image":
       return s.formats.image.done;
     case "submitted":
-      return s.doneTotal;
+      return s.submitted;
     case "approved":
       return s.approved;
     case "waiting":
       return s.waiting + s.sent;
+    // เรียงตาม "ดองไว้กี่ชิ้น" — สิ่งที่ต้องตามจริง (ไม่ใช่สัดส่วนที่โพสไปแล้ว)
+    case "posted":
+      return s.post.backlog;
     case "files":
       return s.pieces.files;
     case "prev":
@@ -199,6 +212,14 @@ export function OverviewClient({
 }) {
   const [ym, setYm] = useState({ year: initialYear, month: initialMonth });
   const [sort, setSort] = useState<SortState>({ key: "default", desc: true });
+  /* ป๊อปอัพรายละเอียดของกล่องสถิติ (ผู้ใช้ 2026-08-29: กดที่ตัวเลขแล้วดูรายละเอียดในหน้าเดิม)
+     "post" = คิวงานดองโพส (ส่ง profile id มาด้วยเพื่อดูเฉพาะคนนั้น) */
+  const [detail, setDetail] = useState<
+    null | { kind: "credited" | "review" | "behind" } | {
+      kind: "post";
+      personId: string | null;
+    }
+  >(null);
   // ตารางจำนวนชิ้นงาน — ช่วงเวลาอิสระ ไม่ผูกกับเดือนด้านบน (เหมือนของเดิมในแดชบอร์ด)
   const [pieceRange, setPieceRange] = useState<MediaRangeKey>("1m");
   const [pieceFrom, setPieceFrom] = useState("");
@@ -519,20 +540,26 @@ export function OverviewClient({
         )}
       </Card>
 
-      {/* ---------- ตัวเลขรวมของเดือน ---------- */}
+      {/* ---------- ตัวเลขรวมของเดือน (กดที่กล่องเพื่อดูรายละเอียดรายคน) ---------- */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatBox
-          label="ส่งงานเดือนนี้ (ทีม)"
-          value={team.submitted}
+          label="ผลงานเดือนนี้ (ทีม)"
+          value={team.credited}
           unit="ชิ้น"
-          sub={`เดือนก่อน ${team.prevSubmitted} ชิ้น · โพสแล้ว ${team.posted}`}
+          sub={`ส่งตรวจ ${team.submitted} · เดือนก่อน ${team.prevSubmitted}`}
+          onClick={() => setDetail({ kind: "credited" })}
+          detailLabel="ดูรายคน"
         />
         <StatBox
           label="ตรวจผ่านแล้ว"
           value={team.approved}
           unit="ชิ้น"
-          tone="text-amber-600"
-          sub={`รอตรวจ ${team.waiting + team.sent} ชิ้น`}
+          tone="text-sky-700"
+          sub={`รอตรวจ ${team.waiting + team.sent} ชิ้น${
+            team.revision > 0 ? ` · งานแก้ ${team.revision}` : ""
+          }`}
+          onClick={() => setDetail({ kind: "review" })}
+          detailLabel="ดูรายคน"
         />
         <StatBox
           label={isCurrentMonth ? "ตามหลังเป้าวันนี้" : "ไม่ครบเป้า"}
@@ -540,13 +567,21 @@ export function OverviewClient({
           unit="คน"
           sub={`จากที่ตั้งเป้า ${team.peopleWithTarget} คน · ครบเป้าแล้ว ${team.donePeople}`}
           tone={team.behindPeople > 0 ? "text-rose-600" : "text-emerald-600"}
+          onClick={() => setDetail({ kind: "behind" })}
+          detailLabel="ดูว่าใครตามหลัง"
         />
+        {/* โพสแล้วกี่ชิ้นจากกี่ชิ้น + กดดูว่าใครดองงานโพสไว้ (คำสั่งผู้ใช้ 2026-08-29) */}
         <StatBox
-          label="ตรวจผ่านแล้วรอกดโพส"
-          value={team.pendingPost}
-          unit="งาน"
-          sub="คิวค้างทั้งหมด ไม่ผูกเดือน"
-          tone={team.pendingPost > 0 ? "text-amber-600" : "text-stone-800"}
+          label="โพสแล้ว (อนุมัติเดือนนี้)"
+          value={`${team.post.done}/${team.post.due}`}
+          sub={
+            team.post.backlog > 0
+              ? `ดองไว้ ${team.post.backlog} ชิ้น · รวม ${team.post.backlogDays} วัน`
+              : "ไม่มีงานค้างโพส"
+          }
+          tone={team.post.backlog > 0 ? "text-amber-600" : "text-emerald-600"}
+          onClick={() => setDetail({ kind: "post", personId: null })}
+          detailLabel="ดูว่าใครดองไว้"
         />
       </div>
 
@@ -628,15 +663,35 @@ export function OverviewClient({
                     </span>
                     <span>
                       ผ่าน{" "}
-                      <span className="font-semibold text-amber-600">
+                      <span className="font-semibold text-sky-700">
                         {s.approved}
                       </span>
                     </span>
                     <span>
                       รอตรวจ{" "}
-                      <span className="font-semibold text-stone-700">
+                      <span className="font-semibold text-emerald-700">
                         {s.waiting + s.sent}
                       </span>
+                    </span>
+                    {s.revision > 0 && (
+                      <span>
+                        งานแก้{" "}
+                        <span className="font-semibold text-rose-600">
+                          {s.revision}
+                        </span>
+                      </span>
+                    )}
+                    <span>
+                      โพส{" "}
+                      <span className="font-semibold text-stone-700">
+                        {s.post.done}/{s.post.due}
+                      </span>
+                      {s.post.backlog > 0 && (
+                        <span className="text-amber-600">
+                          {" "}
+                          · ดอง {s.post.backlog} ({s.post.backlogDays} วัน)
+                        </span>
+                      )}
                     </span>
                     <span>
                       ไฟล์{" "}
@@ -655,7 +710,7 @@ export function OverviewClient({
 
           {/* จอ ≥sm: ตารางเทียบเต็ม (เลื่อนแนวนอนในกล่องตัวเอง) */}
           <div className="hidden overflow-x-auto sm:block">
-            <div className="min-w-[64rem]">
+            <div className="min-w-[70rem]">
               {/* หัวตาราง */}
               <div
                 className={`${GRID_COLS} items-end gap-2 border-b border-stone-200/70 px-3 py-2`}
@@ -709,6 +764,13 @@ export function OverviewClient({
                   sortKey="waiting"
                   sort={sort}
                   onSort={onSort}
+                />
+                <SortHeader
+                  label="โพสแล้ว"
+                  sortKey="posted"
+                  sort={sort}
+                  onSort={onSort}
+                  hint="โพสแล้ว/งานที่อนุมัติในเดือนนี้ของคิวคนนั้น — เรียงตามจำนวนงานที่ดองไว้"
                 />
                 <SortHeader
                   label="ไฟล์"
@@ -809,22 +871,41 @@ export function OverviewClient({
                     />
   
                     <p className="text-right text-xs font-semibold tabular-nums text-stone-700">
-                      {s.doneTotal}
+                      {s.submitted}
                     </p>
-                    <p className="text-right text-xs font-semibold tabular-nums text-amber-600">
+                    <p className="text-right text-xs font-semibold tabular-nums text-sky-700">
                       {s.approved}
                     </p>
-                    <p className="text-right text-xs tabular-nums text-stone-600">
+                    {/* รอตรวจ = เขียว · ตัวเลขแดงต่อท้าย = งานที่ถูกตีกลับ (งานแก้) */}
+                    <p className="text-right text-xs tabular-nums text-emerald-700">
                       {s.waiting + s.sent}
-                      {s.pending > 0 && (
+                      {s.revision > 0 && (
                         <span
-                          className="ml-1 text-[10px] text-amber-600"
-                          title={`ตรวจผ่านแล้วแต่ยังไม่กดโพส ${s.pending} งาน`}
+                          className="ml-1 font-bold text-rose-600"
+                          title={`ถูกตีกลับ ${s.revision} ชิ้น — ยังไม่ได้ส่งตรวจใหม่`}
                         >
-                          ·{s.pending}
+                          แก้ {s.revision}
                         </span>
                       )}
                     </p>
+                    {/* โพสแล้วกี่/กี่ + ตัวเลขเหลือง = ดองไว้ (กดเปิดรายละเอียดของคนนี้) */}
+                    <div className="text-right text-xs tabular-nums">
+                      <span className="font-semibold text-stone-700">
+                        {s.post.done}/{s.post.due}
+                      </span>
+                      {s.post.backlog > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDetail({ kind: "post", personId: s.profile.id })
+                          }
+                          title={`ดองงานโพสไว้ ${s.post.backlog} ชิ้น · รวม ${s.post.backlogDays} วัน — กดดูรายการ`}
+                          className="ml-1 cursor-pointer rounded px-1 text-[10px] font-bold text-amber-600 hover:bg-amber-50"
+                        >
+                          ดอง {s.post.backlog}
+                        </button>
+                      )}
+                    </div>
                     <p className="text-right text-xs tabular-nums text-stone-600">
                       {s.pieces.files}
                     </p>
@@ -843,10 +924,14 @@ export function OverviewClient({
         </Card>
       )}
 
-      <p className="mb-6 text-[11px] text-stone-400">
-        &quot;ส่ง&quot; = งานที่กดส่งตรวจในเดือนนี้ · &quot;ผ่าน&quot; =
-        ตรวจผ่านแล้ว · &quot;รอตรวจ&quot; = ส่งแล้วยังไม่ผ่าน (ตัวเลขสีเหลืองท้าย
-        = ตรวจผ่านแล้วแต่ยังไม่กดโพส) · &quot;ไฟล์&quot; =
+      <p className="mb-6 text-[11px] leading-5 text-stone-400">
+        &quot;ทำได้ / เป้ารวม&quot; = ผลงานตามฐานที่ตั้งไว้ให้คนนั้น (ส่งงาน /
+        Brief ที่ถูกรับ / งานที่ต้องโพส) · &quot;ส่ง&quot; =
+        การ์ดที่ตัวเองกดส่งตรวจในเดือนนี้ · &quot;ผ่าน&quot; = ตรวจผ่านแล้ว ·
+        &quot;รอตรวจ&quot; = ส่งแล้วยังไม่ผ่าน (ตัวเลขแดงต่อท้าย =
+        งานที่ถูกตีกลับ ยังไม่ได้ส่งตรวจใหม่) · &quot;โพสแล้ว&quot; =
+        โพสแล้ว/งานที่อนุมัติในเดือนนี้ซึ่งคนนี้เป็นคนต้องโพส (ตัวเลขเหลือง =
+        ดองไว้ทั้งหมด กดดูรายการได้) · &quot;ไฟล์&quot; =
         ไฟล์ภาพ/วิดีโอที่อัพจริงในการ์ด · &quot;เดือนก่อน&quot; = จำนวนชิ้น
         (ผ่านกี่กติกา) · กดหัวคอลัมน์เพื่อเรียงลำดับ
       </p>
@@ -985,7 +1070,7 @@ export function OverviewClient({
         <div className="mb-4">
           <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500">
             <AlertTriangle size={13} />
-            ส่งงานในเดือนนี้แต่ยังไม่ถูกตั้งเป้า KPI
+            มีผลงานในเดือนนี้แต่ยังไม่ถูกตั้งเป้า KPI
           </p>
           <div className="flex flex-wrap gap-2">
             {month.offRadar.map((row) => (
@@ -999,6 +1084,235 @@ export function OverviewClient({
           </div>
         </div>
       )}
+
+      {/* ---------- ป๊อปอัพรายละเอียดของกล่องสถิติ (อยู่หน้าเดิม ไม่เปลี่ยนหน้า) ---------- */}
+      <Modal
+        open={detail !== null && detail.kind === "credited"}
+        onClose={() => setDetail(null)}
+        title={`ผลงานเดือนนี้รายคน · ${team.credited} ชิ้น`}
+        wide
+      >
+        <p className="mb-3 text-xs leading-5 text-stone-500">
+          &quot;ผลงาน&quot; ของแต่ละคนนับตามฐานที่ตั้งไว้ในหน้าตั้งค่า KPI —
+          คนที่ทำชิ้นงานเองนับตอนส่งตรวจ · คนที่ brief อย่างเดียวนับ Brief
+          ที่มีคนกดรับงาน · ฐาน &quot;งานที่ต้องโพส&quot; นับตอนกดโพส
+        </p>
+        {personStats.length === 0 ? (
+          <p className="py-6 text-center text-sm text-stone-400">
+            ยังไม่มีใครถูกตั้งเป้า KPI
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {[...personStats]
+              .sort((a, b) => b.doneTotal - a.doneTotal)
+              .map((s2) => (
+                <li
+                  key={s2.profile.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200/70 bg-white/70 px-3 py-2"
+                >
+                  <PersonAvatar profile={s2.profile} size={6} />
+                  <Link
+                    href={`/content-tracking?person=${s2.profile.id}`}
+                    className="min-w-0 flex-1 truncate text-sm text-stone-800 hover:text-brand-600 hover:underline"
+                  >
+                    {personName(s2.profile)}
+                  </Link>
+                  {(["work", "brief", "posted"] as const)
+                    .filter((b) => s2.basisCounts[b] > 0)
+                    .map((b) => (
+                      <span
+                        key={b}
+                        className="inline-flex items-center gap-1 text-[11px] text-stone-500"
+                      >
+                        <BasisChip basis={b} />
+                        <span className="tabular-nums">{s2.basisCounts[b]}</span>
+                      </span>
+                    ))}
+                  <span className="ml-auto shrink-0 text-xs font-bold tabular-nums text-stone-800">
+                    {s2.doneTotal}
+                    <span className="font-normal text-stone-400">
+                      /{s2.overallTarget}
+                    </span>
+                    <span className="ml-1 text-[10px] font-normal text-stone-400">
+                      {pctOf(s2.doneTotal, s2.overallTarget)}%
+                    </span>
+                  </span>
+                </li>
+              ))}
+          </ul>
+        )}
+        {month.offRadar.length > 0 && (
+          <>
+            <p className="mb-1.5 mt-4 text-xs font-semibold text-stone-500">
+              มีผลงานแต่ยังไม่ถูกตั้งเป้า KPI
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {month.offRadar.map((row) => (
+                <span
+                  key={row.id}
+                  className="rounded-full border border-dashed border-stone-300 px-3 py-1 text-xs text-stone-600"
+                >
+                  {personName(row.profile)} · {row.count} ชิ้น
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={detail !== null && detail.kind === "review"}
+        onClose={() => setDetail(null)}
+        title="สถานะการตรวจงานรายคน"
+        wide
+      >
+        <p className="mb-3 text-xs leading-5 text-stone-500">
+          นับเฉพาะการ์ดที่แต่ละคนกดส่งตรวจในเดือนนี้ (ผลงานฐาน Brief/โพส
+          ไม่ผ่านคิวตรวจ จึงไม่อยู่ในตารางนี้) · ทั้งทีมส่งตรวจ {team.submitted}{" "}
+          ชิ้น · ผ่าน {team.approved} · รอตรวจ {team.waiting + team.sent}
+          {team.revision > 0 ? ` · งานแก้ ${team.revision}` : ""}
+        </p>
+        <ul className="space-y-1.5">
+          {[...personStats]
+            .filter((s2) => s2.submitted > 0)
+            .sort((a, b) => b.waiting + b.sent - (a.waiting + a.sent))
+            .map((s2) => (
+              <li
+                key={s2.profile.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200/70 bg-white/70 px-3 py-2"
+              >
+                <PersonAvatar profile={s2.profile} size={6} />
+                <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
+                  {personName(s2.profile)}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-stone-600">
+                  ส่งตรวจ{" "}
+                  <span className="font-bold text-stone-800">
+                    {s2.submitted}
+                  </span>{" "}
+                  · ผ่าน{" "}
+                  <span className="font-bold text-sky-700">{s2.approved}</span>{" "}
+                  · รอตรวจ{" "}
+                  <span className="font-bold text-emerald-700">
+                    {s2.waiting + s2.sent}
+                  </span>
+                  {s2.revision > 0 && (
+                    <>
+                      {" "}
+                      · งานแก้{" "}
+                      <span className="font-bold text-rose-600">
+                        {s2.revision}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          {personStats.every((s2) => s2.submitted === 0) && (
+            <li className="py-6 text-center text-sm text-stone-400">
+              เดือนนี้ยังไม่มีใครส่งตรวจงาน
+            </li>
+          )}
+        </ul>
+      </Modal>
+
+      <Modal
+        open={detail !== null && detail.kind === "behind"}
+        onClose={() => setDetail(null)}
+        title={
+          isCurrentMonth
+            ? `ตามหลังเป้าวันนี้ ${team.behindPeople} คน`
+            : `ไม่ครบเป้า ${team.behindPeople} คน`
+        }
+        wide
+      >
+        <p className="mb-3 text-xs leading-5 text-stone-500">
+          {isCurrentMonth
+            ? "เป้าถึงวันนี้ = เป้าทั้งเดือน × สัดส่วนวันที่ผ่านไป — ตัวเลขสีแดงคือจำนวนที่ยังขาดอยู่ ณ วันนี้"
+            : "เทียบกับเป้าทั้งเดือน — ตัวเลขสีแดงคือจำนวนที่ขาดไปเมื่อจบเดือน"}
+        </p>
+        {team.behindPeople === 0 ? (
+          <p className="py-6 text-center text-sm text-emerald-600">
+            ทุกคนตามเป้าอยู่ 🎉
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {personStats
+              .filter((s2) => s2.status === "behind")
+              .map((s2) => (
+                <li
+                  key={s2.profile.id}
+                  className="rounded-xl border border-stone-200/70 bg-white/70 p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PersonAvatar profile={s2.profile} size={8} />
+                    <Link
+                      href={`/content-tracking?person=${s2.profile.id}`}
+                      className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-800 hover:text-brand-600 hover:underline"
+                    >
+                      {personName(s2.profile)}
+                    </Link>
+                    <span className="shrink-0 text-xs tabular-nums text-stone-600">
+                      ทำได้{" "}
+                      <span className="font-bold text-stone-800">
+                        {s2.doneTotal}
+                      </span>
+                      /{s2.overallTarget} · ขาด{" "}
+                      <span className="font-bold text-rose-600">
+                        {Math.max(0, s2.expectedOverall - s2.doneTotal)}
+                      </span>
+                    </span>
+                  </div>
+                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                    {s2.ruleStats
+                      .filter((rs) => rs.behind > 0)
+                      .map((rs) => (
+                        <li
+                          key={rs.rule.id}
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                        >
+                          <BasisChip basis={rs.rule.basis} />
+                          {rs.rule.format === null
+                            ? "ทุกฟอร์แมต"
+                            : CONTENT_FORMATS[rs.rule.format].label}
+                          {rs.rule.category_id !== null &&
+                            ` · ${
+                              categories.find(
+                                (c) => c.id === rs.rule.category_id
+                              )?.name ?? "หมวดที่ถูกลบ"
+                            }`}{" "}
+                          <span className="font-bold tabular-nums">
+                            {rs.done}/{rs.target}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </li>
+              ))}
+          </ul>
+        )}
+      </Modal>
+
+      {/* คิวงานที่ดองไว้ยังไม่โพส — ใช้คอมโพเนนต์ร่วมกับหน้าปฏิทิน */}
+      <PostBacklogModal
+        open={detail !== null && detail.kind === "post"}
+        onClose={() => setDetail(null)}
+        groups={
+          detail !== null && detail.kind === "post" && detail.personId !== null
+            ? month.postBacklog.filter((g) => g.ownerId === detail.personId)
+            : month.postBacklog
+        }
+        total={
+          detail !== null && detail.kind === "post" && detail.personId !== null
+            ? (month.postById.get(detail.personId) ?? emptyPostStat())
+            : team.post
+        }
+        scopeLabel={
+          detail !== null && detail.kind === "post" && detail.personId !== null
+            ? personName(profileById.get(detail.personId))
+            : "ทั้งทีม"
+        }
+      />
     </>
   );
 }

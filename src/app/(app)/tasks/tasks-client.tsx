@@ -29,6 +29,7 @@ import {
   CONTENT_FORMATS,
   DEFAULT_REVISION_KIND,
   DEFAULT_TASK_CATEGORY,
+  postOwnerIdOf,
   REVISION_KIND_ORDER,
   REVISION_KINDS,
   STORAGE_BUCKET_DOCUMENTS,
@@ -40,6 +41,7 @@ import type {
   ContentCategoryRow,
   ContentFormat,
   InfluencerLite,
+  NotificationPriority,
   NotificationType,
   ProfileRow,
   RevisionKind,
@@ -63,10 +65,12 @@ import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
 import {
   AssigneeAvatar,
+  briefReviewerId,
   currentReviewerIds,
   currentReviewerPersons,
   isTempId,
   profileName,
+  reviewStepOf,
   reviewWaitStart,
 } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
@@ -747,6 +751,12 @@ export function TasksClient({
       recipient: string | null | undefined;
       type: NotificationType;
       preview?: string | null;
+      /** เฉพาะ type 'rejected' — ให้กระดิ่งติดป้ายแยก "แก้คำผิด"/"แก้เพิ่มเติม" ได้ */
+      revisionKind?: RevisionKind | null;
+      /** primary (ค่าเริ่มต้น) = งานของคนนี้ ต้องลงมือทำ — เด้ง push ด้วย
+          secondary = แค่ "เกี่ยวข้องอยู่ด้วย" (ผู้สั่ง brief / ผู้ตรวจร่วมในทอดเดียวกัน)
+          — ขึ้นในกระดิ่งแบบเงียบ ไม่เด้ง push (trigger notify_push ตัดทิ้งให้ตั้งแต่ที่ DB) */
+      priority?: NotificationPriority;
     }[]
   ) => {
     if (isTempId(task.id)) return;
@@ -757,8 +767,15 @@ export function TasksClient({
       task_id: string;
       type: NotificationType;
       preview: string | null;
+      revision_kind: RevisionKind | null;
+      priority: NotificationPriority;
     }[] = [];
-    for (const r of rows) {
+    // เรียง primary ไว้ก่อนเสมอ — คนที่โผล่ทั้งสองระดับ (เช่นผู้สั่ง brief ที่เป็นผู้ตรวจด้วย)
+    // ต้องได้แถวเด่นไม่ใช่แถวเงียบ (กันซ้ำด้วยคีย์ recipient:type ตัวแรกชนะ)
+    for (const r of [...rows].sort(
+      (a, b) =>
+        (a.priority === "secondary" ? 1 : 0) - (b.priority === "secondary" ? 1 : 0)
+    )) {
       // ไม่แจ้งเตือนตัวเอง + กันแถวซ้ำ (คนเดียวกัน+ชนิดเดียวกัน)
       if (!r.recipient || r.recipient === userId) continue;
       const key = `${r.recipient}:${r.type}`;
@@ -770,6 +787,8 @@ export function TasksClient({
         task_id: task.id,
         type: r.type,
         preview: r.preview ?? null,
+        revision_kind: r.revisionKind ?? null,
+        priority: r.priority ?? "primary",
       });
     }
     if (inserts.length > 0) {
@@ -844,15 +863,17 @@ export function TasksClient({
     [approvedAll]
   );
 
-  /** คิวที่โชว์จริง = กรองตามผู้รับผิดชอบ — badge บนแท็บก็นับชุดนี้ เลขจะได้ตรงกับที่เห็นในลิสต์
+  /** คิวที่โชว์จริง = กรองตาม "คนที่ต้องโพส" — badge บนแท็บก็นับชุดนี้ เลขจะได้ตรงกับที่เห็นในลิสต์
+      เจ้าของคิว = ผู้สั่ง Brief ถ้าการ์ดมาจาก Brief ไม่งั้นผู้รับผิดชอบการ์ด (`postOwnerIdOf`,
+      กติกาผู้ใช้ 2026-08-29) — เกณฑ์เดียวกับที่ระบบ KPI ใช้ ห้ามกลับไปเช็ค assignee_id ตรงๆ
       ("ของฉัน" ที่ไม่รู้ว่าใคร (userId หาย) ตกกลับเป็นทั้งทีม — ดีกว่าโชว์คิวว่างให้เข้าใจผิดว่าไม่มีงานค้าง) */
   const postQueue = useMemo(() => {
     if (pqAssignee === "all") return postQueueAll;
     if (pqAssignee === "none")
-      return postQueueAll.filter((t) => t.assignee_id === null);
+      return postQueueAll.filter((t) => postOwnerIdOf(t) === null);
     const targetId = pqAssignee === "me" ? userId : pqAssignee;
     if (targetId === null) return postQueueAll;
-    return postQueueAll.filter((t) => t.assignee_id === targetId);
+    return postQueueAll.filter((t) => postOwnerIdOf(t) === targetId);
   }, [postQueueAll, pqAssignee, userId]);
 
   const approvedFiltered = useMemo(() => {
@@ -1040,20 +1061,26 @@ export function TasksClient({
 
   /* ---------- review workflow ---------- */
 
-  /** ส่งตรวจงาน → รอตรวจ (ต้องระบุผู้ตรวจก่อน)
+  /** ส่งงานเข้า "สายตรวจจริง" (ทอด 1) — ใช้ทั้งตอนกดส่งตรวจปกติ
+      และตอนผู้สั่ง brief กด "ผ่าน → ส่งตรวจจริง" ในทอด 0
+
       ถ้าทีมตั้ง "ผู้ตรวจลำดับ 2" ไว้ → snapshot ใส่งาน แล้วการตรวจไหลเป็นทอด 1 → 2
 
       **งานของผู้ตรวจเอง = ลำดับนั้นถือว่าอนุมัติแล้วตั้งแต่ตอนส่งตรวจ** (ผู้ใช้ 2026-08-12):
       ไม่มีใครต้องมากดอนุมัติงานที่ตัวเองเป็นคนทำ — ช่องของคนนั้นถูกจดเวลาไว้เลย
       งานจึงไหลไปหาผู้ตรวจร่วมที่เหลือ / ลำดับ 2 / หรือเสร็จสมบูรณ์ทันทีถ้าไม่เหลือใคร */
-  const submitForReview = (task: TaskWithAssignee) => {
+  const sendToRealReview = (
+    task: TaskWithAssignee,
+    /** คนที่ได้แจ้งเตือนแบบเงียบ (เกี่ยวข้องแต่ไม่ใช่คิวของเขา) เช่นผู้สั่ง brief / graphic */
+    watchers: (string | null | undefined)[] = []
+  ) => {
     if (!task.reviewer_id) {
       showError("เลือกผู้ตรวจงานก่อนจึงจะส่งตรวจได้");
       return;
     }
     const now = new Date().toISOString();
     // "งานของตัวเอง" ยึดผู้รับผิดชอบ (คนที่ทำงานใบนี้) ไม่ใช่คนกดส่งตรวจ —
-    // การ์ดจาก brief ผู้สั่งเป็นคนกดส่ง แต่คนทำคือ assignee
+    // การ์ดจาก brief ผู้สั่งเป็นคนกดส่งเข้าสายตรวจ แต่คนทำคือ assignee
     const owner = task.assignee_id;
     const selfPrimary = owner !== null && owner === task.reviewer_id;
     const selfCo = owner !== null && owner === task.reviewer1b_id;
@@ -1075,8 +1102,16 @@ export function TasksClient({
       review_submitted_at: now,
       reviewer1_approved_at: selfPrimary ? now : null,
       reviewer1b_approved_at: selfCo ? now : null,
+      rejected_by: null,
     };
     const local: NonNullable<TaskPatch["local"]> = { reviewer2: reviewer2Person };
+    // แจ้งแบบเงียบให้คนที่เกี่ยวข้อง (ไม่ใช่คิวของเขา — ไม่เด้ง push)
+    const quiet = watchers.map((id) => ({
+      recipient: id,
+      type: "review_request" as const,
+      priority: "secondary" as const,
+      preview: "งานถูกส่งเข้าสายตรวจแล้ว",
+    }));
     // ทอดแรกเหลือใครที่ต้องตรวจจริงๆ บ้าง (คนที่ไม่ใช่เจ้าของงาน)
     const stage1Pending: (string | null)[] = [];
     if (!selfPrimary) stage1Pending.push(task.reviewer_id);
@@ -1095,10 +1130,13 @@ export function TasksClient({
         local,
       });
       // แจ้งเฉพาะคนที่ยังต้องตรวจ (ช่องที่ผ่านอัตโนมัติไม่ต้องเตือนใคร)
-      notify(
-        task,
-        stage1Pending.map((id) => ({ recipient: id, type: "review_request" as const }))
-      );
+      notify(task, [
+        ...stage1Pending.map((id) => ({
+          recipient: id,
+          type: "review_request" as const,
+        })),
+        ...quiet,
+      ]);
       return;
     }
     // ทอดแรกผ่านครบตั้งแต่ส่ง (ผู้ตรวจลำดับ 1 ทุกคนคือเจ้าของงานเอง)
@@ -1113,7 +1151,10 @@ export function TasksClient({
         },
         local,
       });
-      notify(task, [{ recipient: reviewer2Id, type: "review_request" }]);
+      notify(task, [
+        { recipient: reviewer2Id, type: "review_request" },
+        ...quiet,
+      ]);
       return;
     }
     // ไม่เหลือใครต้องตรวจเลย — งานเสร็จสมบูรณ์ทันที
@@ -1130,21 +1171,112 @@ export function TasksClient({
     });
     notify(task, [
       { recipient: task.assignee_id, type: "approved" },
-      { recipient: task.created_by, type: "approved" },
+      { recipient: task.created_by, type: "approved", priority: "secondary" },
     ]);
   };
 
-  /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) — ล้างทอดการตรวจ ให้ส่งใหม่เริ่มทอด 1 เสมอ */
+  /** ผู้ทำงานกด "ส่งตรวจงาน" / "ส่งตรวจแก้" — ปลายทางขึ้นกับสถานะของการ์ด (migration 0098):
+
+      1. เคยถูกตีกลับ และคนตีกลับยังเป็นผู้ตรวจที่ค้างอยู่คนเดียว → ส่งกลับหาคนนั้นตรงๆ
+         (ข้ามผู้สั่ง brief / ผู้ตรวจที่อนุมัติไปแล้ว — กติกา "ส่งตรวจแก้" ของผู้ใช้)
+      2. การ์ดที่มาจาก brief และยังอยู่ทอด 0 → ผู้สั่ง brief ตรวจก่อน
+      3. นอกนั้น → เข้าสายตรวจจริงตามเดิม */
+  const submitForReview = (task: TaskWithAssignee) => {
+    // ลิงก์ Google Drive เป็นของบังคับตั้งแต่ 2026-08-29 — ผู้ตรวจต้องเปิดไฟล์จริงได้
+    // ทุกใบ ไม่ใช่ดูจากรูป preview อย่างเดียว (ปุ่มในแผงถูก disable ไว้แล้ว ตัวนี้เป็น
+    // กันชนอีกชั้น) — อยู่บนสุดของ submitForReview จึงครอบทั้ง 3 ทาง (ส่งตรวจแก้ /
+    // ให้ผู้สั่ง brief ตรวจ / เข้าสายตรวจจริง) แต่ไม่ไปบล็อก sendToRealReview ตอน
+    // ผู้สั่ง brief กดผ่าน; การ์ด brief เองยกเว้น (ลิงก์ของมันคือของอ้างอิง ไม่ใช่ตัวงาน)
+    const inBriefSection =
+      sections.find((s) => s.id === bucketOf(task))?.type === "brief";
+    if (!inBriefSection && (task.deliverable_url ?? "").trim() === "") {
+      showError(
+        "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้ — ใส่ได้ที่ช่อง \"ลิงก์งาน (Google Drive)\" ในแผงรายละเอียด"
+      );
+      return;
+    }
+    const now = new Date().toISOString();
+    const step = reviewStepOf(task);
+    const pending = currentReviewerIds(task);
+    const backTo =
+      task.rejected_by !== null &&
+      pending.length === 1 &&
+      pending[0] === task.rejected_by
+        ? task.rejected_by
+        : null;
+    const briefer = briefReviewerId(task);
+
+    if (backTo !== null) {
+      patchTask(task.id, {
+        db: {
+          review_status: "pending",
+          completed: false,
+          approved_at: null,
+          review_submitted_at: now,
+          rejected_by: null,
+        },
+      });
+      notify(task, [
+        {
+          recipient: backTo,
+          type: "review_request",
+          preview: "แก้ตามที่ตีกลับแล้ว — ส่งกลับมาตรวจอีกครั้ง",
+        },
+        // ผู้สั่ง brief รู้ไว้เฉยๆ ว่างานวิ่งข้ามเขาไปหาผู้ตรวจที่ตีกลับ
+        ...(step >= 1 && briefer !== backTo
+          ? [
+              {
+                recipient: briefer,
+                type: "review_request" as const,
+                priority: "secondary" as const,
+                preview: "graphic ส่งงานที่แก้แล้วกลับไปหาผู้ตรวจที่ตีกลับ",
+              },
+            ]
+          : []),
+      ]);
+      return;
+    }
+
+    if (step <= 0 && briefer !== null) {
+      patchTask(task.id, {
+        db: {
+          review_status: "pending",
+          completed: false,
+          approved_at: null,
+          review_step: 0,
+          review_submitted_at: now,
+          rejected_by: null,
+          review1_approved_at: null,
+          reviewer1_approved_at: null,
+          reviewer1b_approved_at: null,
+        },
+      });
+      notify(task, [
+        {
+          recipient: briefer,
+          type: "review_request",
+          preview: "ตรวจงานก่อนส่งเข้าสายตรวจจริง",
+        },
+      ]);
+      return;
+    }
+
+    sendToRealReview(task, briefer === null ? [] : [briefer]);
+  };
+
+  /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) — ล้างทอดการตรวจ ให้ส่งใหม่เริ่มจากต้นสายเสมอ
+      (การ์ดจาก brief = กลับไปทอด 0 ให้ผู้สั่ง brief ตรวจก่อนอีกรอบ) */
   const cancelReview = (task: TaskWithAssignee) => {
     patchTask(task.id, {
       db: {
         review_status: "none",
         completed: false,
-        review_step: 1,
+        review_step: briefReviewerId(task) === null ? 1 : 0,
         review1_approved_at: null,
         reviewer1_approved_at: null,
         reviewer1b_approved_at: null,
         review_submitted_at: null,
+        rejected_by: null,
       },
     });
   };
@@ -1153,8 +1285,15 @@ export function TasksClient({
       คนแรกที่กด = จดเวลาลงช่องของตัวเอง งานยังค้างรออีกคน; คนสุดท้ายที่กด = ผ่านทอด 1
       → ส่งต่อให้ลำดับ 2 (ถ้ามี) หรือเสร็จสมบูรณ์เลย (งานตรวจชั้นเดียว) */
   const approveTask = (task: TaskWithAssignee) => {
-    const step = task.review_step ?? 1;
+    const step = reviewStepOf(task);
     const now = new Date().toISOString();
+    // ทอด 0 — ผู้สั่ง brief ดูงานของ graphic แล้วกด "ผ่าน → ส่งตรวจจริง"
+    // (ไม่ใช่การอนุมัติจบ แค่ส่งไม้ต่อเข้าสายตรวจจริง — graphic ได้รู้แบบเงียบๆ)
+    if (step <= 0) {
+      if (userId === null || userId !== briefReviewerId(task)) return;
+      sendToRealReview(task, [task.assignee_id]);
+      return;
+    }
     if (step < 2) {
       const isPrimary = userId !== null && userId === task.reviewer_id;
       const isCo = userId !== null && userId === task.reviewer1b_id;
@@ -1197,29 +1336,54 @@ export function TasksClient({
       }
       if (task.reviewer2_id !== null) {
         patchTask(task.id, {
-          db: { ...slotDb, review_step: 2, review1_approved_at: now },
+          db: {
+            ...slotDb,
+            review_step: 2,
+            review1_approved_at: now,
+            rejected_by: null,
+          },
         });
         // ทอดแรกครบทุกคนแล้ว — ส่งไม้ต่อให้ผู้ตรวจลำดับ 2 มาตรวจขั้นสุดท้าย
-        notify(task, [{ recipient: task.reviewer2_id, type: "review_request" }]);
+        // (ผู้ทำงาน/ผู้สั่ง brief รู้ความคืบหน้าแบบเงียบๆ ไม่ใช่คิวของเขา)
+        notify(task, [
+          { recipient: task.reviewer2_id, type: "review_request" },
+          {
+            recipient: task.assignee_id,
+            type: "review_request",
+            priority: "secondary",
+            preview: "ผ่านผู้ตรวจลำดับ 1 แล้ว — รอผู้ตรวจลำดับ 2",
+          },
+        ]);
         return;
       }
       patchTask(task.id, {
-        db: { ...slotDb, review_status: "approved", completed: true, approved_at: now },
+        db: {
+          ...slotDb,
+          review_status: "approved",
+          completed: true,
+          approved_at: now,
+          rejected_by: null,
+        },
       });
       notify(task, [
         { recipient: task.assignee_id, type: "approved" },
-        { recipient: task.created_by, type: "approved" },
+        { recipient: task.created_by, type: "approved", priority: "secondary" },
       ]);
       return;
     }
     // ทอด 2 — ผู้ตรวจลำดับ 2 อนุมัติขั้นสุดท้าย
     patchTask(task.id, {
-      db: { review_status: "approved", completed: true, approved_at: now },
+      db: {
+        review_status: "approved",
+        completed: true,
+        approved_at: now,
+        rejected_by: null,
+      },
     });
     // บอกทั้งผู้รับผิดชอบและผู้สร้างการ์ด (เช่น content ที่สั่ง brief) ว่างานผ่านแล้ว
     notify(task, [
       { recipient: task.assignee_id, type: "approved" },
-      { recipient: task.created_by, type: "approved" },
+      { recipient: task.created_by, type: "approved", priority: "secondary" },
     ]);
   };
 
@@ -1227,6 +1391,8 @@ export function TasksClient({
       (ผู้ตรวจร่วมที่ยังไม่อนุมัติ + ผู้ตรวจลำดับ 2) และถอดชื่อคนที่ไม่ได้ตรวจออกจากงาน
       เพื่อไม่บันทึกว่าเขาเป็นผู้อนุมัติทั้งที่ไม่ได้ตรวจ */
   const approveTaskBypass = (task: TaskWithAssignee) => {
+    // ทอด 0 เป็นการตรวจของผู้สั่ง brief — ไม่ใช่การปิดงาน จึงไม่มี bypass
+    if (reviewStepOf(task) <= 0) return;
     const now = new Date().toISOString();
     const isPrimary = userId !== null && userId === task.reviewer_id;
     const isCo = userId !== null && userId === task.reviewer1b_id;
@@ -1239,6 +1405,7 @@ export function TasksClient({
       reviewer2_id: null,
       review_step: 1,
       review1_approved_at: null,
+      rejected_by: null,
     };
     const local: NonNullable<TaskPatch["local"]> = { reviewer2: null };
     if (isPrimary) db.reviewer1_approved_at = now;
@@ -1260,7 +1427,7 @@ export function TasksClient({
     patchTask(task.id, { db, local });
     notify(task, [
       { recipient: task.assignee_id, type: "approved" },
-      { recipient: task.created_by, type: "approved" },
+      { recipient: task.created_by, type: "approved", priority: "secondary" },
     ]);
   };
 
@@ -1285,11 +1452,12 @@ export function TasksClient({
     });
   };
 
-  /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล */
+  /** ผู้ตรวจกด "ตีกลับ" → เปิดกล่องระบุเหตุผล
+      ทอด 0 (ผู้สั่ง brief) ไม่มีตัวเลือกประเภทให้กด — ระบบใส่ 'brief' ให้เอง (ไม่นับ KPI) */
   const requestReject = (task: TaskWithAssignee) => {
     if (isTempId(task.id)) return;
     setRejectReason("");
-    setRejectKind(DEFAULT_REVISION_KIND);
+    setRejectKind(reviewStepOf(task) <= 0 ? "brief" : DEFAULT_REVISION_KIND);
     setRejectTarget(task);
   };
 
@@ -1298,6 +1466,10 @@ export function TasksClient({
   const confirmReject = async () => {
     const task = rejectTarget;
     if (!task || rejecting) return;
+    const briefer = briefReviewerId(task);
+    // ทอด 0 = ผู้สั่ง brief ขอแก้ก่อนส่งตรวจจริง — บันทึกในแชทเหมือนกัน แต่ไม่นับ KPI
+    const briefStage = reviewStepOf(task) <= 0 && briefer !== null;
+    const kind: RevisionKind = briefStage ? "brief" : rejectKind;
     setRejecting(true);
 
     // เลขรอบแก้ไขถัดไป — อ่านเลขสูงสุดจริงจาก DB ก่อน (state ฝั่งจอไม่ได้โหลดคอมเมนต์ทุกงาน)
@@ -1322,62 +1494,99 @@ export function TasksClient({
       body: rejectReason.trim(),
       is_revision: true,
       revision_number: revisionNumber,
-      revision_kind: rejectKind,
+      revision_kind: kind,
     });
     setRejecting(false);
     if (cErr) {
       showError(`บันทึกการตีกลับไม่สำเร็จ: ${cErr.message}`);
       return;
     }
-    // ดึงกลับเป็น "กำลังทำ" — ล้างสถานะ approve + ทอดการตรวจ (ส่งใหม่เริ่มทอด 1 ใหม่ทั้งสาย)
+    // ดึงกลับเป็น "กำลังทำ" ให้ผู้รับผิดชอบแก้ — ปลายทางตอนส่งกลับมาต่างกันตามประเภท:
+    //   • ผู้สั่ง brief ขอแก้ / ตีกลับ "คำผิด" → เข้าต้นสายใหม่
+    //     (การ์ดจาก brief = ทอด 0 ผู้สั่ง brief ตรวจก่อนอีกรอบ ตามกติกาของผู้ใช้)
+    //   • ตีกลับ "เพิ่มเติม" ในการ์ดจาก brief → คงทอดไว้ ให้ "ส่งตรวจแก้" วิ่งกลับ
+    //     หาคนตีกลับตรงๆ ข้ามผู้สั่ง brief
+    const keepStage = !briefStage && briefer !== null && kind === "addition";
     patchTask(task.id, {
-      db: {
-        review_status: "none",
-        completed: false,
-        approved_at: null,
-        review_step: 1,
-        review1_approved_at: null,
-        reviewer1_approved_at: null,
-        reviewer1b_approved_at: null,
-        review_submitted_at: null,
-      },
+      db: keepStage
+        ? {
+            review_status: "none",
+            completed: false,
+            approved_at: null,
+            review_submitted_at: null,
+            rejected_by: userId,
+          }
+        : {
+            review_status: "none",
+            completed: false,
+            approved_at: null,
+            review_step: briefer === null ? 1 : 0,
+            review1_approved_at: null,
+            reviewer1_approved_at: null,
+            reviewer1b_approved_at: null,
+            review_submitted_at: null,
+            rejected_by: userId,
+          },
     });
+    // คนที่ต้องลงมือแก้ = ผู้รับผิดชอบ (เด่น + เด้ง push)
+    // ผู้สั่ง brief / ผู้ตรวจคนอื่นในทอดเดียวกัน = รู้ไว้เฉยๆ (เงียบ ไม่เด้ง)
+    // ผู้ตรวจลำดับ 2 ไม่ได้รับ จนกว่างานจะมาถึงทอดของเขาเอง (currentReviewerIds จึงเป็นตัวคัด)
+    const alsoTell = new Set<string>();
+    if (briefer !== null && briefer !== task.assignee_id) alsoTell.add(briefer);
+    for (const id of currentReviewerIds(task))
+      if (id !== task.assignee_id) alsoTell.add(id);
     notify(task, [
       {
         recipient: task.assignee_id,
         type: "rejected",
-        // ใส่ประเภทนำหน้าเหตุผล — ผู้รับผิดชอบต้องรู้ตั้งแต่ในกระดิ่งว่าเป็นคำผิดหรือแค่ขอเพิ่มเติม
-        preview: `[${REVISION_KINDS[rejectKind].label}] ${rejectReason.trim()}`.trim(),
+        // ประเภทเก็บเป็นคอลัมน์ (migration 0096) — กระดิ่งเอาไปทำป้าย "แก้คำผิด"/"แก้เพิ่มเติม"
+        // ชิดขวาของแถว ไม่ต้องยัดคำนำหน้าปนกับเหตุผลในข้อความเหมือนเดิมอีกแล้ว
+        revisionKind: kind,
+        preview: rejectReason.trim() || null,
       },
+      ...[...alsoTell].map((id) => ({
+        recipient: id,
+        type: "rejected" as const,
+        priority: "secondary" as const,
+        revisionKind: kind,
+        preview: rejectReason.trim() || null,
+      })),
     ]);
     setRejectTarget(null);
     setRejectReason("");
   };
 
-  /** เปิดงานที่เสร็จแล้วกลับมาแก้ — ล้างทอดการตรวจด้วย ให้ส่งตรวจใหม่เริ่มจากลำดับ 1 */
+  /** เปิดงานที่เสร็จแล้วกลับมาแก้ — ล้างทอดการตรวจด้วย ให้ส่งตรวจใหม่เริ่มจากต้นสาย
+      (การ์ดจาก brief = กลับไปทอด 0 ผู้สั่ง brief ตรวจก่อน) */
   const reopenTask = (task: TaskWithAssignee) => {
     patchTask(task.id, {
       db: {
         review_status: "none",
         completed: false,
         approved_at: null,
-        review_step: 1,
+        review_step: briefReviewerId(task) === null ? 1 : 0,
         review1_approved_at: null,
         reviewer1_approved_at: null,
         reviewer1b_approved_at: null,
         review_submitted_at: null,
+        rejected_by: null,
       },
     });
   };
 
   /** สลับสถานะ "โพส/ใช้งานแล้ว" (ปุ่มใหญ่ในแท็บรอโพส + การ์ดในแท็บงานเสร็จ)
       เก็บคนกดไว้ด้วย (posted_by) ให้รู้ว่าใครเป็นคนโพส — กดยกเลิกล้างทั้งเวลาและคนกด
-      งานที่ยังไม่ระบุประเภทชิ้นงาน (content_format) → เปิดกล่องติดประเภทก่อนค่อยบันทึกโพส
-      (จุดเดียวที่บังคับติด — งานที่ติดไว้แล้ว/กดจากแผงงานแล้ว โพสทันทีเหมือนเดิม) */
+      งานที่ยังระบุประเภทไม่ครบ → เปิดกล่องติดประเภทก่อนค่อยบันทึกโพส
+      **ทั้งประเภทชิ้นงาน (ภาพ/วิดีโอ) และหมวดเนื้อหา (สวย/หมอ/Before-After ...) เป็นข้อบังคับ**
+      (ผู้ใช้ 2026-08-29 — เดิมหมวดเป็น optional ทำให้กติกา KPI ที่เจาะหมวดนับไม่ได้);
+      ยกเว้นตอนที่ทีมยังไม่ได้สร้างหมวดไว้เลย ไม่งั้นจะกดโพสไม่ได้ทั้งระบบ */
   const togglePosted = (task: TaskWithAssignee) => {
     const unposting = task.posted_at !== null;
-    if (!unposting && task.content_format === null) {
-      setPostFormat(null);
+    const needsCategory =
+      task.content_category_id === null &&
+      contentCategories.some((c) => c.active);
+    if (!unposting && (task.content_format === null || needsCategory)) {
+      setPostFormat(task.content_format);
       setPostCategoryId(task.content_category_id ?? "");
       setPostTarget(task);
       return;
@@ -1541,6 +1750,7 @@ export function TasksClient({
       reviewer1_approved_at: null,
       reviewer1b_approved_at: null,
       review_submitted_at: null,
+      rejected_by: null,
       influencer_id: null,
       approved_at: null,
       posted_at: null,
@@ -1624,8 +1834,9 @@ export function TasksClient({
     });
 
     // 2) สร้างการ์ด creative (ผู้รับผิดชอบ = ผู้รับงาน, ผู้สร้างการ์ด = ผู้สั่ง brief)
-    //    ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (คนใน "จัดการผู้ตรวจ") — ไม่ใช่ผู้สั่ง brief:
-    //    ผู้สั่ง brief แค่ตรวจทาน/คุยในแชท แล้วเป็นคนกด "ส่งตรวจ" ให้ผู้ตรวจจริง
+    //    ผู้ตรวจ = ผู้ตรวจเริ่มต้นของทีม (คนใน "จัดการผู้ตรวจ") — ไม่ใช่ผู้สั่ง brief
+    //    แต่การ์ดเริ่มที่ "ทอด 0": graphic ทำเสร็จ → กดส่งตรวจ → ผู้สั่ง brief ตรวจก่อน
+    //    → ผ่านแล้วระบบส่งต่อเข้าสายตรวจจริงให้เอง (migration 0098)
     const inSection = activeItems.filter(
       (t) => bucketOf(t) === creativesSectionId
     );
@@ -1633,11 +1844,16 @@ export function TasksClient({
       inSection.length === 0
         ? 1024
         : Math.min(...inSection.map((t) => t.position)) - 1;
+    const briefCreatorId = task.created_by ?? userId;
     const briefCreatorPerson =
       task.creator ??
-      (task.created_by
-        ? (profiles.find((p) => p.id === task.created_by) ?? null)
+      (briefCreatorId
+        ? (profiles.find((p) => p.id === briefCreatorId) ?? null)
         : null);
+    // ทอด 0 = ผู้สั่ง brief ตรวจงานของ graphic ก่อนส่งเข้าสายตรวจจริง (migration 0098)
+    // ผู้สั่ง brief เป็นคนเดียวกับผู้ทำงานเอง = ไม่มีใครให้ตรวจก่อน เริ่มทอด 1 ตามปกติ
+    const briefStep =
+      briefCreatorId !== null && briefCreatorId !== task.assignee_id ? 0 : 1;
     let reviewerId =
       globalReviewerId !== null && reviewerSet.has(globalReviewerId)
         ? globalReviewerId
@@ -1678,11 +1894,12 @@ export function TasksClient({
       reviewer1b_id: reviewer1bId,
       review_status: "none",
       reviewer2_id: null,
-      review_step: 1,
+      review_step: briefStep,
       review1_approved_at: null,
       reviewer1_approved_at: null,
       reviewer1b_approved_at: null,
       review_submitted_at: null,
+      rejected_by: null,
       influencer_id: task.influencer_id,
       approved_at: null,
       posted_at: null,
@@ -1693,7 +1910,7 @@ export function TasksClient({
       brief_accepted_at: null,
       brief_source_id: task.id,
       deleted_at: null,
-      created_by: task.created_by ?? userId,
+      created_by: briefCreatorId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       assignee: task.assignee ?? null,
@@ -1721,7 +1938,8 @@ export function TasksClient({
         category: task.category,
         brief_content_type: task.brief_content_type,
         brief_source_id: task.id,
-        created_by: task.created_by ?? userId,
+        created_by: briefCreatorId,
+        review_step: briefStep,
       })
       .select(TASK_SELECT)
       .single();
@@ -2074,6 +2292,12 @@ export function TasksClient({
 
   /* ---------- render ---------- */
 
+  // กล่องตีกลับของ "ผู้สั่ง brief" (ทอด 0) — ไม่มีตัวเลือกประเภทให้กด และไม่นับ KPI
+  const rejectFromBriefer =
+    rejectTarget !== null &&
+    reviewStepOf(rejectTarget) <= 0 &&
+    briefReviewerId(rejectTarget) !== null;
+
   return (
     <div className="flex h-full min-h-0">
       {/* ฝั่งซ้าย: หัวข้อ + ตัวกรอง + บอร์ด — แผงรายละเอียดอยู่นอกคอลัมน์นี้จึงสูงเต็มจอ */}
@@ -2386,7 +2610,7 @@ export function TasksClient({
           <div className="mb-3 flex flex-wrap items-center gap-3 animate-fade-in-up">
             <div className="w-full sm:w-56">
               <PersonSelect
-                ariaLabel="กรองคิวรอโพสตามผู้รับผิดชอบ"
+                ariaLabel="กรองคิวรอโพสตามคนที่ต้องโพส"
                 value={pqAssignee}
                 onChange={setPqAssignee}
                 options={[
@@ -2400,7 +2624,7 @@ export function TasksClient({
                         },
                       ]
                     : []),
-                  { value: "none", label: "ไม่ระบุผู้รับผิดชอบ", profile: null },
+                  { value: "none", label: "ไม่รู้ว่าใครต้องโพส", profile: null },
                   ...profiles
                     .filter((p) => p.id !== userId)
                     .map((p) => ({ value: p.id, profile: p })),
@@ -2919,11 +3143,12 @@ export function TasksClient({
       </Modal>
 
       {/* ตีกลับงาน: เลือกประเภท + ระบุสิ่งที่ต้องแก้ (ไม่บังคับ) → งานกลับไป "กำลังทำ"
-          ทั้งสองประเภท ต่างกันแค่ "คำผิด" นับเป็นข้อผิดพลาดใน KPI ส่วน "เพิ่มเติม" ไม่นับ */}
+          ทั้งสองประเภท ต่างกันแค่ "คำผิด" นับเป็นข้อผิดพลาดใน KPI ส่วน "เพิ่มเติม" ไม่นับ
+          ทอด 0 (ผู้สั่ง brief) ไม่มีตัวเลือกให้กด — บันทึกในแชทเหมือนกัน แต่ไม่นับ KPI */}
       <Modal
         open={rejectTarget !== null}
         onClose={() => setRejectTarget(null)}
-        title="ตีกลับงานให้แก้ไข"
+        title={rejectFromBriefer ? "ขอให้แก้ก่อนส่งตรวจ" : "ตีกลับงานให้แก้ไข"}
       >
         <p className="text-sm leading-6 text-stone-600">
           งาน &quot;
@@ -2938,6 +3163,13 @@ export function TasksClient({
           </span>{" "}
           แก้ไข
         </p>
+        {rejectFromBriefer ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-6 text-amber-800">
+            คุณเป็นผู้สั่ง brief ของงานนี้ — การขอแก้ในขั้นนี้จะบันทึกไว้ในแชทงาน
+            แต่<span className="font-semibold">ไม่นับเป็นข้อผิดพลาดใน KPI</span>{" "}
+            (นับเฉพาะการตีกลับของผู้ตรวจจริง)
+          </p>
+        ) : (
         <div className="mt-4">
           <Label htmlFor="reject-kind">ประเภทการตีกลับ</Label>
           <div id="reject-kind" className="mt-1.5 grid gap-2 sm:grid-cols-2">
@@ -2982,6 +3214,7 @@ export function TasksClient({
             })}
           </div>
         </div>
+        )}
         <div className="mt-3">
           <Label htmlFor="reject-reason">สิ่งที่ต้องแก้ไข / เหตุผล (ไม่บังคับ)</Label>
           <Textarea
@@ -3001,13 +3234,15 @@ export function TasksClient({
             loading={rejecting}
             onClick={() => void confirmReject()}
           >
-            ตีกลับ ({REVISION_KINDS[rejectKind].label})
+            {rejectFromBriefer
+              ? "ส่งกลับให้แก้"
+              : `ตีกลับ (${REVISION_KINDS[rejectKind].label})`}
           </Button>
         </div>
       </Modal>
 
-      {/* ยืนยันโพส + ติดประเภทชิ้นงาน — เปิดเมื่อกด "โพสแล้ว" กับงานที่ยังไม่ระบุ content_format
-          (จุดเก็บข้อมูล KPI คอนเทนต์: ภาพ/วิดีโอ บังคับ, หมวดเนื้อหาไม่บังคับ) */}
+      {/* ยืนยันโพส + ติดประเภทชิ้นงาน — เปิดเมื่อกด "โพสแล้ว" กับงานที่ระบุประเภทไม่ครบ
+          (จุดเก็บข้อมูล KPI คอนเทนต์: **บังคับทั้งภาพ/วิดีโอ และหมวดเนื้อหา** ตั้งแต่ 2026-08-29) */}
       <Modal
         open={postTarget !== null}
         onClose={() => setPostTarget(null)}
@@ -3018,8 +3253,8 @@ export function TasksClient({
           <span className="font-medium text-stone-800">
             {postTarget?.title}
           </span>
-          &quot; ยังไม่ได้ระบุประเภทชิ้นงาน — ระบุก่อนบันทึกโพส
-          เพื่อให้นับเข้า KPI คอนเทนต์ได้
+          &quot; ยังระบุประเภทไม่ครบ — เลือกทั้งประเภทชิ้นงานและหมวดเนื้อหา
+          ก่อนบันทึกโพส เพื่อให้นับเข้า KPI คอนเทนต์ได้
         </p>
         <div className="mt-4">
           <Label htmlFor="post-format">ประเภทชิ้นงาน</Label>
@@ -3058,27 +3293,38 @@ export function TasksClient({
           </div>
         </div>
         <div className="mt-3">
-          <Label htmlFor="post-category">หมวดเนื้อหา (ไม่บังคับ)</Label>
+          <Label htmlFor="post-category">หมวดเนื้อหา</Label>
           <Select
             id="post-category"
             value={postCategoryId}
             onChange={(e) => setPostCategoryId(e.target.value)}
           >
-            <option value="">ไม่ระบุ</option>
+            <option value="">เลือกหมวด...</option>
             {contentCategories
-              .filter((c) => c.active)
+              .filter((c) => c.active || c.id === postCategoryId)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
           </Select>
+          <p className="mt-1 text-xs text-stone-400">
+            เช่น สวย / หมอ / Before-After — ใช้ตั้งเป้า KPI แบบเจาะหมวด
+            (เพิ่มหมวดใหม่ได้ที่หน้า &quot;ตั้งค่า KPI&quot;)
+          </p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setPostTarget(null)}>
             ยกเลิก
           </Button>
-          <Button disabled={postFormat === null} onClick={confirmMarkPosted}>
+          <Button
+            disabled={
+              postFormat === null ||
+              (postCategoryId === "" &&
+                contentCategories.some((c) => c.active))
+            }
+            onClick={confirmMarkPosted}
+          >
             บันทึกโพสแล้ว
           </Button>
         </div>

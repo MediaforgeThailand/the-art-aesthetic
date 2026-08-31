@@ -12,40 +12,58 @@ import {
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, EmptyState, Modal } from "@/components/ui";
-import { CONTENT_FORMATS } from "@/lib/constants";
+import { CONTENT_FORMATS, CONTENT_KPI_BASES } from "@/lib/constants";
 import { isImagePath, isVideoPath } from "@/lib/media";
 import type {
   ContentCategoryRow,
   ContentFormat,
+  ContentKpiBasis,
   ContentKpiRow,
 } from "@/lib/types";
 import {
+  DEFAULT_KPI_FILTERS,
+  KpiActiveChips,
+  KpiFilterButton,
+  kpiFilterChips,
+  type KpiFilters,
+  matchKpiEvent,
+  resolveKpiRange,
+} from "./kpi-filters";
+import {
+  BasisChip,
   KpiViewTabs,
   PaceBar,
   PersonAvatar,
+  PostBacklogModal,
   StatusPill,
 } from "./kpi-ui";
 import {
   computeKpiMonth,
+  emptyPostStat,
   firstWeekdayIndex,
   HEAT_CHIP,
   HEAT_DOT_DONE,
   HEAT_DOT_OPEN,
   HEAT_LEVELS,
+  HEAT_REWORK,
   HEAT_SCALE,
+  heatDotOf,
   heatLevel,
+  isUntagged,
+  type KpiEvent,
   monthLabel,
   paceTone,
   pctOf,
   type PersonStat,
   personName,
+  type PostBacklogGroup,
   type ProfileLite,
   shiftMonth,
   shortName,
-  type TaskAt,
   thaiDateLabel,
   type TrackedTask,
   WEEKDAYS_MON,
+  type WorkState,
   WORK_STATES,
   workStateOf,
 } from "./kpi-utils";
@@ -55,16 +73,25 @@ import {
 /** จำนวนชิปที่ช่องวันหนึ่งแสดงได้ก่อนยุบเป็น "+N" (จอ ≥sm — จอเล็กเป็นแท่งสีล้วน) */
 const MAX_CHIPS = 3;
 
-/** งานของวันหนึ่งจัดกลุ่มตามคน — โหมด "ทุกคน" ใช้แสดงชิป "ชื่อ ×N" ในช่องปฏิทิน */
+/**
+ * ผลงานชิ้นนี้ "จบแล้ว" หรือยัง — ตัวคุมจุดทึบ/กลวงบนชิป และความเข้มของช่องปฏิทิน
+ * ฐาน work = ต้องผ่านการตรวจก่อน · ฐาน brief/posted = เกิดขึ้นแล้วคือจบในตัวเอง
+ * (รับงาน/โพสไปแล้ว ไม่มีขั้นตอนตรวจต่อ)
+ */
+function eventDone(e: KpiEvent): boolean {
+  return e.basis === "work" ? workStateOf(e.t) === "approved" : true;
+}
+
+/** ผลงานของวันหนึ่งจัดกลุ่มตามคน — โหมด "ทุกคน" ใช้แสดงชิป "ชื่อ ×N" ในช่องปฏิทิน */
 type DayPersonGroup = { id: string; total: number; approved: number };
 
-function groupByPerson(list: TaskAt[]): DayPersonGroup[] {
+function groupByPerson(list: KpiEvent[]): DayPersonGroup[] {
   const map = new Map<string, DayPersonGroup>();
-  for (const { t } of list) {
-    const key = t.assignee_id ?? "";
+  for (const e of list) {
+    const key = e.ownerId ?? "";
     const g = map.get(key) ?? { id: key, total: 0, approved: 0 };
     g.total += 1;
-    if (workStateOf(t) === "approved") g.approved += 1;
+    if (eventDone(e)) g.approved += 1;
     map.set(key, g);
   }
   return [...map.values()].sort(
@@ -74,14 +101,23 @@ function groupByPerson(list: TaskAt[]): DayPersonGroup[] {
 
 /** ยอดของขอบเขตที่กำลังดู (คนเดียวหรือทั้งทีม) — ใช้ได้แม้คนนั้นยังไม่ถูกตั้งเป้า KPI */
 type ScopeSummary = {
+  /** ผลงานที่นับ KPI ทั้งหมด (รวมทุกฐานของขอบเขตนี้) */
   total: number;
+  /** แยกตามฐาน — ส่งงาน / Brief ที่ถูกรับ / โพส */
+  byBasis: Record<ContentKpiBasis, number>;
+  /** สถานะการตรวจ นับเฉพาะผลงานฐาน "ส่งงาน" (ฐานอื่นไม่มีขั้นตอนตรวจ) */
+  submitted: number;
   approved: number;
   waiting: number;
+  /** ถูกตีกลับแล้วยังไม่ได้ส่งตรวจใหม่ = "งานแก้" (สีแดงทั้งระบบ) */
+  revision: number;
   sent: number;
   posted: number;
   untagged: number;
   activeDays: number;
   byFormat: Record<ContentFormat | "none", number>;
+  /** จำนวนการ์ดที่ไม่ซ้ำ — ใช้หารหาค่าเฉลี่ยไฟล์/การ์ด (คนที่ถูกวัดหลายฐานอาจได้การ์ดใบเดิมซ้ำ) */
+  cards: number;
   files: number;
   fileImage: number;
   fileVideo: number;
@@ -89,26 +125,58 @@ type ScopeSummary = {
 
 /* ---------- ชิ้นส่วนเล็ก ---------- */
 
-/** ตัวเลขคู่กับป้าย — ใช้ในแผงสถิติด้านขวา (แน่นกว่า StatBox ของหน้าอื่น) */
+/** ตัวเลขคู่กับป้าย — ใช้ในแผงสถิติด้านขวา (แน่นกว่า StatBox ของหน้าอื่น)
+    ส่ง `onClick` มาเมื่อกล่องนั้นเปิดป๊อปอัพรายละเอียดได้ (มีลูกศรกำกับให้รู้ว่ากดได้) */
 function MiniStat({
   label,
   value,
   tone = "text-stone-800",
   sub,
+  onClick,
+  active,
+  className = "",
 }: {
   label: string;
   value: number | string;
   tone?: string;
   sub?: string;
+  onClick?: () => void;
+  /** กล่องนี้ตรงกับตัวกรองที่เปิดอยู่ (ใช้กับกล่องที่กดแล้วกรองสถานะ) */
+  active?: boolean;
+  className?: string;
 }) {
-  return (
-    <div className="rounded-lg border border-stone-200/70 bg-white/70 px-2.5 py-2">
-      <p className="text-[10px] leading-tight text-stone-500">{label}</p>
+  const body = (
+    <>
+      <p className="flex items-center gap-0.5 text-[10px] leading-tight text-stone-500">
+        {label}
+        {onClick && <ChevronRight size={11} className="text-brand-400" />}
+      </p>
       <p className={`text-lg font-bold leading-tight tabular-nums ${tone}`}>
         {value}
       </p>
       {sub && <p className="text-[10px] leading-tight text-stone-400">{sub}</p>}
-    </div>
+    </>
+  );
+  if (!onClick)
+    return (
+      <div
+        className={`rounded-lg border border-stone-200/70 bg-white/70 px-2.5 py-2 ${className}`}
+      >
+        {body}
+      </div>
+    );
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`cursor-pointer rounded-lg border bg-white/70 px-2.5 py-2 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/60 ${
+        active
+          ? "border-brand-400 ring-2 ring-brand-200"
+          : "border-stone-200/70"
+      } ${className}`}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -184,8 +252,11 @@ function TargetRow({
  * กราฟแท่งเดิมดูยาก ขอเป็นปฏิทินที่กดเลือกคนได้ เห็นว่าส่งงานวันไหนบ้าง พร้อม stats)
  *
  * โครงหน้า: เลือกเดือน → แถวชื่อทุกคน (กดเลือก) → ปฏิทิน heatmap (ซ้าย) + แผงสถิติ (ขวา)
- *  - **heatmap**: เทา = ยังไม่ส่ง · ส้มอ่อน = ส่งแล้วยังไม่ผ่านตรวจ · ส้มเข้ม = ตรวจผ่านแล้ว
- *    (ไล่ระดับตามสัดส่วนงานที่ผ่านในวันนั้น — เห็นได้ว่างานเก่าถูกแก้/ตรวจจบไปแล้วแค่ไหน)
+ *  - **heatmap**: เทา = ยังไม่ส่ง · เขียว = ส่งตรวจแล้ว · ฟ้า = ตรวจผ่านแล้ว (ไล่ระดับตาม
+ *    สัดส่วนงานที่ผ่านในวันนั้น) · **ขอบแดง = วันนั้นมีงานถูกตีกลับ** — กติกาสีจากผู้ใช้
+ *    2026-08-29: แดง = งานแก้ · ฟ้า = ตรวจผ่านแล้ว · เขียว = ส่งตรวจแล้ว
+ *  - **ตัวกรอง** = ปุ่มเดียวเปิดแผงรวม (ช่วงเวลา/การโพส/สถานะ/ประเภท/หมวด) ค่าเริ่มต้น
+ *    คือ "วันที่ 1 – วันนี้" → `kpi-filters.tsx`
  *  - ในช่องวันมีลิสต์งานจริง (โหมดทุกคนยุบเป็นชิป "ชื่อ ×N") กดช่องเพื่อดูรายละเอียดทั้งวัน
  *  - แผงขวา = สถิติของคนที่เลือกทั้งหมด (เป้า KPI/ทำได้/ส่ง/ผ่าน/รอตรวจ/ไฟล์/เดือนก่อน)
  * ภาพรวมเทียบทั้งทีมอยู่คนละหน้า → `/content-tracking/overview`
@@ -221,6 +292,10 @@ export function TrackingClient({
   /** วันที่เปิดดูรายละเอียด (dayIndex 0-based ของเดือนที่ดูอยู่) */
   const [openDay, setOpenDay] = useState<number | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  /** ป๊อปอัพ "ใครดองงานโพสไว้บ้าง" — เปิดจากกล่องสถิติ "โพสแล้ว" */
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  /** ตัวกรองรวมของหน้า — ค่าเริ่มต้นคือวันที่ 1 ถึงวันนี้ (คำสั่งผู้ใช้ 2026-08-29) */
+  const [filters, setFilters] = useState<KpiFilters>(DEFAULT_KPI_FILTERS);
 
   const today = useMemo(
     () => ({ year: initialYear, month: initialMonth, day: initialDay }),
@@ -247,8 +322,15 @@ export function TrackingClient({
     inMonth,
     statsById,
     people,
+    postById,
     team,
   } = month;
+
+  /** ช่วงวันของเดือนที่ตัวกรองเลือกอยู่ (1-based, รวมปลายทั้งสองข้าง) */
+  const range = useMemo(
+    () => resolveKpiRange(filters, { daysInMonth, elapsedDays }),
+    [filters, daysInMonth, elapsedDays]
+  );
 
   const profileById = useMemo(
     () => new Map(profiles.map((p) => [p.id, p])),
@@ -264,41 +346,64 @@ export function TrackingClient({
   const stat: PersonStat | undefined =
     personId === "all" ? undefined : statsById.get(personId);
 
-  /** งานในเดือนตามขอบเขตที่เลือก */
-  const scopeTasks = useMemo(
+  /** ผลงานของขอบเขตที่เลือก **ก่อน**กรอง — ใช้บอกว่าตัวกรองซ่อนอยู่กี่ชิ้น */
+  const scopeAll = useMemo(
     () =>
       personId === "all"
         ? inMonth
-        : inMonth.filter(({ t }) => t.assignee_id === personId),
+        : inMonth.filter((e) => e.ownerId === personId),
     [inMonth, personId]
+  );
+
+  /** ผลงานที่หน้านี้แสดงจริง (ขอบเขต + ตัวกรอง) — **ทุกตัวเลข/ปฏิทินอ่านจากชุดนี้ชุดเดียว**
+      ตัวเลขบนแผงขวากับปฏิทินจึงตรงกันเสมอ */
+  const scopeEvents = useMemo(
+    () => scopeAll.filter((e) => matchKpiEvent(e, filters, range)),
+    [scopeAll, filters, range]
   );
 
   /** สรุปยอดของขอบเขตที่เลือก — ทำงานได้ทั้งโหมดทีมและคนที่ยังไม่มีเป้า KPI */
   const summary: ScopeSummary = useMemo(() => {
     const s: ScopeSummary = {
       total: 0,
+      byBasis: { work: 0, brief: 0, posted: 0 },
+      submitted: 0,
       approved: 0,
       waiting: 0,
+      revision: 0,
       sent: 0,
       posted: 0,
       untagged: 0,
       activeDays: 0,
       byFormat: { image: 0, video: 0, none: 0 },
+      cards: 0,
       files: 0,
       fileImage: 0,
       fileVideo: 0,
     };
     const days = new Set<number>();
-    for (const { t, dayIndex } of scopeTasks) {
+    const seenCards = new Set<string>();
+    for (const e of scopeEvents) {
+      const t = e.t;
       s.total += 1;
-      days.add(dayIndex);
-      const state = workStateOf(t);
-      if (state === "approved") s.approved += 1;
-      else if (state === "waiting") s.waiting += 1;
-      else s.sent += 1;
+      s.byBasis[e.basis] += 1;
+      days.add(e.dayIndex);
+      // สถานะการตรวจมีความหมายเฉพาะผลงานที่ตัวเองส่งตรวจ — ฐาน brief/posted ไม่ผ่านคิวตรวจ
+      if (e.basis === "work") {
+        s.submitted += 1;
+        const state = workStateOf(t);
+        if (state === "approved") s.approved += 1;
+        else if (state === "waiting") s.waiting += 1;
+        else if (state === "revision") s.revision += 1;
+        else s.sent += 1;
+      }
       if (t.posted_at !== null) s.posted += 1;
-      if (t.content_format === null) s.untagged += 1;
+      if (isUntagged(t)) s.untagged += 1;
       s.byFormat[t.content_format ?? "none"] += 1;
+      // ไฟล์/การ์ด นับจากการ์ดที่ไม่ซ้ำ (การ์ดใบเดียวอาจให้ผลงาน 2 ฐานกับคนคนเดียวกัน)
+      if (seenCards.has(t.id)) continue;
+      seenCards.add(t.id);
+      s.cards += 1;
       // นับเฉพาะไฟล์ภาพ/วิดีโอ (pdf/zip ฯลฯ ไม่ใช่ชิ้นงาน) — ใช้ helper กลางจาก @/lib/media
       for (const f of t.files) {
         if (isImagePath(f.file_path)) {
@@ -312,25 +417,40 @@ export function TrackingClient({
     }
     s.activeDays = days.size;
     return s;
-  }, [scopeTasks]);
+  }, [scopeEvents]);
 
-  /** งานของแต่ละวันในเดือน (index 0-based) */
+  /** คิวโพสของขอบเขตที่เลือก (โหมดทีม = รวมทั้งทีม) — กล่อง "โพสแล้ว" + ป๊อปอัพงานดองใช้ชุดนี้ */
+  const scopePost = useMemo(
+    () =>
+      personId === "all"
+        ? team.post
+        : (postById.get(personId) ?? emptyPostStat()),
+    [personId, postById, team.post]
+  );
+
+  /** กลุ่มงานดองที่ป๊อปอัพแสดง — เลือกคนอยู่ = เฉพาะของคนนั้น */
+  const backlogGroups: PostBacklogGroup[] = useMemo(() => {
+    if (personId === "all") return month.postBacklog;
+    return month.postBacklog.filter((g) => g.ownerId === personId);
+  }, [month.postBacklog, personId]);
+
+  /** ผลงานของแต่ละวันในเดือน (index 0-based) */
   const byDay = useMemo(() => {
-    const map = new Map<number, TaskAt[]>();
-    for (const at of scopeTasks) {
-      const list = map.get(at.dayIndex);
-      if (list) list.push(at);
-      else map.set(at.dayIndex, [at]);
+    const map = new Map<number, KpiEvent[]>();
+    for (const e of scopeEvents) {
+      const list = map.get(e.dayIndex);
+      if (list) list.push(e);
+      else map.set(e.dayIndex, [e]);
     }
     return map;
-  }, [scopeTasks]);
+  }, [scopeEvents]);
 
-  /** จำนวนงานที่ส่งในเดือนนี้ต่อคน — ตัวเลขบนปุ่มเลือกคน (คิดครั้งเดียว ไม่ filter ต่อปุ่ม) */
+  /** จำนวนผลงานในเดือนนี้ต่อคน — ตัวเลขบนปุ่มเลือกคน (คิดครั้งเดียว ไม่ filter ต่อปุ่ม) */
   const countByPerson = useMemo(() => {
     const map = new Map<string, number>();
-    for (const { t } of inMonth) {
-      if (t.assignee_id === null) continue;
-      map.set(t.assignee_id, (map.get(t.assignee_id) ?? 0) + 1);
+    for (const e of inMonth) {
+      if (e.ownerId === null) continue;
+      map.set(e.ownerId, (map.get(e.ownerId) ?? 0) + 1);
     }
     return map;
   }, [inMonth]);
@@ -353,11 +473,18 @@ export function TrackingClient({
     return out;
   }, [ym, daysInMonth]);
 
-  /** งานยังไม่ระบุประเภทในขอบเขตที่เลือก — ยุบเป็นปุ่มแจ้งเตือน + โมดัลรายชื่อ */
-  const untagged = useMemo(
-    () => scopeTasks.filter(({ t }) => t.content_format === null).map((a) => a.t),
-    [scopeTasks]
-  );
+  /** งานที่ระบุประเภทไม่ครบในขอบเขตที่เลือก (ไม่มีฟอร์แมต หรือไม่มีหมวดเนื้อหา —
+      ผู้ใช้ 2026-08-29 สั่งให้ประเภทเป็นข้อบังคับ) — ยุบเป็นปุ่มแจ้งเตือน + โมดัลรายชื่อ */
+  const untagged = useMemo(() => {
+    const seen = new Set<string>();
+    const out: TrackedTask[] = [];
+    for (const e of scopeEvents) {
+      if (!isUntagged(e.t) || seen.has(e.t.id)) continue;
+      seen.add(e.t.id);
+      out.push(e.t);
+    }
+    return out;
+  }, [scopeEvents]);
   const untaggedGroups = useMemo(() => {
     const map = new Map<string, TrackedTask[]>();
     for (const t of untagged) {
@@ -372,6 +499,26 @@ export function TrackingClient({
     ];
     return keys.map((key) => ({ key, list: map.get(key) ?? [] }));
   }, [untagged, profiles]);
+
+  /** ชิปสรุปตัวกรองที่เปิดอยู่ (กดกากบาท = ปลดทีละอัน) */
+  const filterChips = useMemo(
+    () =>
+      kpiFilterChips(filters, {
+        range,
+        categoryName: (id) =>
+          categories.find((c) => c.id === id)?.name ?? "หมวดที่ถูกลบ",
+      }),
+    [filters, range, categories]
+  );
+  const hiddenByFilter = scopeAll.length - summary.total;
+
+  /** กดกล่องสถิติ = สลับตัวกรองสถานะนั้น (กดซ้ำ = เอาออก) */
+  const toggleStates = (keys: WorkState[]) =>
+    setFilters((f) => {
+      const on = keys.every((k) => f.states.includes(k));
+      const rest = f.states.filter((s) => !keys.includes(s));
+      return { ...f, states: on ? rest : [...rest, ...keys] };
+    });
 
   const tickPct = isCurrentMonth
     ? Math.round((elapsedDays / daysInMonth) * 100)
@@ -396,10 +543,8 @@ export function TrackingClient({
       ? summary.total
       : team.overallDone;
 
-  const dayTasks = openDay === null ? [] : (byDay.get(openDay) ?? []);
-  const dayApproved = dayTasks.filter(
-    ({ t }) => workStateOf(t) === "approved"
-  ).length;
+  const dayEvents = openDay === null ? [] : (byDay.get(openDay) ?? []);
+  const dayDone = dayEvents.filter(eventDone).length;
 
   return (
     <>
@@ -454,13 +599,46 @@ export function TrackingClient({
           <button
             type="button"
             onClick={() => setNoticeOpen(true)}
-            className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-800 hover:bg-amber-100 sm:min-h-9"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-800 hover:bg-amber-100 sm:min-h-9"
           >
             <AlertTriangle size={15} />
-            ยังไม่ระบุประเภท {untagged.length} งาน
+            ระบุประเภทไม่ครบ {untagged.length} งาน
           </button>
         )}
+
+        {/* ตัวกรองรวม — ชิปของตัวกรองที่เปิดอยู่ต้องเห็นข้างปุ่มเสมอ กดกากบาทปลดทีละอันได้
+            (ไม่งั้นคนอ่านนึกว่าข้อมูลหาย — บทเรียนเดียวกับ my-tasks/Hunting) */}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <KpiActiveChips chips={filterChips} onChange={setFilters} />
+          <KpiFilterButton
+            filters={filters}
+            onChange={setFilters}
+            categories={categories}
+            daysInMonth={daysInMonth}
+            range={range}
+            resultCount={summary.total}
+          />
+        </div>
       </div>
+
+      {/* ตัวกรองซ่อนของอยู่เท่าไหร่ — ข้อมูลยังอยู่ครบ แค่ไม่ได้แสดง */}
+      {hiddenByFilter > 0 && (
+        <p className="-mt-1 mb-3 text-xs text-stone-500">
+          แสดง{" "}
+          <span className="font-semibold tabular-nums text-stone-700">
+            {summary.total}
+          </span>{" "}
+          จาก {scopeAll.length} ชิ้นของเดือนนี้ · ตัวกรองซ่อนอยู่ {hiddenByFilter}{" "}
+          ชิ้น{" "}
+          <button
+            type="button"
+            onClick={() => setFilters(DEFAULT_KPI_FILTERS)}
+            className="cursor-pointer font-semibold text-brand-600 hover:underline"
+          >
+            ล้างตัวกรอง
+          </button>
+        </p>
+      )}
 
       {/* ---------- แถวเลือกคน (กดชื่อเพื่อดูปฏิทินของคนนั้น) ---------- */}
       <div className="-mx-3 mb-4 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
@@ -478,7 +656,7 @@ export function TrackingClient({
             <span
               className={`tabular-nums ${personId === "all" ? "text-white/80" : "text-stone-400"}`}
             >
-              {team.submitted}
+              {team.credited}
             </span>
           </button>
           {tabPeople.map((p) => {
@@ -558,48 +736,105 @@ export function TrackingClient({
               )}
             </div>
 
-            {/* ส่งกี่งาน / เสร็จกี่งาน — คำถามหลักที่ผู้ใช้ขอให้เห็นในหน้านี้ */}
+            {/* ทำได้กี่ชิ้น / เสร็จกี่ชิ้น — คำถามหลักที่ผู้ใช้ขอให้เห็นในหน้านี้ */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <MiniStat
-                label="ส่งงานเดือนนี้"
+                label={
+                  filterChips.length > 0 ? "ผลงานที่แสดงอยู่" : "ผลงานเดือนนี้"
+                }
                 value={summary.total}
                 sub={`ใน ${summary.activeDays} วัน`}
               />
+              {/* กล่องสถานะ = ตัวกรองในตัว (กดแล้วดูเฉพาะสถานะนั้น กดซ้ำ = เอาออก) */}
               <MiniStat
                 label="ตรวจผ่านแล้ว"
                 value={summary.approved}
-                tone="text-amber-600"
+                tone={WORK_STATES.approved.text}
+                active={filters.states.includes("approved")}
+                onClick={() => toggleStates(["approved"])}
                 sub={
-                  summary.total > 0
-                    ? `${pctOf(summary.approved, summary.total)}% ของที่ส่ง`
+                  summary.submitted > 0
+                    ? `${pctOf(summary.approved, summary.submitted)}% ของที่ส่งตรวจ`
                     : undefined
                 }
               />
               <MiniStat
-                label="รอตรวจ"
+                label="ส่งตรวจแล้ว · รอตรวจ"
                 value={summary.waiting + summary.sent}
                 tone={
                   summary.waiting + summary.sent > 0
-                    ? "text-amber-700"
+                    ? WORK_STATES.waiting.text
                     : "text-stone-800"
                 }
+                active={
+                  filters.states.includes("waiting") &&
+                  filters.states.includes("sent")
+                }
+                onClick={() => toggleStates(["waiting", "sent"])}
                 sub={summary.sent > 0 ? `ไม่อยู่ในคิวตรวจ ${summary.sent}` : undefined}
               />
               <MiniStat
-                label="โพสแล้ว"
-                value={summary.posted}
-                sub={
-                  stat && stat.pending > 0
-                    ? `รอกดโพสอีก ${stat.pending}`
-                    : undefined
+                label="งานแก้ (ถูกตีกลับ)"
+                value={summary.revision}
+                tone={
+                  summary.revision > 0
+                    ? WORK_STATES.revision.text
+                    : "text-stone-800"
                 }
+                active={filters.states.includes("revision")}
+                onClick={() => toggleStates(["revision"])}
+                sub={
+                  summary.revision > 0
+                    ? "ยังไม่ได้ส่งตรวจใหม่"
+                    : "ไม่มีงานถูกตีกลับค้าง"
+                }
+              />
+              {/* โพสแล้วกี่ชิ้นจากกี่ชิ้น (ผู้ใช้ 2026-08-29) — กดเพื่อดูว่าใครดองงานโพสไว้ */}
+              <MiniStat
+                label="โพสแล้ว"
+                value={`${scopePost.done}/${scopePost.due}`}
+                tone={
+                  scopePost.backlog > 0 ? "text-amber-700" : "text-stone-800"
+                }
+                sub={
+                  scopePost.backlog > 0
+                    ? `ดองไว้ ${scopePost.backlog} ชิ้น · รวม ${scopePost.backlogDays} วัน`
+                    : "ไม่มีงานค้างโพส"
+                }
+                onClick={() => setBacklogOpen(true)}
+                className="col-span-2"
               />
             </div>
 
+            {/* ผลงานแยกตามฐาน — โชว์เมื่อขอบเขตนี้มีผลงานที่ไม่ใช่ "ส่งงาน" ปนอยู่ */}
+            {(summary.byBasis.brief > 0 || summary.byBasis.posted > 0) && (
+              <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-stone-500">
+                {(["work", "brief", "posted"] as const)
+                  .filter((b) => summary.byBasis[b] > 0)
+                  .map((b) => (
+                    <span
+                      key={b}
+                      title={CONTENT_KPI_BASES[b].desc}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${CONTENT_KPI_BASES[b].chip}`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${CONTENT_KPI_BASES[b].dot}`}
+                      />
+                      {CONTENT_KPI_BASES[b].label} {summary.byBasis[b]}
+                    </span>
+                  ))}
+              </p>
+            )}
+
             {/* เป้า KPI ตอนนี้เท่าไหร่ + ทำได้เท่าไหร่ */}
             <div className="mt-4">
-              <p className="mb-1.5 text-xs font-semibold text-stone-500">
+              <p className="mb-1.5 flex flex-wrap items-baseline gap-x-1.5 text-xs font-semibold text-stone-500">
                 {selected ? "เป้า KPI ของคนนี้" : "เป้า KPI รวมทั้งทีม"}
+                {filterChips.length > 0 && (
+                  <span className="font-normal text-stone-400">
+                    (นับทั้งเดือนเสมอ ไม่ขึ้นกับตัวกรอง)
+                  </span>
+                )}
               </p>
               {scopeTarget === 0 ? (
                 <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2 text-xs text-stone-500">
@@ -696,7 +931,7 @@ export function TrackingClient({
               <p>
                 การ์ด{" "}
                 <span className="font-bold tabular-nums text-stone-800">
-                  {summary.total}
+                  {summary.cards}
                 </span>{" "}
                 <span className="text-stone-400">
                   (วิดีโอ {summary.byFormat.video} · ภาพ {summary.byFormat.image}
@@ -712,8 +947,8 @@ export function TrackingClient({
                 </span>{" "}
                 <span className="text-stone-400">
                   (ภาพ {summary.fileImage} · วิดีโอ {summary.fileVideo}
-                  {summary.total > 0 &&
-                    ` · เฉลี่ย ${(summary.files / summary.total).toFixed(1)}/การ์ด`}
+                  {summary.cards > 0 &&
+                    ` · เฉลี่ย ${(summary.files / summary.cards).toFixed(1)}/การ์ด`}
                   )
                 </span>
               </p>
@@ -732,17 +967,16 @@ export function TrackingClient({
               )}
             </div>
 
-            {stat && stat.pending > 0 && (
-              <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+            {scopePost.backlog > 0 && (
+              <button
+                type="button"
+                onClick={() => setBacklogOpen(true)}
+                className="mt-3 inline-flex cursor-pointer items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+              >
                 <AlertTriangle size={12} />
-                ตรวจผ่านแล้วแต่ยังไม่กดโพส {stat.pending} งาน
-              </p>
-            )}
-            {!stat && !selected && team.pendingPost > 0 && (
-              <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                <AlertTriangle size={12} />
-                ทั้งทีมตรวจผ่านแล้วรอกดโพส {team.pendingPost} งาน
-              </p>
+                {selected ? "ดองงานโพสไว้" : "ทั้งทีมดองงานโพสไว้"}{" "}
+                {scopePost.backlog} งาน · รวม {scopePost.backlogDays} วัน
+              </button>
             )}
           </Card>
 
@@ -829,18 +1063,27 @@ export function TrackingClient({
               </p>
               {/* ตัวเลขสำคัญอยู่บนปฏิทินเลย (ผู้ใช้ขอ) — ไม่ต้องกวาดตาไปแผงขวา */}
               <p className="text-xs text-stone-500">
-                ส่ง{" "}
+                ผลงาน{" "}
                 <span className="font-bold tabular-nums text-stone-800">
                   {summary.total}
                 </span>{" "}
                 · ผ่าน{" "}
-                <span className="font-bold tabular-nums text-amber-600">
+                <span className="font-bold tabular-nums text-sky-700">
                   {summary.approved}
                 </span>{" "}
                 · รอตรวจ{" "}
-                <span className="font-bold tabular-nums text-stone-700">
+                <span className="font-bold tabular-nums text-emerald-700">
                   {summary.waiting + summary.sent}
                 </span>
+                {summary.revision > 0 && (
+                  <>
+                    {" "}
+                    · งานแก้{" "}
+                    <span className="font-bold tabular-nums text-rose-600">
+                      {summary.revision}
+                    </span>
+                  </>
+                )}
                 {scopeTarget > 0 && (
                   <>
                     {" "}
@@ -879,6 +1122,12 @@ export function TrackingClient({
                   </span>
                   ผ่านครบ
                 </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className={`h-3.5 w-3.5 rounded-[4px] bg-white ${HEAT_REWORK}`}
+                  />
+                  มีงานแก้
+                </span>
               </div>
             </div>
 
@@ -909,9 +1158,7 @@ export function TrackingClient({
                   );
                 const dayIndex = day - 1;
                 const list = byDay.get(dayIndex) ?? [];
-                const approved = list.filter(
-                  ({ t }) => workStateOf(t) === "approved"
-                ).length;
+                const approved = list.filter(eventDone).length;
                 const level = heatLevel(list.length, approved);
                 const heat = HEAT_LEVELS[level];
                 const isToday =
@@ -922,6 +1169,11 @@ export function TrackingClient({
                 const sunday = idx % 7 === 6;
                 const groups =
                   personId === "all" ? groupByPerson(list) : [];
+                /** วันนี้มีงานที่ถูกตีกลับค้างอยู่ = ตีกรอบแดงรอบช่อง */
+                const hasRevision = list.some(
+                  (e) => e.basis === "work" && workStateOf(e.t) === "revision"
+                );
+                const outOfRange = day < range.from || day > range.to;
                 const shown = personId === "all" ? groups.length : list.length;
                 const hidden = Math.max(0, shown - MAX_CHIPS);
                 return (
@@ -931,13 +1183,17 @@ export function TrackingClient({
                     onClick={() => setOpenDay(dayIndex)}
                     title={
                       list.length === 0
-                        ? `${thaiDateLabel(ym.year, ym.month, day)} — ยังไม่มีงานที่ส่ง`
-                        : `${thaiDateLabel(ym.year, ym.month, day)} — ส่ง ${list.length} งาน · ตรวจผ่านแล้ว ${approved}`
+                        ? `${thaiDateLabel(ym.year, ym.month, day)} — ยังไม่มีผลงาน`
+                        : `${thaiDateLabel(ym.year, ym.month, day)} — ผลงาน ${list.length} ชิ้น · จบแล้ว ${approved}`
                     }
                     className={`flex min-h-[74px] cursor-pointer flex-col gap-1 rounded-lg p-1 text-left transition-colors sm:min-h-[112px] sm:rounded-xl sm:p-1.5 ${
                       heat.tile
-                    } ${heat.hover} ${
-                      future && list.length === 0 ? "opacity-50" : ""
+                    } ${heat.hover} ${hasRevision ? HEAT_REWORK : ""} ${
+                      outOfRange
+                        ? "opacity-40"
+                        : future && list.length === 0
+                          ? "opacity-50"
+                          : ""
                     } ${
                       openDay === dayIndex
                         ? "ring-2 ring-brand-500 ring-offset-1 ring-offset-white"
@@ -996,29 +1252,39 @@ export function TrackingClient({
                               </span>
                             </span>
                           ))
-                        : list.slice(0, MAX_CHIPS).map(({ t }) => (
+                        : list.slice(0, MAX_CHIPS).map((e) => (
                             <span
-                              key={t.id}
-                              title={`${t.title} — ${WORK_STATES[workStateOf(t)].label}`}
+                              key={`${e.t.id}:${e.basis}`}
+                              title={`${e.t.title} — ${CONTENT_KPI_BASES[e.basis].label}${
+                                e.basis === "work"
+                                  ? ` · ${WORK_STATES[workStateOf(e.t)].label}`
+                                  : ""
+                              }`}
                               className={`flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[11px] leading-tight ${HEAT_CHIP}`}
                             >
+                              {/* จุดสีตามสถานะ: ฟ้า = ผ่าน · เขียว = รอตรวจ · แดง = งานแก้ */}
                               <span
                                 className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                  workStateOf(t) === "approved"
-                                    ? HEAT_DOT_DONE
-                                    : HEAT_DOT_OPEN
+                                  e.basis === "work"
+                                    ? heatDotOf(workStateOf(e.t))
+                                    : HEAT_DOT_DONE
                                 }`}
                               />
                               <span className="min-w-0 flex-1 truncate">
-                                {t.title}
+                                {e.t.title}
                               </span>
+                              {e.basis !== "work" && (
+                                <span
+                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${CONTENT_KPI_BASES[e.basis].dot}`}
+                                />
+                              )}
                             </span>
                           ))}
                       {hidden > 0 && (
                         <span
                           className={`px-1 text-[10px] font-semibold leading-tight ${heat.ratio}`}
                         >
-                          +{hidden} {personId === "all" ? "คน" : "งาน"}
+                          +{hidden} {personId === "all" ? "คน" : "ชิ้น"}
                         </span>
                       )}
                     </span>
@@ -1029,7 +1295,7 @@ export function TrackingClient({
 
             {summary.total === 0 && (
               <p className="mt-3 text-center text-sm text-stone-400">
-                ยังไม่มีงานที่ส่งในเดือนนี้
+                ยังไม่มีผลงานที่นับ KPI ในเดือนนี้
                 {selected ? ` สำหรับ ${personName(selected)}` : ""}
               </p>
             )}
@@ -1071,39 +1337,40 @@ export function TrackingClient({
       >
         <p className="mb-3 text-xs text-stone-500">
           {selected ? `${personName(selected)} · ` : ""}
-          ส่ง{" "}
+          ผลงาน{" "}
           <span className="font-bold tabular-nums text-stone-700">
-            {dayTasks.length}
+            {dayEvents.length}
           </span>{" "}
-          งาน · ตรวจผ่านแล้ว{" "}
-          <span className="font-bold tabular-nums text-amber-600">
-            {dayApproved}
-          </span>{" "}
-          · รอตรวจ{" "}
-          <span className="font-bold tabular-nums text-stone-700">
-            {dayTasks.length - dayApproved}
+          ชิ้น · ผ่านแล้ว{" "}
+          <span className="font-bold tabular-nums text-sky-700">{dayDone}</span>{" "}
+          · ยังไม่ผ่าน{" "}
+          <span className="font-bold tabular-nums text-emerald-700">
+            {dayEvents.length - dayDone}
           </span>
         </p>
-        {dayTasks.length === 0 ? (
+        {dayEvents.length === 0 ? (
           <p className="py-6 text-center text-sm text-stone-400">
-            วันนี้ยังไม่มีงานที่ส่ง
+            วันนี้ยังไม่มีผลงานที่นับ KPI
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {dayTasks.map(({ t }) => {
-              const state = workStateOf(t);
+            {dayEvents.map((e) => {
+              const t = e.t;
               const cat = categoryName(t.content_category_id);
               return (
                 <li
-                  key={t.id}
+                  key={`${t.id}:${e.basis}`}
                   className="rounded-lg border border-stone-200/70 bg-white/70 px-3 py-2"
                 >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${WORK_STATES[state].chip}`}
-                    >
-                      {WORK_STATES[state].short}
-                    </span>
+                    <BasisChip basis={e.basis} />
+                    {e.basis === "work" && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${WORK_STATES[workStateOf(t)].chip}`}
+                      >
+                        {WORK_STATES[workStateOf(t)].short}
+                      </span>
+                    )}
                     <Link
                       href={`/tasks?task=${t.id}`}
                       className="inline-flex min-w-0 flex-1 items-center gap-1 text-sm text-stone-800 hover:text-brand-600 hover:underline"
@@ -1126,12 +1393,16 @@ export function TrackingClient({
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-stone-400">
                     {personId === "all" && (
                       <span>
-                        {t.assignee_id === null
-                          ? "ไม่ระบุผู้รับผิดชอบ"
-                          : personName(profileById.get(t.assignee_id))}
+                        {e.ownerId === null
+                          ? "ไม่ระบุเจ้าของผลงาน"
+                          : personName(profileById.get(e.ownerId))}
                       </span>
                     )}
-                    {cat !== null && <span>หมวด {cat}</span>}
+                    {cat !== null ? (
+                      <span>หมวด {cat}</span>
+                    ) : (
+                      <span className="text-amber-600">ยังไม่ระบุหมวด</span>
+                    )}
                     <span>{t.posted_at !== null ? "โพสแล้ว" : "ยังไม่โพส"}</span>
                   </p>
                 </li>
@@ -1145,13 +1416,13 @@ export function TrackingClient({
       <Modal
         open={noticeOpen}
         onClose={() => setNoticeOpen(false)}
-        title={`ยังไม่ระบุประเภท ${untagged.length} งาน`}
+        title={`ระบุประเภทไม่ครบ ${untagged.length} งาน`}
       >
         <p className="mb-3 text-xs text-stone-500">
-          งานพวกนี้ถูกนับรวมในกติกา &quot;ทุกฟอร์แมต&quot; แต่ยังนับเข้ากติกาที่เจาะ
-          ภาพ/วิดีโอ หรือหมวดไม่ได้ — เปิดงานแล้วเลือก
+          งานพวกนี้ยังขาดประเภทชิ้นงาน (ภาพ/วิดีโอ) หรือหมวดเนื้อหา (สวย/หมอ/
+          Before-After ...) — จึงนับเข้ากติกาที่เจาะฟอร์แมตหรือหมวดไม่ได้ เปิดงานแล้วเลือก
           &quot;ชิ้นงาน/เนื้อหา&quot; ในแผงได้เลย (หรือกด &quot;โพสแล้ว&quot;
-          ระบบจะถามประเภทให้เอง)
+          ระบบจะบังคับให้ระบุทั้งสองช่องก่อนบันทึก)
         </p>
         <div className="space-y-4">
           {untaggedGroups.map(({ key, list }) => (
@@ -1180,6 +1451,15 @@ export function TrackingClient({
         </div>
       </Modal>
 
+      {/* ---------- ใครดองงานโพสไว้บ้าง (เปิดจากกล่อง "โพสแล้ว") ---------- */}
+      <PostBacklogModal
+        open={backlogOpen}
+        onClose={() => setBacklogOpen(false)}
+        groups={backlogGroups}
+        total={scopePost}
+        scopeLabel={selected ? personName(selected) : "ทั้งทีม"}
+      />
+
       {month.personStats.length === 0 && month.inMonth.length === 0 && (
         <Card className="mt-4">
           <EmptyState
@@ -1200,8 +1480,8 @@ function PageHeaderRow({ isAdmin }: { isAdmin: boolean }) {
       <div className="min-w-0">
         <h1 className="text-xl font-semibold text-stone-900">KPI คอนเทนต์</h1>
         <p className="mt-0.5 text-sm text-stone-500">
-          นับผลงานจากวันที่ &quot;ส่งงาน&quot; (กดส่งตรวจ) — กดชื่อคนเพื่อดู
-          ปฏิทินของคนนั้น
+          นับผลงานตามฐานที่ตั้งไว้ให้แต่ละคน — ส่งงาน (กดส่งตรวจ) / Brief
+          ที่ถูกรับงาน / งานที่ต้องโพส · กดชื่อคนเพื่อดูปฏิทินของคนนั้น
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">

@@ -531,7 +531,7 @@ export function InfluencersClient({
     <>
       {/* ระดับ "ดูเฉยๆ" — บอกให้ชัดตั้งแต่ต้นว่าทำไมไม่มีปุ่มแก้ */}
       {!me.canEdit && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-stone-200 bg-white/70 px-4 py-2.5 text-sm text-stone-600 animate-fade-in">
+        <div className="mb-4 flex shrink-0 items-center gap-2 rounded-lg border border-stone-200 bg-white/70 px-4 py-2.5 text-sm text-stone-600 animate-fade-in">
           <Eye size={16} className="shrink-0 text-stone-400" />
           บัญชีนี้เป็นระดับ <span className="font-semibold">Viewer</span> —
           เปิดดูเคสได้ทั้งหมด แต่เพิ่ม/แก้/ลบไม่ได้
@@ -539,7 +539,7 @@ export function InfluencersClient({
       )}
 
       {loadError && (
-        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+        <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError}
         </div>
       )}
@@ -569,6 +569,8 @@ export function InfluencersClient({
           count={boardFilterCount(filters)}
           factory={DEFAULT_BOARD_FILTERS}
           width={392}
+          resultCount={filtered.length}
+          resultNoun="เคส"
         >
           <BoardFilterSections
             filters={filters}
@@ -605,7 +607,7 @@ export function InfluencersClient({
       />
 
       {actionError && (
-        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
+        <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           {actionError}
         </div>
       )}

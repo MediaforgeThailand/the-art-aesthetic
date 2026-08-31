@@ -351,8 +351,35 @@ export function FilterSummary<T>({
 
 /* ---------- ปุ่ม + แผง ---------- */
 
+/* จอเล็ก = แผ่นเลื่อนขึ้นจากขอบล่าง (คำสั่งผู้ใช้ 2026-08-30: "ตัว filter ทำให้เป็นปุ่มเดียว
+   แล้วกด ก็เลื่อน tab setting มาจากด้านล่างขึ้นมาซัก 2/3 ของจอ") — จอ ≥sm เป็นแผงลอย
+   เกาะปุ่มเหมือนเดิม. อ่านขนาดจอผ่าน useSyncExternalStore ตามกติกาข้อ 3 (ห้าม setState
+   ใน effect) — snapshot ฝั่ง server = false และแผงจะ render ก็ต่อเมื่อกดปุ่มแล้ว
+   จึงไม่มีทาง hydrate ไม่ตรง */
+const SMALL_MQ = "(max-width: 639px)";
+
+function subscribeSmall(cb: () => void): () => void {
+  const mq = window.matchMedia(SMALL_MQ);
+  mq.addEventListener("change", cb);
+  // เหตุการณ์ change ของ media query ไม่ยิงทุกเบราว์เซอร์ตอน emulate ขนาดจอ — ฟัง resize คู่ไว้
+  window.addEventListener("resize", cb);
+  return () => {
+    mq.removeEventListener("change", cb);
+    window.removeEventListener("resize", cb);
+  };
+}
+
+function useIsSmallScreen(): boolean {
+  return useSyncExternalStore(
+    subscribeSmall,
+    () => window.matchMedia(SMALL_MQ).matches,
+    () => false
+  );
+}
+
 /**
- * ปุ่ม "ตัวกรอง" ปุ่มเดียวของหน้า — กดแล้วแผงลอยขึ้นมาพร้อมตัวกรองทั้งหมด
+ * ปุ่ม "ตัวกรอง" ปุ่มเดียวของหน้า — กดแล้วแผงตัวกรองทั้งหมดขึ้นมา
+ * (จอ ≥sm = แผงลอยเกาะปุ่ม · จอเล็ก = แผ่นสูง 2/3 จอเลื่อนขึ้นจากขอบล่าง)
  * เนื้อในส่งเข้ามาเป็น children (ห่อด้วย `FilterSection` ทีละกลุ่ม)
  */
 export function InfluFilterButton<T>({
@@ -361,6 +388,8 @@ export function InfluFilterButton<T>({
   factory,
   label = "ตัวกรอง",
   width = 344,
+  resultCount,
+  resultNoun = "รายการ",
   children,
 }: {
   api: InfluFilterApi<T>;
@@ -370,16 +399,22 @@ export function InfluFilterButton<T>({
   factory: T;
   label?: string;
   width?: number;
+  /** จำนวนผลลัพธ์หลังกรอง — โชว์บนปุ่มปิดของแผ่นมือถือ ให้เห็นผลก่อนกดกลับไปดู */
+  resultCount?: number;
+  resultNoun?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [box, setBox] = useState<MenuBox | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const small = useIsSmallScreen();
   const anchorRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const place = (a: HTMLElement) => setBox(menuBox(a, { width, maxHeight: 560 }));
   useAnchoredMenu({
-    open,
+    // แผ่นของจอเล็กเป็นโมดัล (ปิดด้วยฉากหลัง/Esc เอง) — ห้ามให้ useAnchoredMenu คุม
+    // ไม่งั้นแตะในแผ่นแล้วหุบ / เลื่อนเนื้อในแล้วหุบ
+    open: open && !small,
     anchorRef,
     menuRef,
     onClose: () => setOpen(false),
@@ -392,6 +427,117 @@ export function InfluFilterButton<T>({
     const t = window.setTimeout(() => setJustSaved(false), 2000);
     return () => window.clearTimeout(t);
   }, [justSaved]);
+
+  // Esc ปิดแผ่น + ล็อค scroll พื้นหลัง (แพตเทิร์นเดียวกับ Modal ของระบบ)
+  useEffect(() => {
+    if (!open || !small) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, small]);
+
+  const clearBtn =
+    count > 0 ? (
+      <button
+        type="button"
+        onClick={() => api.setFilters(factory)}
+        className="cursor-pointer rounded-lg px-2 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
+      >
+        ล้างทั้งหมด
+      </button>
+    ) : null;
+
+  const closeBtn = (
+    <button
+      type="button"
+      onClick={() => setOpen(false)}
+      aria-label="ปิดตัวกรอง"
+      className="flex cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-600 max-sm:h-11 max-sm:w-11 sm:h-7 sm:w-7"
+    >
+      <X size={16} />
+    </button>
+  );
+
+  const head = (
+    <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-3 py-2">
+      <p className="text-sm font-semibold text-stone-700 max-sm:text-base">{label}</p>
+      <div className="flex items-center gap-1">
+        {clearBtn}
+        {closeBtn}
+      </div>
+    </div>
+  );
+
+  const body = (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {children}
+    </div>
+  );
+
+  /* ค่าเริ่มต้นของฉัน — บันทึกเก็บในเครื่องนี้ แยกตามบัญชี (ผู้ใช้ 2026-08-29) */
+  const footer = (
+    <div className="shrink-0 border-t border-stone-100 bg-stone-50/70 px-3 py-2 max-sm:pb-safe-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            api.saveAsDefault();
+            setJustSaved(true);
+          }}
+          disabled={!api.dirty && api.hasSaved}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-300 bg-white px-2.5 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50 disabled:cursor-default disabled:border-stone-200 disabled:text-stone-400 disabled:hover:bg-white max-sm:min-h-11 max-sm:text-sm"
+        >
+          {justSaved ? <Check size={13} /> : <Star size={13} />}
+          {justSaved ? "บันทึกแล้ว" : "บันทึกเป็นค่าเริ่มต้น"}
+        </button>
+        {api.dirty && (
+          <button
+            type="button"
+            onClick={api.reset}
+            title="กลับไปที่ค่าเริ่มต้นที่ใช้อยู่"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
+          >
+            <RotateCcw size={12} />
+            คืนค่าเริ่มต้น
+          </button>
+        )}
+        {api.hasSaved && !api.dirty && (
+          <button
+            type="button"
+            onClick={api.clearSaved}
+            title="ลืมค่าเริ่มต้นที่บันทึกไว้ กลับไปใช้ค่ามาตรฐานของระบบ"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:text-rose-600 max-sm:min-h-11 max-sm:text-sm"
+          >
+            <X size={12} />
+            ลบค่าเริ่มต้น
+          </button>
+        )}
+        {small && (
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="ml-auto inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 text-sm font-semibold text-cream shadow-sm transition-all active:scale-[0.97]"
+          >
+            {resultCount === undefined
+              ? "ดูผลลัพธ์"
+              : `ดูผลลัพธ์ ${resultCount} ${resultNoun}`}
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] leading-tight text-stone-400">
+        {api.hasSaved
+          ? "เปิดหน้านี้ครั้งหน้าจะใช้ค่าที่บันทึกไว้"
+          : "ค่าเริ่มต้นตอนนี้คือค่ามาตรฐานของระบบ (เริ่มที่ “ของฉัน”)"}
+      </p>
+    </div>
+  );
 
   return (
     <>
@@ -408,7 +554,7 @@ export function InfluFilterButton<T>({
         // ชื่อคงที่ — ถ้าปล่อยให้อ่านจากข้อความในปุ่ม เลขจำนวนตัวกรองจะกลายเป็นส่วนหนึ่ง
         // ของชื่อ (e2e จับปุ่มด้วยชื่อนี้ และ screen reader ก็อ่านซ้ำกับ badge)
         aria-label={label}
-        className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 ${
+        className={`relative inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 ${
           count > 0
             ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
             : "border-stone-200 bg-white/70 text-stone-600 hover:border-stone-300"
@@ -424,93 +570,54 @@ export function InfluFilterButton<T>({
       </button>
 
       {open &&
-        box &&
+        (small || box) &&
         createPortal(
-          <div
-            ref={menuRef}
-            role="dialog"
-            aria-label={label}
-            style={{
-              position: "fixed",
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              maxHeight: box.height,
-            }}
-            className="z-[60] flex flex-col rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in"
-          >
-            <div className="flex items-center justify-between border-b border-stone-100 px-3 py-2">
-              <p className="text-sm font-semibold text-stone-700">{label}</p>
-              <div className="flex items-center gap-1">
-                {count > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => api.setFilters(factory)}
-                    className="cursor-pointer rounded-lg px-2 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
-                  >
-                    ล้างทั้งหมด
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="flex cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-600 max-sm:h-11 max-sm:w-11 sm:h-7 sm:w-7"
-                >
-                  <X size={16} />
-                </button>
+          small ? (
+            /* z-[80] เท่า Modal ของระบบ — dropdown แบบ portal ที่ถูกใช้ "ข้างใน" แผ่นนี้
+               ต้องเป็น z-[90] ตามกติกาเดียวกับโมดัล */
+            <div className="fixed inset-0 z-[80]">
+              <button
+                type="button"
+                aria-label="ปิดตัวกรอง"
+                onClick={() => setOpen(false)}
+                className="absolute inset-0 cursor-default bg-brand-900/30 backdrop-blur-sm animate-fade-in"
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={label}
+                // 2/3 จอตามคำสั่งผู้ใช้ — ตัวกรองสั้นก็ยังสูงเท่านี้ (นิ้วโป้งเอื้อมถึงทั้งแผ่น)
+                className="absolute inset-x-0 bottom-0 flex h-[68dvh] max-h-[92dvh] flex-col rounded-t-3xl border border-white/70 bg-white shadow-2xl animate-slide-in-up"
+              >
+                {/* แถบจับ — บอกว่าแผ่นนี้เลื่อนขึ้นมาและปิดได้ */}
+                <span
+                  aria-hidden
+                  className="mx-auto mb-1.5 mt-2.5 block h-1 w-10 shrink-0 rounded-full bg-stone-300"
+                />
+                {head}
+                {body}
+                {footer}
               </div>
             </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-              {children}
+          ) : (
+            <div
+              ref={menuRef}
+              role="dialog"
+              aria-label={label}
+              style={{
+                position: "fixed",
+                left: box?.x,
+                top: box?.y,
+                width: box?.width,
+                maxHeight: box?.height,
+              }}
+              className="z-[60] flex flex-col rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in"
+            >
+              {head}
+              {body}
+              {footer}
             </div>
-
-            {/* ค่าเริ่มต้นของฉัน — บันทึกเก็บในเครื่องนี้ แยกตามบัญชี (ผู้ใช้ 2026-08-29) */}
-            <div className="border-t border-stone-100 bg-stone-50/70 px-3 py-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    api.saveAsDefault();
-                    setJustSaved(true);
-                  }}
-                  disabled={!api.dirty && api.hasSaved}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-300 bg-white px-2.5 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50 disabled:cursor-default disabled:border-stone-200 disabled:text-stone-400 disabled:hover:bg-white max-sm:min-h-11 max-sm:text-sm"
-                >
-                  {justSaved ? <Check size={13} /> : <Star size={13} />}
-                  {justSaved ? "บันทึกแล้ว" : "บันทึกเป็นค่าเริ่มต้น"}
-                </button>
-                {api.dirty && (
-                  <button
-                    type="button"
-                    onClick={api.reset}
-                    title="กลับไปที่ค่าเริ่มต้นที่ใช้อยู่"
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
-                  >
-                    <RotateCcw size={12} />
-                    คืนค่าเริ่มต้น
-                  </button>
-                )}
-                {api.hasSaved && !api.dirty && (
-                  <button
-                    type="button"
-                    onClick={api.clearSaved}
-                    title="ลืมค่าเริ่มต้นที่บันทึกไว้ กลับไปใช้ค่ามาตรฐานของระบบ"
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:text-rose-600 max-sm:min-h-11 max-sm:text-sm"
-                  >
-                    <X size={12} />
-                    ลบค่าเริ่มต้น
-                  </button>
-                )}
-              </div>
-              <p className="mt-1 text-[11px] leading-tight text-stone-400">
-                {api.hasSaved
-                  ? "เปิดหน้านี้ครั้งหน้าจะใช้ค่าที่บันทึกไว้"
-                  : "ค่าเริ่มต้นตอนนี้คือค่ามาตรฐานของระบบ (เริ่มที่ “ของฉัน”)"}
-              </p>
-            </div>
-          </div>,
+          ),
           document.body
         )}
     </>

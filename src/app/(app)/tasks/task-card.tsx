@@ -33,7 +33,8 @@ import {
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
-import { isImagePath, isVideoPath } from "@/lib/media";
+import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
+import { useInView } from "@/lib/use-in-view";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
@@ -232,11 +233,38 @@ export function AssigneePicker({
   );
 }
 
-/** ผู้ตรวจของทอดปัจจุบัน — ทอด 2 ใช้ผู้ตรวจลำดับ 2 (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้)
+/* ---------- ทอดการตรวจ (migration 0098) ----------
+   การ์ดที่มาจาก brief มี "ทอด 0" เพิ่มมาข้างหน้า = ผู้สั่ง brief ตรวจก่อน
+   (graphic กดส่งตรวจ → ผู้สั่ง brief ดู → ผ่านแล้วผู้สั่ง brief ส่งเข้าสายตรวจจริง) */
+
+/** ผู้สั่ง brief ของการ์ดนี้ = ผู้ตรวจของทอด 0 (null = ไม่มีทอด 0)
+    การ์ดที่ไม่ได้มาจาก brief หรือผู้สั่งเป็นคนเดียวกับคนทำ = ไม่ต้องตรวจทอดนี้ */
+export function briefReviewerId(task: TaskWithAssignee): string | null {
+  if (task.brief_source_id === null) return null;
+  const id = task.created_by;
+  if (id === null || id === task.assignee_id) return null;
+  return id;
+}
+
+/** ทอดที่งานอยู่จริง — ทอด 0 ที่ไม่มีผู้สั่ง brief ให้ตรวจ (โปรไฟล์ถูกลบ/เป็นคนเดียวกับคนทำ)
+    ตกกลับเป็นทอด 1 เพื่อไม่ให้การ์ดค้างโดยไม่มีใครกดอนุมัติได้ */
+export function reviewStepOf(task: TaskWithAssignee): number {
+  const step = task.review_step ?? 1;
+  if (step > 0) return step;
+  return briefReviewerId(task) === null ? 1 : 0;
+}
+
+/** ผู้ตรวจของทอดปัจจุบัน — ทอด 0 คือผู้สั่ง brief · ทอด 2 ใช้ผู้ตรวจลำดับ 2
+    (ถ้าโปรไฟล์ถูกลบ ตกกลับให้ลำดับ 1 ปิดงานได้)
     ทอด 1 มีได้ 2 คน (ผู้ตรวจร่วม reviewer1b) — ต้องอนุมัติครบทุกคนก่อนไปต่อ
     จึงคืนเฉพาะคนที่ "ยังไม่อนุมัติ" (ดูจาก reviewer1_approved_at/reviewer1b_approved_at) */
 export function currentReviewerIds(task: TaskWithAssignee): string[] {
-  if ((task.review_step ?? 1) >= 2) {
+  const step = reviewStepOf(task);
+  if (step <= 0) {
+    const id = briefReviewerId(task);
+    return id == null ? [] : [id];
+  }
+  if (step >= 2) {
     const id = task.reviewer2_id ?? task.reviewer_id;
     return id == null ? [] : [id];
   }
@@ -252,7 +280,12 @@ export function currentReviewerIds(task: TaskWithAssignee): string[] {
 export function currentReviewerPersons(
   task: TaskWithAssignee
 ): NonNullable<TaskWithAssignee["reviewer"]>[] {
-  if ((task.review_step ?? 1) >= 2) {
+  const step = reviewStepOf(task);
+  if (step <= 0) {
+    const p = briefReviewerId(task) === null ? null : (task.creator ?? null);
+    return p == null ? [] : [p];
+  }
+  if (step >= 2) {
     const p = task.reviewer2 ?? task.reviewer ?? null;
     return p == null ? [] : [p];
   }
@@ -266,7 +299,7 @@ export function currentReviewerPersons(
 
 /** ทอดแรกอนุมัติไปแล้วบางคน (1 จาก 2) — ใช้ขึ้นชิป "อนุมัติแล้ว 1/2" ให้รู้ว่าเหลือใคร */
 export function reviewer1PartialApproved(task: TaskWithAssignee): boolean {
-  if ((task.review_step ?? 1) >= 2 || task.review_status !== "pending") return false;
+  if (reviewStepOf(task) !== 1 || task.review_status !== "pending") return false;
   if (task.reviewer1b_id === null) return false;
   return (
     (task.reviewer1_approved_at !== null) !==
@@ -276,7 +309,7 @@ export function reviewer1PartialApproved(task: TaskWithAssignee): boolean {
 
 /** เวลาเริ่มรอของทอดปัจจุบัน — ทอด 2 นับจากตอนลำดับ 1 อนุมัติ, ทอด 1 นับจากตอนส่งตรวจ */
 export function reviewWaitStart(task: TaskWithAssignee): string | null {
-  if ((task.review_step ?? 1) >= 2) {
+  if (reviewStepOf(task) >= 2) {
     return task.review1_approved_at ?? task.review_submitted_at;
   }
   return task.review_submitted_at;
@@ -303,7 +336,7 @@ export function ReviewStatusDot({
 }: {
   status: "none" | "pending" | "approved";
   size?: number;
-  /** ทอดที่กำลังรอตรวจ (1|2) — ใช้คู่กับ hasChain */
+  /** ทอดที่กำลังรอตรวจ (0 = ผู้สั่ง brief · 1|2 = ผู้ตรวจจริง) — ใช้คู่กับ hasChain */
   reviewStep?: number;
   /** งานนี้มีผู้ตรวจลำดับ 2 (ตรวจเป็นทอด) */
   hasChain?: boolean;
@@ -312,9 +345,11 @@ export function ReviewStatusDot({
     status === "approved"
       ? "เสร็จสมบูรณ์ (ผ่านการตรวจ)"
       : status === "pending"
-        ? hasChain
-          ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep ?? 1}/2`
-          : "รอตรวจ"
+        ? (reviewStep ?? 1) <= 0
+          ? "รอผู้สั่ง brief ตรวจ"
+          : hasChain
+            ? `รอตรวจ · ผู้ตรวจลำดับ ${reviewStep ?? 1}/2`
+            : "รอตรวจ"
         : "ยังไม่ส่งตรวจ";
   return (
     <span
@@ -433,6 +468,8 @@ function CardMediaThumb({ file }: { file: TaskFileRow }) {
 function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   const { url, failed } = useCachedSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
+  // โหลดวิดีโอเฉพาะการ์ดที่เลื่อนมาถึง — กันชนโควตา media player ของเบราว์เซอร์
+  const [thumbRef, inView] = useInView();
   if (failed || broken) {
     // ไฟล์เปิดไม่ได้ (ถูกลบจาก storage/ไฟล์เสีย) — placeholder นิ่ง ไม่ใช่โครงโหลดค้าง
     return (
@@ -450,18 +487,23 @@ function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
   if (isVideoPath(file.file_path)) {
     return (
       <div
+        ref={thumbRef}
         className="relative w-full overflow-hidden rounded-md bg-stone-100"
         title={file.file_name ?? "วิดีโอ"}
       >
         {/* กว้างเต็มการ์ด สูงตามสัดส่วนจริง — วิดีโอแสดงเต็มเฟรม ไม่ถูก crop */}
-        <video
-          src={url}
-          className="h-auto w-full"
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setBroken(true)}
-        />
+        {inView ? (
+          <video
+            src={videoThumbSrc(url)}
+            className="h-auto w-full"
+            muted
+            playsInline
+            preload="metadata"
+            onError={() => setBroken(true)}
+          />
+        ) : (
+          <div className="h-28 w-full" />
+        )}
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white shadow-sm">
             <Play size={14} className="ml-0.5 fill-white" />
@@ -575,7 +617,7 @@ export function TaskCardContent({
                 : task.review_status
             }
             size={18}
-            reviewStep={task.review_step ?? 1}
+            reviewStep={reviewStepOf(task)}
             hasChain={!isBrief && task.reviewer2_id !== null}
           />
         </div>
@@ -642,9 +684,11 @@ export function TaskCardContent({
                 }${pendingWaitLabel ? ` · ${pendingWaitLabel}` : ""}`}
                 className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
               >
-                {task.reviewer2_id
-                  ? `รอตรวจ ${task.review_step ?? 1}/2`
-                  : "รอตรวจ"}
+                {reviewStepOf(task) <= 0
+                  ? "รอผู้สั่ง brief"
+                  : task.reviewer2_id
+                    ? `รอตรวจ ${reviewStepOf(task)}/2`
+                    : "รอตรวจ"}
                 {pendingReviewers.length > 0 && (
                   <span className="inline-flex max-w-32 items-center gap-1">
                     <span className="opacity-60">·</span>

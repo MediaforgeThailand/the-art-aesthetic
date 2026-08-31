@@ -905,31 +905,37 @@ export function InfluDetailClient({
     <div>
       {/* header */}
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
-        <Link
-          href="/influencers"
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-stone-500 transition-colors hover:bg-white/60 hover:text-brand-700"
-        >
-          <ArrowLeft size={16} />
-          รายชื่อ
-        </Link>
-        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-stone-900">
-          <span>
-            คุณ{fullName}
-            {influencer.nickname && (
-              <span className="text-stone-400"> ({influencer.nickname})</span>
+        {/* จอเล็ก: แถวแรกกระชับ [กลับ][ชื่อ][ปุ่มแก้ชื่อ] แล้วดัน Badge ที่เหลือลงบรรทัดถัดไป
+            (w-full ในแถบ flex-wrap) — ที่ ≥sm ใช้ display:contents ให้ลูกกลับไปเป็น flex item
+            ของแถบเดิมตรงๆ หน้าตาเดสก์ท็อปจึงไม่เปลี่ยนเลย */}
+        <div className="flex min-w-0 items-center gap-2 max-sm:w-full sm:contents">
+          <Link
+            href="/influencers"
+            // ทางกลับหลักของมือถือ (เมนูระบบย้ายเข้า drawer แล้ว) — เป้านิ้วต้องเต็ม 44px
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-stone-500 transition-colors hover:bg-white/60 hover:text-brand-700 max-sm:min-h-11 max-sm:px-3"
+          >
+            <ArrowLeft size={16} />
+            รายชื่อ
+          </Link>
+          <h1 className="flex min-w-0 items-center gap-1.5 text-xl font-semibold text-stone-900">
+            <span className="min-w-0 break-words">
+              คุณ{fullName}
+              {influencer.nickname && (
+                <span className="text-stone-400"> ({influencer.nickname})</span>
+              )}
+            </span>
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setNameOpen(true)}
+                title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
+              >
+                <PenLine size={15} />
+              </button>
             )}
-          </span>
-          {canManage && (
-            <button
-              type="button"
-              onClick={() => setNameOpen(true)}
-              title="แก้ไขชื่อ / นามสกุล / ชื่อเล่น"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-all hover:bg-brand-50 hover:text-brand-600 active:scale-90 sm:h-7 sm:w-7"
-            >
-              <PenLine size={15} />
-            </button>
-          )}
-        </h1>
+          </h1>
+        </div>
         {influencer.influ_code && (
           <span
             title="รหัส Influ ID"
@@ -944,13 +950,17 @@ export function InfluDetailClient({
           peopleById={peopleById}
           size={24}
         />
+        {/* Badge ที่ซ้ำกับหัวเอกสารใน "ภาพรวม" (tier / จบงานแล้ว / รอปรึกษา / จำนวนคอนเทนต์ /
+            รอบที่ N) ถูกซ่อนที่ <sm — จอเล็กมีที่จำกัด ให้เหลือแต่ของที่หาที่อื่นไม่ได้ */}
         {influencer.tier && (
-          <Badge className={INFLU_TIERS[influencer.tier].badge}>
+          <Badge
+            className={`${INFLU_TIERS[influencer.tier].badge} max-sm:hidden`}
+          >
             {INFLU_TIERS[influencer.tier].label}
           </Badge>
         )}
         {influencer.completed && (
-          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 max-sm:hidden">
             <CheckCircle2 size={12} /> จบงานแล้ว
           </Badge>
         )}
@@ -968,7 +978,7 @@ export function InfluDetailClient({
         )}
         {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคส) */}
         {influencer.consult_only && !influencer.procedure_text && (
-          <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+          <Badge className="border border-amber-200 bg-amber-50 text-amber-700 max-sm:hidden">
             <MessageCircleQuestion size={12} /> รอปรึกษา
           </Badge>
         )}
@@ -991,13 +1001,14 @@ export function InfluDetailClient({
           )}
         {/* จำนวนงานคอนเทนต์ที่ผูกกับคนนี้ */}
         {contentTasks.length > 0 && (
-          <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+          <Badge className="border border-brand-200 bg-brand-50 text-brand-700 max-sm:hidden">
             <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
           </Badge>
         )}
-        {/* คนนี้มีหลายรอบ — บอกว่าการ์ดนี้คือรอบที่เท่าไหร่ (สลับรอบได้ที่แถบใต้หัวข้อ) */}
+        {/* คนนี้มีหลายรอบ — บอกว่าการ์ดนี้คือรอบที่เท่าไหร่ (สลับรอบได้ที่แถบใต้หัวข้อ)
+            ซ่อนที่ <sm เพราะแถบสลับรอบข้างล่างไฮไลต์รอบปัจจุบันอยู่แล้ว */}
         {personRounds.length > 1 && (
-          <Badge className="border border-stone-200 bg-stone-50 text-stone-500">
+          <Badge className="border border-stone-200 bg-stone-50 text-stone-500 max-sm:hidden">
             <Repeat size={12} /> รอบที่ {influencer.round_no}
           </Badge>
         )}
@@ -1030,7 +1041,7 @@ export function InfluDetailClient({
             return current ? (
               <span
                 key={r.id}
-                className="inline-flex items-center gap-1 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1 text-xs font-medium text-cream shadow-sm"
+                className="inline-flex items-center gap-1 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1 text-xs font-medium text-cream shadow-sm max-sm:min-h-11 max-sm:px-4"
               >
                 {label}
               </span>
@@ -1043,7 +1054,7 @@ export function InfluDetailClient({
                     ? `เข้ารับบริการ ${formatDate(r.service_date)}`
                     : undefined
                 }
-                className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 px-3 py-1 text-xs font-medium text-stone-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 px-3 py-1 text-xs font-medium text-stone-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11 max-sm:px-4"
               >
                 {label}
               </Link>
@@ -1062,7 +1073,7 @@ export function InfluDetailClient({
         <button
           type="button"
           onClick={() => setView("overview")}
-          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] ${
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] max-sm:min-h-11 ${
             view === "overview"
               ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
               : "border border-stone-200 bg-white/60 text-stone-600 hover:bg-white"
@@ -1077,14 +1088,16 @@ export function InfluDetailClient({
           type="button"
           onClick={() => setView("detail")}
           title="ข้อมูลเคส (โปรแกรมที่รับ / ยอดผู้ติดตาม / วัน-แพทย์ / ค่าตัว) — แก้ได้เสมอจนกว่าจะปิดงาน"
-          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] ${
+          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 cursor-pointer active:scale-[0.97] max-sm:min-h-11 ${
             view === "detail"
               ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-md"
               : "border border-stone-200 bg-white/60 text-stone-600 hover:bg-white"
           }`}
         >
           <ClipboardList size={15} />
-          รายละเอียดเคส
+          {/* จอเล็กใช้ชื่อสั้นให้แถบขั้นเหลือ 1-2 แถว (ที่ ≥sm คำเต็มเหมือนเดิม) */}
+          <span className="sm:hidden">รายละเอียด</span>
+          <span className="max-sm:hidden">รายละเอียดเคส</span>
         </button>
         {INFLU_STAGES.map((s) => {
           const passed = influencer.completed || influencer.stage > s.step;
@@ -1096,7 +1109,7 @@ export function InfluDetailClient({
               type="button"
               disabled={!clickable}
               onClick={() => setView(s.step)}
-              className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 ${
+              className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-200 max-sm:min-h-11 ${
                 clickable ? "cursor-pointer active:scale-[0.97]" : "cursor-not-allowed opacity-50"
               } ${
                 view === s.step
@@ -1109,7 +1122,7 @@ export function InfluDetailClient({
               }`}
             >
               <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                   view === s.step
                     ? "bg-white/25"
                     : passed
@@ -1119,7 +1132,10 @@ export function InfluDetailClient({
               >
                 {passed ? <Check size={12} strokeWidth={3} /> : s.step}
               </span>
-              {s.title}
+              {/* จอเล็กใช้ชื่อขั้นแบบสั้น (field `short` ของ INFLU_STAGES) — ชื่อเต็ม
+                  "เซนสัญญา + วันรับบริการ" ทำให้แถบขั้นล้นเป็นหลายแถวที่ 375px */}
+              <span className="sm:hidden">{s.short}</span>
+              <span className="max-sm:hidden">{s.title}</span>
             </button>
           );
         })}
@@ -1411,7 +1427,8 @@ function HashtagBlock({ tags }: { tags: CaseHashtag[] }) {
           <span
             key={`${t.key}-${t.tag}`}
             title={t.source ? `${t.label}: ${t.source}` : t.label}
-            className="rounded-lg bg-brand-50 px-2.5 py-1 font-mono text-sm font-semibold text-brand-700 ring-1 ring-brand-100"
+            // แท็กเป็นคำเดียวยาวๆ (ชื่อแคมเปญ/ชื่อ influ ต่อกัน) — ต้อง break ได้ไม่งั้นดันจอที่ 375px
+            className="min-w-0 break-words rounded-lg bg-brand-50 px-2.5 py-1 font-mono text-sm font-semibold text-brand-700 ring-1 ring-brand-100"
           >
             {t.tag}
           </span>
@@ -2275,7 +2292,7 @@ function CaseDetailStage({
               {/* ติ๊กนี้ค้างอยู่จากตอนสร้างนัด — พอเพิ่มรายการแล้วระบบเอาออกให้เองตอนบันทึก */}
               {items.length === 0 && (
                 <label
-                  className={`flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800 ${
+                  className={`flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800 max-sm:min-h-11 ${
                     readOnly ? "opacity-60" : "cursor-pointer"
                   }`}
                 >
@@ -2801,17 +2818,20 @@ function ServiceDayStage({
 
         <div className="space-y-2 rounded-xl border border-stone-200 bg-white/80 px-4 py-3 text-sm leading-7">
           {history.map((h, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-3">
-              <span className="text-stone-400 line-through decoration-blue-700 decoration-2">
+            <div key={i} className="flex min-w-0 flex-wrap items-center gap-3">
+              <span className="min-w-0 break-words text-stone-400 line-through decoration-blue-700 decoration-2">
                 {h.old || "(ว่าง)"}
               </span>
-              <span className="font-medium text-blue-700">→ {h.next}</span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50/60 px-2 py-0.5">
+              <span className="min-w-0 break-words font-medium text-blue-700">
+                → {h.next}
+              </span>
+              <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50/60 px-2 py-0.5">
+                {/* ลายเซนเป็น PNG กว้างตามที่วาดมา — จำกัดความกว้างบนจอเล็กไม่ให้ดันแถวจนล้น */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={h.signature_data}
                   alt={`ลายเซน ${h.signed_by}`}
-                  className="h-8 object-contain"
+                  className="h-8 w-auto max-w-[40vw] object-contain sm:max-w-[160px]"
                 />
                 <span className="text-[10px] leading-3 text-blue-700">
                   {h.signed_by}
@@ -2822,11 +2842,11 @@ function ServiceDayStage({
             </div>
           ))}
           <p
-            className={
+            className={`break-words ${
               history.length > 0
                 ? "font-medium text-stone-900"
                 : "text-stone-800"
-            }
+            }`}
           >
             {influencer.procedure_text || "-"}
           </p>
@@ -2888,7 +2908,7 @@ function ServiceDayStage({
         <div className="space-y-4">
           <div>
             <Label>หัตถการเดิม</Label>
-            <p className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-500 line-through">
+            <p className="break-words rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-500 line-through">
               {influencer.procedure_text || "-"}
             </p>
           </div>

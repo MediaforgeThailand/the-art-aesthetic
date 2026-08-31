@@ -253,7 +253,9 @@ export function LogsClient({
                       )}
                     </p>
                   </div>
-                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-stone-400">
+                  {/* จอเล็ก: เวลาตกไปอยู่บรรทัดของตัวเอง — บีบอยู่ข้างข้อความสรุปที่ 375px
+                      แล้วเหลือที่ให้สรุปไม่ถึงครึ่งบรรทัด อ่านไม่รู้เรื่อง */}
+                  <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-stone-400 max-sm:w-full">
                     {formatDateTime(l.created_at)}
                   </span>
                 </li>

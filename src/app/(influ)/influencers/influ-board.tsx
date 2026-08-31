@@ -29,6 +29,8 @@ import {
   BellRing,
   CalendarClock,
   Check,
+  ChevronsLeft,
+  ChevronsRight,
   FileSignature,
   Hash,
   MessageCircleQuestion,
@@ -38,7 +40,7 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -680,6 +682,7 @@ function SortableInfluCard({
   needsBooking,
   canEdit,
   canDelete,
+  dragEnabled,
   onClick,
   onDelete,
   onToggleDeclined,
@@ -697,23 +700,36 @@ function SortableInfluCard({
   /** ระดับ "ดูเฉยๆ" = ลากการ์ด/กดปุ่มบนการ์ดไม่ได้ (เปิดดูได้อย่างเดียว) */
   canEdit: boolean;
   canDelete: boolean;
+  /** ลากวางเปิดอยู่ไหม — จอเล็กปิดถาวร (ท่าลากทับท่าปาดเปลี่ยนกลุ่ม) */
+  dragEnabled: boolean;
   onClick: () => void;
   onDelete: (influ: InfluencerListRow) => void;
   onToggleDeclined: (influ: InfluencerListRow) => void;
 }) {
+  const draggable = canEdit && dragEnabled;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: influ.id, data: { type: "influ" }, disabled: !canEdit });
+    useSortable({
+      id: influ.id,
+      data: { type: "influ" },
+      disabled: !draggable,
+    });
+
+  // ลากไม่ได้ (จอเล็ก/ระดับดูเฉยๆ) = การ์ดเป็นปุ่ม "เปิดเคส" ธรรมดา ห้ามสืบทอด
+  // attributes ของ dnd-kit เพราะมันแปะ aria-disabled="true" ทั้งที่การ์ดยังกดเปิดได้
+  // (screen reader อ่านว่ากดไม่ได้ และ Playwright ก็รอ "element is enabled" จนหมดเวลา)
+  const dndProps = draggable
+    ? { ...attributes, ...listeners }
+    : { role: "button" as const, tabIndex: 0 };
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      {...attributes}
-      {...listeners}
+      {...dndProps}
       onClick={onClick}
       onKeyDown={(e) => {
         // ส่งต่อให้ dnd-kit KeyboardSensor ก่อน (Space = ยก/วางการ์ด) แล้วค่อยจัดการ Enter เอง
-        (listeners?.onKeyDown as React.KeyboardEventHandler | undefined)?.(e);
+        if (draggable) (listeners?.onKeyDown as React.KeyboardEventHandler | undefined)?.(e);
         if (e.key === "Enter" && !e.defaultPrevented) {
           e.preventDefault();
           onClick();
@@ -758,6 +774,7 @@ function BoardColumn({
   deletingId,
   canEdit,
   canDelete,
+  dragEnabled,
   onCardClick,
   onDelete,
   onToggleDeclined,
@@ -776,6 +793,8 @@ function BoardColumn({
   deletingId: string | null;
   canEdit: boolean;
   canDelete: (influ: InfluencerListRow) => boolean;
+  /** ลากวางเปิดอยู่ไหม (จอ ≥md เท่านั้น) */
+  dragEnabled: boolean;
   onCardClick: (influ: InfluencerListRow) => void;
   onDelete: (influ: InfluencerListRow) => void;
   onToggleDeclined: (influ: InfluencerListRow) => void;
@@ -788,13 +807,13 @@ function BoardColumn({
 
   return (
     <div
-      className={`flex min-w-0 flex-col rounded-xl transition-colors duration-200 ${
+      className={`flex min-w-0 flex-col rounded-xl transition-colors duration-200 max-md:w-full max-md:shrink-0 max-md:snap-center max-md:snap-always ${
         highlight
           ? "border border-brand-300/60 bg-brand-100/50 ring-2 ring-brand-300 backdrop-blur-md"
           : "glass-soft"
       }`}
     >
-      <div className="flex items-center gap-2 px-4 pb-1.5 pt-3.5">
+      <div className="flex shrink-0 items-center gap-2 px-4 pb-1.5 pt-3.5">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
         <span className={`text-sm font-semibold ${meta.headerText}`}>
           {meta.label}
@@ -805,7 +824,10 @@ function BoardColumn({
         </span>
       </div>
 
-      <div ref={setNodeRef} className="min-h-[140px] space-y-2.5 px-3 pb-3 pt-1">
+      <div
+        ref={setNodeRef}
+        className="space-y-2.5 px-3 pb-3 pt-1 max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-y-contain md:min-h-[140px]"
+      >
         <SortableContext
           items={influs.map((i) => i.id)}
           strategy={verticalListSortingStrategy}
@@ -818,7 +840,11 @@ function BoardColumn({
                   : "border-stone-200 text-stone-300"
               }`}
             >
-              {canEdit ? "วางการ์ดที่นี่" : "ไม่มีเคสในกลุ่มนี้"}
+              {/* จอเล็กไม่มีลากวาง — "วางการ์ดที่นี่" จึงชวนทำในสิ่งที่ทำไม่ได้ */}
+              <span className="md:hidden">ไม่มีเคสในกลุ่มนี้</span>
+              <span className="hidden md:inline">
+                {canEdit ? "วางการ์ดที่นี่" : "ไม่มีเคสในกลุ่มนี้"}
+              </span>
             </div>
           )}
           {influs.map((i) => (
@@ -835,6 +861,7 @@ function BoardColumn({
               needsBooking={bookingAlertIds.has(i.id)}
               canEdit={canEdit}
               canDelete={canDelete(i)}
+              dragEnabled={dragEnabled}
               onClick={() => onCardClick(i)}
               onDelete={onDelete}
               onToggleDeclined={onToggleDeclined}
@@ -846,7 +873,11 @@ function BoardColumn({
   );
 }
 
-/* ---------- บอร์ด 3 คอลัมน์ (เล็ก / กลาง / ใหญ่) ---------- */
+/* ---------- บอร์ดกลุ่มขนาด (เล็ก / กลาง / ใหญ่) ----------
+   จอ ≥md = 3 คอลัมน์ ลากวางได้เหมือนเดิม
+   จอ <md = **1 กลุ่ม = 1 หน้าเต็มจอ ปาดซ้าย/ขวาเปลี่ยนกลุ่ม** (ผู้ใช้ 2026-08-30)
+   ใช้ CSS scroll-snap แบบ mandatory = "บังคับมุมกล้อง" ปล่อยนิ้วแล้วต้องลงล็อก
+   ที่กลุ่มใดกลุ่มหนึ่งเสมอ (แพตเทิร์นเดียวกับบอร์ด Task บนมือถือ) */
 
 export function InfluBoard({
   items,
@@ -902,6 +933,50 @@ export function InfluBoard({
   );
   const [overGroup, setOverGroup] = useState<InfluSizeGroup | null>(null);
   const suppressClickRef = useRef(false);
+
+  /* ---- pager ของจอเล็ก ---- */
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [page, setPage] = useState(0);
+
+  // อ่านหน้าปัจจุบันจาก scrollLeft จริง (ไม่ใช่ state ที่เราสั่งเอง)
+  // — ปาดนิ้วเองกับกดชิปชื่อกลุ่มจึงตรงกันเสมอ
+  const syncPage = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = trackRef.current;
+      if (!el || el.clientWidth === 0) return;
+      const i = Math.round(el.scrollLeft / el.clientWidth);
+      setPage((cur) => (cur === i ? cur : i));
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+    },
+    []
+  );
+
+  const goToPage = (i: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const target = Math.min(Math.max(i, 0), INFLU_SIZE_GROUP_ORDER.length - 1);
+    el.scrollTo({ left: target * el.clientWidth, behavior: "smooth" });
+    setPage(target);
+  };
+
+  // ลากวางเปิดเฉพาะจอ ≥md — จอเล็กท่าลากการ์ดทับท่าปาดเปลี่ยนกลุ่มเสมอ
+  // (ย้ายกลุ่มเอง/เรียงลำดับ ทำบนจอใหญ่; เป็นค่า behavior ไม่ใช่ markup จึงตั้งหลัง mount ได้)
+  const [dragEnabled, setDragEnabled] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const apply = () => setDragEnabled(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -1040,24 +1115,69 @@ export function InfluBoard({
 
   const activeInflu = activeId ? itemById.get(activeId) : undefined;
 
+  const columns = INFLU_SIZE_GROUP_ORDER.map((g) => ({
+    group: g,
+    influs: currentOrder[g]
+      .map((id) => itemById.get(id))
+      .filter((i): i is InfluencerListRow => i !== undefined),
+  }));
+
   return (
-    <DndContext
-      id="influ-board-dnd"
-      sensors={sensors}
-      collisionDetection={collisionDetection}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      {/* จอแคบ: คอลัมน์เรียงลงมา (ลากข้ามกลุ่มยังได้ด้วยการลากลง/ขึ้น) */}
-      <div className="grid grid-cols-1 items-start gap-4 animate-fade-in-up md:grid-cols-3">
-        {INFLU_SIZE_GROUP_ORDER.map((g) => {
-          const ids = currentOrder[g];
-          const influs = ids
-            .map((id) => itemById.get(id))
-            .filter((i): i is InfluencerListRow => i !== undefined);
-          return (
+    <div className="max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col">
+      {/* จอเล็ก: แถบสลับกลุ่ม + คำใบ้ว่าปาดได้
+          — บอร์ดปาดข้างไม่มีอะไรบอกเลยว่ามีกลุ่มอื่นรออยู่นอกจอ ชิปนี้จึงทำ 2 หน้าที่:
+            บอกว่ามี 3 กลุ่ม (พร้อมจำนวนเคส) + กดข้ามไปกลุ่มไหนก็ได้โดยไม่ต้องปาด */}
+      <div className="mb-2 shrink-0 md:hidden">
+        <div className="flex items-center gap-1">
+          {columns.map((c, i) => {
+            const meta = INFLU_SIZE_GROUPS[c.group];
+            const active = i === page;
+            return (
+              <button
+                key={c.group}
+                type="button"
+                onClick={() => goToPage(i)}
+                aria-current={active}
+                aria-label={`ดูกลุ่ม${meta.label} ${c.influs.length} เคส`}
+                className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border px-2 text-sm transition-all active:scale-[0.97] ${
+                  active
+                    ? "border-brand-200 bg-white font-semibold text-stone-800 shadow-sm"
+                    : "border-transparent bg-white/45 text-stone-500"
+                }`}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+                <span className="truncate">{meta.label}</span>
+                <span className="shrink-0 text-xs text-stone-500">
+                  {c.influs.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-stone-500">
+          <ChevronsLeft size={12} className="animate-swipe-nudge-left" />
+          ปาดซ้าย–ขวาเพื่อสลับกลุ่ม
+          <ChevronsRight size={12} className="animate-swipe-nudge" />
+        </p>
+      </div>
+
+      <DndContext
+        id="influ-board-dnd"
+        sensors={sensors}
+        collisionDetection={collisionDetection}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        {/* ราง: <md = ปาดข้างทีละหน้า (snap) · ≥md = กริด 3 คอลัมน์เหมือนเดิม
+            **ห้ามใส่ gap บนจอเล็ก** — หน้าปัจจุบันคำนวณจาก scrollLeft / clientWidth */}
+        <div
+          ref={trackRef}
+          onScroll={syncPage}
+          className="flex animate-fade-in-up [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-md:min-h-0 max-md:flex-1 max-md:snap-x max-md:snap-mandatory max-md:overflow-x-auto max-md:overflow-y-hidden max-md:overscroll-x-contain md:grid md:grid-cols-3 md:items-start md:gap-4"
+        >
+          {columns.map(({ group: g, influs }) => (
             <BoardColumn
               key={g}
               group={g}
@@ -1073,27 +1193,28 @@ export function InfluBoard({
               deletingId={deletingId}
               canEdit={canEdit}
               canDelete={canDelete}
+              dragEnabled={dragEnabled}
               onCardClick={handleCardClick}
               onDelete={onDelete}
               onToggleDeclined={onToggleDeclined}
             />
-          );
-        })}
-      </div>
+          ))}
+        </div>
 
-      <DragOverlay>
-        {activeInflu && (
-          <InfluCardContent
-            influ={activeInflu}
-            stats={statsByInflu.get(activeInflu.id)}
-            assignees={assigneesByInflu?.get(activeInflu.id)}
-            peopleById={peopleById}
-            today={today}
-            needsBooking={bookingAlertIds.has(activeInflu.id)}
-            overlay
-          />
-        )}
-      </DragOverlay>
-    </DndContext>
+        <DragOverlay>
+          {activeInflu && (
+            <InfluCardContent
+              influ={activeInflu}
+              stats={statsByInflu.get(activeInflu.id)}
+              assignees={assigneesByInflu?.get(activeInflu.id)}
+              peopleById={peopleById}
+              today={today}
+              needsBooking={bookingAlertIds.has(activeInflu.id)}
+              overlay
+            />
+          )}
+        </DragOverlay>
+      </DndContext>
+    </div>
   );
 }

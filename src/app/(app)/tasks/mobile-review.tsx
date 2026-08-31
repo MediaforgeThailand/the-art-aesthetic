@@ -1,16 +1,8 @@
 "use client";
 
-import { ClipboardCheck, Clock3 } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import type { TaskWithAssignee } from "@/lib/types";
-import { CardChip, PosterCard } from "./mobile-card";
-import {
-  AssigneeAvatar,
-  currentReviewerPersons,
-  profileName,
-  reviewer1PartialApproved,
-  reviewWaitStart,
-  waitDurationLabel,
-} from "./task-card";
+import { ReviewPosterCard } from "./review-poster";
 
 /* ============================================================================
    แท็บ "รอตรวจ" เวอร์ชันมือถือ (<lg)
@@ -18,38 +10,11 @@ import {
    ผู้ใช้ 2026-08-29: "อยากให้มันขึ้น card รูปภาพเหมือนตัวอื่นๆ ที่ดูง่ายๆ แล้วพวกปุ่ม
    ก็ให้เป็นกดคลิ๊กเข้าไปอยู่ใน sidebar setting ด่านบนแทน"
 
-   ⇒ ใช้การ์ดโปสเตอร์ชุดเดียวกับบอร์ด (mobile-card) เรียง 2 คอลัมน์ **และไม่มีปุ่ม
-   อนุมัติ/ตีกลับบนการ์ด** — กดการ์ดแล้วชีตรายละเอียดเลื่อนขึ้นมา ปุ่มตรวจงานอยู่
-   บนสุดของชีตนั้น (task-panel) ซึ่งเป็นที่เดียวกับจอใหญ่ ไม่ต้องดูแลปุ่มสองชุด
+   ⇒ ใช้การ์ดโปสเตอร์ชุดเดียวกับบอร์ด (review-poster → poster-card) เรียง 2 คอลัมน์
+   **และไม่มีปุ่มอนุมัติ/ตีกลับบนการ์ด** — กดการ์ดแล้วชีตรายละเอียดเลื่อนขึ้นมา
+   ปุ่มตรวจงานอยู่บนสุดของชีตนั้น (task-panel) ซึ่งเป็นที่เดียวกับจอใหญ่
    ปุ่มบนแถวเดิมกินความสูงใบละ ~3 บรรทัด ทำให้เห็นงานได้ทีละ 2 ใบเท่านั้น
    ========================================================================== */
-
-/** รอนานเกิน 2 วันไหม — เน้นงานที่ค้างนานให้สะดุดตา (helper นอก component เลี่ยงกฎ purity) */
-function isLongWait(sinceIso: string | null): boolean {
-  if (!sinceIso) return false;
-  return Date.now() - Date.parse(sinceIso) > 2 * 24 * 3_600_000;
-}
-
-/** ชิปมุมขวาบน: ลำดับทอด + เวลาที่รอ (แดงเมื่อค้างเกิน 2 วัน) */
-function ReviewChips({ task }: { task: TaskWithAssignee }) {
-  const hasChain = task.reviewer2_id !== null;
-  const step = task.review_step ?? 1;
-  const since = reviewWaitStart(task);
-  const wait = waitDurationLabel(since);
-  return (
-    <>
-      <CardChip tone="amber">
-        {hasChain ? `รอตรวจ ${step}/2` : "รอตรวจ"}
-      </CardChip>
-      {wait && (
-        <CardChip tone={isLongWait(since) ? "rose" : "neutral"}>
-          <Clock3 size={10} />
-          {wait}
-        </CardChip>
-      )}
-    </>
-  );
-}
 
 function GroupHeading({
   title,
@@ -134,36 +99,16 @@ export function MobileReviewList({
           <EmptyRow>ไม่มีงานที่รอคุณตรวจตอนนี้</EmptyRow>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {queue.map((task) => {
-              const partial1 = reviewer1PartialApproved(task);
-              return (
-                <PosterCard
-                  key={task.id}
-                  task={task}
-                  today={today}
-                  selected={selectedId === task.id}
-                  ariaLabel={`ตรวจงาน ${task.title}`}
-                  topRight={<ReviewChips task={task} />}
-                  note={
-                    partial1 ? (
-                      <span className="truncate">
-                        ผู้ตรวจร่วมอนุมัติแล้ว — เหลือคุณ
-                      </span>
-                    ) : (
-                      <>
-                        <AssigneeAvatar assignee={task.assignee} size={5} />
-                        <span className="truncate">
-                          {task.assignee
-                            ? profileName(task.assignee)
-                            : "ไม่ระบุผู้ทำ"}
-                        </span>
-                      </>
-                    )
-                  }
-                  onClick={() => onRowClick(task)}
-                />
-              );
-            })}
+            {queue.map((task) => (
+              <ReviewPosterCard
+                key={task.id}
+                task={task}
+                today={today}
+                selected={selectedId === task.id}
+                variant="queue"
+                onClick={() => onRowClick(task)}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -180,46 +125,20 @@ export function MobileReviewList({
           <EmptyRow>ไม่มีงานอื่นที่รอตรวจอยู่</EmptyRow>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {teamPending.map((task) => {
-              // ทอดแรกอาจมีผู้ตรวจร่วม 2 คน — โชว์เฉพาะคนที่ยังไม่อนุมัติ (งานค้างอยู่ที่เขา)
-              const stuckWith = currentReviewerPersons(task);
-              const mine =
-                userId !== null &&
-                (task.assignee_id === userId || task.created_by === userId);
-              return (
-                <PosterCard
-                  key={task.id}
-                  task={task}
-                  today={today}
-                  selected={selectedId === task.id}
-                  ariaLabel={`ดูงานรอตรวจ ${task.title}`}
-                  topRight={
-                    <>
-                      <ReviewChips task={task} />
-                      {mine && <CardChip tone="brand">งานของฉัน</CardChip>}
-                    </>
-                  }
-                  note={
-                    <>
-                      <span className="shrink-0 opacity-80">ค้างที่</span>
-                      {stuckWith.length === 0 ? (
-                        <span className="truncate">ยังไม่ระบุผู้ตรวจ</span>
-                      ) : (
-                        <>
-                          {stuckWith.map((p) => (
-                            <AssigneeAvatar key={p.id} assignee={p} size={5} />
-                          ))}
-                          <span className="truncate">
-                            {stuckWith.map((p) => profileName(p)).join(" / ")}
-                          </span>
-                        </>
-                      )}
-                    </>
-                  }
-                  onClick={() => onRowClick(task)}
-                />
-              );
-            })}
+            {teamPending.map((task) => (
+              <ReviewPosterCard
+                key={task.id}
+                task={task}
+                today={today}
+                selected={selectedId === task.id}
+                variant="team"
+                mine={
+                  userId !== null &&
+                  (task.assignee_id === userId || task.created_by === userId)
+                }
+                onClick={() => onRowClick(task)}
+              />
+            ))}
           </div>
         )}
       </section>
