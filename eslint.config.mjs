@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // ให้ตรงกับ "exclude" ของ tsconfig.json — โค้ดที่ถอดออกไปแล้วกับ edge function
+    // ของ Deno ไม่ได้อยู่ใน type-check ของแอป จึงไม่ควรถูกนับเป็น error ของ lint ด้วย
+    // (supabase/functions ใช้ deno-lint ของตัวเอง มี deno-lint-ignore กำกับอยู่แล้ว)
+    "archive/**",
+    "supabase/functions/**",
   ]),
 ]);
 

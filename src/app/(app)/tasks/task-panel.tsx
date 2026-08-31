@@ -1957,7 +1957,7 @@ export function TaskPanel({
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             // text-base ที่จอเล็ก — ช่องกรอก < 16px ทำให้ iOS ซูมเข้าแล้วไม่ซูมกลับ
-            className="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-base text-stone-800 transition-colors placeholder:text-stone-400 hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
+            className="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-base text-stone-800 transition-colors placeholder:text-stone-500 hover:border-stone-200/80 hover:bg-white/70 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 max-sm:min-h-11 sm:text-sm"
           />
         </div>
 

@@ -3,8 +3,10 @@
 # ทำไมมีแค่ build (บล็อค) + lint (ไม่บล็อค):
 #   - `next build` ทำ TypeScript type-check ให้ในตัว (repo นี้ไม่มี script typecheck แยก)
 #     จึงเป็นด่านที่จับของพังได้จริงก่อนขึ้นโปรดักชัน
-#   - `npm run lint` ตอนนี้ยังมี error ค้างอยู่ 35 จุด (ส่วนใหญ่เป็นกฎชุด react-hooks ของ
-#     eslint-config-next 16) จึงตั้งเป็น continue-on-error ไว้ก่อน — เห็นรายงานได้แต่ยังไม่บล็อค
+#   - `npm run lint` ตอนนี้ยังมี error ค้างอยู่ 33 จุด — เป็นกฎชุด react-hooks ของ
+#     eslint-config-next 16 ทั้งหมด (set-state-in-effect / purity / immutability / refs)
+#     กระจายอยู่ 19 ไฟล์ที่ทีมใช้งานจริงทุกวัน แก้แล้วต้องรื้อ effect ใหม่ทั้งชุด
+#     จึงตั้งเป็น continue-on-error ไว้ก่อน — เห็นรายงานได้แต่ยังไม่บล็อค
 #     พอเคลียร์หมดแล้วให้ลบบรรทัด continue-on-error ออก แล้ว lint จะกลายเป็นด่านบังคับทันที
 #   - e2e (Playwright) ไม่อยู่ในนี้โดยตั้งใจ — dev server ชี้ DB โปรดักชัน ดู .github/workflows/e2e.yml
 #
