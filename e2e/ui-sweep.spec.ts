@@ -86,9 +86,21 @@ async function expectNoHorizontalOverflow(page: Page, where: string) {
 
 async function login(page: Page) {
   await gotoPage(page, "/login");
-  await page.locator("form input").first().fill(EMAIL);
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  /* รอ hydration ก่อนพิมพ์ แล้ววนกรอกอีเมลได้ถึง 3 รอบ — บทเรียน 2026-08-31: fill ก่อน React
+     ผูก state ทัน ค่าในช่องถูกเคลียร์ทิ้ง พอกด "ถัดไป" จึงส่งอีเมลว่าง หน้าค้างที่
+     "รูปแบบอีเมลไม่ถูกต้อง" แล้วรอช่องรหัสผ่านจนหมดเวลา (สเปก wellness-flow ใช้ท่านี้อยู่แล้ว) */
+  await settle(page, 1200);
   const password = page.locator('input[type="password"]').first();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.locator("form input").first().fill(EMAIL);
+    await page.getByRole("button", { name: "ถัดไป" }).click();
+    try {
+      await password.waitFor({ state: "visible", timeout: 8_000 });
+      break;
+    } catch {
+      // ยังไม่ขึ้น — วนกรอกใหม่
+    }
+  }
   await password.waitFor({ state: "visible", timeout: 15_000 });
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
