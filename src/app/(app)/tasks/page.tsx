@@ -63,6 +63,9 @@ export default async function TasksPage() {
     supabase
       .from("profiles")
       .select("id, full_name, email, avatar_path, default_reviewer_id")
+      // ระบบทีมมีแค่คนที่มีสิทธิ์ team — คนที่มีแต่สิทธิ์ระบบ Influencer/Wellness
+      // ต้องไม่โผล่ในตัวเลือกผู้รับผิดชอบ/ผู้ตรวจ และเมนูแท็กคนในแชท
+      .contains("permissions", ["team"])
       .order("full_name", { ascending: true }),
     // ตัวเลือก influ ของแท็ก — เฉพาะเคสที่ผ่าน Memo แล้ว (ตั้งแต่ขั้นสัญญาเป็นต้นไป)
     // พร้อมข้อมูลที่ใช้ประกอบแฮชแท็กบังคับ ดู `fetchInfluTagOptions`

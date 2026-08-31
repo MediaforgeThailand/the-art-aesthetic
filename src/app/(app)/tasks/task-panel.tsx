@@ -1035,11 +1035,23 @@ export function TaskPanel({
   const mentionMatches = useMemo(() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase();
-    return profiles
-      .filter((p) => p.id !== userId)
-      .filter((p) => profileName(p).toLowerCase().includes(q))
-      .slice(0, 6);
+    return (
+      profiles
+        .filter((p) => p.id !== userId)
+        .filter((p) => profileName(p).toLowerCase().includes(q))
+        // เมนูเลื่อนได้แล้ว จึงไม่ตัดที่ 6 คนเหมือนเดิม (ชื่อไทยเรียงท้ายสุดเลยไม่เคยโผล่)
+        // เพดานนี้กันเมนูยาวเกินตอนพิมพ์ @ เปล่าๆ เท่านั้น
+        .slice(0, 20)
+    );
   }, [mentionQuery, profiles, userId]);
+
+  /** เลื่อนรายการที่เลือกด้วยลูกศรให้อยู่ในสายตาเสมอ (เมนูสูงจำกัดแล้วเลื่อนเองไม่ได้) */
+  const mentionListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    mentionListRef.current
+      ?.querySelector<HTMLElement>(`[data-mention-index="${mentionIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [mentionIndex, mentionQuery]);
 
   /** แทน "@คำค้น" หน้า caret ด้วย "@ชื่อเต็ม " แล้วคืน focus ให้ช่องพิมพ์ */
   const insertMention = (p: ProfileOption) => {
@@ -2388,23 +2400,30 @@ export function TaskPanel({
             <p className="border-b border-stone-100 px-3 py-1.5 text-[11px] text-stone-400">
               แท็กเพื่อส่งแจ้งเตือนถึงคนนั้น (↑↓ เลือก, Enter ยืนยัน)
             </p>
-            {mentionMatches.map((p, i) => (
-              <button
-                key={p.id}
-                type="button"
-                // กัน textarea เสีย focus ก่อนคลิกถึง (mousedown มาก่อน click)
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => insertMention(p)}
-                className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
-                  i === mentionIndex
-                    ? "bg-brand-50 text-brand-800"
-                    : "text-stone-700 hover:bg-brand-50/60"
-                }`}
-              >
-                <AssigneeAvatar assignee={p} size={5} />
-                <span className="min-w-0 truncate">{profileName(p)}</span>
-              </button>
-            ))}
+            {/* สูงจำกัดแล้วเลื่อนในตัวเอง — ไม่งั้นรายชื่อท้ายๆ ถูกตัดหายโดยไม่มีทางเลื่อนถึง */}
+            <div
+              ref={mentionListRef}
+              className="max-h-56 overflow-y-auto overscroll-contain"
+            >
+              {mentionMatches.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-mention-index={i}
+                  // กัน textarea เสีย focus ก่อนคลิกถึง (mousedown มาก่อน click)
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertMention(p)}
+                  className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors max-sm:min-h-11 ${
+                    i === mentionIndex
+                      ? "bg-brand-50 text-brand-800"
+                      : "text-stone-700 hover:bg-brand-50/60"
+                  }`}
+                >
+                  <AssigneeAvatar assignee={p} size={5} />
+                  <span className="min-w-0 truncate">{profileName(p)}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {showLinkInput && (
