@@ -249,8 +249,12 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({ run_id: runId, start_row: row }),
       });
-      // deno-lint-ignore no-explicit-any
-      const rt = (globalThis as any).EdgeRuntime;
+      // EdgeRuntime เป็นของ Supabase runtime ไม่มีใน type ของ Deno มาตรฐาน
+      const rt = (
+        globalThis as {
+          EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+        }
+      ).EdgeRuntime;
       if (rt?.waitUntil) rt.waitUntil(chain);
       else await chain;
       return json(202, { status: "continuing", next_row: row, staged });

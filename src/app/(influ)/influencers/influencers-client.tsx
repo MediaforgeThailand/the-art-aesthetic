@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import { createPortal } from "react-dom";
 import {
   Button,
@@ -297,8 +298,7 @@ export function InfluencersClient({
     (me.level === "hunter" && i.owner_id !== null && i.owner_id === me.id);
 
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
-  const [items, setItems] = useState<InfluencerListRow[]>(influencers);
-  useEffect(() => setItems(influencers), [influencers]);
+  const [items, setItems] = useSyncedState<InfluencerListRow[]>(influencers);
 
   /** ทิ้ง cache ของหน้านี้หลังเขียน DB (Next cache 30 วิ · หน้านี้ไม่มี realtime)
       รวบด้วย timeout สั้นๆ — ลากการ์ดรัวๆ จะยิง refresh ทุกครั้งไม่ได้ เพราะ payload ที่

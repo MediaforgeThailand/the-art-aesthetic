@@ -38,6 +38,7 @@ import { useInView } from "@/lib/use-in-view";
 import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
+import { useSyncedState } from "@/lib/use-synced-state";
 
 export type ProfileOption = Pick<
   ProfileRow,
@@ -413,24 +414,27 @@ export function CompleteToggle({
 const signedUrlCache = new Map<string, { url: string; at: number }>();
 const SIGNED_URL_CACHE_MS = 50 * 60 * 1000; // ขอใหม่ก่อน URL หมดอายุจริง (1 ชม.)
 
+/** URL ที่ยัง cache อยู่ (null = ไม่มี/หมดอายุ)
+    อยู่ระดับโมดูลเพราะเรียก Date.now() — เรียกตรงๆ ในตัว hook จะติดกฎ react-hooks/purity */
+function cachedUrl(path: string): string | null {
+  const hit = signedUrlCache.get(path);
+  return hit && Date.now() - hit.at < SIGNED_URL_CACHE_MS ? hit.url : null;
+}
+
 /** ใช้ร่วมกับการ์ดโปสเตอร์บนมือถือ (mobile-board) — cache เดียวกัน ไม่ขอ URL ซ้ำตอนสลับมุมมอง */
 export function useCachedSignedUrl(path: string): {
   url: string | null;
   failed: boolean;
 } {
-  const hit = signedUrlCache.get(path);
-  const fresh =
-    hit && Date.now() - hit.at < SIGNED_URL_CACHE_MS ? hit.url : null;
-  const [url, setUrl] = useState<string | null>(fresh);
-  const [failed, setFailed] = useState(false);
+  // path เปลี่ยน = รีเซ็ตค่าให้ตอน render เลย (ไม่ใช่ setState ใน effect)
+  const [state, setState] = useSyncedState(path, (p) => ({
+    url: cachedUrl(p),
+    failed: false,
+  }));
 
   useEffect(() => {
-    setFailed(false);
-    const cached = signedUrlCache.get(path);
-    if (cached && Date.now() - cached.at < SIGNED_URL_CACHE_MS) {
-      setUrl(cached.url);
-      return;
-    }
+    // มีใน cache แล้ว — ค่าถูกใส่ให้ตั้งแต่ตอน render ไม่ต้องยิงซ้ำ
+    if (cachedUrl(path)) return;
     let alive = true;
     const supabase = createClient();
     void supabase.storage
@@ -442,21 +446,23 @@ export function useCachedSignedUrl(path: string): {
             signedUrlCache.set(path, { url: data.signedUrl, at: Date.now() });
           }
           if (alive) {
-            setUrl(data?.signedUrl ?? null);
             // ขอ URL ไม่ได้ (เช่นไฟล์ถูกลบจาก bucket) — แสดง placeholder แทนโครงกำลังโหลดค้าง
-            setFailed(!data?.signedUrl);
+            setState({
+              url: data?.signedUrl ?? null,
+              failed: !data?.signedUrl,
+            });
           }
         },
         () => {
-          if (alive) setFailed(true);
+          if (alive) setState((s) => ({ ...s, failed: true }));
         }
       );
     return () => {
       alive = false;
     };
-  }, [path]);
+  }, [path, setState]);
 
-  return { url, failed };
+  return state;
 }
 
 function CardMediaThumb({ file }: { file: TaskFileRow }) {

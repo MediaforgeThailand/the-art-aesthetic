@@ -57,14 +57,19 @@ export function ProfileSettingsModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // เปิด modal ใหม่ทุกครั้ง — รีเซ็ต draft จากค่าจริงปัจจุบัน
-  useEffect(() => {
-    if (!open) return;
-    setName(initialName);
-    setJobTitle(initialJobTitle ?? "");
-    setAvatarFile(null);
-    setRemoveAvatar(false);
-    setError(null);
-  }, [open, initialName, initialJobTitle]);
+  // ปรับ state ระหว่าง render แทน effect (กฎ react-hooks/set-state-in-effect) และผูกกับ
+  // "จังหวะที่เปิด" อย่างเดียว — ค่า prop ที่เปลี่ยนระหว่างเปิดอยู่ต้องไม่ทับสิ่งที่กำลังพิมพ์
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) {
+      setName(initialName);
+      setJobTitle(initialJobTitle ?? "");
+      setAvatarFile(null);
+      setRemoveAvatar(false);
+      setError(null);
+    }
+  }
 
   // preview: ไฟล์ที่เพิ่งเลือก (object URL) > รูปเดิมใน storage (signed URL)
   const localPreview = useMemo(

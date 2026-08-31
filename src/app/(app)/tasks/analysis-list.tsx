@@ -8,7 +8,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import {
   Button,
   ConfirmDialog,
@@ -123,8 +124,7 @@ export function AnalysisList({
   const supabase = useMemo(() => createClient(), []);
 
   // seed จาก server แล้ว sync ใหม่ทุกครั้งที่ router.refresh() ส่ง props ชุดใหม่มา
-  const [items, setItems] = useState(initialItems);
-  useEffect(() => setItems(initialItems), [initialItems]);
+  const [items, setItems] = useSyncedState(initialItems);
 
   const [catFilter, setCatFilter] = useState<AnalysisCategory | "all">("all");
   const [modal, setModal] = useState<

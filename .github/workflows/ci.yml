@@ -1,11 +1,11 @@
 # CI — ตรวจโค้ดทุกครั้งที่ push ขึ้น main และทุก Pull Request
 #
-# ทำไมมีแค่ build (บล็อค) + lint (ไม่บล็อค):
+# ทำไมมีแค่ build + lint (บล็อคทั้งคู่):
 #   - `next build` ทำ TypeScript type-check ให้ในตัว (repo นี้ไม่มี script typecheck แยก)
 #     จึงเป็นด่านที่จับของพังได้จริงก่อนขึ้นโปรดักชัน
-#   - `npm run lint` ตอนนี้ยังมี error ค้างอยู่ 35 จุด (ส่วนใหญ่เป็นกฎชุด react-hooks ของ
-#     eslint-config-next 16) จึงตั้งเป็น continue-on-error ไว้ก่อน — เห็นรายงานได้แต่ยังไม่บล็อค
-#     พอเคลียร์หมดแล้วให้ลบบรรทัด continue-on-error ออก แล้ว lint จะกลายเป็นด่านบังคับทันที
+#   - `npm run lint` เคลียร์ error หมดแล้ว (2026-08-31) จึงเป็นด่านบังคับ — error ใหม่ = CI แดง
+#     กฎที่เจอบ่อยคือชุด react-hooks ของ eslint-config-next 16 (set-state-in-effect / purity /
+#     immutability / refs) ดูตัวอย่างวิธีแก้ที่ src/lib/use-synced-state.ts
 #   - e2e (Playwright) ไม่อยู่ในนี้โดยตั้งใจ — dev server ชี้ DB โปรดักชัน ดู .github/workflows/e2e.yml
 #
 # ไม่ต้องตั้ง secret ใดๆ ก็รันได้: src/lib/env.ts มี fallback ของ Supabase publishable key อยู่แล้ว
@@ -57,7 +57,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
   lint:
-    name: lint (ยังไม่บล็อค)
+    name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -72,4 +72,3 @@ jobs:
 
       - name: ESLint
         run: npm run lint
-        continue-on-error: true

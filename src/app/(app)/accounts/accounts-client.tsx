@@ -116,6 +116,22 @@ async function callAdminUsers(
   return payload as Record<string, unknown>;
 }
 
+/** เวลาเข้าระบบล่าสุดของทุกบัญชี — ไม่ critical: ล้มแล้วคืน null (ตารางยังแสดงได้โดยไม่มีคอลัมน์นี้) */
+async function fetchAuthInfo(): Promise<Map<string, AuthInfo> | null> {
+  try {
+    const res = await callAdminUsers({ action: "list" });
+    const users = (res.users ?? []) as Array<{
+      id: string;
+      last_sign_in_at: string | null;
+    }>;
+    return new Map(
+      users.map((u) => [u.id, { last_sign_in_at: u.last_sign_in_at }])
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** สุ่มรหัสผ่าน 10 ตัว (ตัดตัวอักษรที่อ่านสับสน 0/O, 1/l/I ออก) */
 function generatePassword(): string {
   const charset = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -225,25 +241,22 @@ export function AccountsClient({
     router.refresh();
   }, [router]);
 
-  // โหลดเวลาเข้าระบบล่าสุดจากฝั่ง auth (ผ่าน edge function)
   const loadAuthInfo = useCallback(async () => {
-    try {
-      const res = await callAdminUsers({ action: "list" });
-      const users = (res.users ?? []) as Array<{
-        id: string;
-        last_sign_in_at: string | null;
-      }>;
-      setAuthInfo(
-        new Map(users.map((u) => [u.id, { last_sign_in_at: u.last_sign_in_at }]))
-      );
-    } catch {
-      // ไม่ critical — ตารางยังแสดงได้โดยไม่มีคอลัมน์นี้
-    }
+    const map = await fetchAuthInfo();
+    if (map) setAuthInfo(map);
   }, []);
 
+  // โหลดครั้งแรกตอนเปิดหน้า — เขียน state ใน callback ของ promise (ไม่ใช่ตอนรัน effect
+  // ตรงๆ ตามกฎ react-hooks/set-state-in-effect) พร้อม guard กันเขียนหลัง unmount
   useEffect(() => {
-    void loadAuthInfo();
-  }, [loadAuthInfo]);
+    let alive = true;
+    void fetchAuthInfo().then((map) => {
+      if (alive && map) setAuthInfo(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

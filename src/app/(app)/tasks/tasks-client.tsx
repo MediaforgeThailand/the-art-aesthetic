@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import { DemoBanner } from "@/components/demo-badge";
 import {
   Button,
@@ -182,8 +183,7 @@ export function TasksClient({
   );
 
   /** หมวดหมู่งาน — เพิ่มได้จากแผงรายละเอียด */
-  const [categories, setCategories] = useState<string[]>(initialCategories);
-  useEffect(() => setCategories(initialCategories), [initialCategories]);
+  const [categories, setCategories] = useSyncedState<string[]>(initialCategories);
 
   const addCategory = async (name: string) => {
     const trimmed = name.trim();
@@ -201,16 +201,15 @@ export function TasksClient({
   };
 
   // state ฝั่งจอเป็นแหล่งความจริงระหว่างใช้งาน — ทุกการแก้ไข optimistic ทันที
-  const [items, setItems] = useState<TaskWithAssignee[]>(tasks);
-  const [sections, setSections] = useState<TaskSectionRow[]>(initialSections);
+  const [items, setItems] = useSyncedState<TaskWithAssignee[]>(tasks);
+  const [sections, setSections] =
+    useSyncedState<TaskSectionRow[]>(initialSections);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<
     "work" | "review" | "posting" | "approved" | "analysis" | "trash"
   >("work");
-  useEffect(() => setItems(tasks), [tasks]);
-  useEffect(() => setSections(initialSections), [initialSections]);
 
   /** งานที่ยังอยู่ (ไม่อยู่ในถังขยะ) — บอร์ด/แท็บหลักใช้ตัวนี้ทั้งหมด */
   const activeItems = useMemo(
@@ -228,10 +227,10 @@ export function TasksClient({
 
   /* ---------- roster ผู้ตรวจ + ผู้ตรวจอัตโนมัติของฉัน ---------- */
 
-  const [reviewerSet, setReviewerSet] = useState<Set<string>>(
-    () => new Set(reviewerIds)
+  const [reviewerSet, setReviewerSet] = useSyncedState(
+    reviewerIds,
+    (ids) => new Set(ids)
   );
-  useEffect(() => setReviewerSet(new Set(reviewerIds)), [reviewerIds]);
   const [reviewerModalOpen, setReviewerModalOpen] = useState(false);
   /** โชว์ช่องเลือก "ผู้ตรวจลำดับ 1 คนที่ 2" ในโมดัล — เปิดค้างเมื่อมีค่าตั้งไว้แล้ว */
   const [show1bPicker, setShow1bPicker] = useState(false);
@@ -266,10 +265,8 @@ export function TasksClient({
   );
 
   // ผู้ตรวจเริ่มต้นของทั้งทีม (คนเดียวกันทุกคน) — ตั้งค่าโดย admin, เก็บใน app_settings
-  const [globalReviewerId, setGlobalReviewerId] = useState<string | null>(
-    defaultReviewerId
-  );
-  useEffect(() => setGlobalReviewerId(defaultReviewerId), [defaultReviewerId]);
+  const [globalReviewerId, setGlobalReviewerId] =
+    useSyncedState<string | null>(defaultReviewerId);
 
   // ผู้ตรวจลำดับ 1 คนที่ 2 ของทีม (ผู้ตรวจร่วม) — งานใหม่ได้ 2 คน ทอดแรกต้องอนุมัติครบทั้งคู่
   // (override เหนือค่า server เฉพาะหลังกดบันทึกในหน้านี้: undefined = ใช้ค่าจาก server)
@@ -741,7 +738,8 @@ export function TasksClient({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [supabase]);
+    // setItems/setSections มาจาก useState จึงคงที่ตลอดอายุ component (ใส่ไว้ให้ครบตามกฎเฉยๆ)
+  }, [supabase, setItems, setSections]);
 
   /* ---------- การแจ้งเตือน (กระดิ่ง) — แถวถูก insert ให้ผู้เกี่ยวข้องแบบ fire-and-forget ---------- */
 
