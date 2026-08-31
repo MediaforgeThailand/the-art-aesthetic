@@ -24,7 +24,6 @@
 import fs from "node:fs";
 import {
   applyLineFixes,
-  composeText,
   fixUnit,
   LINE_FIX,
   NEEDS_TEAM,
@@ -242,8 +241,10 @@ await call("promo_packages?sku=like.PK*", { method: "DELETE", headers: H });
 
 for (let i = 0; i < rows.length; i += 100) {
   const chunk = rows.slice(i, i + 100).map((o, j) => {
-    const { items: _items, ...rest } = o;
-    return { ...rest, sort: i + j };
+    // ตัด items ออก (ลงตารางลูกคนละรอบ) แล้วต่อ sort ให้ตรงลำดับในไฟล์
+    const row = { ...o, sort: i + j };
+    delete row.items;
+    return row;
   });
   await call("promo_packages?on_conflict=sku", {
     method: "POST",

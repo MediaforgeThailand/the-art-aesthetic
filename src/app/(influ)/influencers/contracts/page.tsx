@@ -9,6 +9,7 @@ import type {
   InfluPostLinkRow,
   InfluTaskRow,
 } from "@/lib/types";
+import type { CaseAssigneeRow } from "../influencers-client";
 import { ContractsClient, type ProfileLite } from "./contracts-client";
 
 export const metadata: Metadata = {
@@ -26,6 +27,7 @@ export default async function FollowUpPage() {
     { data: postLinks },
     { data: tasks },
     { data: profiles },
+    { data: assignees },
   ] = await Promise.all([
     getAccess(),
     // เฉพาะเคสที่เริ่มนับสัญญาแล้ว = เคสที่เข้าสู่การติดตาม (ตั้งแต่ 0092 ไม่มีขั้น stage
@@ -51,7 +53,9 @@ export default async function FollowUpPage() {
       .from("influ_tasks")
       .select("*")
       .order("step", { ascending: true }),
-    supabase.from("profiles").select("id, full_name, email"),
+    supabase.from("profiles").select("id, full_name, email, avatar_path"),
+    // ผู้รับผิดชอบของทุกเคส (0095) — คนที่ต้องได้แจ้งเตือนเมื่อผลงาน/เป้าเปลี่ยน
+    supabase.from("influ_assignees").select("influencer_id, user_id, scopes"),
   ]);
 
   if (!canViewInflu(access)) return <AccessNotice />;
@@ -64,6 +68,7 @@ export default async function FollowUpPage() {
         postLinks={(postLinks ?? []) as InfluPostLinkRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
         profiles={(profiles ?? []) as ProfileLite[]}
+        assignees={(assignees ?? []) as CaseAssigneeRow[]}
         canEdit={canEditInflu(access)}
         actor={{ id: access.uid, name: access.name }}
       />

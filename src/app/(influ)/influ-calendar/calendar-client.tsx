@@ -30,15 +30,19 @@ import {
   Pencil,
   Plus,
   Search,
-  SlidersHorizontal,
+  Sparkles,
   Stethoscope,
   Trash2,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import {
+  FilterChip,
+  FilterSection,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
 import {
   Badge,
   Button,
@@ -56,6 +60,7 @@ import {
   shortTime,
 } from "@/lib/influ-constants";
 import { logInflu } from "@/lib/influ-log";
+import { notifyInfluByCase } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
@@ -270,57 +275,83 @@ const formOf = (e: CalendarEvent): FormState => ({
    ใช้ร่วม 2 ที่: แถว inline ใต้ toolbar (จอ ≥sm) และ bottom sheet บนมือถือ —
    แยกเป็น component ระดับโมดูล กัน logic ตัวกรองแตกเป็นสองสำเนา */
 
-function FilterControls({
+/** ตัวกรองของปฏิทิน — เก็บ hiddenKinds เป็น array (ต้อง JSON.stringify ลง localStorage) */
+export type CalendarFilters = {
+  hiddenKinds: InfluCalendarKind[];
+  /** ชื่อแพทย์ ("" = ทุกคน) */
+  doctor: string;
+  /** แสดงวันรับบริการที่มาจากเคส (ยังไม่ได้ลงคิวจริง) */
+  showServiceDates: boolean;
+};
+
+export const DEFAULT_CALENDAR_FILTERS: CalendarFilters = {
+  hiddenKinds: [],
+  doctor: "",
+  showServiceDates: true,
+};
+
+/** ตัวกรองของปฏิทิน — เนื้อในแผงลอย (shell ใช้ InfluFilterButton ของกลาง) */
+function CalendarFilterSections({
   hiddenKinds,
   onToggleKind,
+  showServiceDates,
+  onToggleServiceDates,
   doctorOptions,
   doctorFilter,
   onDoctorFilter,
 }: {
   hiddenKinds: Set<InfluCalendarKind>;
   onToggleKind: (kind: InfluCalendarKind) => void;
+  showServiceDates: boolean;
+  onToggleServiceDates: () => void;
   doctorOptions: string[];
   doctorFilter: string;
   onDoctorFilter: (name: string) => void;
 }) {
   return (
     <>
-      {INFLU_CALENDAR_KIND_ORDER.map((k) => {
-        const meta = INFLU_CALENDAR_KINDS[k];
-        const off = hiddenKinds.has(k);
-        return (
-          <button
-            key={k}
-            type="button"
-            onClick={() => onToggleKind(k)}
-            title={off ? "แสดงประเภทนี้" : "ซ่อนประเภทนี้"}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all active:scale-95 max-sm:min-h-11 ${
-              off
-                ? "border-stone-200 bg-white/50 text-stone-400"
-                : `${meta.chip} shadow-sm`
-            }`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${off ? "bg-stone-300" : meta.dot}`}
-            />
-            {meta.short}
-          </button>
-        );
-      })}
+      <FilterSection title="ประเภทคิว" hint="ติ๊กออก = ซ่อนประเภทนั้นจากปฏิทิน">
+        <div className="flex flex-wrap gap-1.5">
+          {INFLU_CALENDAR_KIND_ORDER.map((k) => {
+            const meta = INFLU_CALENDAR_KINDS[k];
+            const on = !hiddenKinds.has(k);
+            return (
+              <FilterChip key={k} active={on} onClick={() => onToggleKind(k)}>
+                <span
+                  className={`h-2 w-2 rounded-full ${on ? meta.dot : "bg-stone-300"}`}
+                />
+                {meta.short}
+              </FilterChip>
+            );
+          })}
+        </div>
+      </FilterSection>
+
+      <FilterSection
+        title="วันรับบริการจากเคส"
+        hint="วันที่เคาะไว้ในเคสแต่ยังไม่ได้ลงคิวจริง — แสดงเป็นรายการอ่านอย่างเดียว"
+      >
+        <FilterChip active={showServiceDates} onClick={onToggleServiceDates}>
+          <Sparkles size={12} />
+          แสดงวันรับบริการจากเคส
+        </FilterChip>
+      </FilterSection>
+
       {doctorOptions.length > 0 && (
-        <Select
-          aria-label="กรองตามแพทย์"
-          value={doctorFilter}
-          onChange={(e) => onDoctorFilter(e.target.value)}
-          className="w-auto min-w-[10rem] py-1.5 max-sm:w-full"
-        >
-          <option value="">แพทย์: ทั้งหมด</option>
-          {doctorOptions.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </Select>
+        <FilterSection title="แพทย์">
+          <Select
+            aria-label="กรองตามแพทย์"
+            value={doctorFilter}
+            onChange={(e) => onDoctorFilter(e.target.value)}
+          >
+            <option value="">แพทย์: ทั้งหมด</option>
+            {doctorOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </Select>
+        </FilterSection>
       )}
     </>
   );
@@ -909,12 +940,18 @@ export function CalendarClient({
   /** ฟอร์มที่เปิดอยู่ (null = ปิด) — เก็บทั้งก้อนเพื่อ prefill ตอนแก้/สร้างจากเคส */
   const [formState, setFormState] = useState<FormState | null>(null);
   const [search, setSearch] = useState("");
-  const [doctorFilter, setDoctorFilter] = useState("");
-  // ประเภทที่ถูกซ่อน (กดชิปในแถวตัวกรอง — แถวนี้พับเก็บอยู่หลังปุ่ม "ตัวกรอง")
-  const [hiddenKinds, setHiddenKinds] = useState<Set<InfluCalendarKind>>(
-    () => new Set()
+  /* ตัวกรองอยู่ในปุ่มเดียว + บันทึกค่าเริ่มต้นของตัวเองได้ (กติกาทุกหน้าในระบบ)
+     เก็บเป็น array ไม่ใช่ Set เพราะต้อง JSON.stringify ลง localStorage */
+  const filterApi = useInfluFilters<CalendarFilters>({
+    page: "calendar",
+    userId: userId,
+    factory: DEFAULT_CALENDAR_FILTERS,
+  });
+  const { doctor: doctorFilter, showServiceDates } = filterApi.filters;
+  const hiddenKinds = useMemo<Set<InfluCalendarKind>>(
+    () => new Set(filterApi.filters.hiddenKinds),
+    [filterApi.filters.hiddenKinds]
   );
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -1007,22 +1044,11 @@ export function CalendarClient({
     setFormState({ ...emptyForm(selected), ...preset });
   };
 
-  /* Esc ปิดตัวกรอง — จำเป็นกับ bottom sheet บนมือถือ (จอใหญ่ก็ได้ประโยชน์เดียวกัน) */
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFiltersOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [filtersOpen]);
-
   const toggleKind = (kind: InfluCalendarKind) =>
-    setHiddenKinds((cur) => {
-      const next = new Set(cur);
-      if (next.has(kind)) next.delete(kind);
-      else next.add(kind);
-      return next;
+    filterApi.patch({
+      hiddenKinds: hiddenKinds.has(kind)
+        ? filterApi.filters.hiddenKinds.filter((k: InfluCalendarKind) => k !== kind)
+        : [...filterApi.filters.hiddenKinds, kind],
     });
 
   /* ---- บันทึกคิว (เพิ่ม/แก้) ---- */
@@ -1064,6 +1090,17 @@ export function CalendarClient({
         influencerName: nameOf(saved.influencer) || null,
         summary: `แก้คิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
       });
+      // คิวที่ผูกเคส = เรื่องของทีมเคสนั้น — คิวทั่วไปไม่มีใครต้องรู้เป็นการเฉพาะ
+      if (saved.influencer_id)
+        notifyInfluByCase(supabase, actor, {
+          influencerId: saved.influencer_id,
+          influencerName: nameOf(saved.influencer) || null,
+          type: saved.kind === "service" ? "service_booked" : "calendar_changed",
+          scope: saved.kind === "service" ? "contract" : null,
+          title: `แก้คิว "${saved.title}" ของ ${nameOf(saved.influencer) || "เคส"}`,
+          body: `${formatDate(saved.event_date)}${saved.start_time ? ` ${saved.start_time.slice(0, 5)} น.` : ""}${saved.doctor_name ? ` — ${saved.doctor_name}` : ""}`,
+          href: "/influ-calendar",
+        });
       router.refresh();
       // ย้ายคิวไปวันอื่น = ตามไปเลือกวันนั้นให้เห็นผลทันที
       setSelected(saved.event_date);
@@ -1090,6 +1127,19 @@ export function CalendarClient({
       influencerName: nameOf(saved.influencer) || null,
       summary: `เพิ่มคิว "${saved.title}" (${INFLU_CALENDAR_KINDS[saved.kind].label}) วันที่ ${formatDate(saved.event_date)}`,
     });
+    if (saved.influencer_id)
+      notifyInfluByCase(supabase, actor, {
+        influencerId: saved.influencer_id,
+        influencerName: nameOf(saved.influencer) || null,
+        type: saved.kind === "service" ? "service_booked" : "calendar_changed",
+        scope: saved.kind === "service" ? "contract" : null,
+        title:
+          saved.kind === "service"
+            ? `ลงคิวเข้ารับบริการของ ${nameOf(saved.influencer) || "เคส"} แล้ว`
+            : `เพิ่มคิว "${saved.title}" ของ ${nameOf(saved.influencer) || "เคส"}`,
+        body: `${formatDate(saved.event_date)}${saved.start_time ? ` ${saved.start_time.slice(0, 5)} น.` : ""}${saved.doctor_name ? ` — ${saved.doctor_name}` : ""}`,
+        href: "/influ-calendar",
+      });
     router.refresh();
     setSelected(saved.event_date);
     return true;
@@ -1120,6 +1170,18 @@ export function CalendarClient({
         influencerName: nameOf(removed.influencer) || null,
         summary: `ลบคิว "${removed.title}" วันที่ ${formatDate(removed.event_date)}`,
       });
+      if (removed.influencer_id)
+        notifyInfluByCase(supabase, actor, {
+          influencerId: removed.influencer_id,
+          influencerName: nameOf(removed.influencer) || null,
+          type: "calendar_changed",
+          // ลบคิว service = ป้าย "รอลงคิวหมอ" กลับมา ⇒ เป็นงานที่ต้องลงมือของขั้นสัญญา
+          scope: removed.kind === "service" ? "contract" : null,
+          baseLevel: removed.kind === "service" ? "action" : "update",
+          title: `ลบคิว "${removed.title}" ของ ${nameOf(removed.influencer) || "เคส"}`,
+          body: formatDate(removed.event_date),
+          href: "/influ-calendar",
+        });
     }
     router.refresh();
   };
@@ -1144,8 +1206,11 @@ export function CalendarClient({
     router.refresh();
   };
 
-  /** มีตัวกรองใดถูกปรับจากค่าเริ่มต้นไหม — โชว์จุดบนปุ่ม "ตัวกรอง" กันลืมว่าซ่อนของอยู่ */
-  const filterActive = hiddenKinds.size > 0 || doctorFilter !== "";
+  /** จำนวนกลุ่มตัวกรองที่เปิดอยู่ — เลขบนปุ่ม "ตัวกรอง" */
+  const filterCount =
+    (hiddenKinds.size > 0 ? 1 : 0) +
+    (doctorFilter !== "" ? 1 : 0) +
+    (showServiceDates ? 0 : 1);
 
   const detailEvent = detail
     ? (events.find((e) => e.id === detail) ?? null)
@@ -1237,22 +1302,23 @@ export function CalendarClient({
             className="py-1.5 pl-9 lg:py-1"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((v) => !v)}
-          aria-label="ตัวกรองปฏิทิน"
-          title="ตัวกรอง: ประเภทคิว / แพทย์"
-          className={`relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors active:scale-95 sm:h-9 sm:w-9 lg:h-8 lg:w-8 ${
-            filtersOpen
-              ? "border-brand-300 bg-brand-50 text-brand-700"
-              : "border-stone-200 bg-white/70 text-stone-500 hover:text-brand-700"
-          }`}
+        <InfluFilterButton
+          api={filterApi}
+          count={filterCount}
+          factory={DEFAULT_CALENDAR_FILTERS}
         >
-          <SlidersHorizontal size={16} />
-          {filterActive && (
-            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
-          )}
-        </button>
+          <CalendarFilterSections
+            hiddenKinds={hiddenKinds}
+            onToggleKind={toggleKind}
+            showServiceDates={showServiceDates}
+            onToggleServiceDates={() =>
+              filterApi.patch({ showServiceDates: !showServiceDates })
+            }
+            doctorOptions={doctorOptions}
+            doctorFilter={doctorFilter}
+            onDoctorFilter={(doctor) => filterApi.patch({ doctor })}
+          />
+        </InfluFilterButton>
         {canEdit && (
           <Button
             onClick={() => openForm()}
@@ -1263,19 +1329,6 @@ export function CalendarClient({
           </Button>
         )}
       </div>
-
-      {/* ---- แถวตัวกรอง inline — เฉพาะจอ ≥sm (มือถือใช้ bottom sheet ด้านล่างแทน) ---- */}
-      {filtersOpen && (
-        <div className="mb-2.5 hidden shrink-0 flex-wrap items-center gap-1.5 animate-fade-in sm:flex">
-          <FilterControls
-            hiddenKinds={hiddenKinds}
-            onToggleKind={toggleKind}
-            doctorOptions={doctorOptions}
-            doctorFilter={doctorFilter}
-            onDoctorFilter={setDoctorFilter}
-          />
-        </div>
-      )}
 
       {/* ---- ปฏิทิน (ซ้าย) + การ์ดคิวรายวัน (ขวา บนจอ ≥lg / ใต้ปฏิทินบนจอเล็ก) ----
            ≥lg ทั้งสองคอลัมน์สูงเท่าจอ — คอลัมน์ขวาเลื่อนในตัวเอง หน้าไม่ scroll */}
@@ -1494,51 +1547,6 @@ export function CalendarClient({
           />
         </section>
       </div>
-
-      {/* มือถือ: ตัวกรองเป็น bottom sheet เด้งจากขอบล่าง (ผู้ใช้ 2026-08-20 — แถว inline
-          กินจอเกิน) ใช้ FilterControls ชุดเดียวกับแถว ≥sm; portal ปลอดภัยกับ SSR เพราะ
-          filtersOpen เริ่ม false — สไตล์ลอกจาก Modal (rounded-t-2xl + pb-safe) ให้เข้าชุด */}
-      {filtersOpen &&
-        createPortal(
-          <div className="sm:hidden">
-            <button
-              type="button"
-              aria-label="ปิดตัวกรอง"
-              onClick={() => setFiltersOpen(false)}
-              className="fixed inset-0 z-40 cursor-default bg-brand-900/30 backdrop-blur-sm animate-fade-in"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="ตัวกรองปฏิทิน"
-              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-white/70 bg-white/95 shadow-2xl animate-slide-in-up"
-            >
-              <div className="flex items-center justify-between border-b border-brand-100/70 px-5 py-3">
-                <h2 className="text-base font-semibold text-stone-900">
-                  ตัวกรองปฏิทิน
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="-mr-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 active:scale-90"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 px-5 py-4 pb-safe-4">
-                <FilterControls
-                  hiddenKinds={hiddenKinds}
-                  onToggleKind={toggleKind}
-                  doctorOptions={doctorOptions}
-                  doctorFilter={doctorFilter}
-                  onDoctorFilter={setDoctorFilter}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
 
       {detailEvent && (
         <EventDetailModal

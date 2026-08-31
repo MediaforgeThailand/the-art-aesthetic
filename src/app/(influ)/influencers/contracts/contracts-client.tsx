@@ -15,9 +15,14 @@
  * ยังบันทึกได้ในแผง แต่เป็นส่วนรอง ไม่มีผลกับสถานะ/ปฏิทิน
  */
 
-import { Check, FileSignature, Search, Target, X } from "lucide-react";
+import { Check, FileSignature, Search, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
+import {
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
 import { EmptyState } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
@@ -29,6 +34,7 @@ import {
   roundLabel,
 } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+import { notifyInflu, type InfluNotifyTarget } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluCampaignRow,
@@ -36,13 +42,16 @@ import type {
   InfluPostKind,
   InfluPostLinkRow,
   InfluPostPlatform,
+  InfluScope,
   InfluTaskRow,
 } from "@/lib/types";
+import type { CaseAssigneeRow } from "../influencers-client";
 import { normalizeUrl } from "../influ-links";
 import {
   DEFAULT_FOLLOW_FILTERS,
   followFilterChips,
-  FollowFilterButton,
+  FollowFilterSections,
+  followFilterCount,
   followStatusGroups,
   matchFollowFilters,
   type FollowFilters,
@@ -80,6 +89,7 @@ export function ContractsClient({
   postLinks,
   tasks,
   profiles,
+  assignees,
   canEdit,
   actor,
 }: {
@@ -89,6 +99,8 @@ export function ContractsClient({
   /** งาน checklist ทั้งหมดของเคสที่เริ่มนับสัญญาแล้ว (ทั้ง 2 โหมด) */
   tasks: InfluTaskRow[];
   profiles: ProfileLite[];
+  /** ผู้รับผิดชอบของทุกเคส (0095) — ตัวตัดสินว่าใครได้แจ้งเตือนเมื่อผลงาน/เป้าเปลี่ยน */
+  assignees: CaseAssigneeRow[];
   /** ระดับ "ดูเฉยๆ" = ดูได้อย่างเดียว ไม่มีปุ่มแก้ */
   canEdit: boolean;
   actor: InfluLogActor;
@@ -96,6 +108,40 @@ export function ContractsClient({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
+
+  /** ผู้รับผิดชอบต่อเคส — ทุกงานในหน้านี้เป็นงานของขอบเขต "followup" */
+  const assigneesOf = useMemo(() => {
+    const m = new Map<string, InfluNotifyTarget[]>();
+    for (const a of assignees) {
+      const row = {
+        userId: a.user_id,
+        scopes: (a.scopes ?? []) as InfluScope[],
+      };
+      const cur = m.get(a.influencer_id);
+      if (cur) cur.push(row);
+      else m.set(a.influencer_id, [row]);
+    }
+    return (id: string) => m.get(id) ?? [];
+  }, [assignees]);
+
+  /** แจ้งเตือนงานติดตาม — งานที่นี่เป็นของขอบเขต followup ทั้งหมด */
+  const notifyFollowup = (
+    influ: InfluencerRow,
+    e: {
+      type: string;
+      title: string;
+      body?: string | null;
+      baseLevel?: "action" | "update";
+    }
+  ) =>
+    notifyInflu(supabase, actor, {
+      influencerId: influ.id,
+      influencerName: influName(influ),
+      assignees: assigneesOf(influ.id),
+      scope: "followup",
+      href: "/influencers/contracts",
+      ...e,
+    });
 
   /* ---- optimistic state: adjust-during-render sync กับ props ---- */
   const [influsS, setInflusS] = useState({
@@ -117,7 +163,13 @@ export function ContractsClient({
     setCampsS({ base: campaigns, list: campaigns });
 
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<FollowFilters>(DEFAULT_FOLLOW_FILTERS);
+  /* ตัวกรองปุ่มเดียว + บันทึกค่าเริ่มต้นของตัวเองได้ (กติกาทุกหน้าในระบบ) */
+  const filterApi = useInfluFilters<FollowFilters>({
+    page: "followup",
+    userId: actor.id,
+    factory: DEFAULT_FOLLOW_FILTERS,
+  });
+  const { filters, setFilters } = filterApi;
   const [months, setMonths] = useState(6);
   const [panel, setPanel] = useState<{ id: string; mode: PanelMode } | null>(
     null
@@ -241,7 +293,14 @@ export function ContractsClient({
   const patchInflu = (
     influ: InfluencerRow,
     patch: Partial<InfluencerRow>,
-    summary: string
+    summary: string,
+    /** แจ้งเตือนที่จะส่งหลังบันทึกสำเร็จ (ไม่ส่ง = ไม่แจ้ง เช่นแก้หมายเหตุภายใน) */
+    noti?: {
+      type: string;
+      title: string;
+      body?: string | null;
+      baseLevel?: "action" | "update";
+    }
   ) => {
     setErr(null);
     const prevList = influsS.list;
@@ -268,6 +327,7 @@ export function ContractsClient({
           summary,
           meta: { patch: Object.keys(patch) },
         });
+        if (noti) notifyFollowup(influ, noti);
         router.refresh();
       });
   };
@@ -307,6 +367,11 @@ export function ContractsClient({
       summary: `เพิ่มลิงก์${INFLU_POST_KINDS[kind].label} ${INFLU_POST_PLATFORMS[platform].label}`,
       meta: { url: clean, platform },
     });
+    notifyFollowup(influ, {
+      type: "post_added",
+      title: `${influName(influ)} ลง${INFLU_POST_KINDS[kind].label}ใหม่ (${INFLU_POST_PLATFORMS[platform].label})`,
+      body: note || clean,
+    });
     router.refresh();
     return null;
   };
@@ -333,6 +398,12 @@ export function ContractsClient({
           influencerName: influName(influ),
           summary: `ลบลิงก์${INFLU_POST_KINDS[link.kind].label} ${postPlatformLabel(link.url)}`,
           meta: { url: link.url },
+        });
+        notifyFollowup(influ, {
+          type: "post_removed",
+          baseLevel: "update",
+          title: `ลบลิงก์${INFLU_POST_KINDS[link.kind].label}ของ ${influName(influ)}`,
+          body: link.url,
         });
         router.refresh();
       });
@@ -366,6 +437,12 @@ export function ContractsClient({
           influencerId: influ.id,
           influencerName: influName(influ),
           summary: `${next ? "ติ๊กทำแล้ว" : "ยกเลิกติ๊ก"} "${task.title}"`,
+        });
+        // งานรอง — แจ้งแบบเงียบเสมอ ไม่ให้กลบสัญญาณของงานหลัก (การตามให้โพส)
+        notifyFollowup(influ, {
+          type: "followup_task",
+          baseLevel: "update",
+          title: `${next ? "ติ๊กเสร็จ" : "ยกเลิกติ๊ก"} “${task.title}” ของ ${influName(influ)}`,
         });
         router.refresh();
       });
@@ -450,43 +527,28 @@ export function ContractsClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none sm:text-sm"
           />
         </div>
-        <FollowFilterButton
-          filters={filters}
-          onChange={setFilters}
-          people={people}
-          meId={meId}
-          statusCounts={statusCounts}
+        <InfluFilterButton
+          api={filterApi}
+          count={followFilterCount(filters)}
+          factory={DEFAULT_FOLLOW_FILTERS}
           resultCount={filtered.length}
-        />
+          resultNoun="เคส"
+        >
+          <FollowFilterSections
+            filters={filters}
+            onChange={setFilters}
+            people={people}
+            meId={meId}
+            statusCounts={statusCounts}
+          />
+        </InfluFilterButton>
         <span className="ml-auto text-xs text-stone-400">
           แสดง {formatNumber(shown)} จาก {formatNumber(rows.length)} เคส
         </span>
       </div>
 
       {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ต้องเห็นเสมอว่ากำลังซ่อนอะไรอยู่ */}
-      {filterChips.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-stone-400">กรองอยู่:</span>
-          {filterChips.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => setFilters(c.next)}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100 active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm"
-            >
-              {c.label}
-              <X size={12} />
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={clearAll}
-            className="cursor-pointer text-xs text-stone-500 underline-offset-2 hover:text-brand-700 hover:underline max-sm:min-h-11 max-sm:text-sm"
-          >
-            ล้างทั้งหมด
-          </button>
-        </div>
-      )}
+      <FilterSummary chips={filterChips} onChange={setFilters} onClear={clearAll} />
 
       {/* ---------- ลิสต์ ---------- */}
       {/* ref อยู่ที่กล่องนอกสุด (ไม่ใช่ในกิ่ง if) — กดวันในปฏิทินแล้วเลื่อนมาถึงเสมอ
@@ -559,8 +621,8 @@ export function ContractsClient({
           today={today}
           canEdit={canEdit}
           onClose={() => setPanel(null)}
-          onPatchInflu={(patch, summary) =>
-            patchInflu(panelRow.influ, patch, summary)
+          onPatchInflu={(patch, summary, noti) =>
+            patchInflu(panelRow.influ, patch, summary, noti)
           }
           onAddLink={(k, p, u, n) => addPostLink(panelRow.influ, k, p, u, n)}
           onRemoveLink={(l) => removePostLink(panelRow.influ, l)}

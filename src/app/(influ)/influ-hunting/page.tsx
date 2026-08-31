@@ -7,6 +7,7 @@ import {
   canViewInflu,
   getAccess,
 } from "@/lib/access";
+import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
@@ -30,7 +31,7 @@ export default async function InfluHuntingPage() {
   const supabase = await createClient();
 
   // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
-  const todayBkk = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  const todayBkk = todayISO();
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [

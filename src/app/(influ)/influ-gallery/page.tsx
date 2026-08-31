@@ -26,6 +26,8 @@ export default async function InfluGalleryPage() {
     { data: influTasks },
     { data: tasks },
     { data: links },
+    { data: assignees },
+    { data: profiles },
   ] = await Promise.all([
     getAccess(),
     supabase
@@ -45,6 +47,9 @@ export default async function InfluGalleryPage() {
       .from("influ_links")
       .select("id, influencer_id, title, url")
       .order("position", { ascending: true }),
+    // ผู้รับผิดชอบของทุกเคส (0095) — ตัวกรอง "ของฉัน" ของหน้านี้ (match ได้ทุกรอบของคนนั้น)
+    supabase.from("influ_assignees").select("influencer_id, user_id"),
+    supabase.from("profiles").select("id, full_name, email"),
   ]);
 
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -88,6 +93,12 @@ export default async function InfluGalleryPage() {
         followupRemaining={followupRemaining}
         contentTaskCount={contentTaskCount}
         sourceLinks={sourceLinks}
+        assignees={assignees ?? []}
+        people={(profiles ?? []).map((p) => ({
+          id: p.id,
+          name: p.full_name || p.email || "ไม่ทราบชื่อ",
+        }))}
+        meId={access.uid}
         loadError={error?.message ?? null}
       />
     </PageContainer>

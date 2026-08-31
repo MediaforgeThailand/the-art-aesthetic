@@ -1,42 +1,23 @@
 "use client";
 
-import {
-  CalendarClock,
-  Check,
-  ChevronDown,
-  Eye,
-  EyeOff,
-  Plus,
-  Search,
-  Sparkles,
-  UserRound,
-  X,
-} from "lucide-react";
+import { CalendarClock, Eye, Plus, Search, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useSyncedState } from "@/lib/use-synced-state";
 import {
-  Button,
-  Card,
-  ConfirmDialog,
-  EmptyState,
-  Input,
-} from "@/components/ui";
-import {
-  ActiveFilterChips,
-  FilterButton,
-  FilterChip,
-  FilterGroup,
-  FilterSheet,
-} from "@/components/filter-sheet";
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
+import { Button, Card, ConfirmDialog, EmptyState } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
 import { logInflu } from "@/lib/influ-log";
+import { notifyInflu } from "@/lib/influ-notify";
 import {
   type CaseHashtag,
   caseHashtags,
   INFLU_STAGE_LAST,
-  INFLU_STAGES,
   isLaterSection,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
@@ -50,6 +31,15 @@ import type {
   InfluServiceRow,
   InfluSizeGroup,
 } from "@/lib/types";
+import type { CaseAssignee, InfluPerson } from "./assignees";
+import {
+  BoardFilterSections,
+  boardFilterChips,
+  boardFilterCount,
+  type BoardFilters,
+  DEFAULT_BOARD_FILTERS,
+  matchBoardFilters,
+} from "./board-filters";
 import type { InfluLinkLite } from "./influ-links";
 import { NewCaseModal } from "./new-case-modal";
 import type {
@@ -58,13 +48,12 @@ import type {
 } from "./procedure-items-editor";
 import {
   boardPos,
-  INFLU_STATUS_META,
+  effectiveSizeGroup,
   InfluBoard,
   influName,
   type InfluencerListRow,
   type InfluStats,
   influStatusOf,
-  type InfluStatusKey,
   type InfluTaskLite,
   needsDoctorBooking,
 } from "./influ-board";
@@ -81,149 +70,12 @@ export type CaseProcedureLite = {
   promo: { sku: string } | null;
 };
 
-/* ---------- ตัวกรอง "ยกเว้น" (จำค่าใน localStorage — ใช้ร่วมทุกเครื่องที่เปิดหน้านี้) ---------- */
-
-const FILTER_STORAGE_KEY = "influ-filters-v1";
-const INFLU_STATUS_ORDER: InfluStatusKey[] = ["accepted", "done", "declined"];
-/** ค่าเริ่มต้น: ซ่อนคนที่ปฏิเสธออกจากบอร์ด (ดูได้จากชิป "ปฏิเสธ" หรือเอาติ๊กออก) */
-const DEFAULT_EXCLUDED: InfluStatusKey[] = ["declined"];
-
-function readSavedExcluded(): Set<InfluStatusKey> {
-  if (typeof window === "undefined") return new Set(DEFAULT_EXCLUDED);
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return new Set(DEFAULT_EXCLUDED);
-    const parsed = JSON.parse(raw) as { excluded?: unknown };
-    if (Array.isArray(parsed.excluded)) {
-      return new Set(
-        parsed.excluded.filter((s): s is InfluStatusKey =>
-          INFLU_STATUS_ORDER.includes(s as InfluStatusKey)
-        )
-      );
-    }
-  } catch {
-    // ค่าที่เก็บไว้พัง — ใช้ค่าเริ่มต้น
-  }
-  return new Set(DEFAULT_EXCLUDED);
-}
-
-/** ปุ่ม + เมนู "ยกเว้น" — ติ๊กสถานะที่ไม่อยากเห็นบนบอร์ด (render ผ่าน portal กันโดนบอร์ดทับ) */
-function InfluExcludeFilter({
-  excluded,
-  onChange,
-  countOf,
-}: {
-  excluded: Set<InfluStatusKey>;
-  onChange: (next: Set<InfluStatusKey>) => void;
-  countOf: (status: InfluStatusKey) => number;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  /** ตำแหน่งแผง (fixed) — หนีบขอบจอทั้งแนวนอนและแนวตั้ง จอแคบต้องไม่ล้นออกนอกจอ */
-  const placeAt = (btn: HTMLElement) => {
-    const r = btn.getBoundingClientRect();
-    const panelW = Math.min(264, window.innerWidth - 16);
-    return {
-      x: Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8)),
-      y: r.bottom + 6,
-    };
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    // แผงเป็น position:fixed — เลื่อนจอ/หมุนเครื่องแล้วต้องย้ายตามปุ่ม ไม่งั้นค้างลอยผิดที่
-    const reposition = () => {
-      if (btnRef.current) setPos(placeAt(btnRef.current));
-    };
-    window.addEventListener("pointerdown", onDown);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    return () => {
-      window.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    };
-  }, [open]);
-
-  const toggleOpen = () => {
-    if (!open && btnRef.current) setPos(placeAt(btnRef.current));
-    setOpen((o) => !o);
-  };
-
-  const toggleStatus = (status: InfluStatusKey) => {
-    const next = new Set(excluded);
-    if (next.has(status)) next.delete(status);
-    else next.add(status);
-    onChange(next);
-  };
-
-  return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggleOpen}
-        aria-label="ยกเว้นสถานะจากบอร์ด"
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
-          excluded.size > 0
-            ? "border-brand-300 bg-brand-50/80 text-brand-700"
-            : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-        }`}
-      >
-        <EyeOff size={14} />
-        ยกเว้น
-        {excluded.size > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700">
-            {excluded.size}
-          </span>
-        )}
-        <ChevronDown size={14} className="text-stone-400" />
-      </button>
-      {open &&
-        pos &&
-        createPortal(
-          <div
-            ref={panelRef}
-            style={{ left: pos.x, top: pos.y }}
-            className="fixed z-[70] w-64 max-w-[calc(100vw-16px)] rounded-xl border border-stone-200 bg-white p-2 shadow-xl animate-scale-in"
-          >
-            <p className="px-2.5 pb-1.5 pt-1 text-xs font-medium text-stone-400">
-              ซ่อนสถานะเหล่านี้จากบอร์ด
-            </p>
-            {INFLU_STATUS_ORDER.map((s) => (
-              <label
-                key={s}
-                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-stone-700 transition-colors hover:bg-brand-50/60"
-              >
-                <input
-                  type="checkbox"
-                  checked={excluded.has(s)}
-                  onChange={() => toggleStatus(s)}
-                  className="h-4 w-4 cursor-pointer accent-[#a96a58]"
-                />
-                <span className="flex-1">{INFLU_STATUS_META[s].label}</span>
-                <span className="text-xs text-stone-400">{countOf(s)}</span>
-              </label>
-            ))}
-          </div>,
-          document.body
-        )}
-    </>
-  );
-}
+/** ผู้รับผิดชอบของเคส (แถวดิบจาก influ_assignees) — page.tsx ส่งมาทั้งระบบครั้งเดียว */
+export type CaseAssigneeRow = {
+  influencer_id: string;
+  user_id: string;
+  scopes: string[];
+};
 
 /** ผู้ใช้ปัจจุบัน + ระดับสิทธิ์ในระบบ Influencer (คำนวณฝั่ง server ส่งลงมา) */
 export type InfluMe = {
@@ -249,6 +101,7 @@ export function InfluencersClient({
   profiles,
   services,
   people,
+  assignees,
   me,
   loadError,
 }: {
@@ -271,8 +124,10 @@ export function InfluencersClient({
   profiles: InfluProfileRow[];
   /** เมนูหัตถการที่ทีมเพิ่มเอง แยก product team (influ_services) */
   services: InfluServiceRow[];
-  /** ชื่อของทุกบัญชี — แปลง owner_id เป็นชื่อผู้รับผิดชอบบนการ์ด */
-  people: { id: string; name: string }[];
+  /** บัญชีทั้งหมด — รูป/ชื่อของผู้รับผิดชอบบนการ์ด + ตัวเลือกตอนมอบหมายงาน */
+  people: InfluPerson[];
+  /** ผู้รับผิดชอบของทุกเคส (0095) — สิ่งที่การ์ดแสดงแทน owner_id เดิม */
+  assignees: CaseAssigneeRow[];
   me: InfluMe;
   loadError: string | null;
 }) {
@@ -284,10 +139,29 @@ export function InfluencersClient({
     [me.id, me.name]
   );
 
-  /** ชื่อผู้รับผิดชอบจาก owner_id (เคสเก่าที่ยังไม่มีเจ้าของ = null) */
-  const nameById = useMemo(
-    () => new Map(people.map((p) => [p.id, p.name])),
+  /** บัญชีตาม uid — ที่มาของรูป/ชื่อบนกองรูปผู้รับผิดชอบ */
+  const peopleById = useMemo(
+    () => new Map(people.map((p) => [p.id, p])),
     [people]
+  );
+
+  /** ผู้รับผิดชอบต่อเคส — การ์ดแสดงกองรูปจากตรงนี้ (owner_id เหลือเป็นข้อมูล "ผู้สร้าง") */
+  const assigneesByInflu = useMemo(() => {
+    const m = new Map<string, CaseAssignee[]>();
+    for (const a of assignees) {
+      const row: CaseAssignee = {
+        userId: a.user_id,
+        scopes: (a.scopes ?? []) as CaseAssignee["scopes"],
+      };
+      const cur = m.get(a.influencer_id);
+      if (cur) cur.push(row);
+      else m.set(a.influencer_id, [row]);
+    }
+    return m;
+  }, [assignees]);
+  const assigneesOf = useMemo(
+    () => (id: string) => assigneesByInflu.get(id) ?? [],
+    [assigneesByInflu]
   );
 
   /** ลบได้ไหม — ผู้ดูแลลบได้ทุกเคส, Hunter ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ
@@ -297,8 +171,7 @@ export function InfluencersClient({
     (me.level === "hunter" && i.owner_id !== null && i.owner_id === me.id);
 
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
-  const [items, setItems] = useState<InfluencerListRow[]>(influencers);
-  useEffect(() => setItems(influencers), [influencers]);
+  const [items, setItems] = useSyncedState<InfluencerListRow[]>(influencers);
 
   /** ทิ้ง cache ของหน้านี้หลังเขียน DB (Next cache 30 วิ · หน้านี้ไม่มี realtime)
       รวบด้วย timeout สั้นๆ — ลากการ์ดรัวๆ จะยิง refresh ทุกครั้งไม่ได้ เพราะ payload ที่
@@ -396,82 +269,15 @@ export function InfluencersClient({
   );
 
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState<
-    number | "all" | "done" | "declined" | "needbooking"
-  >("all");
-  /** ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ — หลายทีมใช้บอร์ดเดียวกัน */
-  const [mineOnly, setMineOnly] = useState(false);
 
-  // สถานะที่ถูก "ยกเว้น" ออกจากบอร์ด — จำค่าไว้ใน localStorage (เริ่มต้นซ่อนคนปฏิเสธ)
-  const [excluded, setExcluded] = useState<Set<InfluStatusKey>>(
-    readSavedExcluded
-  );
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        FILTER_STORAGE_KEY,
-        JSON.stringify({ excluded: [...excluded] })
-      );
-    } catch {
-      // เก็บค่าไม่ได้ (เช่น private mode) — ตัวกรองยังใช้ได้ แค่ไม่จำข้ามครั้ง
-    }
-  }, [excluded]);
-  const excludedIsDefault =
-    excluded.size === DEFAULT_EXCLUDED.length &&
-    DEFAULT_EXCLUDED.every((s) => excluded.has(s));
-
-  /* จอเล็ก: ตัวกรองทั้งหมดพับอยู่ในแผ่นเลื่อนขึ้นจากขอบล่าง (FilterSheet)
-     — นับเฉพาะตัวที่ไม่ใช่ค่าเริ่มต้น ไม่นับคำค้น (ช่องค้นหาอยู่นอกแผ่น เห็นอยู่แล้ว) */
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const mobileFilterCount =
-    (stageFilter !== "all" ? 1 : 0) +
-    (mineOnly ? 1 : 0) +
-    (excludedIsDefault ? 0 : 1);
-  const clearFilters = () => {
-    setSearch("");
-    setStageFilter("all");
-    setMineOnly(false);
-    setExcluded(new Set(DEFAULT_EXCLUDED));
-  };
-  /** ชิปสรุปใต้แถบเครื่องมือของจอเล็ก — บอกว่ากำลังกรองอะไรอยู่ทั้งที่แผ่นปิด */
-  const mobileFilterChips: { key: string; label: string; onClear: () => void }[] =
-    [
-      ...(stageFilter !== "all" && stageFilter !== "needbooking"
-        ? [
-            {
-              key: "stage",
-              label:
-                stageFilter === "done"
-                  ? "จบงาน"
-                  : stageFilter === "declined"
-                    ? "ปฏิเสธ"
-                    : `ขั้น ${stageFilter}`,
-              onClear: () => setStageFilter("all"),
-            },
-          ]
-        : []),
-      ...(mineOnly
-        ? [
-            {
-              key: "mine",
-              label: "เคสของฉัน",
-              onClear: () => setMineOnly(false),
-            },
-          ]
-        : []),
-      ...(excludedIsDefault
-        ? []
-        : [
-            {
-              key: "excluded",
-              label:
-                excluded.size === 0
-                  ? "แสดงทุกสถานะ"
-                  : `ซ่อน ${excluded.size} สถานะ`,
-              onClear: () => setExcluded(new Set(DEFAULT_EXCLUDED)),
-            },
-          ]),
-    ];
+  /* ตัวกรองทั้งหมดอยู่ในปุ่มเดียว (ผู้ใช้ 2026-08-29) — ค่าโรงงานเริ่มที่ "เคสของฉัน"
+     และผู้ใช้กด "บันทึกเป็นค่าเริ่มต้น" ในแผงเพื่อเปลี่ยนค่าตั้งต้นของตัวเองได้ */
+  const filterApi = useInfluFilters<BoardFilters>({
+    page: "board",
+    userId: me.id,
+    factory: DEFAULT_BOARD_FILTERS,
+  });
+  const { filters } = filterApi;
 
   // ลบ influencer
   const [deleteTarget, setDeleteTarget] = useState<InfluencerListRow | null>(
@@ -509,6 +315,8 @@ export function InfluencersClient({
     }
     setDeletingId(target.id);
     setActionError(null);
+    // เก็บผู้รับผิดชอบไว้ก่อนลบ — หลังลบแล้วแถวใน influ_assignees หายตาม (cascade)
+    const targets = assigneesOf(target.id);
     const prev = items;
     setItems((cur) => cur.filter((i) => i.id !== target.id)); // optimistic
     const { error } = await supabase.rpc("influ_delete_with_backup", {
@@ -521,6 +329,18 @@ export function InfluencersClient({
       return;
     }
     void cleanupStorage(target.id); // fire-and-forget หลังลบ record สำเร็จ
+    // ลบเคสของคนอื่น = เรื่องใหญ่ ผู้รับผิดชอบทุกคนต้องรู้ (ไม่มี href — เคสไม่มีแล้ว)
+    notifyInflu(supabase, actor, {
+      influencerId: null,
+      influencerName: influName(target),
+      assignees: targets,
+      baseLevel: "action",
+      type: "case_deleted",
+      title: `เคส ${influName(target)} ถูกลบ`,
+      body: "ข้อมูลถูกสำรองไว้ในถังขยะ 30 วัน — ให้ผู้ดูแลระบบกู้คืนได้",
+      href: null,
+      meta: { influencer_id: target.id },
+    });
     setDeletingId(null);
     router.refresh();
   };
@@ -602,6 +422,17 @@ export function InfluencersClient({
         ? `ทำเครื่องหมายว่า ${influName(target)} ปฏิเสธ (ไม่ร่วมงาน)`
         : `ยกเลิกสถานะปฏิเสธของ ${influName(target)}`,
     });
+    notifyInflu(supabase, actor, {
+      influencerId: target.id,
+      influencerName: influName(target),
+      assignees: assigneesOf(target.id),
+      baseLevel: next ? "action" : "update",
+      type: next ? "case_declined" : "case_declined_undo",
+      title: next
+        ? `${influName(target)} ถูกทำเครื่องหมายว่าปฏิเสธ`
+        : `${influName(target)} กลับมาดำเนินการต่อ`,
+      body: next ? "เคสหายจากบอร์ดตามค่าเริ่มต้นของตัวกรอง" : null,
+    });
     markServerStale();
   };
 
@@ -642,36 +473,19 @@ export function InfluencersClient({
     return map;
   }, [activeTasks, today]);
 
-  /* กรองค้นหา + stage + ยกเว้น — ลำดับในคอลัมน์บอร์ดจัดตาม board_position (ลากเรียงเอง)
-     ชิป "ปฏิเสธ" / "รอลงคิวหมอ" = ดูเฉพาะกลุ่มนั้น (ข้ามตัวกรองยกเว้น ไม่งั้นเลือกแล้วว่างเปล่า)
-
-     สถานะที่ "เลือกดูอยู่" ต้องชนะรายการยกเว้นเสมอ — ไม่งั้นคนที่ยกเว้น "จบงาน" ไว้
-     แล้วกดชิป "จบงาน" จะได้บอร์ดว่างทั้งที่มีเคสอยู่ (บั๊กชนิดเดียวกับที่เคยแก้ใน /tasks) */
+  /* กรองค้นหา + ตัวกรองในแผง — ตรรกะทั้งหมดอยู่ที่ matchBoardFilters (board-filters.tsx)
+     เพื่อให้กฎ "สถานะที่เจาะดูอยู่ชนะรายการยกเว้น" อยู่ที่เดียว ไม่กระจายในหน้า */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    /** สถานะที่ชิปปัจจุบันกำลังเจาะดู — ไม่เอาไปยกเว้นซ้ำ */
-    const picked: InfluStatusKey | null =
-      stageFilter === "done"
-        ? "done"
-        : typeof stageFilter === "number"
-          ? "accepted"
-          : null;
     return items.filter((i) => {
-      const status = influStatusOf(i);
-      if (stageFilter === "needbooking") {
-        if (!bookingAlertIds.has(i.id)) return false;
-      } else if (stageFilter === "declined") {
-        if (status !== "declined") return false;
-      } else {
-        if (status !== picked && excluded.has(status)) return false;
-        if (stageFilter === "done" && status !== "done") return false;
-        if (typeof stageFilter === "number") {
-          if (status === "declined" || i.completed || i.stage !== stageFilter)
-            return false;
-        }
-      }
-      // "เคสของฉัน" = ที่ฉันเป็นผู้รับผิดชอบ (owner_id) — หลายทีมใช้บอร์ดร่วมกัน
-      if (mineOnly && i.owner_id !== me.id) return false;
+      if (
+        !matchBoardFilters(i, filters, {
+          meId: me.id,
+          assigneesOf,
+          bookingAlertIds,
+        })
+      )
+        return false;
       if (q === "") return true;
       return (
         influName(i).toLowerCase().includes(q) ||
@@ -680,7 +494,7 @@ export function InfluencersClient({
         (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, stageFilter, excluded, bookingAlertIds, mineOnly, me.id]);
+  }, [items, search, filters, bookingAlertIds, assigneesOf, me.id]);
 
   /* ---- modal "สร้างนัดใหม่" — เปิดเคสจากโปรไฟล์ที่มีอยู่ (flow 0080) ---- */
   const [caseOpen, setCaseOpen] = useState(false);
@@ -691,21 +505,27 @@ export function InfluencersClient({
     [services, extraServices]
   );
 
-  const countFor = (key: number | "all" | "done" | "declined") =>
-    key === "all"
-      ? items.length
-      : key === "declined"
-        ? items.filter((i) => influStatusOf(i) === "declined").length
-        : key === "done"
-          ? items.filter((i) => influStatusOf(i) === "done").length
-          : items.filter(
-              (i) =>
-                influStatusOf(i) !== "declined" &&
-                !i.completed &&
-                i.stage === key
-            ).length;
+  /* ตัวเลขในแผงตัวกรอง — นับจาก items ทั้งหมด (ไม่ผูกตัวกรองที่เลือกอยู่)
+     ให้เทียบยอดข้ามตัวเลือกได้เสมอ เหมือนการ์ดสรุปของหน้า /influ-cost */
+  const countFor = (key: number | "done" | "declined") =>
+    key === "declined"
+      ? items.filter((i) => influStatusOf(i) === "declined").length
+      : key === "done"
+        ? items.filter((i) => influStatusOf(i) === "done").length
+        : items.filter(
+            (i) =>
+              influStatusOf(i) !== "declined" && !i.completed && i.stage === key
+          ).length;
 
-  const bookingAlertActive = stageFilter === "needbooking";
+  const filterChips = useMemo(
+    () => boardFilterChips(filters, peopleById, campaigns),
+    [filters, peopleById, campaigns]
+  );
+  const bookingAlertActive = filters.stage === "needbooking";
+  const unassignedCount = useMemo(
+    () => items.filter((i) => assigneesOf(i.id).length === 0).length,
+    [items, assigneesOf]
+  );
 
   return (
     <>
@@ -724,159 +544,51 @@ export function InfluencersClient({
         </div>
       )}
 
-      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (เปิดแผ่นด้านล่าง) + ปุ่มสร้างนัดใหม่
-          (ผู้ใช้ 2026-08-30: ชิปตัวกรองที่เรียงเต็มแถบกินจอมือถือไปครึ่งหนึ่ง) */}
-      <div className="mb-3 flex shrink-0 items-center gap-2 animate-fade-in-up sm:hidden">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-          />
-          <Input
-            type="search"
-            placeholder="ค้นหา"
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <FilterButton
-          count={mobileFilterCount}
-          onClick={() => setFiltersOpen(true)}
-        />
-        {me.canEdit && (
-          <Button
-            onClick={() => setCaseOpen(true)}
-            aria-label="สร้างนัดใหม่"
-            className="!px-3 max-sm:w-11"
-          >
-            <Plus size={18} />
-          </Button>
-        )}
-      </div>
+      {/* แบนเนอร์ "มีงาน follow up ถึงกำหนด" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-29) —
+          ย้ายไปอยู่ในกระดิ่งแจ้งเตือนของระบบ ส่วน "ค้างอยู่" ซึ่งนับเฉพาะเคสของฉัน
+          ห้ามเอาแบนเนอร์เตือนกลับมาแปะบนหน้าอีก */}
 
-      {/* จอเล็ก: ชิปสรุปตัวกรองที่เปิดอยู่ + ปุ่มลัด "รอลงคิวหมอ"
-          (ตัวกรองพับอยู่ในแผ่นแล้ว ต้องมีอะไรบอกว่ากำลังกรองอะไรค้างไว้ ไม่งั้นคนอ่าน
-          นึกว่าเคสหาย; และสัญญาณ "รอลงคิวหมอ" ต้องไม่หายไปอยู่หลังปุ่มตัวกรอง) */}
-      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-1.5 sm:hidden">
-        {bookingAlertIds.size > 0 && (
-          <button
-            type="button"
-            onClick={() =>
-              setStageFilter(bookingAlertActive ? "all" : "needbooking")
-            }
-            className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition-colors active:scale-[0.97] ${
-              bookingAlertActive
-                ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
-                : "border-amber-400 bg-amber-50 text-amber-800 animate-glow-amber"
-            }`}
-          >
-            <CalendarClock size={13} />
-            รอลงคิวหมอ {bookingAlertIds.size}
-          </button>
-        )}
-        <ActiveFilterChips items={mobileFilterChips} />
-      </div>
-
-      {/* ค้นหา + กรอง stage — แบนเนอร์เตือน "ยังไม่มีคิวหมอ" ถูกถอดออกแล้ว (ผู้ใช้ 2026-08-19)
-          เหลือปุ่มกรอง "รอลงคิวหมอ" ตัวเดียวเป็นทางเข้า
-          แบนเนอร์ "มีงาน follow up ถึงกำหนด" ก็ถูกถอดออกแล้วเช่นกัน (ผู้ใช้ 2026-08-30)
-          — การติดตามย้ายไปหน้า Follow Up ทั้งหมด บอร์ดนี้ไม่ต้องเตือนซ้ำ */}
-      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
+      {/* แถบเครื่องมือเหลือ 3 ชิ้น: ค้นหา · ตัวกรอง (ปุ่มเดียว) · สร้างนัดใหม่ */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
           />
-          <Input
+          <input
             type="search"
-            placeholder="ค้นหา"
-            className="pl-9"
+            placeholder="ค้นหา ชื่อ / รหัส / เบอร์ / หัตถการ"
+            aria-label="ค้นหาเคส"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <StageFilterTracker
-          value={stageFilter}
-          countFor={countFor}
-          onChange={setStageFilter}
-        />
-        {/* ตัวกรองเตือน: ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ปุ่มเรืองแสงเมื่อมีเคสค้าง */}
-        <button
-          type="button"
-          onClick={() =>
-            setStageFilter(bookingAlertActive ? "all" : "needbooking")
-          }
-          title="เคสที่ผ่านขั้น Memo แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน — ต้องตามให้ influ ยืนยันวัน แล้วลงคิวหลังฝั่งโรงพยาบาลลงคิวหมอ"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
-            bookingAlertActive
-              ? "border-amber-500 bg-gradient-to-b from-amber-400 to-amber-500 text-white shadow-sm"
-              : bookingAlertIds.size > 0
-                ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-glow-amber"
-                : "border-brand-200 bg-white/70 text-stone-500 hover:border-brand-300 hover:bg-brand-50"
-          }`}
+        <InfluFilterButton
+          api={filterApi}
+          count={boardFilterCount(filters)}
+          factory={DEFAULT_BOARD_FILTERS}
+          width={392}
+          resultCount={filtered.length}
+          resultNoun="เคส"
         >
-          <CalendarClock size={14} />
-          รอลงคิวหมอ
-          <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              bookingAlertActive
-                ? "bg-white/25 text-white"
-                : bookingAlertIds.size > 0
-                  ? "bg-amber-200 text-amber-900"
-                  : "bg-stone-100 text-stone-400"
-            }`}
-          >
-            {bookingAlertIds.size}
-          </span>
-        </button>
-        {/* เคสของฉัน — ผู้รับผิดชอบ (owner_id) คือคนที่สร้างการ์ดนั้น */}
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          title="ดูเฉพาะเคสที่ฉันเป็นผู้รับผิดชอบ (คนที่สร้างการ์ด)"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
-            mineOnly
-              ? "border-brand-400 bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-              : "border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-          }`}
-        >
-          <UserRound size={14} />
-          เคสของฉัน
-          <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              mineOnly ? "bg-white/25 text-cream" : "bg-stone-100 text-stone-500"
-            }`}
-          >
-            {items.filter((i) => i.owner_id === me.id).length}
-          </span>
-        </button>
-        <InfluExcludeFilter
-          excluded={excluded}
-          onChange={setExcluded}
-          countOf={(s) => items.filter((i) => influStatusOf(i) === s).length}
-        />
-        {(search !== "" ||
-          stageFilter !== "all" ||
-          mineOnly ||
-          !excludedIsDefault) && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setStageFilter("all");
-              setMineOnly(false);
-              setExcluded(new Set(DEFAULT_EXCLUDED));
-            }}
-            className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
-          >
-            <X size={14} />
-            ล้างตัวกรอง
-          </button>
-        )}
-        {/* ปุ่มงานหลัก — ย้ายลงมาจากหัวหน้า (ผู้ใช้ 2026-08-20)
-            ทางเข้าอื่น (ปฏิทินคิว · สัญญา · จัดการหมอ) อยู่บนแถบเมนูของระบบแล้ว
-            หน้านี้จึงเหลือปุ่มลงมือทำงานปุ่มเดียว ชิดขวาท้ายแถบเครื่องมือ */}
+          <BoardFilterSections
+            filters={filters}
+            onChange={filterApi.setFilters}
+            people={people}
+            meId={me.id}
+            campaigns={campaigns}
+            countFor={countFor}
+            statusCount={(st) =>
+              items.filter((i) => influStatusOf(i) === st).length
+            }
+            bookingCount={bookingAlertIds.size}
+            unassignedCount={unassignedCount}
+            sizeCount={(g) =>
+              items.filter((i) => effectiveSizeGroup(i) === g).length
+            }
+          />
+        </InfluFilterButton>
         {me.canEdit && (
           <div className="sm:ml-auto">
             <Button onClick={() => setCaseOpen(true)}>
@@ -887,112 +599,12 @@ export function InfluencersClient({
         )}
       </div>
 
-      {/* ---- แผ่นตัวกรองของจอเล็ก (2/3 จอ) — ตัวเลือกชุดเดียวกับแถบ ≥sm ด้านบน
-           (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) ---- */}
-      <FilterSheet
-          open={filtersOpen}
-          onClose={() => setFiltersOpen(false)}
-          onClear={clearFilters}
-          clearDisabled={
-            search === "" &&
-            stageFilter === "all" &&
-            !mineOnly &&
-            excludedIsDefault
-          }
-          resultCount={filtered.length}
-          resultNoun="เคส"
-        >
-          <FilterGroup label="ขั้นงาน">
-            <FilterChip
-              active={stageFilter === "all"}
-              onClick={() => setStageFilter("all")}
-              count={countFor("all")}
-            >
-              ทั้งหมด
-            </FilterChip>
-            {INFLU_STAGES.map((s) => (
-              <FilterChip
-                key={s.step}
-                active={stageFilter === s.step}
-                onClick={() =>
-                  setStageFilter(stageFilter === s.step ? "all" : s.step)
-                }
-                count={countFor(s.step)}
-              >
-                {s.step}. {s.short}
-              </FilterChip>
-            ))}
-            <FilterChip
-              active={stageFilter === "done"}
-              onClick={() =>
-                setStageFilter(stageFilter === "done" ? "all" : "done")
-              }
-              count={countFor("done")}
-            >
-              จบงาน
-            </FilterChip>
-            <FilterChip
-              active={stageFilter === "declined"}
-              onClick={() =>
-                setStageFilter(stageFilter === "declined" ? "all" : "declined")
-              }
-              count={countFor("declined")}
-            >
-              ปฏิเสธ
-            </FilterChip>
-          </FilterGroup>
-
-          <FilterGroup
-            label="ตัวกรองด่วน"
-            hint="รอลงคิวหมอ = ผ่าน Memo แล้วแต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
-          >
-            <FilterChip
-              active={stageFilter === "needbooking"}
-              onClick={() =>
-                setStageFilter(
-                  stageFilter === "needbooking" ? "all" : "needbooking"
-                )
-              }
-              count={bookingAlertIds.size}
-            >
-              <CalendarClock size={14} />
-              รอลงคิวหมอ
-            </FilterChip>
-            <FilterChip
-              active={mineOnly}
-              onClick={() => setMineOnly((v) => !v)}
-              count={items.filter((i) => i.owner_id === me.id).length}
-            >
-              <UserRound size={14} />
-              เคสของฉัน
-            </FilterChip>
-          </FilterGroup>
-
-          <FilterGroup
-            label="ซ่อนสถานะ"
-            hint="ติ๊กสถานะที่ไม่อยากเห็นบนบอร์ด (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
-          >
-            {INFLU_STATUS_ORDER.map((s) => {
-              const off = excluded.has(s);
-              return (
-                <FilterChip
-                  key={s}
-                  active={off}
-                  onClick={() => {
-                    const next = new Set(excluded);
-                    if (off) next.delete(s);
-                    else next.add(s);
-                    setExcluded(next);
-                  }}
-                  count={items.filter((i) => influStatusOf(i) === s).length}
-                >
-                  {off ? <EyeOff size={14} /> : <Eye size={14} />}
-                  {INFLU_STATUS_META[s].label}
-                </FilterChip>
-              );
-            })}
-          </FilterGroup>
-      </FilterSheet>
+      {/* ชิปสรุป — ตัวกรองที่ซ่อนอยู่ในแผงต้องเห็นได้เสมอว่ากำลังกรองอะไร */}
+      <FilterSummary
+        chips={filterChips}
+        onChange={filterApi.setFilters}
+        onClear={() => filterApi.setFilters(DEFAULT_BOARD_FILTERS)}
+      />
 
       {actionError && (
         <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
@@ -1028,7 +640,7 @@ export function InfluencersClient({
             <EmptyState
               icon={<Search size={40} strokeWidth={1.5} />}
               title="ไม่พบรายชื่อที่ตรงกับตัวกรอง"
-              description="ลองเปลี่ยนคำค้นหา, stage หรือเช็คตัวกรอง 'ยกเว้น' (ค่าเริ่มต้นซ่อนคนที่ปฏิเสธ)"
+              description="ค่าเริ่มต้นคือ “เคสของฉัน” และซ่อนเคสที่ปฏิเสธ — เปิดปุ่มตัวกรองแล้วเลือก “ทุกคน” เพื่อดูของทั้งทีม"
             />
           )}
         </Card>
@@ -1039,7 +651,8 @@ export function InfluencersClient({
           linksByInflu={linksByInflu}
           hashtagsByInflu={hashtagsByInflu}
           bookingAlertIds={bookingAlertIds}
-          ownerNameById={nameById}
+          assigneesByInflu={assigneesByInflu}
+          peopleById={peopleById}
           today={today}
           deletingId={deletingId}
           canEdit={me.canEdit}
@@ -1049,9 +662,9 @@ export function InfluencersClient({
             // (กรอง "จบงาน" = เปิดที่ขั้นตามงาน — ขั้นสุดท้ายที่มีผลงาน/checklist ให้ดู)
             // ฝั่ง detail จะ clamp ให้เองถ้าเคสยังเดินไม่ถึงขั้นที่ขอ
             const stageView =
-              typeof stageFilter === "number"
-                ? stageFilter
-                : stageFilter === "done"
+              typeof filters.stage === "number"
+                ? filters.stage
+                : filters.stage === "done"
                   ? INFLU_STAGE_LAST
                   : null;
             router.push(
@@ -1114,130 +727,5 @@ export function InfluencersClient({
       />
 
     </>
-  );
-}
-
-/* ---------- ตัวกรอง stage แบบเส้น tracker (ผู้ใช้ 2026-08-19) ----------
-   "ทำให้เป็น visual graphic เลือกง่ายๆ เป็นเส้นคล้ายๆ stage ใน card ไม่ต้องมีทั้งหมด"
-   — หน้าตาเดียวกับ StageTracker บนการ์ด: จุดร้อยเส้น + จบงานต่อท้าย, "ปฏิเสธ" แยก
-   นอกเส้น (ไม่ใช่ขั้นงาน) · กดจุด = กรองขั้นนั้น · กดซ้ำ = กลับมาดูทั้งหมด (ไม่มีปุ่ม "ทั้งหมด")
-   ตั้งแต่ 0086 เหลือ 3 ขั้น (Memo → สัญญา/รับบริการ → ตามงาน) จึงโชว์ครบทุกขั้นเสมอ */
-function StageFilterTracker({
-  value,
-  countFor,
-  onChange,
-}: {
-  value: number | "all" | "done" | "declined" | "needbooking";
-  countFor: (key: number | "all" | "done" | "declined") => number;
-  onChange: (key: number | "all" | "done" | "declined") => void;
-}) {
-  const nodes: { key: number | "done"; label: string }[] = [
-    ...INFLU_STAGES.map((s) => ({
-      key: s.step as number | "done",
-      label: `${s.step}. ${s.short}`,
-    })),
-    { key: "done", label: "จบงาน" },
-  ];
-  const declinedActive = value === "declined";
-  const declinedCount = countFor("declined");
-  return (
-    <div className="flex min-w-[min(26rem,100%)] flex-1 items-start gap-1 overflow-x-auto pb-0.5">
-      <div className="flex min-w-[24rem] flex-1">
-        {nodes.map((n, i) => {
-          const active = value === n.key;
-          const isDone = n.key === "done";
-          const count = countFor(n.key);
-          return (
-            <button
-              key={String(n.key)}
-              type="button"
-              title={active ? "กดซ้ำเพื่อดูทุกขั้น" : undefined}
-              onClick={() => onChange(active ? "all" : n.key)}
-              className="group relative flex flex-1 cursor-pointer flex-col items-center gap-1.5 px-1 pb-0.5"
-            >
-              {/* เส้นเชื่อมซ้าย/ขวาของจุด — flex-1 เท่ากันทุกช่อง เส้นจึงต่อเนื่องพอดีกลางจุด */}
-              {i > 0 && (
-                <span className="absolute left-0 right-1/2 top-[9px] h-0.5 bg-stone-200" />
-              )}
-              {i < nodes.length - 1 && (
-                <span className="absolute left-1/2 right-0 top-[9px] h-0.5 bg-stone-200" />
-              )}
-              <span className="relative flex h-5 items-center justify-center">
-                <span
-                  className={`flex items-center justify-center rounded-full transition-all ${
-                    active
-                      ? `h-5 w-5 shadow-sm ring-4 ${
-                          isDone
-                            ? "bg-emerald-600 ring-emerald-200"
-                            : "bg-gradient-to-b from-brand-600 to-brand-700 ring-brand-200"
-                        }`
-                      : isDone
-                        ? "h-3.5 w-3.5 border-[1.5px] border-emerald-300 bg-emerald-50 text-emerald-500 group-hover:border-emerald-500"
-                        : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white group-hover:border-brand-500"
-                  }`}
-                >
-                  {active ? (
-                    isDone ? (
-                      <Check size={11} strokeWidth={3.5} className="text-white" />
-                    ) : (
-                      <span className="h-2 w-2 rounded-full bg-white" />
-                    )
-                  ) : isDone ? (
-                    <Check size={9} strokeWidth={4} />
-                  ) : null}
-                </span>
-              </span>
-              <span
-                className={`whitespace-nowrap text-[11px] leading-none transition-colors ${
-                  active
-                    ? `rounded-full px-2 py-1 font-semibold text-white shadow-sm ${
-                        isDone
-                          ? "bg-emerald-600"
-                          : "bg-gradient-to-b from-brand-600 to-brand-700"
-                      }`
-                    : "font-medium text-stone-500 group-hover:text-brand-700"
-                }`}
-              >
-                {n.label}{" "}
-                <span className={active ? "opacity-80" : "text-stone-400"}>
-                  ({count})
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      {/* ปฏิเสธ — อยู่นอกเส้นงาน (ตัวกรองนี้ข้าม "ยกเว้น" เพื่อดูเคสที่ถูกซ่อน) */}
-      <button
-        type="button"
-        title={declinedActive ? "กดซ้ำเพื่อดูทุกขั้น" : "ดูเฉพาะเคสที่ปฏิเสธ"}
-        onClick={() => onChange(declinedActive ? "all" : "declined")}
-        className="group flex shrink-0 cursor-pointer flex-col items-center gap-1.5 border-l border-dashed border-stone-300 px-2 pb-0.5"
-      >
-        <span className="flex h-5 items-center justify-center">
-          <span
-            className={`flex items-center justify-center rounded-full transition-all ${
-              declinedActive
-                ? "h-5 w-5 bg-rose-500 shadow-sm ring-4 ring-rose-200"
-                : "h-3.5 w-3.5 border-[1.5px] border-rose-300 bg-rose-50 group-hover:border-rose-500"
-            }`}
-          >
-            {declinedActive && <span className="h-2 w-2 rounded-full bg-white" />}
-          </span>
-        </span>
-        <span
-          className={`whitespace-nowrap text-[11px] leading-none transition-colors ${
-            declinedActive
-              ? "rounded-full bg-rose-500 px-2 py-1 font-semibold text-white shadow-sm"
-              : "font-medium text-stone-500 group-hover:text-rose-600"
-          }`}
-        >
-          ปฏิเสธ{" "}
-          <span className={declinedActive ? "opacity-80" : "text-stone-400"}>
-            ({declinedCount})
-          </span>
-        </span>
-      </button>
-    </div>
   );
 }

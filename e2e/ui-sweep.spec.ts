@@ -86,9 +86,21 @@ async function expectNoHorizontalOverflow(page: Page, where: string) {
 
 async function login(page: Page) {
   await gotoPage(page, "/login");
-  await page.locator("form input").first().fill(EMAIL);
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  /* รอ hydration ก่อนพิมพ์ แล้ววนกรอกอีเมลได้ถึง 3 รอบ — บทเรียน 2026-08-31: fill ก่อน React
+     ผูก state ทัน ค่าในช่องถูกเคลียร์ทิ้ง พอกด "ถัดไป" จึงส่งอีเมลว่าง หน้าค้างที่
+     "รูปแบบอีเมลไม่ถูกต้อง" แล้วรอช่องรหัสผ่านจนหมดเวลา (สเปก wellness-flow ใช้ท่านี้อยู่แล้ว) */
+  await settle(page, 1200);
   const password = page.locator('input[type="password"]').first();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.locator("form input").first().fill(EMAIL);
+    await page.getByRole("button", { name: "ถัดไป" }).click();
+    try {
+      await password.waitFor({ state: "visible", timeout: 8_000 });
+      break;
+    } catch {
+      // ยังไม่ขึ้น — วนกรอกใหม่
+    }
+  }
   await password.waitFor({ state: "visible", timeout: 15_000 });
   await password.fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
@@ -124,6 +136,11 @@ async function openShotClose(
   await settle(page, 300);
 }
 
+/** ทุก action ต้องมีเพดานเวลาของตัวเอง — ไม่งั้น locator ที่ไม่มีวันเจอ (หรือปุ่มที่ซ่อนอยู่)
+    จะรอเงียบจนหมดเวลาเทสต์ทั้งไฟล์ แล้วรายงานว่า "timeout" โดยไม่บอกว่าค้างตรงไหน
+    (บทเรียนเดียวกับ wellness-flow) — 30 วิ เผื่อ dev server คอมไพล์หน้าหนักๆ ครั้งแรก */
+test.use({ actionTimeout: 30_000 });
+
 test("sweep ทุกหน้า + กด feature หลักครบ", async ({ page }, testInfo) => {
   test.skip(!EMAIL || !PASSWORD, "ตั้ง E2E_EMAIL / E2E_PASSWORD ก่อนรัน");
   const project = testInfo.project.name;
@@ -149,7 +166,7 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await expectNoHorizontalOverflow(page, p.path);
   }
 
-  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (จอใหญ่ = แถว inline, มือถือ = bottom sheet) ---------- */
+  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (ปุ่มเดียว + แผงลอย ทุกขนาดจอ) ---------- */
   await gotoPage(page, "/influ-calendar");
   await settle(page, 1000);
 
@@ -172,14 +189,39 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
   });
   await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
   await expectNoVerticalScroll("/influ-calendar มุมมองสัปดาห์");
-  await page.getByRole("button", { name: "ตัวกรองปฏิทิน", exact: true }).click();
+  // ทุกหน้าในระบบ Influ ใช้ปุ่ม "ตัวกรอง" ตัวเดียวกัน (InfluFilterButton, 2026-08-29)
+  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
   await settle(page, 400);
   await page.screenshot({
     path: shotPath(project, "influ-calendar-filters"),
     fullPage: true,
   });
   await expectNoHorizontalOverflow(page, "/influ-calendar ตัวกรอง");
-  await page.keyboard.press("Escape"); // ปิดตัวกรอง (มือถือเป็น bottom sheet)
+  await page.keyboard.press("Escape"); // ปิดแผงตัวกรอง
+  await settle(page, 300);
+
+  /* ---------- บอร์ดเคส: แผงตัวกรองรวม + กระดิ่งแจ้งเตือนของระบบ Influ (2026-08-29) ---------- */
+  await gotoPage(page, "/influencers");
+  await settle(page, 800);
+  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
+  await settle(page, 400);
+  await page.screenshot({
+    path: shotPath(project, "influ-board-filters"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influencers ตัวกรอง");
+  await page.keyboard.press("Escape");
+  await settle(page, 300);
+
+  // กระดิ่งของระบบ Influ (คนละตัวกับกระดิ่งของแอปทีม) — ชื่อมีจำนวนต่อท้ายได้
+  await page.getByRole("button", { name: /^การแจ้งเตือน/ }).first().click();
+  await settle(page, 600);
+  await page.screenshot({
+    path: shotPath(project, "influ-bell"),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page, "/influencers กระดิ่ง");
+  await page.keyboard.press("Escape");
   await settle(page, 300);
 
   /* ---------- มือถือ: แถบบนของระบบ Influencer = hamburger + drawer (2026-08-30) ----------
@@ -318,6 +360,8 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     await settle(page, 400);
   }
 
+  // แท็บบนมือถือมี badge จำนวนอยู่ในปุ่ม → accessible name เป็น "รอตรวจ 4"
+  // จับด้วย regex (ชื่อขึ้นต้นด้วยป้ายแท็บ) ไม่ใช่ชื่อเต็ม ไม่งั้นบนมือถือรอจนหมดเวลาเทสต์
   for (const tab of ["รอตรวจ", "งานเสร็จ", "ถังขยะ", "บันทึกงาน"]) {
     await page
       .getByRole("button", { name: tab })

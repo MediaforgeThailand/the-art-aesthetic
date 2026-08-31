@@ -160,6 +160,14 @@ function SectionTitle({
   );
 }
 
+/** แจ้งเตือนที่แผงขอให้หน้าแม่ส่งหลังบันทึกสำเร็จ (หน้าแม่รู้ว่าใครรับผิดชอบเคสไหน) */
+export type PanelNoti = {
+  type: string;
+  title: string;
+  body?: string | null;
+  baseLevel?: "action" | "update";
+};
+
 export function TrackingPanel({
   row,
   mode,
@@ -179,7 +187,11 @@ export function TrackingPanel({
   today: string;
   canEdit: boolean;
   onClose: () => void;
-  onPatchInflu: (patch: Partial<InfluencerRow>, summary: string) => void;
+  onPatchInflu: (
+    patch: Partial<InfluencerRow>,
+    summary: string,
+    noti?: PanelNoti
+  ) => void;
   onAddLink: (
     kind: InfluPostKind,
     platform: InfluPostPlatform,
@@ -198,7 +210,11 @@ export function TrackingPanel({
 
   // Esc = blur ช่องที่โฟกัสอยู่ก่อน (ให้ commit-on-blur ทำงาน) แล้วค่อยปิดแผง
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  // เขียน ref ใน effect ไม่ใช่ระหว่าง render (กฎ react-hooks/refs) — handler อ่านค่า
+  // ตอนกด Esc อยู่แล้ว จึงได้ onClose ล่าสุดเหมือนเดิม
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -316,7 +332,11 @@ function QuotaMode({
 }: {
   row: TrackRow;
   canEdit: boolean;
-  onPatchInflu: (patch: Partial<InfluencerRow>, summary: string) => void;
+  onPatchInflu: (
+    patch: Partial<InfluencerRow>,
+    summary: string,
+    noti?: PanelNoti
+  ) => void;
 }) {
   const i = row.influ;
   const [extraPlatforms, setExtraPlatforms] = useState<InfluPostPlatform[]>([]);
@@ -347,7 +367,14 @@ function QuotaMode({
     const label = INFLU_POST_PLATFORMS[p].label;
     onPatchInflu(
       { post_quotas: Object.keys(next).length > 0 ? next : null },
-      val > 0 ? `ตั้งเป้าโพส ${label} = ${val} โพส` : `ลบเป้าโพส ${label}`
+      val > 0 ? `ตั้งเป้าโพส ${label} = ${val} โพส` : `ลบเป้าโพส ${label}`,
+      {
+        type: "quota_set",
+        title:
+          val > 0
+            ? `ตั้งเป้าโพส ${label} ของ ${influName(i)} = ${val} โพส`
+            : `ลบเป้าโพส ${label} ของ ${influName(i)}`,
+      }
     );
   };
 
@@ -489,7 +516,11 @@ function TrackMode({
   today: string;
   canEdit: boolean;
   onModeChange: (m: PanelMode) => void;
-  onPatchInflu: (patch: Partial<InfluencerRow>, summary: string) => void;
+  onPatchInflu: (
+    patch: Partial<InfluencerRow>,
+    summary: string,
+    noti?: PanelNoti
+  ) => void;
   onAddLink: (
     kind: InfluPostKind,
     platform: InfluPostPlatform,
@@ -1009,7 +1040,12 @@ function TrackMode({
           onBlur={(e) => {
             const v = e.target.value.trim() || null;
             if (v !== i.note)
-              onPatchInflu({ note: v }, "แก้หมายเหตุการติดตามผลงาน");
+              onPatchInflu({ note: v }, "แก้หมายเหตุการติดตามผลงาน", {
+                type: "case_updated",
+                baseLevel: "update",
+                title: `แก้หมายเหตุการติดตามของ ${influName(i)}`,
+                body: v,
+              });
           }}
         />
         <p className="text-[11px] text-stone-400">
@@ -1028,7 +1064,12 @@ function TrackMode({
               onClick={() =>
                 onPatchInflu(
                   { completed: false },
-                  "เปิดเคสที่ปิดงานแล้วกลับมาติดตามต่อ"
+                  "เปิดเคสที่ปิดงานแล้วกลับมาติดตามต่อ",
+                  {
+                    type: "case_reopened",
+                    baseLevel: "action",
+                    title: `เปิดเคส ${influName(i)} กลับมาติดตามต่อ`,
+                  }
                 )
               }
             >
@@ -1040,7 +1081,15 @@ function TrackMode({
               <Button
                 className="w-full"
                 onClick={() =>
-                  onPatchInflu({ completed: true }, "ปิดงานเคสนี้ (จบงาน)")
+                  onPatchInflu({ completed: true }, "ปิดงานเคสนี้ (จบงาน)", {
+                    type: "case_completed",
+                    baseLevel: "action",
+                    title: `ปิดงานเคส ${influName(i)} แล้ว`,
+                    body:
+                      row.quotaTotal > 0
+                        ? `คลิปตามสัญญา ${row.metCount}/${row.quotaTotal}`
+                        : null,
+                  })
                 }
               >
                 <CheckCircle2 size={15} />

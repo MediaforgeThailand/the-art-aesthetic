@@ -22,7 +22,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/logo";
-import { NotificationBell } from "@/components/notification-bell";
+import { InfluNotificationBell } from "@/components/influ-notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
 import { createClient } from "@/lib/supabase/client";
 import { useSignedUrl } from "@/lib/use-signed-url";
@@ -224,12 +224,12 @@ export function InfluShell({
               (ผู้ใช้ 2026-08-30: "เอา logo ออกและเอาแจ้งเตือนไปไว้แทน · menu tab ด้านบน
               ทำให้เป็น berger ขวาบนสุด") — เมนูแถวล่างที่เลื่อนแนวนอนถูกถอดออกแล้ว
             ลำดับซ้าย→ขวาคุมด้วย `lg:order-*` เพราะกระดิ่งต้องอยู่ซ้ายสุดบนมือถือ แต่ไป
-            อยู่กลุ่มปุ่มบัญชีทางขวาบนจอใหญ่ — **ห้าม mount NotificationBell สองตัว**
+            อยู่กลุ่มปุ่มบัญชีทางขวาบนจอใหญ่ — **ห้าม mount กระดิ่งสองตัว**
             (realtime channel ชื่อชนกัน) จึงย้ายด้วย order ไม่ใช่ render ซ้ำ */}
         <div className="flex items-center gap-2 px-3 py-2 sm:px-4 lg:gap-3">
           {userId && (
             <span className="order-first shrink-0 lg:order-5">
-              <NotificationBell userId={userId} />
+              <InfluNotificationBell userId={userId} />
             </span>
           )}
 

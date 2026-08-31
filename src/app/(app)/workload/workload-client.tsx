@@ -317,7 +317,9 @@ export function WorkloadClient({
     const byId = new Map(rows.map((r) => [r.key, r]));
 
     for (const t of filteredTasks) {
-      const row = (t.assignee_id && byId.get(t.assignee_id)) || unassigned;
+      // ?? ไม่ใช่ || เพราะ (id && get(id)) คืนตัว id เองเมื่อ id ว่าง — ค่าที่มาจาก prop
+      // ซึ่งถูก freeze ทำให้ compiler มองว่าเรากำลังแก้ของที่แก้ไม่ได้ (react-hooks/immutability)
+      const row = (t.assignee_id ? byId.get(t.assignee_id) : undefined) ?? unassigned;
       row.total += 1;
       if (t.completed) row.done += 1;
       else row.pending += 1;
@@ -332,7 +334,7 @@ export function WorkloadClient({
       // การขอแก้ของ "ผู้สั่ง brief" เป็นการคุยกันก่อนส่งตรวจจริง — ไม่เข้า KPI ทั้งสองช่อง
       if (r.revision_kind === "brief") continue;
       const assigneeId = assigneeById.get(r.task_id) ?? null;
-      const row = (assigneeId && byId.get(assigneeId)) || unassigned;
+      const row = (assigneeId ? byId.get(assigneeId) : undefined) ?? unassigned;
       // "เพิ่มเติม" เป็นคำแนะนำเพื่อคุมคุณภาพ ไม่ใช่ความผิด — แยกช่องไม่ปนกับ KPI ข้อผิดพลาด
       if (REVISION_KINDS[r.revision_kind ?? DEFAULT_REVISION_KIND].countsAsError) {
         row.revisions += 1;

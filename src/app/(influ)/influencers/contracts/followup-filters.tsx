@@ -13,15 +13,7 @@
  * - ไม่จำค่าใน localStorage — เปิดหน้ามาต้องเห็นทุกเคสที่ยังอยู่ในสัญญา
  */
 
-import { SlidersHorizontal, X } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { FilterSheet } from "@/components/filter-sheet";
-import {
-  menuBox,
-  useAnchoredMenu,
-  type MenuBox,
-} from "@/components/anchored-menu";
+import { FilterChip, FilterSection } from "@/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
@@ -57,9 +49,10 @@ export type FollowFilters = {
   life: ContractLife;
 };
 
+/** ค่าโรงงาน — เริ่มที่ "เคสของฉัน" ตามกติกาทุกหน้า (ผู้ใช้ 2026-08-29) */
 export const DEFAULT_FOLLOW_FILTERS: FollowFilters = {
   statuses: [],
-  owner: "all",
+  owner: "mine",
   start: "all",
   startFrom: "",
   startTo: "",
@@ -235,46 +228,8 @@ function toggle<T>(list: T[], value: T): T[] {
     : [...list, value];
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="border-t border-stone-100 px-3 py-2.5 first:border-t-0">
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
-        {title}
-      </p>
-      {children}
-    </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm ${
-        active
-          ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-          : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ---------- เนื้อในของตัวกรอง — ใช้ร่วม 2 ที่ ----------
-   จอ ≥sm = เมนู popup ยึดปุ่ม · จอเล็ก = แผ่นเลื่อนขึ้นจากขอบล่าง (FilterSheet)
-   ตามคำสั่งผู้ใช้ 2026-08-30 (แพตเทิร์นเดียวกับบอร์ด Hunting) */
-function FollowFilterBody({
+/** เนื้อในแผงตัวกรองหน้า Follow Up — shell ใช้ InfluFilterButton ของกลาง */
+export function FollowFilterSections({
   filters,
   onChange,
   people,
@@ -289,272 +244,134 @@ function FollowFilterBody({
 }) {
   const set = (patch: Partial<FollowFilters>) =>
     onChange({ ...filters, ...patch });
+
   return (
     <>
-      <Section title="สถานะการติดตาม">
-        <div className="flex flex-wrap gap-1.5">
-          {TRACK_STATUS_ORDER.map((s) => (
-            <FilterChip
-              key={s}
-              active={filters.statuses.includes(s)}
-              onClick={() =>
-                set({ statuses: toggle(filters.statuses, s) })
-              }
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${TRACK_STATUSES[s].dot}`}
-              />
-              {TRACK_STATUSES[s].label}
-              <span className="tabular-nums text-stone-400">
-                {statusCounts[s] ?? 0}
-              </span>
-            </FilterChip>
-          ))}
-        </div>
-        {filters.statuses.length === 0 && (
-          <p className="mt-1.5 text-[11px] text-stone-400">
-            ไม่เลือก = แสดงทุกสถานะ
-          </p>
-        )}
-      </Section>
+            <FilterSection title="สถานะการติดตาม">
+              <div className="flex flex-wrap gap-1.5">
+                {TRACK_STATUS_ORDER.map((s) => (
+                  <FilterChip
+                    key={s}
+                    active={filters.statuses.includes(s)}
+                    onClick={() =>
+                      set({ statuses: toggle(filters.statuses, s) })
+                    }
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${TRACK_STATUSES[s].dot}`}
+                    />
+                    {TRACK_STATUSES[s].label}
+                    <span className="tabular-nums text-stone-400">
+                      {statusCounts[s] ?? 0}
+                    </span>
+                  </FilterChip>
+                ))}
+              </div>
+              {filters.statuses.length === 0 && (
+                <p className="mt-1.5 text-[11px] text-stone-400">
+                  ไม่เลือก = แสดงทุกสถานะ
+                </p>
+              )}
+            </FilterSection>
 
-      <Section title="ผู้รับผิดชอบ">
-        <Select
-          value={filters.owner}
-          onChange={(e) => set({ owner: e.target.value })}
-          aria-label="กรองตามผู้รับผิดชอบ"
-        >
-          <option value="all">ทุกคน</option>
-          {meId && <option value="mine">เคสของฉัน</option>}
-          {people
-            .filter((p) => p.id !== meId)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-        </Select>
-      </Section>
-
-      <Section title="วันเริ่มนับสัญญา (วันที่ influ เข้ามา)">
-        <div className="flex flex-wrap gap-1.5">
-          {(
-            ["all", "30d", "90d", "180d", "custom"] as StartRange[]
-          ).map((k) => (
-            <FilterChip
-              key={k}
-              active={filters.start === k}
-              onClick={() => set({ start: k })}
-            >
-              {START_LABELS[k]}
-            </FilterChip>
-          ))}
-        </div>
-        {filters.start === "custom" && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <input
-              type="date"
-              value={filters.startFrom}
-              onChange={(e) => set({ startFrom: e.target.value })}
-              aria-label="เริ่มสัญญาตั้งแต่วันที่"
-              className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
-            />
-            <span className="shrink-0 text-xs text-stone-400">ถึง</span>
-            <input
-              type="date"
-              value={filters.startTo}
-              onChange={(e) => set({ startTo: e.target.value })}
-              aria-label="เริ่มสัญญาถึงวันที่"
-              className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
-            />
-          </div>
-        )}
-        {filters.day && (
-          <p className="mt-1.5 text-[11px] text-brand-600">
-            เลือกวันเดียวจากปฏิทินอยู่: {formatDate(filters.day)} —{" "}
-            <button
-              type="button"
-              onClick={() => set({ day: "" })}
-              className="cursor-pointer underline underline-offset-2"
-            >
-              ล้าง
-            </button>
-          </p>
-        )}
-      </Section>
-
-      <Section title="ช่องทางที่ตั้งเป้าไว้">
-        <div className="flex flex-wrap gap-1.5">
-          {INFLU_POST_PLATFORM_ORDER.filter((p) => p !== "other").map(
-            (p) => (
-              <FilterChip
-                key={p}
-                active={filters.platforms.includes(p)}
-                onClick={() =>
-                  set({ platforms: toggle(filters.platforms, p) })
-                }
+            <FilterSection title="ผู้รับผิดชอบ">
+              <Select
+                value={filters.owner}
+                onChange={(e) => set({ owner: e.target.value })}
+                aria-label="กรองตามผู้รับผิดชอบ"
               >
-                {INFLU_POST_PLATFORMS[p].label}
-              </FilterChip>
-            )
-          )}
-        </div>
-      </Section>
+                <option value="all">ทุกคน</option>
+                {meId && <option value="mine">เคสของฉัน</option>}
+                {people
+                  .filter((p) => p.id !== meId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </Select>
+            </FilterSection>
 
-      <Section title="อายุสัญญา">
-        <div className="flex flex-wrap gap-1.5">
-          {(
-            ["all", "active", "ending", "expired"] as ContractLife[]
-          ).map((k) => (
-            <FilterChip
-              key={k}
-              active={filters.life === k}
-              onClick={() => set({ life: k })}
-            >
-              {LIFE_LABELS[k]}
-            </FilterChip>
-          ))}
-        </div>
-      </Section>
-    </>
-  );
-}
-
-export function FollowFilterButton({
-  filters,
-  onChange,
-  people,
-  meId,
-  statusCounts,
-  resultCount,
-}: {
-  filters: FollowFilters;
-  onChange: (f: FollowFilters) => void;
-  people: { id: string; name: string }[];
-  meId: string | null;
-  statusCounts: Record<TrackStatus, number>;
-  /** จำนวนเคสหลังกรอง — โชว์บนปุ่มปิดแผ่นของจอเล็ก */
-  resultCount: number;
-}) {
-  /* **state ของ popup (≥sm) กับแผ่นของจอเล็กต้องแยกกัน** — เหตุผลเดียวกับ HuntFilterButton:
-     FilterSheet ปิดตัวเองที่ ≥sm (จะลาก popup ปิดตาม) และ useAnchoredMenu นับการแตะในแผ่น
-     ว่าเป็น "แตะนอกเมนู" (คนละ portal) แล้วหุบแผ่นก่อนที่ click จะถึงชิป */
-  const [open, setOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [box, setBox] = useState<MenuBox | null>(null);
-  const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const place = (a: HTMLElement) =>
-    setBox(menuBox(a, { width: 344, maxHeight: 520 }));
-  useAnchoredMenu({
-    open,
-    anchorRef,
-    menuRef,
-    onClose: () => setOpen(false),
-    onReposition: place,
-  });
-
-  const count = followFilterCount(filters);
-
-  return (
-    <>
-      <button
-        ref={anchorRef}
-        type="button"
-        onClick={() => {
-          // อ่านความกว้างตอน "กด" ไม่ใช่ตอน render — กัน hydration mismatch
-          if (window.matchMedia("(max-width: 639.98px)").matches) {
-            setSheetOpen((v) => !v);
-            return;
-          }
-          const a = anchorRef.current;
-          if (a) place(a);
-          setOpen((v) => !v);
-        }}
-        aria-haspopup="dialog"
-        aria-expanded={open || sheetOpen}
-        className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors active:scale-[0.97] max-sm:min-h-11 ${
-          count > 0
-            ? "border-brand-400 bg-brand-50 font-medium text-brand-700"
-            : "border-stone-200 bg-white/70 text-stone-600 hover:border-stone-300"
-        }`}
-      >
-        <SlidersHorizontal size={15} />
-        ตัวกรอง
-        {count > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-semibold tabular-nums text-white">
-            {count}
-          </span>
-        )}
-      </button>
-
-      {open &&
-        box &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="dialog"
-            aria-label="ตัวกรองหน้า Follow Up"
-            style={{
-              position: "fixed",
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              maxHeight: box.height,
-            }}
-            className="z-[60] overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-scale-in max-sm:hidden"
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white/95 px-3 py-2 backdrop-blur">
-              <p className="text-sm font-semibold text-stone-700">ตัวกรอง</p>
-              <div className="flex items-center gap-1">
-                {count > 0 && (
+            <FilterSection title="วันเริ่มนับสัญญา (วันที่ influ เข้ามา)">
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  ["all", "30d", "90d", "180d", "custom"] as StartRange[]
+                ).map((k) => (
+                  <FilterChip
+                    key={k}
+                    active={filters.start === k}
+                    onClick={() => set({ start: k })}
+                  >
+                    {START_LABELS[k]}
+                  </FilterChip>
+                ))}
+              </div>
+              {filters.start === "custom" && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={filters.startFrom}
+                    onChange={(e) => set({ startFrom: e.target.value })}
+                    aria-label="เริ่มสัญญาตั้งแต่วันที่"
+                    className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
+                  />
+                  <span className="shrink-0 text-xs text-stone-400">ถึง</span>
+                  <input
+                    type="date"
+                    value={filters.startTo}
+                    onChange={(e) => set({ startTo: e.target.value })}
+                    aria-label="เริ่มสัญญาถึงวันที่"
+                    className="min-w-0 flex-1 rounded-lg border border-stone-300/80 bg-white px-2 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
+                  />
+                </div>
+              )}
+              {filters.day && (
+                <p className="mt-1.5 text-[11px] text-brand-600">
+                  เลือกวันเดียวจากปฏิทินอยู่: {formatDate(filters.day)} —{" "}
                   <button
                     type="button"
-                    onClick={() => onChange(DEFAULT_FOLLOW_FILTERS)}
-                    className="cursor-pointer rounded-lg px-2 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-50 hover:text-brand-700 max-sm:min-h-11 max-sm:text-sm"
+                    onClick={() => set({ day: "" })}
+                    className="cursor-pointer underline underline-offset-2"
                   >
-                    ล้างทั้งหมด
+                    ล้าง
                   </button>
+                </p>
+              )}
+            </FilterSection>
+
+            <FilterSection title="ช่องทางที่ตั้งเป้าไว้">
+              <div className="flex flex-wrap gap-1.5">
+                {INFLU_POST_PLATFORM_ORDER.filter((p) => p !== "other").map(
+                  (p) => (
+                    <FilterChip
+                      key={p}
+                      active={filters.platforms.includes(p)}
+                      onClick={() =>
+                        set({ platforms: toggle(filters.platforms, p) })
+                      }
+                    >
+                      {INFLU_POST_PLATFORMS[p].label}
+                    </FilterChip>
+                  )
                 )}
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="ปิดตัวกรอง"
-                  className="flex cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-600 max-sm:h-11 max-sm:w-11 sm:h-7 sm:w-7"
-                >
-                  <X size={16} />
-                </button>
               </div>
-            </div>
+            </FilterSection>
 
-            <FollowFilterBody
-              filters={filters}
-              onChange={onChange}
-              people={people}
-              meId={meId}
-              statusCounts={statusCounts}
-            />
-          </div>,
-          document.body
-        )}
-
-      {/* จอเล็ก: แผ่นเลื่อนขึ้นจากขอบล่าง (FilterSheet ซ่อนตัวเองที่ ≥sm) */}
-      <FilterSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onClear={() => onChange(DEFAULT_FOLLOW_FILTERS)}
-        clearDisabled={count === 0}
-        resultCount={resultCount}
-        resultNoun="เคส"
-      >
-        <FollowFilterBody
-          filters={filters}
-          onChange={onChange}
-          people={people}
-          meId={meId}
-          statusCounts={statusCounts}
-        />
-      </FilterSheet>
+            <FilterSection title="อายุสัญญา">
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  ["all", "active", "ending", "expired"] as ContractLife[]
+                ).map((k) => (
+                  <FilterChip
+                    key={k}
+                    active={filters.life === k}
+                    onClick={() => set({ life: k })}
+                  >
+                    {LIFE_LABELS[k]}
+                  </FilterChip>
+                ))}
+              </div>
+            </FilterSection>
     </>
   );
 }

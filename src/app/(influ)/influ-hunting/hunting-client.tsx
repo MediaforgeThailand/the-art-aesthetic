@@ -32,11 +32,15 @@ import {
   UserRoundCheck,
   UserRoundPlus,
   Users,
-  X,
 } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { menuBox, useAnchoredMenu, type MenuBox } from "@/components/anchored-menu";
+import {
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
 import { Button, ConfirmDialog, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
@@ -60,8 +64,9 @@ import type {
 import {
   DEFAULT_HUNT_FILTERS,
   huntFilterChips,
+  huntFilterCount,
   huntStatusGroups,
-  HuntFilterButton,
+  HuntFilterSections,
   matchHuntFilters,
   platformOptionsOf,
   type HuntFilters,
@@ -158,7 +163,13 @@ export function HuntingClient({
   const [query, setQuery] = useState("");
   /** ตัวกรองทั้งหมดรวมเป็นก้อนเดียว หลังปุ่ม "ตัวกรอง" (ผู้ใช้ 2026-08-20) —
       แทนชิป รายชื่อของฉัน/ถึงกำหนดตาม/ปฏิเสธ ที่เคยอยู่บนแถบเครื่องมือ */
-  const [filters, setFilters] = useState<HuntFilters>(DEFAULT_HUNT_FILTERS);
+  /* ตัวกรองอยู่ในปุ่มเดียว + จำค่าเริ่มต้นของแต่ละคนได้ (กติกาทุกหน้าในระบบ) */
+  const filterApi = useInfluFilters<HuntFilters>({
+    page: "hunting",
+    userId: me.id,
+    factory: DEFAULT_HUNT_FILTERS,
+  });
+  const { filters, setFilters } = filterApi;
   /** แผงข้างขวา — สร้างใหม่ หรือเปิดรายชื่อเดิม (แก้ inline ในแผง) */
   const [panel, setPanel] = useState<
     { mode: "create" } | { mode: "edit"; id: string } | null
@@ -472,16 +483,23 @@ export function HuntingClient({
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
-        <HuntFilterButton
-          filters={filters}
-          onChange={setFilters}
-          people={people}
-          meId={me.id}
-          platformOptions={platformOptions}
-          statusCounts={statusCounts}
-          overdueCount={overdueList.length}
+        <InfluFilterButton
+          api={filterApi}
+          count={huntFilterCount(filters)}
+          factory={DEFAULT_HUNT_FILTERS}
           resultCount={filtered.length}
-        />
+          resultNoun="รายชื่อ"
+        >
+          <HuntFilterSections
+            filters={filters}
+            onChange={setFilters}
+            people={people}
+            meId={me.id}
+            platformOptions={platformOptions}
+            statusCounts={statusCounts}
+            overdueCount={overdueList.length}
+          />
+        </InfluFilterButton>
         {/* "เพิ่มโปรไฟล์" ย้ายมาจากบอร์ดเคส (ผู้ใช้ 2026-08-19) — ตกลงร่วมงานแล้ว
             ขึ้นโปรไฟล์ที่นี่ก่อน แล้วค่อยไปสร้างนัดที่บอร์ดเคส */}
         {me.canEdit && (
@@ -510,29 +528,11 @@ export function HuntingClient({
 
       {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ต้องเห็นเสมอว่ากำลังซ่อนอะไรอยู่
           (บทเรียน my-tasks: ตัวกรองซ่อนของหมดแล้วผู้ใช้คิดว่าข้อมูลหาย) */}
-      {filterChips.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-stone-400">กรองอยู่:</span>
-          {filterChips.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => setFilters(c.next)}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100 active:scale-[0.97] max-sm:min-h-11 max-sm:px-3 max-sm:text-sm"
-            >
-              {c.label}
-              <X size={12} />
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFilters(DEFAULT_HUNT_FILTERS)}
-            className="cursor-pointer text-xs text-stone-500 underline-offset-2 hover:text-brand-700 hover:underline max-sm:min-h-11 max-sm:text-sm"
-          >
-            ล้างทั้งหมด
-          </button>
-        </div>
-      )}
+      <FilterSummary
+        chips={filterChips}
+        onChange={setFilters}
+        onClear={() => setFilters(DEFAULT_HUNT_FILTERS)}
+      />
 
       {loadError && (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -540,22 +540,9 @@ export function HuntingClient({
         </p>
       )}
 
-      {/* ถึงกำหนดตาม — ทั้งแถบเป็นปุ่มเดียว (มือถือ: 2 บรรทัด + ปุ่มลิงก์แยกกินความสูงเปล่าๆ) */}
-      {overdueList.length > 0 && filters.followup !== "overdue" && (
-        <button
-          type="button"
-          onClick={() => setFilters((f) => ({ ...f, followup: "overdue" }))}
-          className="mb-4 flex w-full cursor-pointer items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-left transition-colors hover:bg-amber-100 active:scale-[0.99] animate-fade-in max-sm:min-h-11"
-        >
-          <CalendarClock size={15} className="shrink-0 text-amber-600" />
-          <span className="min-w-0 flex-1 text-sm text-amber-800">
-            ถึงกำหนดตามแล้ว {overdueList.length} รายชื่อ
-          </span>
-          <span className="shrink-0 text-sm font-medium text-amber-700 underline-offset-2">
-            ดูเฉพาะที่ถึงกำหนด
-          </span>
-        </button>
-      )}
+      {/* แบนเนอร์ "ถึงกำหนดตามแล้ว" ถูกถอดออก (ผู้ใช้ 2026-08-29 — "เอาตัวแจ้งเตือน bar
+          แบบนี้ออกให้หมด") ย้ายไปอยู่ในกระดิ่งของระบบ ส่วน "ค้างอยู่" ซึ่งนับเฉพาะ
+          รายชื่อที่ฉันรับผิดชอบ — ตัวกรอง "ถึงกำหนดตาม" ยังอยู่ในแผงตัวกรองเหมือนเดิม */}
 
       {items.length === 0 && !loadError ? (
         <EmptyState

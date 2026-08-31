@@ -1,16 +1,16 @@
 "use client";
 
-import { History, Search, X } from "lucide-react";
+import { History, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
-  ActiveFilterChips,
-  FilterButton,
   FilterChip,
-  FilterGroup,
-  FilterSheet,
-} from "@/components/filter-sheet";
-import { Badge, Card, EmptyState, Input } from "@/components/ui";
+  FilterSection,
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+} from "@/components/influ-filter-panel";
+import { Badge, Card, EmptyState } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import {
   INFLU_LOG_ACTION_ORDER,
@@ -22,17 +22,30 @@ import type { InfluActivityLogRow } from "@/lib/types";
  * ประวัติการใช้งานระบบ Influencer — ใครทำอะไรกับเคสไหน เมื่อไหร่
  * (เฉพาะผู้ดูแลระบบ Influ; ตาราง log ไม่มี policy update/delete จึงลบทิ้งจากแอปไม่ได้)
  */
+/** ตัวกรองของหน้าประวัติ — ปุ่มเดียวเหมือนทุกหน้าในระบบ (ผู้ใช้ 2026-08-29) */
+type LogFilters = { action: string; actor: string };
+const DEFAULT_LOG_FILTERS: LogFilters = { action: "all", actor: "all" };
+
 export function LogsClient({
   logs,
   limit,
+  meId,
   loadError,
 }: {
   logs: InfluActivityLogRow[];
   limit: number;
+  /** บัญชีที่กำลังดู — ค่าเริ่มต้นของตัวกรอง "ผู้ทำ" คือ "ของฉัน" */
+  meId: string | null;
   loadError: string | null;
 }) {
   const [search, setSearch] = useState("");
-  const [action, setAction] = useState<string>("all");
+  const filterApi = useInfluFilters<LogFilters>({
+    page: "logs",
+    userId: meId,
+    factory: DEFAULT_LOG_FILTERS,
+  });
+  const { filters, setFilters } = filterApi;
+  const action = filters.action;
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -44,6 +57,10 @@ export function LogsClient({
     const q = search.trim().toLowerCase();
     return logs.filter((l) => {
       if (action !== "all" && l.action !== action) return false;
+      if (filters.actor !== "all") {
+        const want = filters.actor === "mine" ? meId : filters.actor;
+        if (!want || l.actor_id !== want) return false;
+      }
       if (q === "") return true;
       return (
         l.summary.toLowerCase().includes(q) ||
@@ -51,7 +68,15 @@ export function LogsClient({
         (l.actor_name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [logs, search, action]);
+  }, [logs, search, action, filters.actor, meId]);
+
+  /** ผู้ทำที่พบในประวัติ — ตัวเลือกของตัวกรอง (log เก็บชื่อ ณ ตอนนั้นไว้เอง) */
+  const actors = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of logs)
+      if (l.actor_id) m.set(l.actor_id, l.actor_name || "ไม่ทราบชื่อ");
+    return [...m.entries()].map(([id, name]) => ({ id, name }));
+  }, [logs]);
 
   const chips: { key: string; label: string; count: number }[] = [
     { key: "all", label: "ทั้งหมด", count: logs.length },
@@ -64,27 +89,6 @@ export function LogsClient({
     ),
   ];
 
-  const isDefault = search === "" && action === "all";
-  const clearFilters = () => {
-    setSearch("");
-    setAction("all");
-  };
-
-  /* จอเล็ก: ชิปประเภทการกระทำมีได้ถึง ~8 ตัว (พร้อมตัวเลขต่อท้าย) — เรียงบนแถบแล้ว
-     กินจอ 375px ไปครึ่งหน้าก่อนเห็นประวัติสักบรรทัด จึงพับเข้าแผ่นตัวกรอง
-     เหลือ [ค้นหา][ปุ่มตัวกรอง] แล้วสรุปสิ่งที่กรองอยู่ด้วยชิปใต้แถบ */
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const mobileFilterChips =
-    action === "all"
-      ? []
-      : [
-          {
-            key: "action",
-            label: influLogActionMeta(action).label,
-            onClear: () => setAction("all"),
-          },
-        ];
-
   return (
     <>
       {loadError && (
@@ -93,105 +97,110 @@ export function LogsClient({
         </div>
       )}
 
-      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (ชิปประเภทอยู่ในแผ่นด้านล่าง) */}
-      <div className="mb-3 flex items-center gap-2 animate-fade-in-up sm:hidden">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-          />
-          <Input
-            type="search"
-            placeholder="ค้นหาชื่อเคส ผู้ทำ"
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <FilterButton
-          count={action === "all" ? 0 : 1}
-          onClick={() => setFiltersOpen(true)}
-        />
-      </div>
-
-      {/* ชิปสรุปประเภทที่กรองอยู่ — แผ่นปิดแล้วต้องยังเห็นว่าลิสต์ถูกกรองไว้ */}
-      <ActiveFilterChips items={mobileFilterChips} className="mb-3 sm:hidden" />
-
-      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
+      <div className="mb-3 flex flex-wrap items-center gap-2 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
           />
-          <Input
+          <input
             type="search"
             placeholder="ค้นหาชื่อเคส ผู้ทำ หรือรายละเอียด..."
-            className="pl-9"
+            aria-label="ค้นหาประวัติการใช้งาน"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {chips.map((c) => {
-            const active = action === c.key;
-            return (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setAction(c.key)}
-                className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
-                  active
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                    : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-                }`}
+        <InfluFilterButton
+          api={filterApi}
+          count={
+            (filters.action !== "all" ? 1 : 0) + (filters.actor !== "all" ? 1 : 0)
+          }
+          factory={DEFAULT_LOG_FILTERS}
+        >
+          <FilterSection title="ประเภทการกระทำ">
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <FilterChip
+                  key={c.key}
+                  active={filters.action === c.key}
+                  onClick={() => setFilters({ ...filters, action: c.key })}
+                >
+                  {c.label}
+                  <span className="tabular-nums text-stone-400">
+                    {formatNumber(c.count)}
+                  </span>
+                </FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="ผู้ทำ">
+            <div className="flex flex-wrap gap-1.5">
+              <FilterChip
+                active={filters.actor === "all"}
+                onClick={() => setFilters({ ...filters, actor: "all" })}
               >
-                {c.label}
-                <span className={active ? "opacity-80" : "text-stone-400"}>
-                  {" "}
-                  ({formatNumber(c.count)})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {!isDefault && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="inline-flex cursor-pointer items-center gap-1 text-sm text-stone-400 transition-colors hover:text-brand-700"
-          >
-            <X size={14} />
-            ล้างตัวกรอง
-          </button>
-        )}
+                ทุกคน
+              </FilterChip>
+              {meId && (
+                <FilterChip
+                  active={filters.actor === "mine"}
+                  onClick={() => setFilters({ ...filters, actor: "mine" })}
+                >
+                  ของฉัน
+                </FilterChip>
+              )}
+              {actors
+                .filter((a) => a.id !== meId)
+                .map((a) => (
+                  <FilterChip
+                    key={a.id}
+                    active={filters.actor === a.id}
+                    onClick={() => setFilters({ ...filters, actor: a.id })}
+                  >
+                    {a.name}
+                  </FilterChip>
+                ))}
+            </div>
+          </FilterSection>
+        </InfluFilterButton>
+        <span className="ml-auto text-xs text-stone-400">
+          {formatNumber(filtered.length)} รายการ
+        </span>
       </div>
 
-      {/* แผ่นตัวกรองของจอเล็ก — ตัวเลือกชุดเดียวกับชิปบนแถบ ≥sm
-          (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) */}
-      <FilterSheet
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        onClear={clearFilters}
-        clearDisabled={isDefault}
-        resultCount={filtered.length}
-        resultNoun="รายการ"
-      >
-        <FilterGroup
-          label="ประเภทการกระทำ"
-          hint={`แสดงเฉพาะประเภทที่มีอยู่ใน ${formatNumber(limit)} รายการล่าสุด`}
-        >
-          {chips.map((c) => (
-            <FilterChip
-              key={c.key}
-              active={action === c.key}
-              onClick={() => setAction(c.key)}
-              count={c.count}
-            >
-              {c.label}
-            </FilterChip>
-          ))}
-        </FilterGroup>
-      </FilterSheet>
+      <FilterSummary
+        chips={[
+          ...(filters.action !== "all"
+            ? [
+                {
+                  key: "action",
+                  label: `ประเภท: ${influLogActionMeta(filters.action).label}`,
+                  next: { ...filters, action: "all" },
+                },
+              ]
+            : []),
+          ...(filters.actor !== "all"
+            ? [
+                {
+                  key: "actor",
+                  label:
+                    filters.actor === "mine"
+                      ? "ผู้ทำ: ของฉัน"
+                      : `ผู้ทำ: ${actors.find((a) => a.id === filters.actor)?.name ?? "ไม่ทราบชื่อ"}`,
+                  next: { ...filters, actor: "all" as string },
+                },
+              ]
+            : []),
+        ]}
+        onChange={setFilters}
+        onClear={() => {
+          setSearch("");
+          setFilters(DEFAULT_LOG_FILTERS);
+        }}
+      />
 
       {filtered.length === 0 ? (
         <Card>

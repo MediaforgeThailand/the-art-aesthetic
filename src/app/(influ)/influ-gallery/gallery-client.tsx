@@ -13,19 +13,22 @@ import {
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
-  ActiveFilterChips,
-  FilterButton,
   FilterChip,
-  FilterGroup,
-  FilterSheet,
-} from "@/components/filter-sheet";
-import { Badge, Card, EmptyState, Input } from "@/components/ui";
+  FilterSection,
+  FilterSummary,
+  InfluFilterButton,
+  useInfluFilters,
+  type FilterSummaryChip,
+} from "@/components/influ-filter-panel";
+import { Badge, Card, EmptyState, Select } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
   contractEndDate,
   INFLU_STAGES,
+  INFLU_TIER_ORDER,
   INFLU_TIERS,
 } from "@/lib/influ-constants";
+import type { InfluTier } from "@/lib/types";
 import {
   type InfluLinkLite,
   SourceLinkQuickButton,
@@ -68,6 +71,39 @@ function monthsDaysBetween(fromISO: string, toISO: string): string {
 }
 
 type ContractFilter = "all" | "active" | "expired";
+
+/** ตัวกรองของหน้าโปรไฟล์ — ปุ่มเดียว กดแล้วแผงลอย (กติกาทุกหน้าในระบบ) */
+export type GalleryFilters = {
+  /** "all" | "mine" | uid — ผู้รับผิดชอบ (match ได้จากรอบไหนของคนนั้นก็ได้) */
+  owner: string;
+  contract: ContractFilter;
+  tiers: InfluTier[];
+  /** true = รวมข้อมูลเก่าที่นำเข้า (archive) */
+  includeArchived: boolean;
+};
+
+/** ค่าโรงงาน — เริ่มที่ "ของฉัน" ตามกติกาทุกหน้า (ผู้ใช้ 2026-08-29) */
+export const DEFAULT_GALLERY_FILTERS: GalleryFilters = {
+  owner: "mine",
+  contract: "all",
+  tiers: [],
+  includeArchived: true,
+};
+
+function galleryFilterCount(f: GalleryFilters): number {
+  return (
+    (f.owner !== "all" ? 1 : 0) +
+    (f.contract !== "all" ? 1 : 0) +
+    (f.tiers.length ? 1 : 0) +
+    (f.includeArchived ? 0 : 1)
+  );
+}
+
+const CONTRACT_LABELS: Record<ContractFilter, string> = {
+  all: "ทั้งหมด",
+  active: "สัญญายังไม่หมด",
+  expired: "หมดสัญญาแล้ว",
+};
 
 /** โปรไฟล์ 1 คน — influ ที่เข้ามาทำหลายรอบ (person_id เดียวกัน) ถูกรวมเป็นการ์ดเดียว
     หน้านี้คือมุมมอง "ตัวบุคคล" ส่วนบอร์ด Influ Management ยังเป็นการ์ดต่อรอบงาน (0073) */
@@ -114,6 +150,9 @@ export function InfluGalleryClient({
   followupRemaining,
   contentTaskCount,
   sourceLinks,
+  assignees,
+  people,
+  meId,
   loadError,
 }: {
   influencers: InfluencerListRow[];
@@ -121,12 +160,36 @@ export function InfluGalleryClient({
   contentTaskCount: Record<string, number>;
   /** ลิงก์ไฟล์ source (Google Drive) ต่อ influencer — ปุ่มเปิดเร็วบนการ์ด */
   sourceLinks: Record<string, InfluLinkLite[]>;
+  /** ผู้รับผิดชอบของทุกเคส (0095) — ตัวกรอง "ของฉัน" */
+  assignees: { influencer_id: string; user_id: string }[];
+  people: { id: string; name: string }[];
+  meId: string | null;
   loadError: string | null;
 }) {
   const today = todayISO();
   const [search, setSearch] = useState("");
-  // ตัวกรองสถานะสัญญา — ช่วยดูว่าใคร "หมดสัญญาแล้ว" ได้เร็ว (จุดประสงค์หลักของข้อมูลเก่า)
-  const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
+  /* ตัวกรองปุ่มเดียว + บันทึกค่าเริ่มต้นของตัวเองได้ (กติกาทุกหน้าในระบบ) */
+  const filterApi = useInfluFilters<GalleryFilters>({
+    page: "gallery",
+    userId: meId,
+    factory: DEFAULT_GALLERY_FILTERS,
+  });
+  const { filters, setFilters } = filterApi;
+
+  const peopleById = useMemo(
+    () => new Map(people.map((p) => [p.id, p.name])),
+    [people]
+  );
+  /** uid ที่รับผิดชอบเคสนั้น — ใช้เทียบทีละรอบของคนหนึ่ง */
+  const ownersByCase = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const a of assignees) {
+      const cur = m.get(a.influencer_id);
+      if (cur) cur.push(a.user_id);
+      else m.set(a.influencer_id, [a.user_id]);
+    }
+    return m;
+  }, [assignees]);
 
   // มุมมองรายบุคคล — คนที่เข้ามาหลายรอบรวมเป็นการ์ดเดียว (รายละเอียดรายรอบดูในหน้าเดินงาน)
   const persons = useMemo(() => groupByPerson(influencers), [influencers]);
@@ -134,14 +197,29 @@ export function InfluGalleryClient({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return persons.filter((p) => {
-      if (contractFilter !== "all") {
+      if (filters.contract !== "all") {
         // อายุสัญญาของคน = สัญญาจากรอบล่าสุดที่มีสัญญา
         const daysLeft = p.contractRow
           ? contractDaysLeftOf(p.contractRow, today)
           : null;
         if (daysLeft === null) return false; // ไม่มีข้อมูลสัญญา — ไม่เข้าเกณฑ์ active/expired
-        if (contractFilter === "active" && daysLeft < 0) return false;
-        if (contractFilter === "expired" && daysLeft >= 0) return false;
+        if (filters.contract === "active" && daysLeft < 0) return false;
+        if (filters.contract === "expired" && daysLeft >= 0) return false;
+      }
+      if (!filters.includeArchived && p.rounds.every((r) => r.archived))
+        return false;
+      if (filters.owner !== "all") {
+        const want = filters.owner === "mine" ? meId : filters.owner;
+        // รับผิดชอบรอบไหนของคนนี้ก็นับว่าเป็นคนของเรา
+        if (
+          !want ||
+          !p.rounds.some((r) => (ownersByCase.get(r.id) ?? []).includes(want))
+        )
+          return false;
+      }
+      if (filters.tiers.length) {
+        const tier = p.display.tier;
+        if (!tier || !filters.tiers.includes(tier)) return false;
       }
       if (q === "") return true;
       // ค้นเจอจากรอบไหนก็ได้ — หัตถการรอบเก่าก็ยังค้นถึงตัวคนได้
@@ -151,15 +229,13 @@ export function InfluGalleryClient({
           (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [persons, search, contractFilter, today]);
+  }, [persons, search, filters, today, meId, ownersByCase]);
 
   const contractCounts = useMemo(() => {
     let active = 0;
     let expired = 0;
     for (const p of persons) {
-      const d = p.contractRow
-        ? contractDaysLeftOf(p.contractRow, today)
-        : null;
+      const d = p.contractRow ? contractDaysLeftOf(p.contractRow, today) : null;
       if (d === null) continue;
       if (d < 0) expired += 1;
       else active += 1;
@@ -167,34 +243,39 @@ export function InfluGalleryClient({
     return { all: persons.length, active, expired };
   }, [persons, today]);
 
-  const contractChips: { key: ContractFilter; label: string; count: number }[] =
-    [
-      { key: "all", label: "ทั้งหมด", count: contractCounts.all },
-      { key: "active", label: "สัญญายังไม่หมด", count: contractCounts.active },
-      { key: "expired", label: "หมดสัญญาแล้ว", count: contractCounts.expired },
-    ];
-
-  /* จอเล็ก: ชิปสถานะสัญญาพับอยู่ในแผ่นเลื่อนขึ้นจากขอบล่าง เหลือแค่ [ค้นหา][ตัวกรอง]
-     บนแถบ — ชิป 3 ตัวพร้อมตัวเลขกินความกว้างเกินจอ 375px จนตกบรรทัดที่สอง
-     (ไม่นับคำค้นเป็นตัวกรอง — ช่องค้นหาอยู่นอกแผ่น เห็นค่าที่พิมพ์อยู่แล้ว) */
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const mobileFilterCount = contractFilter === "all" ? 0 : 1;
-  const clearFilters = () => {
-    setSearch("");
-    setContractFilter("all");
-  };
-  const mobileFilterChips =
-    contractFilter === "all"
-      ? []
-      : [
-          {
-            key: "contract",
-            label:
-              contractChips.find((c) => c.key === contractFilter)?.label ??
-              "สถานะสัญญา",
-            onClear: () => setContractFilter("all"),
-          },
-        ];
+  const filterChips = useMemo(() => {
+    const out: FilterSummaryChip<GalleryFilters>[] = [];
+    if (filters.owner !== "all")
+      out.push({
+        key: "owner",
+        label:
+          filters.owner === "mine"
+            ? "ของฉัน"
+            : `ผู้รับผิดชอบ: ${peopleById.get(filters.owner) ?? "ไม่ทราบชื่อ"}`,
+        next: { ...filters, owner: "all" },
+      });
+    if (filters.contract !== "all")
+      out.push({
+        key: "contract",
+        label: CONTRACT_LABELS[filters.contract],
+        next: { ...filters, contract: "all" },
+      });
+    if (filters.tiers.length)
+      out.push({
+        key: "tiers",
+        label: `ระดับ: ${INFLU_TIER_ORDER.filter((t) => filters.tiers.includes(t))
+          .map((t) => INFLU_TIERS[t].label)
+          .join(", ")}`,
+        next: { ...filters, tiers: [] },
+      });
+    if (!filters.includeArchived)
+      out.push({
+        key: "archived",
+        label: "ซ่อนข้อมูลเก่า",
+        next: { ...filters, includeArchived: true },
+      });
+    return out;
+  }, [filters, peopleById]);
 
   return (
     <>
@@ -204,96 +285,120 @@ export function InfluGalleryClient({
         </div>
       )}
 
-      {/* จอเล็ก: แถวเดียว — ค้นหา + ปุ่มตัวกรอง (เปิดแผ่นด้านล่าง) */}
-      <div className="mb-3 flex items-center gap-2 animate-fade-in-up sm:hidden">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-          />
-          <Input
-            type="search"
-            placeholder="ค้นหาชื่อ หรือหัตถการ"
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <FilterButton
-          count={mobileFilterCount}
-          onClick={() => setFiltersOpen(true)}
-        />
-      </div>
-
-      {/* ชิปสรุปตัวกรองที่เปิดอยู่ — ตัวกรองพับอยู่ในแผ่นแล้ว ต้องมีอะไรบอกว่ากำลังกรองอะไรค้างไว้
-          ไม่งั้นคนอ่านนึกว่ารายชื่อหายไป (บทเรียนเดียวกับ my-tasks / Hunting) */}
-      <ActiveFilterChips items={mobileFilterChips} className="mb-3 sm:hidden" />
-
-      <div className="mb-4 hidden flex-wrap items-center gap-3 animate-fade-in-up sm:flex">
+      {/* แถบเครื่องมือเหลือ 2 ชิ้น: ค้นหา + ปุ่มตัวกรอง (ผู้ใช้ 2026-08-29) */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-sm">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
           />
-          <Input
+          <input
             type="search"
             placeholder="ค้นหาชื่อ หรือหัตถการ..."
-            className="pl-9"
+            aria-label="ค้นหาโปรไฟล์"
+            className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {contractChips.map((chip) => {
-            const active = contractFilter === chip.key;
-            return (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={() => setContractFilter(chip.key)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
-                  active
-                    ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-                    : "border border-brand-200 bg-white/70 text-stone-600 hover:border-brand-300 hover:bg-brand-50"
-                }`}
-              >
-                {chip.label}
-                <span className={active ? "opacity-80" : "text-stone-400"}>
-                  {" "}
-                  ({chip.count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <InfluFilterButton
+          api={filterApi}
+          count={galleryFilterCount(filters)}
+          factory={DEFAULT_GALLERY_FILTERS}
+        >
+          <FilterSection
+            title="ผู้รับผิดชอบ"
+            hint="นับจากเคสรอบไหนของคนนั้นก็ได้ — ค่าเริ่มต้นคือ “ของฉัน”"
+          >
+            <Select
+              value={filters.owner}
+              onChange={(e) => setFilters({ ...filters, owner: e.target.value })}
+              aria-label="กรองตามผู้รับผิดชอบ"
+            >
+              <option value="all">ทุกคน</option>
+              {meId && <option value="mine">ของฉัน</option>}
+              {people
+                .filter((p) => p.id !== meId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </Select>
+          </FilterSection>
+
+          <FilterSection title="สถานะสัญญา">
+            <div className="flex flex-wrap gap-1.5">
+              {(["all", "active", "expired"] as ContractFilter[]).map((k) => (
+                <FilterChip
+                  key={k}
+                  active={filters.contract === k}
+                  onClick={() => setFilters({ ...filters, contract: k })}
+                >
+                  {CONTRACT_LABELS[k]}
+                  <span className="tabular-nums text-stone-400">
+                    {k === "all"
+                      ? contractCounts.all
+                      : k === "active"
+                        ? contractCounts.active
+                        : contractCounts.expired}
+                  </span>
+                </FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="ระดับผู้ติดตาม">
+            <div className="flex flex-wrap gap-1.5">
+              {INFLU_TIER_ORDER.map((t) => (
+                <FilterChip
+                  key={t}
+                  active={filters.tiers.includes(t)}
+                  onClick={() =>
+                    setFilters({
+                      ...filters,
+                      tiers: filters.tiers.includes(t)
+                        ? filters.tiers.filter((x) => x !== t)
+                        : [...filters.tiers, t],
+                    })
+                  }
+                >
+                  {INFLU_TIERS[t].label}
+                </FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection
+            title="ข้อมูลเก่า"
+            hint="ข้อมูลที่นำเข้าจากไฟล์เดิม (archive) — โผล่เฉพาะหน้านี้หน้าเดียว"
+          >
+            <FilterChip
+              active={filters.includeArchived}
+              onClick={() =>
+                setFilters({
+                  ...filters,
+                  includeArchived: !filters.includeArchived,
+                })
+              }
+            >
+              รวมข้อมูลเก่า
+            </FilterChip>
+          </FilterSection>
+        </InfluFilterButton>
+        <span className="ml-auto text-xs text-stone-400">
+          {formatNumber(filtered.length)} จาก {formatNumber(persons.length)} คน
+        </span>
       </div>
 
-      {/* แผ่นตัวกรองของจอเล็ก — ตัวเลือกชุดเดียวกับแถบ ≥sm ด้านบน
-          (FilterSheet ซ่อนตัวเองที่ ≥sm อยู่แล้ว — sm:hidden อยู่บน root ของ portal) */}
-      <FilterSheet
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        onClear={clearFilters}
-        clearDisabled={search === "" && contractFilter === "all"}
-        resultCount={filtered.length}
-        resultNoun="คน"
-      >
-        <FilterGroup
-          label="สถานะสัญญา"
-          hint="นับจากสัญญาของรอบล่าสุดที่เซนแล้ว — คนที่ยังไม่มีสัญญาจะไม่เข้าทั้งสองกลุ่ม"
-        >
-          {contractChips.map((chip) => (
-            <FilterChip
-              key={chip.key}
-              active={contractFilter === chip.key}
-              onClick={() => setContractFilter(chip.key)}
-              count={chip.count}
-            >
-              {chip.label}
-            </FilterChip>
-          ))}
-        </FilterGroup>
-      </FilterSheet>
+      <FilterSummary
+        chips={filterChips}
+        onChange={setFilters}
+        onClear={() => {
+          setSearch("");
+          setFilters(DEFAULT_GALLERY_FILTERS);
+        }}
+      />
 
       {influencers.length === 0 ? (
         <Card>

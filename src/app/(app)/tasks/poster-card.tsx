@@ -5,13 +5,13 @@ import { useState } from "react";
 import { formatDate } from "@/lib/format";
 import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
 import { useInView } from "@/lib/use-in-view";
+import { useSignedUrl } from "@/lib/use-signed-url";
 import type { TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import {
   AssigneeAvatar,
   isTempId,
   profileName,
   reviewStepOf,
-  useCachedSignedUrl,
 } from "./task-card";
 
 /* ============================================================================
@@ -50,7 +50,7 @@ function CoverFallback() {
 }
 
 function CoverMedia({ file }: { file: TaskFileRow }) {
-  const { url, failed } = useCachedSignedUrl(file.file_path);
+  const { url, failed } = useSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
   // วิดีโอโหลดเฉพาะใบที่เลื่อนมาถึง — บอร์ดที่มีวิดีโอเยอะจะชนโควตา media player
   // ของเบราว์เซอร์แล้วใบที่เกินไม่ขึ้นรูปเลย (ดู useInView)

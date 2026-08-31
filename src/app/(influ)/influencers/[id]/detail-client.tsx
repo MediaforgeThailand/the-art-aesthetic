@@ -29,8 +29,16 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   InfluLogProvider,
   useInfluLog,
+  useInfluNotify,
 } from "@/components/influ-log-provider";
 import { SignaturePad } from "@/components/signature-pad";
+import {
+  AssigneeEditor,
+  AssigneeStack,
+  type AssigneeChange,
+  type CaseAssignee,
+  type InfluPerson,
+} from "../assignees";
 import {
   Badge,
   Button,
@@ -62,9 +70,12 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
+  scopeOfStage,
+  scopeSummary,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { logInflu } from "@/lib/influ-log";
+import { notifyInflu } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
@@ -492,6 +503,8 @@ export function InfluDetailClient({
   userName,
   doctors,
   campaigns,
+  assignees,
+  people,
   canManage,
   initialStage = null,
 }: {
@@ -525,6 +538,10 @@ export function InfluDetailClient({
   doctors: DoctorRow[];
   /** แคมเปญทั้งหมด (0093) — ตัวเลือกในแท็บรายละเอียดเคส + ที่มาของแฮชแท็ก */
   campaigns: InfluCampaignDefRow[];
+  /** ผู้รับผิดชอบของเคสนี้ (0095) — คนที่ได้รับแจ้งเตือนเมื่อมีความเคลื่อนไหว */
+  assignees: CaseAssignee[];
+  /** บัญชีทั้งหมด — ตัวเลือกตอนมอบหมายงาน */
+  people: InfluPerson[];
   /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
@@ -606,6 +623,22 @@ export function InfluDetailClient({
       influencerName: logNameOf(influencer),
       summary: `ย้อนขั้นงานจาก ${INFLU_STAGES[influencer.stage - 1]?.title ?? influencer.stage} กลับไป ${INFLU_STAGES[target - 1]?.title ?? target}${influencer.completed ? " (เปิดเคสที่ปิดงานแล้วกลับมาทำต่อ)" : ""}`,
       meta: { from: influencer.stage, to: target, reopened: influencer.completed },
+    });
+    // ผู้รับผิดชอบขั้นที่ถูกย้อนกลับไปคือคนที่ต้องทำงานต่อ — เขาได้ระดับ "ต้องลงมือ"
+    notifyInflu(supabase, actor, {
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      assignees: notifyTargets,
+      type: "stage_back",
+      scope: scopeOfStage(target),
+      title: `เคส ${logNameOf(influencer)} ถูกย้อนกลับไปขั้น ${
+        INFLU_STAGES[target - 1]?.title ?? target
+      }`,
+      body: influencer.completed
+        ? "เปิดเคสที่ปิดงานแล้วกลับมาทำต่อ"
+        : `เดิมอยู่ขั้น ${INFLU_STAGES[influencer.stage - 1]?.title ?? influencer.stage}`,
+      href: `/influencers/${influencer.id}?view=${target}`,
+      meta: { from: influencer.stage, to: target },
     });
     // effect ที่เฝ้า influencer.stage จะพา view ไปหน้า stage ใหม่เองหลัง refresh
     router.refresh();
@@ -693,7 +726,160 @@ export function InfluDetailClient({
       summary: `เปิดรอบใหม่ (รอบ ${nextNo}) ของ ${logNameOf(influencer)}`,
       meta: { person_id: influencer.person_id, round_no: nextNo },
     });
+    // รอบใหม่ = การ์ดใหม่ที่ยังไม่มีผู้รับผิดชอบ — บอกทีมของรอบเดิมให้รู้ว่ามีงานใหม่เข้ามา
+    notifyInflu(supabase, actor, {
+      influencerId: created.id,
+      influencerName: logNameOf(influencer),
+      assignees: notifyTargets,
+      baseLevel: "action",
+      type: "round_started",
+      title: `เปิดรอบที่ ${nextNo} ของ ${logNameOf(influencer)}`,
+      body: "การ์ดใหม่เริ่มที่ขั้น Memo — อย่าลืมกำหนดผู้รับผิดชอบของรอบนี้",
+      href: `/influencers/${created.id}`,
+      meta: { person_id: influencer.person_id, round_no: nextNo },
+    });
     router.push(`/influencers/${created.id}`);
+    router.refresh();
+  };
+
+  /* ---------- ผู้รับผิดชอบเคส (0095) ----------
+     การ์ดบนบอร์ดแสดงคนกลุ่มนี้ (ไม่ใช่ผู้สร้างอีกต่อไป) และเป็นตัวตัดสินว่าใครได้แจ้งเตือน
+     ระดับ "ต้องลงมือ" เมื่อขั้นที่ตัวเองถือมีความเคลื่อนไหว */
+  const [assignedList, setAssignedList] = useState<CaseAssignee[]>(assignees);
+  // sync กับ props แบบ adjust-state-during-render (ไม่ใช่ effect) ตามกติกาของระบบ —
+  // ค่าใหม่จาก server ทับสำเนาฝั่งจอในรอบ render เดียว ไม่ต้อง render ซ้ำอีกรอบ
+  const [assigneesBase, setAssigneesBase] = useState(assignees);
+  if (assigneesBase !== assignees) {
+    setAssigneesBase(assignees);
+    setAssignedList(assignees);
+  }
+  const [assigneeBusy, setAssigneeBusy] = useState<string | null>(null);
+  const [assigneeErr, setAssigneeErr] = useState<string | null>(null);
+  const peopleById = useMemo(
+    () => new Map(people.map((p) => [p.id, p])),
+    [people]
+  );
+  // ไม่ห่อ useMemo — React Compiler memo ให้เอง และ assignedList เปลี่ยน identity ทุกครั้ง
+  // ที่แก้อยู่แล้ว (การห่อมือทำให้ compiler ข้ามการ optimize ทั้ง component)
+  const notifyTargets = assignedList.map((a) => ({
+    userId: a.userId,
+    scopes: a.scopes,
+  }));
+
+  const applyAssigneeChange = async (change: AssigneeChange) => {
+    setAssigneeErr(null);
+    setAssigneeBusy(change.userId);
+    const prev = assignedList;
+    const who = peopleById.get(change.userId)?.name ?? "ไม่ทราบชื่อ";
+    const caseName = logNameOf(influencer);
+
+    if (change.kind === "add") {
+      setAssignedList((cur) => [
+        ...cur,
+        { userId: change.userId, scopes: change.scopes },
+      ]);
+      const { error } = await supabase.from("influ_assignees").insert({
+        influencer_id: influencer.id,
+        user_id: change.userId,
+        scopes: change.scopes,
+        created_by: userId,
+      });
+      if (error) {
+        setAssignedList(prev);
+        setAssigneeErr(`เพิ่มผู้รับผิดชอบไม่สำเร็จ: ${error.message}`);
+        setAssigneeBusy(null);
+        return;
+      }
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "assignee",
+        entityId: influencer.id,
+        influencerId: influencer.id,
+        influencerName: caseName,
+        summary: `เพิ่ม ${who} เป็นผู้รับผิดชอบของ ${caseName} (${scopeSummary(change.scopes)})`,
+        meta: { user_id: change.userId, scopes: change.scopes },
+      });
+      // คนที่เพิ่งถูกมอบหมายต้องรู้ทันทีเสมอ ไม่ว่าจะถือขอบเขตไหน
+      notifyInflu(supabase, actor, {
+        influencerId: influencer.id,
+        influencerName: caseName,
+        assignees: notifyTargets,
+        extra: [change.userId],
+        forceAction: [change.userId],
+        type: "assigned",
+        title: `คุณได้รับมอบหมายเคส ${caseName}`,
+        body: `ขอบเขตงาน: ${scopeSummary(change.scopes)}`,
+        meta: { user_id: change.userId, scopes: change.scopes },
+      });
+    } else if (change.kind === "remove") {
+      setAssignedList((cur) => cur.filter((a) => a.userId !== change.userId));
+      const { error } = await supabase
+        .from("influ_assignees")
+        .delete()
+        .eq("influencer_id", influencer.id)
+        .eq("user_id", change.userId);
+      if (error) {
+        setAssignedList(prev);
+        setAssigneeErr(`ถอดผู้รับผิดชอบไม่สำเร็จ: ${error.message}`);
+        setAssigneeBusy(null);
+        return;
+      }
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "assignee",
+        entityId: influencer.id,
+        influencerId: influencer.id,
+        influencerName: caseName,
+        summary: `ถอด ${who} ออกจากผู้รับผิดชอบของ ${caseName}`,
+        meta: { user_id: change.userId },
+      });
+      notifyInflu(supabase, actor, {
+        influencerId: influencer.id,
+        influencerName: caseName,
+        // ส่งถึงคนที่เหลือ + คนที่เพิ่งถูกถอด (เขาต้องรู้ว่าไม่ต้องตามเคสนี้แล้ว)
+        assignees: prev.filter((a) => a.userId !== change.userId),
+        extra: [change.userId],
+        type: "unassigned",
+        title: `${who} ถูกถอดออกจากผู้รับผิดชอบเคส ${caseName}`,
+        meta: { user_id: change.userId },
+      });
+    } else {
+      setAssignedList((cur) =>
+        cur.map((a) =>
+          a.userId === change.userId ? { ...a, scopes: change.scopes } : a
+        )
+      );
+      const { error } = await supabase
+        .from("influ_assignees")
+        .update({ scopes: change.scopes })
+        .eq("influencer_id", influencer.id)
+        .eq("user_id", change.userId);
+      if (error) {
+        setAssignedList(prev);
+        setAssigneeErr(`บันทึกขอบเขตงานไม่สำเร็จ: ${error.message}`);
+        setAssigneeBusy(null);
+        return;
+      }
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "assignee",
+        entityId: influencer.id,
+        influencerId: influencer.id,
+        influencerName: caseName,
+        summary: `เปลี่ยนขอบเขตงานของ ${who} ในเคส ${caseName} เป็น ${scopeSummary(change.scopes)}`,
+        meta: { user_id: change.userId, scopes: change.scopes },
+      });
+      notifyInflu(supabase, actor, {
+        influencerId: influencer.id,
+        influencerName: caseName,
+        assignees: notifyTargets,
+        forceAction: [change.userId],
+        type: "scope_changed",
+        title: `ขอบเขตงานของ ${who} ในเคส ${caseName} เปลี่ยนเป็น ${scopeSummary(change.scopes)}`,
+        meta: { user_id: change.userId, scopes: change.scopes },
+      });
+    }
+    setAssigneeBusy(null);
     router.refresh();
   };
 
@@ -707,7 +893,15 @@ export function InfluDetailClient({
 
   return (
     // ทุกจุดที่แก้ข้อมูลในหน้านี้เรียก useInfluLog() เอง — ไม่ต้องส่ง actor เป็น prop ทีละชั้น
-    <InfluLogProvider userId={userId} userName={userName}>
+    <InfluLogProvider
+      userId={userId}
+      userName={userName}
+      notifyCase={{
+        id: influencer.id,
+        name: logNameOf(influencer),
+        assignees: notifyTargets,
+      }}
+    >
     <div>
       {/* header */}
       <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
@@ -750,15 +944,12 @@ export function InfluDetailClient({
             {influencer.influ_code}
           </span>
         )}
-        {ownerName && (
-          <span
-            title="ผู้รับผิดชอบเคส (ผู้สร้างการ์ด)"
-            className="inline-flex items-center gap-1 text-xs text-stone-500"
-          >
-            <UserRound size={12} className="text-stone-400" />
-            {ownerName}
-          </span>
-        )}
+        {/* ผู้รับผิดชอบ = รูปโปรไฟล์ (0095) — ชื่อผู้สร้างย้ายไปอยู่ในการ์ด "ผู้รับผิดชอบ" ข้างล่าง */}
+        <AssigneeStack
+          assignees={assignedList}
+          peopleById={peopleById}
+          size={24}
+        />
         {/* Badge ที่ซ้ำกับหัวเอกสารใน "ภาพรวม" (tier / จบงานแล้ว / รอปรึกษา / จำนวนคอนเทนต์ /
             รอบที่ N) ถูกซ่อนที่ <sm — จอเล็กมีที่จำกัด ให้เหลือแต่ของที่หาที่อื่นไม่ได้ */}
         {influencer.tier && (
@@ -997,7 +1188,38 @@ export function InfluDetailClient({
 
       <div className="animate-fade-in" key={String(view)}>
         {view === "overview" && (
-          <OverviewPanel
+          <>
+            {/* ผู้รับผิดชอบเคส (0095) — ใครถือขั้นไหน = ใครได้แจ้งเตือนแบบ "ต้องลงมือ" */}
+            <Card className="mb-5 p-5">
+              <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h2 className="text-sm font-semibold text-stone-800">
+                  ผู้รับผิดชอบเคส
+                </h2>
+                <p className="text-xs text-stone-400">
+                  เลือกได้ว่าใครถือขั้นไหน — คนที่ถือขั้นนั้นจะได้แจ้งเตือนแบบเด่นเมื่อขั้นนั้นมีความเคลื่อนไหว
+                </p>
+              </div>
+              {assigneeErr && (
+                <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                  {assigneeErr}
+                </p>
+              )}
+              <AssigneeEditor
+                assignees={assignedList}
+                people={people}
+                peopleById={peopleById}
+                canEdit={canEdit}
+                busyUserId={assigneeBusy}
+                onChange={(c) => void applyAssigneeChange(c)}
+              />
+              {ownerName && (
+                <p className="mt-3 border-t border-stone-100 pt-2.5 text-xs text-stone-400">
+                  สร้างการ์ดโดย{" "}
+                  <span className="text-stone-500">{ownerName}</span>
+                </p>
+              )}
+            </Card>
+            <OverviewPanel
             influencer={influencer}
             followupTasks={activeTasks}
             contentTasks={contentTasks}
@@ -1012,9 +1234,10 @@ export function InfluDetailClient({
             }
             doctors={doctors}
             campaigns={campaigns}
-            canManage={canManage}
-            onGoStage={(step) => setView(step)}
-          />
+              canManage={canManage}
+              onGoStage={(step) => setView(step)}
+            />
+          </>
         )}
         {view === "detail" && (
           // รายละเอียดเคสแก้ได้เสมอจนกว่าจะปิดงาน (ไม่ใช้ readOnly รวมที่ล็อก stage ที่ผ่านแล้ว) —
@@ -1866,6 +2089,7 @@ function CaseDetailStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
   const [occupation, setOccupation] = useState(
     influencer.occupation ?? "Tiktoker / Influencer"
@@ -2019,6 +2243,14 @@ function CaseDetailStage({
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
       summary: `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)})`,
+    });
+    // ข้อมูลเคสเปลี่ยนกระทบทุกขั้น (Memo/สัญญา/ต้นทุน) — ส่งแบบ "อัพเดท" ถึงทุกคน
+    notify({
+      type: "case_updated",
+      title: `แก้รายละเอียดเคส ${logNameOf(influencer)}`,
+      body: `${items.length} โปรแกรม${
+        serviceDate ? ` · วันรับบริการ ${formatDate(serviceDate)}` : ""
+      }${doctorName.trim() ? ` · ${doctorName.trim()}` : ""}`,
     });
     router.refresh();
   };
@@ -2281,6 +2513,7 @@ function ServiceBookingCard({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   // ค่าตั้งต้นจากข้อมูลเคส (วันที่คุยไว้ + แพทย์ที่ระบุไว้) — แก้ก่อนกดลงคิวได้
   const [date, setDate] = useState(influencer.service_date ?? "");
   const [start, setStart] = useState("");
@@ -2352,6 +2585,15 @@ function ServiceBookingCard({
       summary: `ลงคิวเข้ารับบริการ ${formatDate(date)}${
         start ? ` ${start} น.` : " (ยังไม่เคาะเวลา)"
       } — แพทย์ ${doctor.trim()}`,
+    });
+    // คิวหมอ = หลักฐานว่า influ เข้ามาจริง — ทั้งทีมของเคสควรรู้ (คนถือขั้นสัญญาได้แบบเด่น)
+    notify({
+      type: "service_booked",
+      scope: "contract",
+      title: `ลงคิวเข้ารับบริการของ ${logNameOf(influencer)} แล้ว`,
+      body: `${formatDate(date)}${start ? ` ${start} น.` : " (ยังไม่เคาะเวลา)"} — แพทย์ ${doctor.trim()}`,
+      href: "/influ-calendar",
+      meta: { event_date: date, doctor: doctor.trim() },
     });
     router.refresh();
   };

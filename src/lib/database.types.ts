@@ -495,6 +495,49 @@ export type InfluLogAction =
   | "upload"
   | "status";
 
+/** ขอบเขตงานที่ผู้รับผิดชอบคนหนึ่งถือในเคส (0095)
+    memo = ขั้น 1 · contract = ขั้น 2 (สัญญา+รับบริการ) · followup = การตามงานที่หน้า Follow Up
+    — array ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน (เห็นความเคลื่อนไหวแต่ไม่ใช่เจ้าของงาน) */
+export type InfluScope = "memo" | "contract" | "followup";
+
+/** ผู้รับผิดชอบเคส (0095) — 1 เคสมีได้หลายคน แต่ละคนถือขอบเขตของตัวเอง
+    คนละเรื่องกับ `influencers.owner_id` ที่ยังเป็น "ผู้สร้างการ์ด" ตามเดิม */
+export type InfluAssigneeRow = {
+  id: string;
+  influencer_id: string;
+  user_id: string;
+  scopes: InfluScope[];
+  created_by: string | null;
+  created_at: string;
+};
+
+/** ระดับความสำคัญของการแจ้งเตือน (0095)
+    action = งานในขอบเขตของผู้รับ ต้องลงมือ (นับใน badge สีแดง)
+    update = ความเคลื่อนไหวที่เกี่ยวข้อง เช่นหัวหน้างานที่ไม่ได้ถือขั้นนั้น (ไม่นับใน badge) */
+export type InfluNotiLevel = "action" | "update";
+
+/** แจ้งเตือนของระบบ Influencer (0095) — แยกตารางจาก `notifications` ของระบบ Task
+    เพราะคนละแอป คนละกระดิ่ง และปลายทางที่นี่เป็น href อิสระ ไม่ผูก task_id */
+export type InfluNotificationRow = {
+  id: string;
+  recipient_id: string;
+  actor_id: string | null;
+  /** ชื่อ ณ ตอนที่ทำ — บัญชีถูกลบแล้วยังบอกได้ว่าใครทำ */
+  actor_name: string | null;
+  /** null = เคสถูกลบไปแล้ว (FK set null) — แจ้งเตือนยังอยู่แต่กดไปต่อไม่ได้ */
+  influencer_id: string | null;
+  influencer_name: string | null;
+  /** text อิสระ — ป้าย/ไอคอนอยู่ที่ INFLU_NOTI_TYPES (influ-notify.ts) มี fallback ให้ค่าที่ไม่รู้จัก */
+  type: string;
+  level: InfluNotiLevel;
+  title: string;
+  body: string | null;
+  href: string | null;
+  meta: Json;
+  read_at: string | null;
+  created_at: string;
+};
+
 /** สำเนาเคสที่ถูกลบ — เก็บ 30 วันแล้วล้างอัตโนมัติ (influ_purge_expired_backups) */
 export type InfluDeletedBackupRow = {
   id: string;
@@ -1465,6 +1508,25 @@ export interface Database {
         };
         /** log แก้ไม่ได้ (ไม่มี policy update) — type ปิดไว้ให้ตรงกับ DB */
         Update: never;
+        Relationships: [];
+      };
+      influ_assignees: {
+        Row: InfluAssigneeRow;
+        Insert: Partial<InfluAssigneeRow> & {
+          influencer_id: string;
+          user_id: string;
+        };
+        Update: Partial<InfluAssigneeRow>;
+        Relationships: [];
+      };
+      influ_notifications: {
+        Row: InfluNotificationRow;
+        Insert: Partial<InfluNotificationRow> & {
+          recipient_id: string;
+          type: string;
+          title: string;
+        };
+        Update: Partial<InfluNotificationRow>;
         Relationships: [];
       };
       influ_deleted_backups: {
