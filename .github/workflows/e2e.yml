@@ -1,0 +1,67 @@
+# e2e (Playwright) — รันด้วยมือเท่านั้น (Actions → E2E (manual) → Run workflow)
+#
+# ⚠️ ทำไมไม่รันอัตโนมัติทุก push:
+#   dev server ของ repo นี้ชี้ Supabase "โปรดักชัน" (ดู AGENTS.md) เทสต์จึงล็อกอินด้วยบัญชีจริง
+#   และอ่านข้อมูลจริงทุกครั้งที่รัน — ปล่อยให้ยิงอัตโนมัติทุก push คือยิงใส่ระบบที่ทีมใช้งานอยู่
+#
+# ⚠️ spec ที่ "เขียน" ข้อมูลลง DB โปรดักชัน (e2e/wellness-flow.spec.ts) ตั้งใจไม่ใส่ไว้ในตัวเลือก
+#   ที่นี่ — ถ้าต้องรัน ให้รันบนเครื่องด้วย `npm run test:e2e` แล้วเฝ้าดูการเก็บกวาดเคสทดสอบเอง
+#
+# ต้องตั้ง repository secrets ก่อนถึงจะรันผ่าน (Settings → Secrets and variables → Actions):
+#   E2E_EMAIL / E2E_PASSWORD  = บัญชีทดสอบที่สิทธิ์ครบ + admin (เช่น claude.qa@artsurgery.co.th)
+
+name: E2E (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: 'ชุดเทสต์ที่จะรัน (อ่านอย่างเดียวทั้งคู่)'
+        type: choice
+        default: e2e/ui-sweep.spec.ts
+        options:
+          - e2e/ui-sweep.spec.ts
+          - e2e/wellness-shots.spec.ts
+      project:
+        description: 'ขนาดจอ'
+        type: choice
+        default: desktop
+        options:
+          - desktop
+          - mobile
+
+jobs:
+  e2e:
+    name: ${{ inputs.spec }} · ${{ inputs.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: ติดตั้งเบราว์เซอร์
+        run: npx playwright install --with-deps chromium
+
+      - name: รันเทสต์
+        run: npx playwright test "${{ inputs.spec }}" --project=${{ inputs.project }}
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      # sweep ถ่ายภาพทุกหน้าไว้ — ดึงมาดูได้จากหน้า run summary
+      - name: เก็บ screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ inputs.project }}
+          path: e2e/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7

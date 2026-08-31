@@ -1,0 +1,75 @@
+# CI — ตรวจโค้ดทุกครั้งที่ push ขึ้น main และทุก Pull Request
+#
+# ทำไมมีแค่ build (บล็อค) + lint (ไม่บล็อค):
+#   - `next build` ทำ TypeScript type-check ให้ในตัว (repo นี้ไม่มี script typecheck แยก)
+#     จึงเป็นด่านที่จับของพังได้จริงก่อนขึ้นโปรดักชัน
+#   - `npm run lint` ตอนนี้ยังมี error ค้างอยู่ 35 จุด (ส่วนใหญ่เป็นกฎชุด react-hooks ของ
+#     eslint-config-next 16) จึงตั้งเป็น continue-on-error ไว้ก่อน — เห็นรายงานได้แต่ยังไม่บล็อค
+#     พอเคลียร์หมดแล้วให้ลบบรรทัด continue-on-error ออก แล้ว lint จะกลายเป็นด่านบังคับทันที
+#   - e2e (Playwright) ไม่อยู่ในนี้โดยตั้งใจ — dev server ชี้ DB โปรดักชัน ดู .github/workflows/e2e.yml
+#
+# ไม่ต้องตั้ง secret ใดๆ ก็รันได้: src/lib/env.ts มี fallback ของ Supabase publishable key อยู่แล้ว
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# push ทับ = ยกเลิก run เก่า ประหยัดโควตา Actions
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (+ type-check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # cache ของ Turbopack/Next ทำให้ build รอบถัดๆ ไปเร็วขึ้นมาก
+      - name: Restore Next.js cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', '*.ts', '*.mjs') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          # ว่างไว้ได้ — env.ts จะตกไปใช้ fallback เอง; ใส่ secret เมื่อไหร่ CI ชี้ instance นั้นทันที
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  lint:
+    name: lint (ยังไม่บล็อค)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+        continue-on-error: true
