@@ -32,6 +32,8 @@ export default async function ContentKpiPage() {
       supabase
         .from("profiles")
         .select("id, full_name, email")
+        // ตั้งเป้าให้ได้เฉพาะคนในทีม (สิทธิ์ team)
+        .contains("permissions", ["team"])
         .order("full_name", { ascending: true }),
     ]);
 

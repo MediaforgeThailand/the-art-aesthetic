@@ -61,6 +61,9 @@ export default async function TasksPage() {
     supabase
       .from("profiles")
       .select("id, full_name, email, avatar_path, default_reviewer_id")
+      // ระบบทีมมีแค่คนที่มีสิทธิ์ team — คนที่มีแต่สิทธิ์ระบบ Influencer/Wellness
+      // ต้องไม่โผล่ในตัวเลือกผู้รับผิดชอบ/ผู้ตรวจ และเมนูแท็กคนในแชท
+      .contains("permissions", ["team"])
       .order("full_name", { ascending: true }),
     supabase
       .from("influencers")

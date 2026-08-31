@@ -24,6 +24,8 @@ export default async function AllMediaPage() {
     supabase
       .from("profiles")
       .select("id, full_name, email, avatar_path")
+      // ตัวกรอง "เจ้าของไฟล์" เอาเฉพาะคนในทีม (สิทธิ์ team)
+      .contains("permissions", ["team"])
       .order("full_name", { ascending: true }),
     supabase.auth.getClaims(),
   ]);

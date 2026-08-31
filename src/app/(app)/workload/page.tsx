@@ -70,6 +70,8 @@ export default async function WorkloadPage() {
     supabase
       .from("profiles")
       .select("id, full_name, email")
+      // นับเฉพาะคนในทีม (สิทธิ์ team) — คนที่มีแต่สิทธิ์ระบบอื่นไม่ใช่แถวของหน้านี้
+      .contains("permissions", ["team"])
       .order("full_name", { ascending: true }),
     supabase
       .from("task_sections")
