@@ -144,3 +144,14 @@ export function todayISO(): string {
     timeZone: "Asia/Bangkok",
   }).format(new Date());
 }
+
+/**
+ * วันนี้ตามเวลาไทยในรูป `YYYY-MM-DD`
+ *
+ * อยู่ระดับโมดูลเพราะอ่านเวลาปัจจุบัน — เรียก `Date.now()` ตรงๆ ในตัว component
+ * (รวม server component) จะติดกฎ react-hooks/purity "Cannot call impure function
+ * during render" เพราะ lint แยกไม่ออกว่าอันไหน render บนเซิร์ฟเวอร์
+ */
+export function todayBangkokISO(): string {
+  return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+}

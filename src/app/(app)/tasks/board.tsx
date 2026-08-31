@@ -28,6 +28,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ListPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useHydrated } from "@/lib/use-synced-state";
 import { EmptyState, InlineInput } from "@/components/ui";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
 import {
@@ -267,8 +268,7 @@ function BoardColumn({
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // เปิดโหมด masonry หลัง mount เท่านั้น — SSR/เฟรมแรก render เป็น grid ปกติ (กันการ์ดซ้อนกัน
   // ก่อน JS วัดความสูง) แล้วค่อยสลับเป็น masonry ที่ปิดช่องว่างระหว่างแถว
-  const [masonry, setMasonry] = useState(false);
-  useEffect(() => setMasonry(true), []);
+  const masonry = useHydrated();
 
   const {
     attributes,

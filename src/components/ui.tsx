@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { useHydrated } from "@/lib/use-synced-state";
 import { createPortal } from "react-dom";
 
 /* ---------- Button ---------- */
@@ -169,12 +170,15 @@ export function Modal({
   // เก็บ onClose ใน ref — ผูกเป็น dependency ตรงๆ ไม่ได้ เพราะทุกหน้าส่ง arrow function
   // ใหม่ทุก render ทำให้ effect รันซ้ำและขโมยโฟกัสจากช่องที่กำลังพิมพ์
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // เขียน ref ใน effect ไม่ใช่ระหว่าง render (กฎ react-hooks/refs) — handler อ่านค่า
+  // ตอนเกิดอีเวนต์อยู่แล้ว จึงได้ onClose ล่าสุดเหมือนเดิม
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   // portal ออกไป body — กัน parent ที่มี backdrop-filter/transform (เช่น sidebar)
   // ทำให้ position:fixed ยึดกับกล่องนั้นแทนทั้งจอ (modal เลยดูแคบติดมุม)
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   useEffect(() => {
     if (!open) return;

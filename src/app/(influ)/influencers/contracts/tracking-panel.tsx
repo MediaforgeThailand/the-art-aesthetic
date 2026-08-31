@@ -198,7 +198,11 @@ export function TrackingPanel({
 
   // Esc = blur ช่องที่โฟกัสอยู่ก่อน (ให้ commit-on-blur ทำงาน) แล้วค่อยปิดแผง
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  // เขียน ref ใน effect ไม่ใช่ระหว่าง render (กฎ react-hooks/refs) — handler อ่านค่า
+  // ตอนกด Esc อยู่แล้ว จึงได้ onClose ล่าสุดเหมือนเดิม
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
