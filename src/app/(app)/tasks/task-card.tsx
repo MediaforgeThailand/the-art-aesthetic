@@ -29,16 +29,13 @@ import { Badge } from "@/components/ui";
 import {
   briefContentTypeLabel,
   DEFAULT_TASK_CATEGORY,
-  STORAGE_BUCKET_DOCUMENTS,
   taskCategoryChipClass,
 } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
 import { useInView } from "@/lib/use-in-view";
-import { createClient } from "@/lib/supabase/client";
 import type { ProfileRow, TaskFileRow, TaskWithAssignee } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
-import { useSyncedState } from "@/lib/use-synced-state";
 
 export type ProfileOption = Pick<
   ProfileRow,
@@ -410,61 +407,6 @@ export function CompleteToggle({
 
 /* ---------- preview รูป/วิดีโอบนการ์ด ---------- */
 
-/** cache signed URL ต่อ path — การ์ดถูก unmount/mount ระหว่างลากย้ายคอลัมน์ ไม่ต้องขอใหม่ทุกรอบ */
-const signedUrlCache = new Map<string, { url: string; at: number }>();
-const SIGNED_URL_CACHE_MS = 50 * 60 * 1000; // ขอใหม่ก่อน URL หมดอายุจริง (1 ชม.)
-
-/** URL ที่ยัง cache อยู่ (null = ไม่มี/หมดอายุ)
-    อยู่ระดับโมดูลเพราะเรียก Date.now() — เรียกตรงๆ ในตัว hook จะติดกฎ react-hooks/purity */
-function cachedUrl(path: string): string | null {
-  const hit = signedUrlCache.get(path);
-  return hit && Date.now() - hit.at < SIGNED_URL_CACHE_MS ? hit.url : null;
-}
-
-/** ใช้ร่วมกับการ์ดโปสเตอร์บนมือถือ (mobile-board) — cache เดียวกัน ไม่ขอ URL ซ้ำตอนสลับมุมมอง */
-export function useCachedSignedUrl(path: string): {
-  url: string | null;
-  failed: boolean;
-} {
-  // path เปลี่ยน = รีเซ็ตค่าให้ตอน render เลย (ไม่ใช่ setState ใน effect)
-  const [state, setState] = useSyncedState(path, (p) => ({
-    url: cachedUrl(p),
-    failed: false,
-  }));
-
-  useEffect(() => {
-    // มีใน cache แล้ว — ค่าถูกใส่ให้ตั้งแต่ตอน render ไม่ต้องยิงซ้ำ
-    if (cachedUrl(path)) return;
-    let alive = true;
-    const supabase = createClient();
-    void supabase.storage
-      .from(STORAGE_BUCKET_DOCUMENTS)
-      .createSignedUrl(path, 3600)
-      .then(
-        ({ data }) => {
-          if (data?.signedUrl) {
-            signedUrlCache.set(path, { url: data.signedUrl, at: Date.now() });
-          }
-          if (alive) {
-            // ขอ URL ไม่ได้ (เช่นไฟล์ถูกลบจาก bucket) — แสดง placeholder แทนโครงกำลังโหลดค้าง
-            setState({
-              url: data?.signedUrl ?? null,
-              failed: !data?.signedUrl,
-            });
-          }
-        },
-        () => {
-          if (alive) setState((s) => ({ ...s, failed: true }));
-        }
-      );
-    return () => {
-      alive = false;
-    };
-  }, [path, setState]);
-
-  return state;
-}
-
 function CardMediaThumb({ file }: { file: TaskFileRow }) {
   // key ตาม path — ไฟล์เปลี่ยน = component ใหม่ สถานะ broken จึงรีเซ็ตเอง
   // (ก่อนหน้านี้ broken ค้างจากไฟล์เดิม ทำให้ไฟล์ใหม่ที่ปกติแสดงเป็น placeholder ไปด้วย)
@@ -472,7 +414,7 @@ function CardMediaThumb({ file }: { file: TaskFileRow }) {
 }
 
 function CardMediaThumbInner({ file }: { file: TaskFileRow }) {
-  const { url, failed } = useCachedSignedUrl(file.file_path);
+  const { url, failed } = useSignedUrl(file.file_path);
   const [broken, setBroken] = useState(false);
   // โหลดวิดีโอเฉพาะการ์ดที่เลื่อนมาถึง — กันชนโควตา media player ของเบราว์เซอร์
   const [thumbRef, inView] = useInView();

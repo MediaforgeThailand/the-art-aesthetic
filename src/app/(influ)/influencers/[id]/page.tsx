@@ -8,7 +8,7 @@ import {
   getAccess,
   hasPermission,
 } from "@/lib/access";
-import { todayBangkokISO } from "@/lib/format";
+import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
@@ -61,7 +61,7 @@ export default async function InfluencerDetailPage({
   const userId = claimsData?.claims.sub ?? null;
 
   // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
-  const todayBkk = todayBangkokISO();
+  const todayBkk = todayISO();
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [

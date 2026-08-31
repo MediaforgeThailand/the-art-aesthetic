@@ -5,8 +5,11 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { useSyncedState } from "@/lib/use-synced-state";
 
-/** cache signed URL ต่อ path — component ถูก unmount/mount บ่อย (เช่นพิมพ์ค้นหาแล้วการ์ด remount)
-    ไม่ต้องยิงขอ URL ใหม่ทุกรอบ (แบบเดียวกับ signedUrlCache ใน tasks/task-card.tsx) */
+/** cache signed URL ต่อ path — component ถูก unmount/mount บ่อย (เช่นพิมพ์ค้นหาแล้วการ์ด remount
+    หรือลากย้ายคอลัมน์บนบอร์ด) ไม่ต้องยิงขอ URL ใหม่ทุกรอบ
+    **cache ก้อนนี้ต้องมีก้อนเดียวทั้งแอป** — เคยมี hook `useCachedSignedUrl` ซ้ำอีกตัวใน
+    tasks/task-card.tsx พร้อม cache ของตัวเอง ทำให้ path เดียวกันถูกขอ URL สองรอบ
+    (การ์ดบอร์ดใช้ตัวหนึ่ง แกลเลอรี/แผงงานใช้อีกตัว) — รวมเป็นตัวนี้แล้ว 2026-08-31 */
 const signedUrlCache = new Map<string, { url: string; at: number }>();
 const SIGNED_URL_CACHE_MS = 50 * 60 * 1000; // ขอใหม่ก่อน URL หมดอายุจริง (1 ชม.)
 

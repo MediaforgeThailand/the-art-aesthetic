@@ -138,20 +138,14 @@ export function formatFileSize(bytes: number | null | undefined): string {
 }
 
 /** วันที่วันนี้ในรูปแบบ YYYY-MM-DD ตามเวลาไทยเสมอ
-    (สำคัญ: ฝั่ง server อยู่คนละ timezone — ห้ามใช้เวลาท้องถิ่นของเครื่อง ไม่งั้น SSR/CSR คำนวณวันไม่ตรงกัน) */
+    (สำคัญ: ฝั่ง server อยู่คนละ timezone — ห้ามใช้เวลาท้องถิ่นของเครื่อง ไม่งั้น SSR/CSR คำนวณวันไม่ตรงกัน)
+
+    **นี่คือ "วันนี้ตามเวลาไทย" ตัวเดียวของทั้งระบบ — ห้ามเขียน `Date.now() + 7h` ซ้ำที่อื่น**
+    (เคยมีก๊อปปี้ที่สองใน format.ts เองชื่อ todayBangkokISO รวมกลับมาแล้ว 2026-08-31)
+    และต้องอยู่ระดับโมดูลเสมอ เพราะอ่านเวลาปัจจุบัน — เรียก `Date.now()` ตรงๆ ในตัว component
+    (รวม server component) จะติดกฎ react-hooks/purity "Cannot call impure function during render" */
 export function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
   }).format(new Date());
-}
-
-/**
- * วันนี้ตามเวลาไทยในรูป `YYYY-MM-DD`
- *
- * อยู่ระดับโมดูลเพราะอ่านเวลาปัจจุบัน — เรียก `Date.now()` ตรงๆ ในตัว component
- * (รวม server component) จะติดกฎ react-hooks/purity "Cannot call impure function
- * during render" เพราะ lint แยกไม่ออกว่าอันไหน render บนเซิร์ฟเวอร์
- */
-export function todayBangkokISO(): string {
-  return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 }

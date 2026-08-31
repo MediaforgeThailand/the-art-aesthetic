@@ -3,6 +3,7 @@
 // flow ของเคส: BC สร้างการ์ดลูกค้า → Lab อัพผลเลือด PDF + กดยืนยัน →
 // Admin โทรนัด + ลงคิวปรึกษาแพทย์ → ฟังผลเสร็จ = ปิดเคส
 import type { WellnessApptStatus } from "@/lib/database.types";
+import { todayISO } from "@/lib/format";
 
 /* ============================================================
    สถานะเคส — คำนวณจากข้อมูลจริง ไม่มีคอลัมน์ status ใน wellness_customers
@@ -154,10 +155,9 @@ export function newLabFilePath(
 }
 
 /** วันนี้ตามเวลาไทย (YYYY-MM-DD) — ปฏิทิน/ฟอร์มนัดต้องอิงเวลาไทยเสมอ
-    อยู่ระดับโมดูลเพราะอ่านเวลาปัจจุบัน */
+    ตัวคำนวณจริงอยู่ที่ `todayISO()` ใน format.ts ที่เดียว (ชื่อนี้คงไว้ให้ผู้เรียกเดิม) */
 export function todayBangkokISO(): string {
-  const bkk = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return bkk.toISOString().slice(0, 10);
+  return todayISO();
 }
 
 /** select ของคิวพร้อมข้อมูลลูกค้า + ไฟล์ผลแลบ — ใช้ทั้ง page.tsx (server) และ
