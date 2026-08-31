@@ -34,6 +34,7 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/wellness/cases", name: "wellness-cases" },
   { path: "/wellness/calendar", name: "wellness-calendar" },
   { path: "/tasks", name: "tasks" },
+  { path: "/tag-management", name: "tag-management" },
   { path: "/my-tasks", name: "my-tasks" },
   { path: "/workload", name: "workload" },
   // KPI คอนเทนต์ — ปฏิทินรายคน / ภาพรวมทีม / หน้าตั้งค่าเป้า
@@ -317,6 +318,45 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     );
     await page.keyboard.press("Escape"); // เผื่อ drawer ยังเปิดอยู่ใต้ modal
     await settle(page, 300);
+  }
+
+  /* ---------- /tag-management: แท็บ หมอ / Influencer / หมวดเนื้อหา ---------- */
+  // เปิดดูอย่างเดียว — ห้ามกดเพิ่ม/ลบ/บันทึกอะไรในหน้านี้ (dev ชี้ DB โปรดักชัน)
+  await gotoPage(page, "/tag-management");
+  await settle(page, 1200);
+
+  for (const t of [
+    { label: "หมอ", name: "doctor" },
+    { label: "Influencer", name: "influ" },
+    { label: "หมวดเนื้อหา", name: "category" },
+  ]) {
+    // exact: true — "หมอ" เป็นคำสั้น ชนกับปุ่มอื่นในแผงทะเบียนหมอได้ง่าย
+    const tab = page
+      .getByRole("button", { name: t.label, exact: true })
+      .locator("visible=true")
+      .first();
+    if ((await tab.count()) === 0) continue;
+    await tab.click();
+    await settle(page, 800);
+
+    if (t.name === "influ") {
+      // กติกาผู้ใช้: ทีมคอนเทนต์ใช้หัตถการ Aesthetics เท่านั้น
+      // ตัวกรองจึงต้องเริ่มที่ทีมนี้เสมอ (ชิปที่เลือกอยู่เป็นพื้นไล่เฉดตัวขาว)
+      const chip = page
+        .getByRole("button", { name: "Aesthetics (สกิน)", exact: true })
+        .locator("visible=true")
+        .first();
+      await expect(
+        chip,
+        "ตัวกรองหัตถการของแท็บ influencer ต้องเริ่มที่ Aesthetics"
+      ).toHaveClass(/text-white/);
+    }
+
+    await page.screenshot({
+      path: shotPath(project, `tag-management-${t.name}`),
+      fullPage: true,
+    });
+    await expectNoHorizontalOverflow(page, `/tag-management แท็บ ${t.label}`);
   }
 
   /* ---------- /tasks: 4 แท็บ + ตัวกรอง + แผงงาน ---------- */

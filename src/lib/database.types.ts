@@ -93,8 +93,13 @@ export type TaskRow = {
   review1_approved_at: string | null;
   /** เวลาที่กดส่งตรวจ — ใช้แสดง "รอมานานเท่าไร" (ล้างตอนยกเลิก/ตีกลับ/เปิดงานใหม่) */
   review_submitted_at: string | null;
-  /** ผูกกับ influencer ที่ใช้ทำคอนเทนต์ (เลือกได้ ไม่บังคับ) */
+  /** แท็ก influencer ที่ใช้ทำคอนเทนต์ — เลือกได้เฉพาะเคสที่ผ่าน Memo แล้ว (stage สัญญาขึ้นไป) */
   influencer_id: string | null;
+  /** แท็กหมอเจ้าของเคสในคอนเทนต์ชิ้นนี้ (ทะเบียนเดียวกับระบบ Influ) — migration 0100 */
+  doctor_id: string | null;
+  /** เวลาที่ยืนยันแท็กครบแล้ว — null = ยังไม่เคยยืนยัน ระบบจะบังคับให้เลือกตอนกดส่งตรวจ
+      (ตอบว่า "ไม่มีหมอ/ไม่มี influ" ก็นับว่ายืนยันแล้ว จึงเก็บแยกจาก doctor_id/influencer_id) */
+  tags_set_at: string | null;
   /** เวลาที่ผ่านการตรวจ (review_status เปลี่ยนเป็น approved) — ใช้เรียง/กรองแท็บ "งานเสร็จ" */
   approved_at: string | null;
   /** เวลาที่ทำเครื่องหมายว่า "โพส/ใช้งานแล้ว" (null = ยังไม่โพส) — ใช้ในแท็บ "งานเสร็จ" */
@@ -1755,6 +1760,29 @@ export type InfluencerLite = Pick<
   "id" | "first_name" | "last_name" | "nickname" | "round_no"
 >;
 
+/** หมอแบบย่อ (ใช้เป็นแท็กบน task + ตัวเลือกในหน้าจัดการแท็ก) */
+export type DoctorLite = Pick<
+  DoctorRow,
+  "id" | "name" | "nickname" | "license_no" | "photo_path"
+>;
+
+/** ตัวเลือกแท็ก influencer ของทีมคอนเทนต์ — เคสที่ผ่าน Memo แล้ว พร้อมของที่ใช้ทำแฮชแท็ก */
+export type InfluTagOption = InfluencerLite & {
+  influ_code: string | null;
+  doctor_name: string | null;
+  campaign_id: string | null;
+  photo_path: string | null;
+  /** ทีมหัตถการที่เคสนี้มี (จาก influ_procedure_items) — ตัวกรอง "หัตถการ" ของหน้าแท็ก */
+  teams: InfluProductTeam[];
+  /** รหัสโปรโมชันของหัตถการที่ผูกโปรไว้ — ส่วนหนึ่งของชุดแฮชแท็ก */
+  promo_skus: string[];
+  /** เลขใบ ปว. ของหมอที่รับเคส (จับคู่จากทะเบียนด้วยชื่อ) — null = หมอท่านนั้นยังไม่มีเลข */
+  doctor_license: string | null;
+  /** แท็ก/ชื่อแคมเปญที่เคสสังกัด — resolve มาให้แล้วเพื่อให้ caseHashtags() เรียกได้จากก้อนเดียว */
+  campaign_tag: string | null;
+  campaign_name: string | null;
+};
+
 /** ข้อมูลย่อของ "รอบงาน" หนึ่งรอบของคนเดียวกัน — แถบสลับรอบบนหน้าเดินงาน (/influencers/[id]) */
 export type InfluRoundLite = Pick<
   InfluencerRow,
@@ -1780,6 +1808,8 @@ export type TaskWithAssignee = TaskRow & {
   /** ผู้กด "โพสแล้ว" (join จาก posted_by) — โชว์บนการ์ดงานเสร็จ/แผงรายละเอียด */
   poster?: Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path"> | null;
   influencer?: InfluencerLite | null;
+  /** หมอที่แท็กไว้ (join จาก doctor_id) */
+  doctor?: DoctorLite | null;
   files?: TaskFileRow[];
 };
 

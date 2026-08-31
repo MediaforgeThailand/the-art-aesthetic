@@ -41,7 +41,8 @@ import type {
   AnalysisLinkRow,
   ContentCategoryRow,
   ContentFormat,
-  InfluencerLite,
+  DoctorLite,
+  InfluTagOption,
   NotificationPriority,
   NotificationType,
   ProfileRow,
@@ -64,6 +65,7 @@ import { MobileTabs } from "./mobile-tabs";
 import { PersonSelect } from "./person-select";
 import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
+import { TagRequiredModal } from "./tag-required-modal";
 import {
   AssigneeAvatar,
   briefReviewerId,
@@ -92,9 +94,9 @@ function bangkokDay(iso: string): string {
   return BANGKOK_DAY_FORMAT.format(new Date(iso));
 }
 
-/** select ของ task พร้อม join (assignee/reviewer/creator/poster/influencer/files) — ใช้ตอน insert แล้วอ่านกลับ */
+/** select ของ task พร้อม join (assignee/reviewer/creator/poster/influencer/doctor/files) — ใช้ตอน insert แล้วอ่านกลับ */
 const TASK_SELECT =
-  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname, round_no), files:task_files(id, task_id, file_path, file_name, created_at)";
+  "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname, round_no), doctor:doctors!tasks_doctor_id_fkey(id, name, nickname, license_no, photo_path), files:task_files(id, task_id, file_path, file_name, created_at)";
 
 type ConfirmState = {
   title: string;
@@ -121,6 +123,7 @@ export function TasksClient({
   tasks,
   profiles,
   influencers,
+  doctors,
   reviewerIds,
   defaultReviewerId,
   defaultReviewer1bId,
@@ -135,7 +138,10 @@ export function TasksClient({
   sections: TaskSectionRow[];
   tasks: TaskWithAssignee[];
   profiles: ProfileWithDefault[];
-  influencers: InfluencerLite[];
+  /** influ ที่ติดแท็กได้ = มีโปรไฟล์และผ่านขั้น Memo แล้ว (0100) */
+  influencers: InfluTagOption[];
+  /** ทะเบียนหมอที่เปิดใช้อยู่ — ใช้ติดแท็กหมอบนชิ้นงาน (0100) */
+  doctors: DoctorLite[];
   reviewerIds: string[];
   /** ผู้ตรวจเริ่มต้นของทั้งทีม (app_settings) — auto ใส่ให้ตอนสร้างงาน (= ผู้ตรวจลำดับ 1) */
   defaultReviewerId: string | null;
@@ -251,6 +257,10 @@ export function TasksClient({
   const [postTarget, setPostTarget] = useState<TaskWithAssignee | null>(null);
   const [postFormat, setPostFormat] = useState<ContentFormat | null>(null);
   const [postCategoryId, setPostCategoryId] = useState<string>("");
+
+  /* ---------- บังคับติดแท็ก หมอ + influencer ก่อนส่งตรวจ (0100) ---------- */
+  // งานที่ยังไม่เคยติดแท็ก (tags_set_at เป็น null) จะเปิดกล่องนี้ก่อน แล้วค่อยส่งตรวจ
+  const [tagTarget, setTagTarget] = useState<TaskWithAssignee | null>(null);
 
   /** คนที่เลือกเป็นผู้ตรวจงานได้ (ตามลำดับชื่อจาก profiles) */
   const reviewerProfiles = useMemo(
@@ -1173,26 +1183,16 @@ export function TasksClient({
     ]);
   };
 
-  /** ผู้ทำงานกด "ส่งตรวจงาน" / "ส่งตรวจแก้" — ปลายทางขึ้นกับสถานะของการ์ด (migration 0098):
+  /** เนื้อในของการส่งตรวจ — ปลายทางขึ้นกับสถานะของการ์ด (migration 0098):
 
       1. เคยถูกตีกลับ และคนตีกลับยังเป็นผู้ตรวจที่ค้างอยู่คนเดียว → ส่งกลับหาคนนั้นตรงๆ
          (ข้ามผู้สั่ง brief / ผู้ตรวจที่อนุมัติไปแล้ว — กติกา "ส่งตรวจแก้" ของผู้ใช้)
       2. การ์ดที่มาจาก brief และยังอยู่ทอด 0 → ผู้สั่ง brief ตรวจก่อน
-      3. นอกนั้น → เข้าสายตรวจจริงตามเดิม */
-  const submitForReview = (task: TaskWithAssignee) => {
-    // ลิงก์ Google Drive เป็นของบังคับตั้งแต่ 2026-08-29 — ผู้ตรวจต้องเปิดไฟล์จริงได้
-    // ทุกใบ ไม่ใช่ดูจากรูป preview อย่างเดียว (ปุ่มในแผงถูก disable ไว้แล้ว ตัวนี้เป็น
-    // กันชนอีกชั้น) — อยู่บนสุดของ submitForReview จึงครอบทั้ง 3 ทาง (ส่งตรวจแก้ /
-    // ให้ผู้สั่ง brief ตรวจ / เข้าสายตรวจจริง) แต่ไม่ไปบล็อก sendToRealReview ตอน
-    // ผู้สั่ง brief กดผ่าน; การ์ด brief เองยกเว้น (ลิงก์ของมันคือของอ้างอิง ไม่ใช่ตัวงาน)
-    const inBriefSection =
-      sections.find((s) => s.id === bucketOf(task))?.type === "brief";
-    if (!inBriefSection && (task.deliverable_url ?? "").trim() === "") {
-      showError(
-        "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้ — ใส่ได้ที่ช่อง \"ลิงก์งาน (Google Drive)\" ในแผงรายละเอียด"
-      );
-      return;
-    }
+      3. นอกนั้น → เข้าสายตรวจจริงตามเดิม
+
+      แยกออกจาก submitForReview เพราะกล่องบังคับติดแท็ก (0100) ต้องเรียกซ้ำเองหลัง
+      ผู้ใช้ตอบแท็กครบแล้ว — ถ้าวนกลับเข้า submitForReview จะเจอด่านเดิมเด้งซ้ำ */
+  const runSubmitReview = (task: TaskWithAssignee) => {
     const now = new Date().toISOString();
     const step = reviewStepOf(task);
     const pending = currentReviewerIds(task);
@@ -1260,6 +1260,57 @@ export function TasksClient({
     }
 
     sendToRealReview(task, briefer === null ? [] : [briefer]);
+  };
+
+  /** ผู้ทำงานกด "ส่งตรวจงาน" / "ส่งตรวจแก้" — ผ่าน 2 ด่านบังคับก่อนถึงตัวงานจริง
+      1. ลิงก์ Google Drive (2026-08-29) — ผู้ตรวจต้องเปิดไฟล์จริงได้ทุกใบ ไม่ใช่ดูจาก
+         รูป preview อย่างเดียว (ปุ่มในแผงถูก disable ไว้แล้ว ตัวนี้เป็นกันชนอีกชั้น)
+      2. แท็กหมอ + influencer (0100) — ยังไม่เคยติด = เปิดกล่องให้เลือกก่อน แล้ว
+         confirmTags จะเรียก runSubmitReview ต่อให้เอง
+      ทั้งคู่ยกเว้นการ์ดในเซคชัน brief (ลิงก์/แท็กของมันคือของอ้างอิง ไม่ใช่ตัวงาน)
+      และไม่ไปบล็อก sendToRealReview ตอนผู้สั่ง brief กดผ่าน */
+  const submitForReview = (task: TaskWithAssignee) => {
+    const inBriefSection =
+      sections.find((s) => s.id === bucketOf(task))?.type === "brief";
+    if (!inBriefSection && (task.deliverable_url ?? "").trim() === "") {
+      showError(
+        "ต้องวางลิงก์ Google Drive ของงานก่อนจึงจะส่งตรวจได้ — ใส่ได้ที่ช่อง \"ลิงก์งาน (Google Drive)\" ในแผงรายละเอียด"
+      );
+      return;
+    }
+    if (!inBriefSection && task.tags_set_at === null) {
+      setTagTarget(task);
+      return;
+    }
+    runSubmitReview(task);
+  };
+
+  /** ยืนยันจากกล่องบังคับติดแท็ก — บันทึกแท็กก่อน แล้วส่งตรวจต่อด้วยข้อมูลใหม่ทันที
+      แยกเป็น 2 การเขียนโดยตั้งใจ: runSubmitReview อาจตีกลับตั้งแต่ยังไม่มีผู้ตรวจ
+      (sendToRealReview เตือน "เลือกผู้ตรวจงานก่อน") — รวมเป็นก้อนเดียวแล้วแท็กที่
+      เพิ่งเลือกจะหายไปด้วย; ฟิลด์ 2 ชุดไม่ทับกัน และ optimistic ของ patchTask เป็น
+      functional update จึงรวมกันได้ถูกต้อง */
+  const confirmTags = ({
+    doctorId,
+    influencerId,
+  }: {
+    doctorId: string | null;
+    influencerId: string | null;
+  }) => {
+    const task = tagTarget;
+    if (task === null) return;
+    const db = {
+      doctor_id: doctorId,
+      influencer_id: influencerId,
+      tags_set_at: new Date().toISOString(),
+    };
+    const local = {
+      doctor: doctors.find((d) => d.id === doctorId) ?? null,
+      influencer: influencers.find((i) => i.id === influencerId) ?? null,
+    };
+    patchTask(task.id, { db, local });
+    setTagTarget(null);
+    runSubmitReview({ ...task, ...db, ...local });
   };
 
   /** ยกเลิกการส่งตรวจ (ผู้ส่งดึงกลับมาแก้) — ล้างทอดการตรวจ ให้ส่งใหม่เริ่มจากต้นสายเสมอ
@@ -1662,6 +1713,16 @@ export function TasksClient({
     });
   };
 
+  /** ผูก/ยกเลิกหมอของงาน (0100) — แท็กเดียวกับที่กล่องบังคับติดแท็กใช้ */
+  const setDoctor = (task: TaskWithAssignee, doctorId: string | null) => {
+    if (task.doctor_id === doctorId) return;
+    const doc = doctors.find((d) => d.id === doctorId) ?? null;
+    patchTask(task.id, {
+      db: { doctor_id: doctorId },
+      local: { doctor: doc },
+    });
+  };
+
   /** เปลี่ยนผู้รับผิดชอบ (วงกลมบนการ์ด + ช่องในแผงรายละเอียด) — แจ้งเตือนคนที่ถูกมอบหมาย */
   const assignTask = (task: TaskWithAssignee, profileId: string | null) => {
     if (task.assignee_id === profileId) return;
@@ -1750,6 +1811,8 @@ export function TasksClient({
       review_submitted_at: null,
       rejected_by: null,
       influencer_id: null,
+      doctor_id: null,
+      tags_set_at: null,
       approved_at: null,
       posted_at: null,
       posted_by: null,
@@ -1899,6 +1962,8 @@ export function TasksClient({
       review_submitted_at: null,
       rejected_by: null,
       influencer_id: task.influencer_id,
+      doctor_id: task.doctor_id,
+      tags_set_at: task.tags_set_at,
       approved_at: null,
       posted_at: null,
       posted_by: null,
@@ -1933,6 +1998,8 @@ export function TasksClient({
         reviewer_id: reviewerId,
         reviewer1b_id: reviewer1bId,
         influencer_id: task.influencer_id,
+        doctor_id: task.doctor_id,
+        tags_set_at: task.tags_set_at,
         category: task.category,
         brief_content_type: task.brief_content_type,
         brief_source_id: task.id,
@@ -2888,6 +2955,7 @@ export function TasksClient({
               : null
           }
           influencers={influencers}
+          doctors={doctors}
           categories={categories}
           contentCategories={contentCategories}
           briefSource={briefSource}
@@ -2900,6 +2968,7 @@ export function TasksClient({
             reviewerModalOpen ||
             rejectTarget !== null ||
             postTarget !== null ||
+            tagTarget !== null ||
             filterSheet !== null
           }
           onPatch={patchTask}
@@ -2915,6 +2984,7 @@ export function TasksClient({
           onSetReviewer={setReviewer}
           onSetReviewer1b={setReviewer1b}
           onSetInfluencer={setInfluencer}
+          onSetDoctor={setDoctor}
           onAcceptBrief={acceptBrief}
           onSetBriefContentType={setBriefContentType}
         />
@@ -3327,6 +3397,19 @@ export function TasksClient({
           </Button>
         </div>
       </Modal>
+
+      {/* บังคับติดแท็กก่อนส่งตรวจ (0100) — เปิดจาก submitForReview เมื่อการ์ดยังไม่เคย
+          ติดแท็ก; ตอบครบแล้ว confirmTags จะบันทึกแท็กแล้วส่งตรวจต่อให้เอง */}
+      <TagRequiredModal
+        open={tagTarget !== null}
+        taskTitle={tagTarget?.title ?? ""}
+        doctors={doctors}
+        influOptions={influencers}
+        initialDoctorId={tagTarget?.doctor_id ?? null}
+        initialInfluencerId={tagTarget?.influencer_id ?? null}
+        onCancel={() => setTagTarget(null)}
+        onConfirm={confirmTags}
+      />
 
       <ConfirmDialog
         open={confirm !== null}

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { getAccess, hasPermission } from "@/lib/access";
+import { fetchInfluTagOptions } from "@/lib/influ-tags";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AnalysisLinkRow,
   ContentCategoryRow,
-  InfluencerLite,
+  DoctorLite,
   TaskSectionRow,
   TaskWithAssignee,
 } from "@/lib/types";
@@ -26,7 +27,7 @@ export default async function TasksPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select(
-          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname, round_no), files:task_files(id, task_id, file_path, file_name, created_at)"
+          "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, email, avatar_path), reviewer:profiles!tasks_reviewer_id_fkey(id, full_name, email, avatar_path), reviewer1b:profiles!tasks_reviewer1b_id_fkey(id, full_name, email, avatar_path), reviewer2:profiles!tasks_reviewer2_id_fkey(id, full_name, email, avatar_path), creator:profiles!tasks_created_by_fkey(id, full_name, email, avatar_path), poster:profiles!tasks_posted_by_fkey(id, full_name, email, avatar_path), influencer:influencers!tasks_influencer_id_fkey(id, first_name, last_name, nickname, round_no), doctor:doctors!tasks_doctor_id_fkey(id, name, nickname, license_no, photo_path), files:task_files(id, task_id, file_path, file_name, created_at)"
         )
         .order("position", { ascending: true })
         .order("id", { ascending: true })
@@ -45,7 +46,8 @@ export default async function TasksPage() {
     sectionsResult,
     tasksResult,
     profilesResult,
-    influencersResult,
+    influOptions,
+    doctorsResult,
     reviewersResult,
     categoriesResult,
     contentCategoriesResult,
@@ -62,12 +64,15 @@ export default async function TasksPage() {
       .from("profiles")
       .select("id, full_name, email, avatar_path, default_reviewer_id")
       .order("full_name", { ascending: true }),
+    // ตัวเลือก influ ของแท็ก — เฉพาะเคสที่ผ่าน Memo แล้ว (ตั้งแต่ขั้นสัญญาเป็นต้นไป)
+    // พร้อมข้อมูลที่ใช้ประกอบแฮชแท็กบังคับ ดู `fetchInfluTagOptions`
+    fetchInfluTagOptions(),
+    // ทะเบียนหมอที่ยังเปิดใช้ — หมอที่ถูกซ่อนแล้วยังโชว์บนงานเก่าได้ผ่าน embed `doctor`
     supabase
-      .from("influencers")
-      .select("id, first_name, last_name, nickname, round_no")
-      // ไม่รวมข้อมูลเก่าที่นำเข้า (archive-only) ในตัวเลือกผูกงานคอนเทนต์
-      .eq("archived", false)
-      .order("created_at", { ascending: false }),
+      .from("doctors")
+      .select("id, name, nickname, license_no, photo_path")
+      .eq("active", true)
+      .order("name", { ascending: true }),
     supabase.from("task_reviewers").select("profile_id"),
     supabase
       .from("task_categories")
@@ -99,7 +104,7 @@ export default async function TasksPage() {
   const sections = (sectionsResult.data ?? []) as TaskSectionRow[];
   const tasks = tasksResult.rows;
   const profiles = profilesResult.data ?? [];
-  const influencers = (influencersResult.data ?? []) as InfluencerLite[];
+  const doctors = (doctorsResult.data ?? []) as DoctorLite[];
   const reviewerIds = (reviewersResult.data ?? []).map((r) => r.profile_id);
   const categories = (categoriesResult.data ?? []).map((c) => c.name);
   const contentCategories = (contentCategoriesResult.data ??
@@ -116,7 +121,7 @@ export default async function TasksPage() {
     sectionsResult.error?.message ??
     tasksResult.error ??
     profilesResult.error?.message ??
-    influencersResult.error?.message ??
+    doctorsResult.error?.message ??
     reviewersResult.error?.message ??
     categoriesResult.error?.message ??
     contentCategoriesResult.error?.message ??
@@ -128,7 +133,8 @@ export default async function TasksPage() {
       sections={sections}
       tasks={tasks}
       profiles={profiles}
-      influencers={influencers}
+      influencers={influOptions}
+      doctors={doctors}
       reviewerIds={reviewerIds}
       defaultReviewerId={defaultReviewerId}
       defaultReviewer1bId={defaultReviewer1bId}

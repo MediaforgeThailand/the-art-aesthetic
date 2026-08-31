@@ -8,6 +8,8 @@ import type {
   InfluProspectStatus,
   InfluScope,
   InfluSizeGroup,
+  InfluencerLite,
+  InfluTagOption,
   InfluTier,
 } from "./types";
 
@@ -230,6 +232,15 @@ export function sizeGroupFromFollowers(
     ใช้ทุกที่ที่ชื่อ influ อาจซ้ำกันข้ามรอบ: การ์ดบอร์ด / ตัวเลือกในฟอร์ม / หน้า cost-สัญญา */
 export function roundLabel(roundNo: number): string | null {
   return roundNo > 1 ? `รอบ ${roundNo}` : null;
+}
+
+/** ชื่อ influ แบบเต็มบรรทัดเดียว "ชื่อ นามสกุล (ชื่อเล่น) · รอบ N"
+    ใช้ร่วมกันทั้งตัวเลือกในหน้า Task และหน้าจัดการแท็ก */
+export function influLabel(i: InfluencerLite): string {
+  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
+  const name = i.nickname ? `${full} (${i.nickname})` : full;
+  const round = roundLabel(i.round_no);
+  return round ? `${name} · ${round}` : name;
 }
 
 /* ---------- Influ Calendar: ประเภทคิวบนปฏิทิน (/influ-calendar) ----------
@@ -1194,6 +1205,24 @@ export function hashtagText(tags: CaseHashtag[]): string {
 /** จำนวนแท็กบังคับที่ยังไม่มีข้อมูล — >0 = เคสนี้ยังส่งแท็กให้ influ ไม่ได้ */
 export function missingHashtagCount(tags: CaseHashtag[]): number {
   return tags.filter((t) => t.required && t.tag === null).length;
+}
+
+/**
+ * ชุดแฮชแท็กของตัวเลือกแท็ก influencer (หน้าจัดการแท็ก + ตัวเลือกในหน้า Task)
+ *
+ * `InfluTagOption` resolve เลขใบ ปว./แท็กแคมเปญมาให้ตั้งแต่ฝั่ง server แล้ว (influ-tags.ts)
+ * จึงประกอบแท็กได้จากก้อนเดียวโดยไม่ต้องส่งทะเบียนหมอ/แคมเปญไปทั้งชุด
+ */
+export function influTagHashtags(option: InfluTagOption): CaseHashtag[] {
+  return caseHashtags({
+    influCode: option.influ_code,
+    doctorName: option.doctor_name,
+    doctorLicense: option.doctor_license,
+    campaignTag: option.campaign_tag,
+    campaignName: option.campaign_name,
+    teams: option.teams,
+    promoSkus: option.promo_skus,
+  });
 }
 
 /* ---------- แท็กแคมเปญ ---------- */

@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Clock3,
   ExternalLink,
+  Hash,
   Inbox,
   Link2,
   Paperclip,
@@ -18,6 +19,7 @@ import {
   Send,
   SendHorizontal,
   Sparkles,
+  Stethoscope,
   Trash2,
   Undo2,
   Upload,
@@ -26,6 +28,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSyncedState } from "@/lib/use-synced-state";
+import { DoctorAvatar } from "@/app/(influ)/influencers/doctor-select";
+import { HashtagChips } from "@/components/hashtag-chips";
 import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
@@ -38,6 +42,12 @@ import {
   STORAGE_BUCKET_DOCUMENTS,
 } from "@/lib/constants";
 import { formatDateTime, formatFileSize } from "@/lib/format";
+import { fuzzyFilter } from "@/lib/fuzzy";
+import {
+  influLabel,
+  influTagHashtags,
+  missingHashtagCount,
+} from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import {
   MAX_UPLOAD_BYTES,
@@ -49,7 +59,8 @@ import { prepareUploadFile, prepareUploadFiles } from "@/lib/upload-prepare";
 import type {
   ContentCategoryRow,
   ContentFormat,
-  InfluencerLite,
+  DoctorLite,
+  InfluTagOption,
   NotificationPriority,
   NotificationType,
   TaskCommentRow,
@@ -87,13 +98,6 @@ function sanitizeFileName(fileName: string): string {
     อยู่ระดับโมดูลเพราะเรียก Date.now() — เรียกตรงๆ ในตัว component จะติดกฎ react-hooks/purity */
 function stampedPath(dir: string, fileName: string): string {
   return `${dir}/${Date.now()}_${sanitizeFileName(fileName)}`;
-}
-
-/** ชื่อที่แสดงของ influencer — คนเดิมเข้ามาหลายรอบมีหลายเคส ต้องบอกรอบกำกับให้เลือกถูกใบ */
-function influLabel(i: InfluencerLite): string {
-  const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
-  const name = i.nickname ? `${full} (${i.nickname})` : full;
-  return i.round_no > 1 ? `${name} · รอบ ${i.round_no}` : name;
 }
 
 /** patch ที่ส่งกลับ: ส่วนที่เขียนลง DB + ส่วนที่อัปเดตเฉพาะ state ฝั่งจอ (เช่น assignee object) */
@@ -281,6 +285,7 @@ export function TaskPanel({
   reviewerProfiles,
   teamReviewer2,
   influencers,
+  doctors,
   categories,
   contentCategories,
   briefSource,
@@ -302,6 +307,7 @@ export function TaskPanel({
   onSetReviewer,
   onSetReviewer1b,
   onSetInfluencer,
+  onSetDoctor,
   onAcceptBrief,
   onSetBriefContentType,
 }: {
@@ -313,7 +319,10 @@ export function TaskPanel({
   reviewerProfiles: ProfileOption[];
   /** ผู้ตรวจลำดับ 2 ของทีม (ตั้งใน "จัดการผู้ตรวจ") — โชว์ preview ก่อนส่งตรวจ; null = ตรวจชั้นเดียว */
   teamReviewer2: ProfileOption | null;
-  influencers: InfluencerLite[];
+  /** influ ที่ติดแท็กได้ = มีโปรไฟล์และผ่านขั้น Memo แล้ว (0100) */
+  influencers: InfluTagOption[];
+  /** ทะเบียนหมอที่เปิดใช้อยู่ — แท็กหมอของชิ้นงาน (0100) */
+  doctors: DoctorLite[];
   /** หมวดหมู่งานที่เลือกได้ (เพิ่มได้) */
   categories: string[];
   /** หมวดเนื้อหาคอนเทนต์ (content_categories) — ช่อง "เนื้อหา" สำหรับ KPI คอนเทนต์ */
@@ -348,6 +357,8 @@ export function TaskPanel({
     task: TaskWithAssignee,
     influencerId: string | null
   ) => void;
+  /** ผูก/ยกเลิกหมอของงาน (0100) — แท็กเดียวกับที่กล่องบังคับติดแท็กใช้ */
+  onSetDoctor: (task: TaskWithAssignee, doctorId: string | null) => void;
   /** เซคชัน brief: ผู้รับกด "รับงาน" → สร้างการ์ด creative */
   onAcceptBrief: (task: TaskWithAssignee) => void;
   /** เซคชัน brief: เลือกชนิดงาน (graphic/video) */
@@ -623,18 +634,53 @@ export function TaskPanel({
     onPatch(task.id, { db: { description: value } });
   };
 
+  /* ---------- หมอที่อยู่ในชิ้นงาน (0100) — แท็กบังคับคู่กับ influencer ---------- */
+
+  const [doctorOpen, setDoctorOpen] = useState(false);
+  const [doctorQuery, setDoctorQuery] = useState("");
+  const doctorRef = useRef<HTMLDivElement>(null);
+  const doctorMatches = useMemo(
+    () =>
+      fuzzyFilter(
+        doctors,
+        doctorQuery,
+        (d) => [d.name, d.nickname, d.license_no],
+        { limit: 30 }
+      ),
+    [doctors, doctorQuery]
+  );
+
+  useEffect(() => {
+    if (!doctorOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!doctorRef.current?.contains(e.target as Node)) setDoctorOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [doctorOpen]);
+
   /* ---------- influencer ที่ผูกกับงาน (เลือกได้ ค้นหาได้ ไม่บังคับ) ---------- */
 
   const [influOpen, setInfluOpen] = useState(false);
   const [influQuery, setInfluQuery] = useState("");
   const influRef = useRef<HTMLDivElement>(null);
-  const influMatches = useMemo(() => {
-    const q = influQuery.trim().toLowerCase();
-    const list = q === "" ? influencers : influencers.filter((i) =>
-      influLabel(i).toLowerCase().includes(q)
-    );
-    return list.slice(0, 30);
-  }, [influencers, influQuery]);
+  const influMatches = useMemo(
+    () =>
+      fuzzyFilter(
+        influencers,
+        influQuery,
+        (i) => [
+          influLabel(i),
+          i.first_name,
+          i.last_name,
+          i.nickname,
+          i.influ_code,
+          i.doctor_name,
+        ],
+        { limit: 30 }
+      ),
+    [influencers, influQuery]
+  );
 
   useEffect(() => {
     if (!influOpen) return;
@@ -644,6 +690,15 @@ export function TaskPanel({
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [influOpen]);
+
+  /* แฮชแท็กบังคับของ influencer ที่ผูกไว้ (0093/0100)
+     คนโพสต้องก๊อปชุดนี้ไปติดในโพสจริง ไม่งั้นดึงยอด ads/ROAS จาก Meta
+     กลับมาแล้วแยกไม่ออกว่าเป็นของใคร — ข้อมูลต้นทางอยู่ที่หน้าเคสของระบบ Influ */
+  const influTags = useMemo(() => {
+    const picked = influencers.find((i) => i.id === task.influencer_id);
+    return picked ? influTagHashtags(picked) : [];
+  }, [influencers, task.influencer_id]);
+  const influTagsMissing = missingHashtagCount(influTags);
 
   /* ---------- ลิงก์งาน (Google Drive) + ไฟล์งานหลายไฟล์ (รูป/วิดีโอ) ---------- */
 
@@ -1743,6 +1798,97 @@ export function TaskPanel({
             </FieldRow>
           )}
 
+          {/* หมอในชิ้นงาน (0100) — แท็กบังคับ ค้นหาแบบใกล้เคียงได้ */}
+          <FieldRow label="หมอ">
+            <div ref={doctorRef} className="relative px-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setDoctorOpen((v) => !v);
+                  setDoctorQuery("");
+                }}
+                className={`${bareControlSm} flex items-center gap-1.5 text-left`}
+              >
+                <Stethoscope size={13} className="shrink-0 text-brand-400" />
+                <span
+                  className={`min-w-0 flex-1 truncate ${task.doctor ? "text-stone-800" : "text-stone-400"}`}
+                >
+                  {task.doctor ? task.doctor.name : "ไม่ระบุ (เลือกหมอ)"}
+                </span>
+                {task.doctor && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="ลบหมอ"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetDoctor(task, null);
+                    }}
+                    // เป็น span ใน <button> (ห้ามซ้อน button) — ต้องรับ Enter/Space เอง
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSetDoctor(task, null);
+                      }
+                    }}
+                    className="shrink-0 cursor-pointer rounded p-0.5 text-stone-400 hover:text-rose-500"
+                  >
+                    <X size={13} />
+                  </span>
+                )}
+              </button>
+              {doctorOpen && (
+                <div className="absolute left-2 right-2 z-20 mt-1 max-h-64 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl">
+                  {/* ไม่ autofocus — บนมือถือคีย์บอร์ดจะเด้งขึ้นมาบังลิสต์ */}
+                  <div className="flex items-center gap-1.5 border-b border-stone-100 px-2.5 py-2">
+                    <Search size={13} className="shrink-0 text-stone-400" />
+                    <input
+                      value={doctorQuery}
+                      onChange={(e) => setDoctorQuery(e.target.value)}
+                      placeholder="ค้นหาชื่อ / ชื่อเล่น / เลข ปว."
+                      className="min-w-0 flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-500 focus:outline-none sm:text-sm"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {doctorMatches.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-stone-400">
+                        ไม่พบชื่อที่ใกล้เคียง — เพิ่มหมอได้ที่หน้าจัดการแท็ก
+                      </p>
+                    )}
+                    {doctorMatches.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          onSetDoctor(task, d.id);
+                          setDoctorOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-brand-50 ${
+                          task.doctor_id === d.id
+                            ? "bg-brand-50/60 font-medium text-brand-700"
+                            : "text-stone-700"
+                        }`}
+                      >
+                        <DoctorAvatar doctor={d} size="sm" />
+                        <span className="min-w-0 flex-1 truncate">{d.name}</span>
+                        {d.license_no ? (
+                          <span className="shrink-0 font-mono text-[10px] text-stone-400">
+                            ปว. {d.license_no}
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[10px] text-amber-700">
+                            ยังไม่มีเลข ปว.
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </FieldRow>
+
           {/* influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ ค้นหาได้ ไม่บังคับ */}
           <FieldRow label="Influencer">
             <div ref={influRef} className="relative px-1.5">
@@ -1788,20 +1934,21 @@ export function TaskPanel({
               </button>
               {influOpen && (
                 <div className="absolute left-2 right-2 z-20 mt-1 max-h-64 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl">
+                  {/* ไม่ autofocus — บนมือถือคีย์บอร์ดจะเด้งขึ้นมาบังลิสต์ */}
                   <div className="flex items-center gap-1.5 border-b border-stone-100 px-2.5 py-2">
                     <Search size={13} className="shrink-0 text-stone-400" />
                     <input
-                      autoFocus
                       value={influQuery}
                       onChange={(e) => setInfluQuery(e.target.value)}
-                      placeholder="ค้นหาชื่อ / ชื่อเล่น..."
-                      className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-500 focus:outline-none"
+                      placeholder="ค้นหาชื่อ / ชื่อเล่น / รหัส Influ"
+                      className="min-w-0 flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-500 focus:outline-none sm:text-sm"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
                     {influMatches.length === 0 && (
                       <p className="px-3 py-2 text-xs text-stone-400">
-                        ไม่พบ influencer
+                        ไม่พบชื่อที่ใกล้เคียง — รายชื่อมีเฉพาะเคสที่ผ่านขั้น
+                        Memo แล้ว
                       </p>
                     )}
                     {influMatches.map((i) => (
@@ -1821,7 +1968,14 @@ export function TaskPanel({
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream">
                           {i.first_name.charAt(0)}
                         </span>
-                        <span className="min-w-0 truncate">{influLabel(i)}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {influLabel(i)}
+                        </span>
+                        {i.influ_code && (
+                          <span className="shrink-0 font-mono text-[10px] text-stone-400">
+                            {i.influ_code}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1917,6 +2071,27 @@ export function TaskPanel({
             </select>
           </FieldRow>
         </div>
+
+        {/* แฮชแท็กบังคับของ influencer (0100) — ก๊อปจากตรงนี้ไปติดในโพสได้เลย
+            โผล่เฉพาะตอนผูก influencer ไว้แล้ว ไม่งั้นแผงรกโดยไม่จำเป็น */}
+        {influTags.length > 0 && (
+          <div className="border-t border-stone-200/70 pt-2.5">
+            <div className="mb-1.5 flex items-center gap-1.5 px-2">
+              <Hash size={15} className="shrink-0 text-stone-400" />
+              <span className="text-sm font-medium text-stone-500">
+                แฮชแท็กที่ต้องติดในโพส
+              </span>
+              {influTagsMissing > 0 && (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  ไม่ครบ {influTagsMissing}
+                </span>
+              )}
+            </div>
+            <div className="px-2">
+              <HashtagChips tags={influTags} size="sm" />
+            </div>
+          </div>
+        )}
 
         {/* ลิงก์ Google Drive — แถวของตัวเองเหนือ "รายละเอียด" (ผู้ใช้ 2026-08-29)
             ของเดิมเป็น input ไร้กรอบซ่อนอยู่ในหัวข้อ "ไฟล์งานที่ Approve แล้ว" คนเลื่อนผ่านไม่เห็น

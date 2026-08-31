@@ -2,6 +2,7 @@
 
 import {
   ClipboardList,
+  Hash,
   IdCard,
   Images,
   LayoutDashboard,
@@ -75,6 +76,8 @@ const navItems: NavItem[] = [
   // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
   { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ", "influ_hunter", "influ_view"], short: "โปรไฟล์", rail: "โปรไฟล์" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
+  // ศูนย์รวมแท็กของทีมคอนเทนต์ (0100) — ทะเบียนหมอ + influ ที่ติดแท็กได้ + แฮชแท็กบังคับ
+  { href: "/tag-management", label: "จัดการแท็ก", icon: Hash, perm: "team", rail: "แท็ก" },
   // คลังไฟล์รวมของงาน (ดู/ดาวน์โหลดอย่างเดียว — อัพโหลดทำที่การ์ดงาน)
   { href: "/all-media", label: "All Media", icon: Images, perm: "team", rail: "Media" },
   // ลิสต์ส่วนตัว — perm: null เพราะเป็นพื้นที่ของแต่ละบัญชีเอง ไม่ใช่ข้อมูลของแผนก
