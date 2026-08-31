@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
@@ -80,6 +81,12 @@ import {
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+/** path ของไฟล์ที่อัพใหม่ (ประทับเวลากันชื่อชน)
+    อยู่ระดับโมดูลเพราะเรียก Date.now() — เรียกตรงๆ ในตัว component จะติดกฎ react-hooks/purity */
+function stampedPath(dir: string, fileName: string): string {
+  return `${dir}/${Date.now()}_${sanitizeFileName(fileName)}`;
 }
 
 /** ชื่อที่แสดงของ influencer — คนเดิมเข้ามาหลายรอบมีหลายเคส ต้องบอกรอบกำกับให้เลือกถูกใบ */
@@ -826,7 +833,7 @@ export function TaskPanel({
     }
     const added: TaskSubtaskFileRow[] = [];
     for (const file of picked) {
-      const path = `tasks/${task.id}/subtasks/${sub.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
+      const path = stampedPath(`tasks/${task.id}/subtasks/${sub.id}`, file.name);
       const { error: upErr } = await uploadWithProgress(
         STORAGE_BUCKET_DOCUMENTS,
         path,
@@ -1031,7 +1038,7 @@ export function TaskPanel({
         showError(tooLarge);
         return;
       }
-      const p = `tasks/${task.id}/comments/${Date.now()}_${sanitizeFileName(ready.name)}`;
+      const p = stampedPath(`tasks/${task.id}/comments`, ready.name);
       const { error: upErr } = await uploadWithProgress(
         STORAGE_BUCKET_DOCUMENTS,
         p,
@@ -2570,8 +2577,7 @@ function SubtaskRowItem({
   onUploadFiles: (files: FileList) => void;
   onRemoveFile: (file: TaskSubtaskFileRow) => void;
 }) {
-  const [draft, setDraft] = useState(sub.title);
-  useEffect(() => setDraft(sub.title), [sub.title]);
+  const [draft, setDraft] = useSyncedState(sub.title);
   const temp = sub.id.startsWith("temp-");
   const fileInputRef = useRef<HTMLInputElement>(null);
 

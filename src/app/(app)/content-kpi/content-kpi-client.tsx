@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import {
   Button,
   Card,
@@ -89,10 +90,8 @@ export function ContentKpiClient({
   const supabase = useMemo(() => createClient(), []);
 
   // seed จาก server แล้ว sync ใหม่ทุกครั้งที่ router.refresh() ส่ง props ชุดใหม่มา
-  const [cats, setCats] = useState(initialCategories);
-  useEffect(() => setCats(initialCategories), [initialCategories]);
-  const [rules, setRules] = useState(initialKpis);
-  useEffect(() => setRules(initialKpis), [initialKpis]);
+  const [cats, setCats] = useSyncedState(initialCategories);
+  const [rules, setRules] = useSyncedState(initialKpis);
 
   const [newCatName, setNewCatName] = useState("");
   const [error, setError] = useState<string | null>(loadError);
@@ -284,7 +283,7 @@ export function ContentKpiClient({
             </h2>
           </div>
           <p className="mb-3 text-xs leading-5 text-stone-400">
-            เช่น ขาย / Value / หมอ / สวย — ใช้ติดบนการ์ดงานตอนกด "โพสแล้ว"
+            เช่น ขาย / Value / หมอ / สวย — ใช้ติดบนการ์ดงานตอนกด &quot;โพสแล้ว&quot;
             และใช้ตั้งเป้า KPI แบบเจาะหมวด
           </p>
           <ul className="space-y-1.5">

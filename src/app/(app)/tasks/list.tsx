@@ -9,7 +9,8 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import { Badge } from "@/components/ui";
 import {
   DEFAULT_TASK_CATEGORY,
@@ -213,8 +214,7 @@ function SectionHeader({
   onRename: (name: string) => void;
   onDelete: () => void;
 }) {
-  const [draft, setDraft] = useState(section.name);
-  useEffect(() => setDraft(section.name), [section.name]);
+  const [draft, setDraft] = useSyncedState(section.name);
   const temp = isTempId(section.id);
 
   return (

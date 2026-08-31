@@ -76,6 +76,7 @@ import type {
 } from "@/lib/types";
 import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";
+import { useHydrated } from "@/lib/use-synced-state";
 import { GroupManagerModal } from "./group-manager";
 import {
   buildGroups,
@@ -173,6 +174,33 @@ function sanitizeFileName(fileName: string): string {
 // (ค่า v1 เดิมจำ groupBy: "status" ไว้ ถ้าไม่ bump ผู้ใช้เก่าจะไม่เห็นหมวดหมู่ที่เพิ่งทำ)
 const filtersKey = (uid: string) => `my-tasks-filters-v2:${uid}`;
 
+/** ตัวกรองที่จำไว้ในเครื่อง (null = ไม่มี/อ่านไม่ได้)
+    อยู่ระดับโมดูลเพราะอ่าน localStorage — เรียกตรงๆ ตอน render จะติดกฎ react-hooks/purity */
+function readSavedFilters(
+  uid: string,
+  options: ListOptionRow[]
+): Filters | null {
+  try {
+    const raw = window.localStorage.getItem(filtersKey(uid));
+    if (!raw) return null;
+    const saved: Filters = { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
+    // ตัวกรองที่ชี้ "ตัวเลือกที่เพิ่มเอง" ซึ่งถูกลบไปแล้ว (จากอีกเครื่อง/อีกแท็บ) จะกรอง
+    // ทุกงานทิ้งถาวรโดยที่ปุ่มของมันหายไปจากเมนูแล้ว — ตกกลับเป็น "ทั้งหมด" ให้เอง
+    const live = new Set(options.map((o) => o.id));
+    if (!BUILTIN_STATUS_FILTERS.has(saved.status) && !live.has(saved.status))
+      saved.status = DEFAULT_FILTERS.status;
+    if (
+      !BUILTIN_PRIORITY_FILTERS.has(saved.priority) &&
+      !live.has(saved.priority)
+    )
+      saved.priority = DEFAULT_FILTERS.priority;
+    return saved;
+  } catch {
+    // localStorage ใช้ไม่ได้ (โหมดส่วนตัว/บล็อค) — ใช้ค่าเริ่มต้นไป
+    return null;
+  }
+}
+
 /** id ของ sortable แต่ละแถว — งานหนึ่งตัวโผล่ได้หลายกลุ่ม (โหมดจัดกลุ่มตามแท็ก) จึงต้องมี key กลุ่มนำหน้า */
 const rowId = (groupKey: string, taskId: string) => `${groupKey}::${taskId}`;
 const parseRowId = (id: string): [string, string] => {
@@ -239,7 +267,9 @@ export function MyTasksClient({
   const [q, setQ] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  // uid ที่อ่านตัวกรองจากเครื่องไปแล้ว (null = ยังไม่ได้อ่าน)
+  const [prefsFor, setPrefsFor] = useState<string | null>(null);
+  const prefsLoaded = prefsFor === uid;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openId, setOpenId] = useState<string | null>(null);
   const [tagModal, setTagModal] = useState(false);
@@ -254,31 +284,16 @@ export function MyTasksClient({
   const wantFocus = useRef<string | null>(null);
 
   /* ---------- ตัวกรองจำไว้ในเครื่อง (แยกตามบัญชี) ---------- */
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(filtersKey(uid));
-      if (raw) {
-        const saved: Filters = { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
-        // ตัวกรองที่ชี้ "ตัวเลือกที่เพิ่มเอง" ซึ่งถูกลบไปแล้ว (จากอีกเครื่อง/อีกแท็บ) จะกรอง
-        // ทุกงานทิ้งถาวรโดยที่ปุ่มของมันหายไปจากเมนูแล้ว — ตกกลับเป็น "ทั้งหมด" ให้เอง
-        const live = new Set(initialOptions.map((o) => o.id));
-        if (!BUILTIN_STATUS_FILTERS.has(saved.status) && !live.has(saved.status))
-          saved.status = DEFAULT_FILTERS.status;
-        if (
-          !BUILTIN_PRIORITY_FILTERS.has(saved.priority) &&
-          !live.has(saved.priority)
-        )
-          saved.priority = DEFAULT_FILTERS.priority;
-        setFilters(saved);
-      }
-    } catch {
-      // localStorage ใช้ไม่ได้ (โหมดส่วนตัว/บล็อค) — ใช้ค่าเริ่มต้นไป
-    }
-    setPrefsLoaded(true);
-    // ตั้งใจอ่าน initialOptions ครั้งเดียวตอน mount (ค่าที่ server ส่งมารอบแรก) —
-    // ไม่ผูกเป็น dependency ไม่งั้นทุกครั้งที่ refresh จะเขียนทับตัวกรองที่ผู้ใช้เพิ่งเลือก
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
+  // อ่านหลัง hydrate เสร็จเท่านั้น (SSR ไม่มี localStorage — อ่านตั้งแต่ render แรกจะได้
+  // HTML ไม่ตรงกับที่ server ส่งมา) แล้วปรับ state ระหว่าง render แทน effect ตามกฎ
+  // react-hooks/set-state-in-effect; อ่าน initialOptions แค่รอบนี้รอบเดียว (ค่าที่ server
+  // ส่งมาครั้งแรก) ไม่ผูกกับ refresh ไม่งั้นจะเขียนทับตัวกรองที่ผู้ใช้เพิ่งเลือก
+  const hydrated = useHydrated();
+  if (hydrated && !prefsLoaded) {
+    setPrefsFor(uid);
+    const saved = readSavedFilters(uid, initialOptions);
+    if (saved) setFilters(saved);
+  }
 
   useEffect(() => {
     if (!prefsLoaded) return;

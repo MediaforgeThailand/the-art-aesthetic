@@ -31,7 +31,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useSyncedState } from "@/lib/use-synced-state";
 import {
   DateRangeInputs,
   FilterChip,
@@ -483,8 +484,7 @@ export function CostClient({
   // local copy — แก้ราคา/ติ๊ก support แบบ optimistic แล้วค่อย refresh เบื้องหลัง
   // ต้องรับค่าใหม่จาก props ด้วย ไม่งั้น router.refresh() ที่เรียกหลังบันทึกไม่มีผลอะไรเลย
   // (ของที่คนอื่นแก้ไม่ขึ้น และรายการที่ถูกลบในแท็บรายละเอียดเคส ยังค้างเป็นแถวผี)
-  const [rows, setRows] = useState<CostItem[]>(items);
-  useEffect(() => setRows(items), [items]);
+  const [rows, setRows] = useSyncedState<CostItem[]>(items);
   const [err, setErr] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
