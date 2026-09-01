@@ -12,7 +12,6 @@ import {
   Hash,
   FileSignature,
   FolderOpen,
-  Image as ImageIcon,
   ImagePlus,
   LayoutList,
   Link2,
@@ -56,7 +55,6 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
-  todayISO,
 } from "@/lib/format";
 import {
   activeFollowupTasks,
@@ -1289,9 +1287,6 @@ export function InfluDetailClient({
         )}
       </div>
 
-      {/* งานคอนเทนต์ที่ผูกกับ Influencer คนนี้ (จากหน้า "งาน") */}
-      <ContentTasksSection tasks={contentTasks} />
-
       {nameOpen && (
         <NameEditModal
           influencer={influencer}
@@ -1947,118 +1942,6 @@ function OverviewPanel({
         />
       )}
     </div>
-  );
-}
-
-/* ============ งานคอนเทนต์ที่ผูกกับ influencer ============ */
-
-function ContentTasksSection({ tasks }: { tasks: TaskWithAssignee[] }) {
-  const today = todayISO();
-  return (
-    <Card className="mt-6 p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <ClipboardList size={16} className="text-brand-600" />
-        <h2 className="text-sm font-semibold text-stone-900">
-          งานคอนเทนต์ที่ใช้ Influencer คนนี้
-        </h2>
-        <span className="text-xs text-stone-400">{tasks.length} งาน</span>
-        <Link
-          href="/tasks"
-          className="ml-auto text-xs font-medium text-brand-600 hover:underline"
-        >
-          ไปหน้างาน
-        </Link>
-      </div>
-
-      {tasks.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-stone-200 px-3 py-4 text-center text-xs text-stone-400">
-          ยังไม่มีงานที่เลือก Influencer คนนี้ — ไปที่หน้า &quot;งาน&quot;
-          แล้วเลือก Influencer ในช่องรายละเอียดงาน
-        </p>
-      ) : (
-        <div className="divide-y divide-stone-100">
-          {tasks.map((t) => {
-            const overdue =
-              t.due_date != null &&
-              !t.completed &&
-              t.due_date.slice(0, 10) < today;
-            const fileCount = t.files?.length ?? 0;
-            return (
-              <div
-                key={t.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
-              >
-                <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                    t.review_status === "approved"
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : t.review_status === "pending"
-                        ? "border-amber-400 bg-amber-50"
-                        : "border-stone-300 bg-white"
-                  }`}
-                >
-                  {t.review_status === "approved" && (
-                    <Check size={10} strokeWidth={3} />
-                  )}
-                </span>
-                <span
-                  className={`min-w-0 flex-1 truncate text-sm ${
-                    t.completed
-                      ? "text-stone-400 line-through"
-                      : "font-medium text-stone-800"
-                  }`}
-                >
-                  {t.title}
-                </span>
-                {t.review_status === "pending" && (
-                  <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-                    รอตรวจ
-                  </Badge>
-                )}
-                {t.review_status === "approved" && (
-                  <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                    เสร็จสมบูรณ์
-                  </Badge>
-                )}
-                {t.due_date && (
-                  <span
-                    className={`text-xs ${
-                      overdue ? "font-medium text-rose-600" : "text-stone-500"
-                    }`}
-                  >
-                    {formatDate(t.due_date)}
-                  </span>
-                )}
-                {t.deliverable_url && (
-                  <a
-                    href={t.deliverable_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="เปิดลิงก์งาน"
-                    className="text-sky-600 hover:text-sky-700"
-                  >
-                    <Link2 size={14} />
-                  </a>
-                )}
-                {fileCount > 0 && (
-                  <span
-                    title={`มีไฟล์แนบ ${fileCount} ไฟล์`}
-                    className="inline-flex items-center gap-0.5 text-brand-600"
-                  >
-                    <ImageIcon size={14} />
-                    {fileCount > 1 && (
-                      <span className="text-[10px] font-semibold">
-                        {fileCount}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
   );
 }
 
