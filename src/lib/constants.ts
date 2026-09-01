@@ -624,9 +624,11 @@ export const CONTENT_KPI_BASES: Record<
     dot: "bg-stone-500",
   },
   brief: {
-    label: "Brief ที่ถูกรับงาน",
+    label: "Brief ที่ส่งตรวจแล้ว",
     short: "Brief",
-    desc: "นับตอนมีคนกด “รับงาน” จากการ์ด Brief ที่ตัวเองเป็นคนสั่ง",
+    // ผู้ใช้ 2026-09-01: แค่มีคนกด "รับงาน" ยังไม่นับ — ต้องผ่านด่านผู้สั่ง Brief
+    // แล้วงานถูกส่งต่อถึงผู้ตรวจจริง (ดู briefEventMs ใน kpi-utils.ts)
+    desc: "นับตอนงานจากการ์ด Brief ที่ตัวเองสั่ง ถูกรับงานและส่งตรวจถึงผู้ตรวจแล้ว",
     chip: "bg-amber-100 text-amber-800",
     dot: "bg-amber-500",
   },

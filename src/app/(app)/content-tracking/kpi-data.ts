@@ -5,7 +5,7 @@ import type { ProfileLite, TrackedTask } from "./kpi-utils";
 
 /** คอลัมน์ของ tasks ที่ระบบ KPI ใช้ — ใช้ร่วมทั้ง query หลักและ query เก็บตกงานที่ถูกตีกลับ */
 const TASK_COLUMNS =
-  "id, title, assignee_id, created_by, posted_at, approved_at, review_submitted_at, review_status, completed, content_format, content_category_id, brief_accepted_at, brief_source_id, brief_content_type, files:task_files(file_path)";
+  "id, title, assignee_id, created_by, posted_at, approved_at, review_submitted_at, review_status, review_step, completed, content_format, content_category_id, brief_accepted_at, brief_source_id, brief_content_type, files:task_files(file_path)";
 
 /** แถวดิบจาก DB — ยังไม่มีข้อมูลการตีกลับ (เติมทีหลังจาก task_comments) */
 type RawTask = Omit<TrackedTask, "revision_at" | "revision_kind">;
