@@ -363,11 +363,17 @@ export const SALES_ASSISTANT_URL = "https://sales.theartbb.com/salestool/";
 export const SALES_ASSISTANT_FROM = "sales";
 
 /**
- * Sales Operation — ระบบงานฝ่ายขาย (แอปแยกอีกตัว ยังไม่เปิดใช้งาน ณ 2026-08-19)
- * หน้าประตูรวมช่องทาง (root `/`) เตรียมการ์ดไว้แล้ว — พอระบบพร้อมให้ใส่ URL
- * ที่นี่จุดเดียว การ์ดจะเปลี่ยนจากป้าย "เร็วๆ นี้" เป็นลิงก์จริงเอง
+ * Sales Operation — ระบบจัดคิวลูกค้าออนไลน์ของทีม Beauty Consult ("Sales Queue")
+ * แอปแยกอีกตัว (คนละ repo/โดเมน: Vercel project `the-art-sales-queue`) มีล็อกอินของตัวเอง
+ * เปิดทางเข้าจากหน้าประตูรวมช่องทาง (root `/`) เมื่อ 2026-09-01
+ *
+ * **แอปนี้ serve ที่ root ของโดเมนตัวเอง ไม่มี base path แบบ `SALES_ASSISTANT_URL`**
+ * (อันนั้นต้องมี `/salestool/` ต่อท้าย ห้ามตัด) — ที่นี่ใส่ origin ล้วนพอ
+ * ยังไม่ได้ผูกโดเมนบริษัท ใช้โดเมน Vercel ไปก่อน; ผูก `queue.theartbb.com` เมื่อไหร่
+ * แก้ค่านี้จุดเดียว การ์ดบนหน้าประตูจะตามเอง (ไม่มีสัญญา referrer ข้าม repo แบบแอปขาย)
  */
-export const SALES_OPERATION_URL: string | null = null;
+export const SALES_OPERATION_URL: string | null =
+  "https://the-art-sales-queue.vercel.app";
 
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 

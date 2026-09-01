@@ -81,7 +81,9 @@ const CHANNELS: Channel[] = [
   },
   {
     name: "Sales Operation",
-    href: SALES_OPERATION_URL, // null = "เร็วๆ นี้" (ใส่ URL ใน constants.ts แล้วเปิดเอง)
+    // ระบบจัดคิวลูกค้าของทีม Beauty Consult (แอปแยก) — ย้ายโดเมนแก้ที่ constants.ts จุดเดียว
+    // null เมื่อไหร่ = การ์ดจางกดไม่ได้ + ป้าย "เร็วๆ นี้" เอง
+    href: SALES_OPERATION_URL,
     external: true,
     image: "sales-operation",
     icon: BarChart3,
