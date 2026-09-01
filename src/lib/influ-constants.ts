@@ -375,58 +375,161 @@ export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
   },
 ];
 
-/* ---------- ขอบเขตงานของผู้รับผิดชอบ (0095) ----------
-   ผู้ใช้ 2026-08-29: "ในการเพิ่มผู้รับผิดชอบต้องการให้สามารถเลือกได้ว่า stage 1, 2, 3
-   ใครรับผิดชอบอันไหน เพื่อให้การแจ้งเตือนนั้นเด่น ... Follow Up นั้นมีหลายอย่างมาก"
+/* ---------- บทบาทผู้รับผิดชอบของเคส (0095 → รื้อเป็นบทบาทที่ 0104) ----------
+   ผู้ใช้ 2026-09-01: "ปรับ design ใหม่เป็น check list เช่น 1.ผู้ดูแล คือคนหลักที่เป็นคน
+   สร้างแต่ติดตามเคสนี้จนถึงเซนสัญญา 2.ผู้ติดตาม จะเป็นคนทำสัญญาไปจนถึงการ follow up
+   3.ผู้ออก Memo จะเป็นคนทำ 1.1, 1.2"
 
-   2 ขั้นแรกตรงกับ INFLU_STAGE ส่วน followup ไม่ใช่ stage ใน pipeline (ถูกถอดที่ 0092)
-   แต่เป็นงานก้อนใหญ่ที่หน้า Follow Up ซึ่งต้องมีเจ้าภาพชัดเจน จึงนับเป็นขอบเขตที่ 3
-   **ไม่ถือ scope ไหนเลย = หัวหน้างาน/ผู้เกี่ยวข้อง** — ได้แจ้งเตือนทุกอย่างแต่ระดับ "อัพเดท" */
+   โมเดล: `influ_assignees.scopes` เก็บ "บทบาท" (owner/follower/memo) — แถวเก่าก่อน
+   0104 เก็บเป็น "ขอบเขตขั้นงาน" (memo/contract/followup) ซึ่งยังอยู่ใน DB และในถังขยะ
+   (check constraint เป็น superset) — **โค้ดอ่านผ่าน normalizeRoles() เสมอ**:
+   contract→owner, followup→follower, memo→memo (คีย์เดิมความหมายใหม่)
+   แต่ละบทบาท "คุม" ขอบเขตเหตุการณ์ (InfluEventScope) ตาม covers — ใช้ตัดสินแจ้งเตือน
+   ระดับ "ต้องลงมือ" ใน influ-notify; **ไม่ถือบทบาทไหนเลย = หัวหน้างาน/ผู้เกี่ยวข้อง**
+   (ได้แจ้งเตือนทุกอย่างแต่ระดับ "อัพเดท" — กติกาเดิมจาก 0095) */
 
-export const INFLU_SCOPES: Record<
-  InfluScope,
-  { label: string; short: string; desc: string; chip: string; dot: string }
+/** บทบาทที่เลือกได้ในเช็คลิสต์ผู้รับผิดชอบ (ชุดใหม่ 0104) */
+export type InfluRole = "owner" | "follower" | "memo";
+
+/** ขอบเขตเหตุการณ์ — ใช้ระบุว่าเหตุการณ์หนึ่งเป็นงานของช่วงไหนของเคส
+    (memo = ขั้น 1 ทั้งก้อนรวมขั้นย่อย, contract = ขั้น 2, followup = หลังเซนสัญญา) */
+export type InfluEventScope = "memo" | "contract" | "followup";
+
+export const INFLU_ROLES: Record<
+  InfluRole,
+  {
+    label: string;
+    short: string;
+    desc: string;
+    chip: string;
+    dot: string;
+    /** ขอบเขตเหตุการณ์ที่บทบาทนี้รับผิดชอบ — แจ้งเตือนระดับ "ต้องลงมือ" */
+    covers: InfluEventScope[];
+  }
 > = {
-  memo: {
-    label: "1. Memo ขออนุมัติ",
-    short: "Memo",
-    desc: "ทำ/ส่ง Memo จนได้อนุมัติ",
+  owner: {
+    label: "1. ผู้ดูแล",
+    short: "ผู้ดูแล",
+    desc: "คนหลักที่สร้างเคสและตามจนถึงเซนสัญญา",
     chip: "border-sky-200 bg-sky-50 text-sky-700",
     dot: "bg-sky-400",
+    covers: ["memo", "contract"],
   },
-  contract: {
-    label: "2. สัญญา + รับบริการ",
-    short: "สัญญา",
-    desc: "เซนสัญญา ลงคิวหมอ วันเข้ารับบริการ",
-    chip: "border-violet-200 bg-violet-50 text-violet-700",
-    dot: "bg-violet-400",
-  },
-  followup: {
-    label: "3. Follow Up",
-    short: "Follow Up",
-    desc: "ตามให้โพสตามเป้า เก็บลิงก์ ปิดงาน",
+  follower: {
+    label: "2. ผู้ติดตาม",
+    short: "ผู้ติดตาม",
+    desc: "ทำสัญญาไปจนถึงการ Follow Up",
     chip: "border-emerald-200 bg-emerald-50 text-emerald-700",
     dot: "bg-emerald-400",
+    covers: ["contract", "followup"],
+  },
+  memo: {
+    label: "3. ผู้ออก Memo",
+    short: "ผู้ออก Memo",
+    desc: "ทำเอกสาร Memo (ขั้น 1.1) และอัพไฟล์ที่อนุมัติแล้ว (ขั้น 1.2)",
+    chip: "border-violet-200 bg-violet-50 text-violet-700",
+    dot: "bg-violet-400",
+    covers: ["memo"],
   },
 };
 
-export const INFLU_SCOPE_ORDER: InfluScope[] = ["memo", "contract", "followup"];
+export const INFLU_ROLE_ORDER: InfluRole[] = ["owner", "follower", "memo"];
 
-/** ขอบเขตที่คุมขั้นงานเลขนั้น — ใช้ตัดสินว่าใครควรได้แจ้งเตือนระดับ "ต้องลงมือ"
-    (คืน null ถ้าเลขขั้นไม่ตรงกับขั้นไหน เช่นเลขที่หลุดมาจากข้อมูลเก่า) */
-export function scopeOfStage(stage: number): InfluScope | null {
+/** แปลงค่าใน `influ_assignees.scopes` (มีทั้งคีย์บทบาทใหม่และขอบเขตเก่าก่อน 0104)
+    เป็นชุดบทบาท — ทุกที่ที่อ่าน scopes ต้องผ่านตัวนี้ ห้ามเทียบค่าดิบ */
+export function normalizeRoles(scopes: InfluScope[]): InfluRole[] {
+  const out = new Set<InfluRole>();
+  for (const s of scopes) {
+    if (s === "contract") out.add("owner");
+    else if (s === "followup") out.add("follower");
+    else out.add(s);
+  }
+  return INFLU_ROLE_ORDER.filter((r) => out.has(r));
+}
+
+/** บทบาทในชุดนี้มีคนคุมขอบเขตเหตุการณ์นั้นไหม — หัวใจของแจ้งเตือนระดับ "ต้องลงมือ" */
+export function rolesCoverScope(
+  scopes: InfluScope[],
+  scope: InfluEventScope | null | undefined
+): boolean {
+  if (!scope) return false;
+  return normalizeRoles(scopes).some((r) =>
+    INFLU_ROLES[r].covers.includes(scope)
+  );
+}
+
+/** ขอบเขตเหตุการณ์ของขั้นงานเลขนั้น (คืน null ถ้าเลขไม่ตรงขั้นไหน เช่นข้อมูลเก่า) */
+export function scopeOfStage(stage: number): InfluEventScope | null {
   if (stage === INFLU_STAGE.memo) return "memo";
   if (stage === INFLU_STAGE.contractService) return "contract";
   return null;
 }
 
-/** ป้ายสั้นของชุดขอบเขต — ว่าง = หัวหน้างาน/ผู้เกี่ยวข้อง (ไม่ได้ถือขั้นไหน) */
-export function scopeSummary(scopes: InfluScope[]): string {
-  if (scopes.length === 0) return "ผู้เกี่ยวข้อง";
-  if (scopes.length === INFLU_SCOPE_ORDER.length) return "ทุกขั้น";
-  return INFLU_SCOPE_ORDER.filter((s) => scopes.includes(s))
-    .map((s) => INFLU_SCOPES[s].short)
-    .join(" · ");
+/** ป้ายสั้นของชุดบทบาท — ว่าง = หัวหน้างาน/ผู้เกี่ยวข้อง (ไม่ได้ถือบทบาทไหน) */
+export function roleSummary(scopes: InfluScope[]): string {
+  const roles = normalizeRoles(scopes);
+  if (roles.length === 0) return "ผู้เกี่ยวข้อง";
+  if (roles.length === INFLU_ROLE_ORDER.length) return "ทุกบทบาท";
+  return roles.map((r) => INFLU_ROLES[r].short).join(" · ");
+}
+
+/* ---------- ขั้นย่อยของ Memo (1.0 / 1.1 / 1.2 — migration 0104) ----------
+   ผู้ใช้ 2026-09-01: แตกขั้น Memo เป็น 3 จังหวะ — เลข stage ใน DB ยังเป็น 1 ตลอด
+   ขั้นย่อยคำนวณจาก 3 คอลัมน์:
+     1.0 = ยังไม่ยืนยันส่งเรื่อง (docs_sent_at null) — ผู้ดูแลเลือกผู้ออก Memo แล้วกดยืนยัน
+     1.1 = ส่งเรื่องแล้ว รอผู้ออก Memo ทำเอกสาร (memo_submitted_at null)
+     1.2 = ทำเอกสารส่งแล้ว รออัพไฟล์ Memo ที่อนุมัติ (memo_file_path null)
+   อัพไฟล์ Memo = เลื่อนเข้า stage 2 อัตโนมัติ (กลไกเดิมใน uploadMemo) */
+
+export type MemoSubStep = "1.0" | "1.1" | "1.2";
+
+export const MEMO_SUBSTEPS: {
+  key: MemoSubStep;
+  /** ป้ายบนเส้น tracker ของการ์ด/หน้าเคส */
+  short: string;
+  title: string;
+  desc: string;
+}[] = [
+  {
+    key: "1.0",
+    short: "Memo",
+    title: "1. ส่งเรื่องขอ Memo",
+    desc: "ผู้ดูแลเลือกผู้ออก Memo แล้วยืนยันการส่งเรื่อง",
+  },
+  {
+    key: "1.1",
+    short: "ทำเอกสาร",
+    title: "1.1 ทำเอกสาร Memo",
+    desc: "ผู้ออก Memo ทำเอกสารแล้วกดยืนยันว่าส่งขออนุมัติแล้ว",
+  },
+  {
+    key: "1.2",
+    short: "อัพไฟล์",
+    title: "1.2 อัพไฟล์ Memo ที่อนุมัติ",
+    desc: "Memo ผ่านอนุมัติแล้ว — อัพไฟล์เอกสารเข้าระบบ (เลื่อนเข้าขั้นสัญญาให้เอง)",
+  },
+];
+
+/** ขั้นย่อยปัจจุบันของเคสที่อยู่ขั้น Memo — อ่านจาก 3 คอลัมน์ตามลำดับ
+    (เคสที่เลยขั้น Memo ไปแล้วค่าที่ได้ไม่มีความหมาย — เช็ค stage ก่อนเรียกเอง) */
+export function memoStepOf(i: {
+  docs_sent_at: string | null;
+  memo_submitted_at: string | null;
+  memo_file_path: string | null;
+}): MemoSubStep {
+  if (i.docs_sent_at === null) return "1.0";
+  if (i.memo_submitted_at === null) return "1.1";
+  return "1.2";
+}
+
+/** user id ของผู้ออก Memo ทั้งหมดในเคส — ใช้ gate ปุ่มขั้น 1.1/1.2
+    (ไม่มีใครถือบทบาทนี้ = คืน [] ให้ฝั่ง UI เปิดให้ editor ทุกคนกดแทน กันเคสค้างตาย) */
+export function memoMakerIds(
+  assignees: { userId: string; scopes: InfluScope[] }[]
+): string[] {
+  return assignees
+    .filter((a) => normalizeRoles(a.scopes).includes("memo"))
+    .map((a) => a.userId);
 }
 
 /* ---------- ผู้เซน memo (preset ตามแบบฟอร์มจริง — ผู้จัดทำเป็นคนใหม่ทุกครั้ง) ---------- */

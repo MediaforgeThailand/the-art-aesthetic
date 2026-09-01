@@ -1,23 +1,29 @@
 "use client";
 
 /**
- * ผู้รับผิดชอบเคส (0095) — รูปโปรไฟล์บนการ์ด + ตัวจัดการในหน้าเคส
+ * ผู้รับผิดชอบเคส (0095 → redesign เป็นเช็คลิสต์บทบาท 0104) —
+ * รูปโปรไฟล์บนการ์ด + ตัวจัดการในหน้าเคส
  *
- * ผู้ใช้ 2026-08-29:
- *   "ตอนนี้ card จะแสดงผู้สร้าง ให้เก็บเป็นข้อมูลไว้ ส่วนอันที่แสดงให้แสดงเป็นผู้รับผิดชอบแทน
- *    โดยสามารถมีได้มากกว่า 1 คน และการแสดงให้แสดงเป็น profile คนนั้นแทนการแสดง text
- *    และถ้าอยากรู้ชื่อทำให้เอาเมาส์ไปชี้แล้วจะเห็น ถ้าเป็น mobile กด profile แล้วจะแสดงชื่อแทน"
+ * ผู้ใช้ 2026-09-01:
+ *   "ในหน้าเลือกคนรับผิดชอบ ให้ปรับ design ใหม่เป็น check list เช่น 1.ผู้ดูแล ...
+ *    2.ผู้ติดตาม ... 3.ผู้ออก Memo ... และมีช่องปุ่มด่านขวาที่ให้กดเลือกว่าใครจะรับ
+ *    ต้องมี search ค้นหาด้วย"
+ *
+ * โมเดล: `influ_assignees.scopes` เก็บ "บทบาท" — โค้ดอ่านผ่าน normalizeRoles() เสมอ
+ * (แถวเก่าก่อน 0104 เก็บขอบเขตขั้นงาน contract/followup ซึ่งถูกแปลงเป็น owner/follower)
+ * ชุดว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน (ได้แจ้งเตือนแบบเงียบ — กติกาเดิม 0095)
  *
  * `influencers.owner_id` (ผู้สร้างการ์ด) **ยังอยู่ครบและไม่ถูกแทนที่** — แค่ไม่ใช่สิ่งที่การ์ดแสดง
- * อีกต่อไป (ดูได้ที่หน้าเคส บรรทัด "สร้างโดย")
  *
  * กติกาที่ต้องรักษา:
  * - เมาส์ชี้ = ชื่อจาก `title` (ทำงานทุกที่ ไม่ต้องรอ JS) · แตะ/คลิก = แผงรายชื่อเต็ม
  *   ผ่าน portal z-[60] (ทัชสกรีนไม่มี hover — กติกาเป้านิ้วของระบบ)
  * - บนการ์ดของบอร์ดต้อง `stopPropagation` ไม่งั้นแตะรูปแล้วเด้งเข้าหน้าเคส
+ * - `AssigneeRolePicker` ถูกใช้ซ้ำในขั้น 1.0 ของหน้าเคส (เลือกผู้ออก Memo) —
+ *   แก้พฤติกรรมที่นี่กระทบทั้งสองที่
  */
 
-import { Check, Plus, Search, UserRound, X } from "lucide-react";
+import { Plus, Search, UserRound, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -25,7 +31,13 @@ import {
   useAnchoredMenu,
   type MenuBox,
 } from "@/components/anchored-menu";
-import { INFLU_SCOPE_ORDER, INFLU_SCOPES } from "@/lib/influ-constants";
+import {
+  INFLU_ROLES,
+  INFLU_ROLE_ORDER,
+  normalizeRoles,
+  roleSummary,
+  type InfluRole,
+} from "@/lib/influ-constants";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import type { InfluScope } from "@/lib/types";
 
@@ -77,9 +89,9 @@ export function PersonAvatar({
   );
 }
 
-/** ป้ายขอบเขตงานเล็กๆ */
-export function ScopeChip({ scope }: { scope: InfluScope }) {
-  const m = INFLU_SCOPES[scope];
+/** ป้ายบทบาทเล็กๆ */
+export function RoleChip({ role }: { role: InfluRole }) {
+  const m = INFLU_ROLES[role];
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${m.chip}`}
@@ -90,9 +102,10 @@ export function ScopeChip({ scope }: { scope: InfluScope }) {
   );
 }
 
-/** บรรทัดขอบเขตของคนหนึ่ง — ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน */
-function ScopeLine({ scopes }: { scopes: InfluScope[] }) {
-  if (scopes.length === 0) {
+/** บรรทัดบทบาทของคนหนึ่ง — ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน */
+function RoleLine({ scopes }: { scopes: InfluScope[] }) {
+  const roles = normalizeRoles(scopes);
+  if (roles.length === 0) {
     return (
       <span className="text-[10px] text-stone-400">
         ผู้เกี่ยวข้อง (ได้แจ้งเตือนแบบเงียบ)
@@ -101,8 +114,8 @@ function ScopeLine({ scopes }: { scopes: InfluScope[] }) {
   }
   return (
     <span className="flex flex-wrap gap-1">
-      {INFLU_SCOPE_ORDER.filter((s) => scopes.includes(s)).map((s) => (
-        <ScopeChip key={s} scope={s} />
+      {roles.map((r) => (
+        <RoleChip key={r} role={r} />
       ))}
     </span>
   );
@@ -111,7 +124,7 @@ function ScopeLine({ scopes }: { scopes: InfluScope[] }) {
 /* ---------- กองรูปบนการ์ด ---------- */
 
 /**
- * รูปผู้รับผิดชอบซ้อนกัน — เมาส์ชี้เห็นชื่อ (title) · แตะ/คลิกเปิดแผงรายชื่อพร้อมขอบเขตงาน
+ * รูปผู้รับผิดชอบซ้อนกัน — เมาส์ชี้เห็นชื่อ (title) · แตะ/คลิกเปิดแผงรายชื่อพร้อมบทบาท
  * ไม่มีผู้รับผิดชอบ = ชิปเตือนจางๆ ให้เห็นว่ายังไม่มีเจ้าภาพ (สำคัญกว่าปล่อยว่าง)
  */
 export function AssigneeStack({
@@ -155,12 +168,7 @@ export function AssigneeStack({
   const title = assignees
     .map((a) => {
       const p = peopleById.get(a.userId);
-      const scopes = a.scopes.length
-        ? INFLU_SCOPE_ORDER.filter((s) => a.scopes.includes(s))
-            .map((s) => INFLU_SCOPES[s].short)
-            .join(" · ")
-        : "ผู้เกี่ยวข้อง";
-      return `${p?.name ?? "ไม่ทราบชื่อ"} — ${scopes}`;
+      return `${p?.name ?? "ไม่ทราบชื่อ"} — ${roleSummary(a.scopes)}`;
     })
     .join("\n");
 
@@ -232,7 +240,7 @@ export function AssigneeStack({
                       {p?.name ?? "ไม่ทราบชื่อ"}
                     </span>
                     <span className="mt-0.5 block">
-                      <ScopeLine scopes={a.scopes} />
+                      <RoleLine scopes={a.scopes} />
                     </span>
                   </span>
                 </div>
@@ -252,11 +260,39 @@ export type AssigneeChange =
   | { kind: "remove"; userId: string }
   | { kind: "scopes"; userId: string; scopes: InfluScope[] };
 
+/** เพิ่มบทบาทให้คนหนึ่ง — คืน AssigneeChange ที่ถูกต้อง (แถวใหม่หรือแก้ scopes แถวเดิม) */
+function addRoleChange(
+  existing: CaseAssignee | undefined,
+  userId: string,
+  role: InfluRole
+): AssigneeChange {
+  if (!existing) return { kind: "add", userId, scopes: [role] };
+  const roles = new Set(normalizeRoles(existing.scopes));
+  roles.add(role);
+  return {
+    kind: "scopes",
+    userId,
+    scopes: INFLU_ROLE_ORDER.filter((r) => roles.has(r)),
+  };
+}
+
+/** ถอดบทบาทออกจากคนหนึ่ง — ไม่เหลือบทบาทเลย = ถอดออกจากเคส */
+function removeRoleChange(
+  existing: CaseAssignee,
+  role: InfluRole
+): AssigneeChange {
+  const rest = normalizeRoles(existing.scopes).filter((r) => r !== role);
+  if (rest.length === 0) return { kind: "remove", userId: existing.userId };
+  return { kind: "scopes", userId: existing.userId, scopes: rest };
+}
+
 /**
- * แผงจัดการผู้รับผิดชอบของเคส — เพิ่ม/ถอด/เลือกขอบเขตงานรายคน
- * ตัวเขียน DB + log + แจ้งเตือนอยู่ที่หน้าเคส (ส่งมาทาง `onChange`) เพื่อให้ที่นี่เป็น UI ล้วน
+ * แถวบทบาทเดียวของเช็คลิสต์ — หัวข้อบทบาท + รายชื่อคนที่ถือ + ปุ่ม "เลือกคน"
+ * เปิดช่องค้นหา inline (ไม่ใช่เมนูลอย — ในโมดัล/การ์ดพื้นที่แคบ เมนูลอยโดนบังง่าย)
+ * ใช้ทั้งใน AssigneeEditor และการ์ดขั้น 1.0 ของหน้าเคส (เลือกผู้ออก Memo)
  */
-export function AssigneeEditor({
+export function AssigneeRolePicker({
+  role,
   assignees,
   people,
   peopleById,
@@ -264,8 +300,8 @@ export function AssigneeEditor({
   busyUserId,
   onChange,
 }: {
+  role: InfluRole;
   assignees: CaseAssignee[];
-  /** ตัวเลือกทั้งหมด (บัญชีในระบบ) */
   people: InfluPerson[];
   peopleById: Map<string, InfluPerson>;
   canEdit: boolean;
@@ -273,123 +309,91 @@ export function AssigneeEditor({
   busyUserId?: string | null;
   onChange: (change: AssigneeChange) => void;
 }) {
-  const [adding, setAdding] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [q, setQ] = useState("");
+  const m = INFLU_ROLES[role];
 
-  const taken = useMemo(
-    () => new Set(assignees.map((a) => a.userId)),
-    [assignees]
+  const members = useMemo(
+    () => assignees.filter((a) => normalizeRoles(a.scopes).includes(role)),
+    [assignees, role]
+  );
+  const memberIds = useMemo(
+    () => new Set(members.map((a) => a.userId)),
+    [members]
   );
   const options = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return people
-      .filter((p) => !taken.has(p.id))
+      .filter((p) => !memberIds.has(p.id))
       .filter((p) => needle === "" || p.name.toLowerCase().includes(needle))
       .slice(0, 40);
-  }, [people, taken, q]);
-
-  const toggleScope = (a: CaseAssignee, s: InfluScope) => {
-    const next = a.scopes.includes(s)
-      ? a.scopes.filter((x) => x !== s)
-      : [...a.scopes, s];
-    onChange({ kind: "scopes", userId: a.userId, scopes: next });
-  };
+  }, [people, memberIds, q]);
 
   return (
-    <div className="space-y-2">
-      {assignees.length === 0 && (
-        <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-xs text-stone-500">
-          ยังไม่มีผู้รับผิดชอบ — เคสนี้จะไม่มีใครได้รับแจ้งเตือนเมื่อมีความเคลื่อนไหว
-        </p>
-      )}
-
-      {assignees.map((a) => {
-        const p = peopleById.get(a.userId);
-        const busy = busyUserId === a.userId;
-        return (
-          <div
-            key={a.userId}
-            className={`rounded-lg border border-stone-200 bg-white/80 p-2.5 ${
-              busy ? "opacity-60" : ""
-            }`}
+    <div className="rounded-xl border border-stone-200 bg-white/80 p-2.5">
+      <div className="flex items-start gap-2">
+        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${m.dot}`} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-stone-800">
+            {m.label}
+          </span>
+          <span className="block text-[11px] text-stone-500">{m.desc}</span>
+        </span>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => {
+              setPicking((v) => !v);
+              setQ("");
+            }}
+            aria-expanded={picking}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50 max-sm:min-h-11 max-sm:px-3 max-sm:text-sm"
           >
-            <div className="flex items-center gap-2">
-              <PersonAvatar person={p} size={30} ring={false} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-stone-800">
-                  {p?.name ?? "ไม่ทราบชื่อ"}
-                </span>
-                {p?.jobTitle && (
-                  <span className="block truncate text-[11px] text-stone-400">
-                    {p.jobTitle}
-                  </span>
-                )}
-              </span>
+            <Plus size={13} />
+            เลือกคน
+          </button>
+        )}
+      </div>
+
+      {/* รายชื่อคนที่ถือบทบาทนี้ */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-4">
+        {members.length === 0 && (
+          <span className="rounded-full border border-dashed border-stone-300 px-2.5 py-1 text-[11px] text-stone-400">
+            ยังไม่ได้เลือก
+          </span>
+        )}
+        {members.map((a) => {
+          const p = peopleById.get(a.userId);
+          const busy = busyUserId === a.userId;
+          return (
+            <span
+              key={a.userId}
+              className={`inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white py-1 pl-1.5 pr-2 text-xs text-stone-700 ${
+                busy ? "opacity-60" : ""
+              }`}
+            >
+              <PersonAvatar person={p} size={20} ring={false} />
+              <span className="max-w-40 truncate">{p?.name ?? "ไม่ทราบชื่อ"}</span>
               {canEdit && (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onChange({ kind: "remove", userId: a.userId })}
-                  aria-label={`ถอด ${p?.name ?? "คนนี้"} ออกจากผู้รับผิดชอบ`}
-                  title="ถอดออกจากผู้รับผิดชอบ"
-                  className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default max-sm:h-11 max-sm:w-11 sm:h-8 sm:w-8"
+                  onClick={() => onChange(removeRoleChange(a, role))}
+                  aria-label={`ถอด ${p?.name ?? "คนนี้"} ออกจากบทบาท${m.short}`}
+                  title={`ถอดออกจากบทบาท${m.short}`}
+                  className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default"
                 >
-                  <X size={15} />
+                  <X size={12} />
                 </button>
               )}
-            </div>
+            </span>
+          );
+        })}
+      </div>
 
-            {/* ขอบเขตงาน = ตัวตัดสินว่าใครได้แจ้งเตือนแบบ "ต้องลงมือ" */}
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {INFLU_SCOPE_ORDER.map((s) => {
-                const on = a.scopes.includes(s);
-                const m = INFLU_SCOPES[s];
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    disabled={!canEdit || busy}
-                    onClick={() => toggleScope(a, s)}
-                    title={m.desc}
-                    aria-pressed={on}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] transition-colors max-sm:min-h-11 max-sm:px-3 max-sm:text-sm ${
-                      on
-                        ? `${m.chip} font-medium`
-                        : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
-                    } ${canEdit && !busy ? "cursor-pointer" : "cursor-default"}`}
-                  >
-                    {on && <Check size={11} />}
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
-            {a.scopes.length === 0 && (
-              <p className="mt-1.5 text-[11px] text-stone-400">
-                ไม่ได้ถือขั้นไหน = หัวหน้างาน/ผู้เกี่ยวข้อง — ได้แจ้งเตือนทุกความเคลื่อนไหว
-                แต่เป็นระดับ “อัพเดท” ไม่เด่น
-              </p>
-            )}
-          </div>
-        );
-      })}
-
-      {canEdit && !adding && (
-        <button
-          type="button"
-          onClick={() => {
-            setAdding(true);
-            setQ("");
-          }}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-2 text-sm font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50 max-sm:min-h-11"
-        >
-          <Plus size={15} />
-          เพิ่มผู้รับผิดชอบ
-        </button>
-      )}
-
-      {canEdit && adding && (
-        <div className="rounded-lg border border-brand-200 bg-white p-2">
+      {/* ช่องค้นหา + ตัวเลือก — กาง inline ใต้แถว */}
+      {canEdit && picking && (
+        <div className="mt-2 rounded-lg border border-brand-200 bg-white p-2">
           <div className="relative">
             <Search
               size={15}
@@ -400,8 +404,8 @@ export function AssigneeEditor({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="ค้นหาชื่อ..."
-              aria-label="ค้นหาบัญชีเพื่อเพิ่มเป็นผู้รับผิดชอบ"
-              className="w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-2 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+              aria-label={`ค้นหาบัญชีเพื่อเลือกเป็น${m.short}`}
+              className="w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-2 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
             />
           </div>
           <div className="mt-1.5 max-h-56 overflow-y-auto">
@@ -415,14 +419,14 @@ export function AssigneeEditor({
                 key={p.id}
                 type="button"
                 onClick={() => {
-                  // เพิ่มเข้ามาแบบ "ทุกขั้น" ก่อน แล้วค่อยติ๊กเอาออกให้ตรงงานจริง —
-                  // ปลอดภัยกว่าเพิ่มมาแบบไม่มีขอบเขต (จะไม่ได้แจ้งเตือนที่ต้องลงมือเลย)
-                  onChange({
-                    kind: "add",
-                    userId: p.id,
-                    scopes: [...INFLU_SCOPE_ORDER],
-                  });
-                  setAdding(false);
+                  onChange(
+                    addRoleChange(
+                      assignees.find((a) => a.userId === p.id),
+                      p.id,
+                      role
+                    )
+                  );
+                  setPicking(false);
                   setQ("");
                 }}
                 className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-brand-50/70 max-sm:min-h-11"
@@ -443,11 +447,107 @@ export function AssigneeEditor({
           </div>
           <button
             type="button"
-            onClick={() => setAdding(false)}
+            onClick={() => setPicking(false)}
             className="mt-1 w-full cursor-pointer rounded-lg px-2 py-1.5 text-xs text-stone-500 transition-colors hover:bg-stone-50 max-sm:min-h-11 max-sm:text-sm"
           >
-            ยกเลิก
+            ปิด
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * แผงจัดการผู้รับผิดชอบของเคส — เช็คลิสต์ 3 บทบาท (ผู้ดูแล/ผู้ติดตาม/ผู้ออก Memo)
+ * แต่ละแถวเลือกคนได้จากช่องค้นหา; คนเดียวถือหลายบทบาทได้ (เก็บเป็นแถวเดียวใน DB)
+ * ตัวเขียน DB + log + แจ้งเตือนอยู่ที่หน้าเคส (ส่งมาทาง `onChange`) เพื่อให้ที่นี่เป็น UI ล้วน
+ */
+export function AssigneeEditor({
+  assignees,
+  people,
+  peopleById,
+  canEdit,
+  busyUserId,
+  onChange,
+}: {
+  assignees: CaseAssignee[];
+  /** ตัวเลือกทั้งหมด (บัญชีในระบบ) */
+  people: InfluPerson[];
+  peopleById: Map<string, InfluPerson>;
+  canEdit: boolean;
+  /** uid ที่กำลังบันทึกอยู่ — ล็อกปุ่มของแถวนั้น */
+  busyUserId?: string | null;
+  onChange: (change: AssigneeChange) => void;
+}) {
+  // คนที่ไม่ได้ถือบทบาทไหนเลย = ผู้เกี่ยวข้อง/หัวหน้างาน (แจ้งเตือนแบบเงียบ — 0095)
+  const watchers = assignees.filter(
+    (a) => normalizeRoles(a.scopes).length === 0
+  );
+
+  return (
+    <div className="space-y-2">
+      {assignees.length === 0 && (
+        <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-xs text-stone-500">
+          ยังไม่มีผู้รับผิดชอบ — เคสนี้จะไม่มีใครได้รับแจ้งเตือนเมื่อมีความเคลื่อนไหว
+        </p>
+      )}
+
+      {INFLU_ROLE_ORDER.map((role) => (
+        <AssigneeRolePicker
+          key={role}
+          role={role}
+          assignees={assignees}
+          people={people}
+          peopleById={peopleById}
+          canEdit={canEdit}
+          busyUserId={busyUserId}
+          onChange={onChange}
+        />
+      ))}
+
+      {watchers.length > 0 && (
+        <div className="rounded-xl border border-stone-200 bg-white/80 p-2.5">
+          <span className="block text-sm font-semibold text-stone-800">
+            ผู้เกี่ยวข้อง
+          </span>
+          <span className="block text-[11px] text-stone-500">
+            ไม่ได้ถือบทบาทไหน — ได้แจ้งเตือนทุกความเคลื่อนไหวแบบเงียบ (ระดับ
+            &ldquo;อัพเดท&rdquo;)
+          </span>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {watchers.map((a) => {
+              const p = peopleById.get(a.userId);
+              const busy = busyUserId === a.userId;
+              return (
+                <span
+                  key={a.userId}
+                  className={`inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white py-1 pl-1.5 pr-2 text-xs text-stone-700 ${
+                    busy ? "opacity-60" : ""
+                  }`}
+                >
+                  <PersonAvatar person={p} size={20} ring={false} />
+                  <span className="max-w-40 truncate">
+                    {p?.name ?? "ไม่ทราบชื่อ"}
+                  </span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onChange({ kind: "remove", userId: a.userId })
+                      }
+                      aria-label={`ถอด ${p?.name ?? "คนนี้"} ออกจากผู้เกี่ยวข้อง`}
+                      title="ถอดออกจากเคส"
+                      className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

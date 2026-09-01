@@ -11,6 +11,7 @@ import {
   FileText,
   Images,
   PenLine,
+  Send,
   Trash2,
   Undo2,
   Upload,
@@ -39,11 +40,21 @@ import {
   INFLU_TIERS,
   MEMO_COMPANY,
   MEMO_SIGNERS,
+  MEMO_SUBSTEPS,
+  memoMakerIds,
+  memoStepOf,
   type MemoRole,
+  type MemoSubStep,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluSignatureRow } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
+import {
+  type AssigneeChange,
+  AssigneeRolePicker,
+  type CaseAssignee,
+  type InfluPerson,
+} from "../assignees";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -177,6 +188,13 @@ export function MemoStage({
   /** เปลี่ยนไฟล์ Memo ได้ไหม — จริงจนกว่าเคสจะปิดงาน แม้ขั้น Memo ผ่านไปแล้ว
       (ไฟล์เอกสารเป็นของเคส ไม่ใช่สถานะงาน — มัก memo ผิด/ได้ฉบับอนุมัติจริงทีหลัง) */
   fileEditable: boolean;
+  /** ขั้นย่อย 1.1/1.2 ผูกกับบทบาท "ผู้ออก Memo" — ต้องรู้ว่าใครเปิดหน้าอยู่และใครถือบทบาท */
+  userId: string | null;
+  assignees: CaseAssignee[];
+  people: InfluPerson[];
+  peopleById: Map<string, InfluPerson>;
+  onAssigneeChange: (change: AssigneeChange) => void;
+  busyUserId: string | null;
 }) {
   // โหมดแบบฟอร์มดิจิทัล (MemoFormStage) เก็บโค้ดไว้แต่ยังไม่เปิดใช้ — Coming soon
   const [mode] = useState<"copy" | "form">("copy");
@@ -277,12 +295,83 @@ function CopyBox({
   );
 }
 
+/* ---------- เส้นขั้นย่อยของ Memo: 1 ส่งเรื่อง → 1.1 ทำเอกสาร → 1.2 อัพไฟล์ ---------- */
+
+function MemoStepStrip({ step }: { step: MemoSubStep }) {
+  const activeIdx = MEMO_SUBSTEPS.findIndex((s) => s.key === step);
+  return (
+    <div className="rounded-xl border border-stone-200/70 bg-white/60 px-3 py-3">
+      <div className="flex items-start">
+        {MEMO_SUBSTEPS.map((s, idx) => {
+          const done = idx < activeIdx;
+          const active = idx === activeIdx;
+          return (
+            <div
+              key={s.key}
+              className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
+            >
+              <div className="flex w-full items-center">
+                <div
+                  className={`h-0.5 flex-1 rounded ${
+                    idx === 0
+                      ? "bg-transparent"
+                      : idx <= activeIdx
+                        ? "bg-brand-300"
+                        : "bg-stone-200"
+                  }`}
+                />
+                {done ? (
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-400 text-white">
+                    <Check size={11} strokeWidth={3} />
+                  </span>
+                ) : active ? (
+                  <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-1 text-[10px] font-bold text-cream ring-4 ring-brand-100">
+                    {s.key === "1.0" ? "1" : s.key}
+                  </span>
+                ) : (
+                  <span className="h-5 w-5 shrink-0 rounded-full border-2 border-stone-300 bg-white" />
+                )}
+                <div
+                  className={`h-0.5 flex-1 rounded ${
+                    idx === MEMO_SUBSTEPS.length - 1
+                      ? "bg-transparent"
+                      : idx < activeIdx
+                        ? "bg-brand-300"
+                        : "bg-stone-200"
+                  }`}
+                />
+              </div>
+              <p
+                className={`px-1 text-center text-[11px] leading-4 ${
+                  active
+                    ? "font-semibold text-brand-700"
+                    : done
+                      ? "text-stone-500"
+                      : "text-stone-400"
+                }`}
+              >
+                {s.title}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- โหมดคัดลอกข้อความ: เรื่อง / เรียน / รายละเอียด + รูปพร้อมดาวน์โหลด ---------- */
 
 function MemoCopyStage({
   influencer,
   readOnly,
   fileEditable,
+  userId,
+  assignees,
+  people,
+  peopleById,
+  onAssigneeChange,
+  busyUserId,
 }: {
   influencer: InfluencerRow;
   signatures: InfluSignatureRow[];
@@ -290,6 +379,12 @@ function MemoCopyStage({
   readOnly: boolean;
   /** เปลี่ยน/อัพโหลดไฟล์ Memo ได้ไหม — แยกจาก readOnly ที่ล็อกการเดิน stage */
   fileEditable: boolean;
+  userId: string | null;
+  assignees: CaseAssignee[];
+  people: InfluPerson[];
+  peopleById: Map<string, InfluPerson>;
+  onAssigneeChange: (change: AssigneeChange) => void;
+  busyUserId: string | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -299,6 +394,7 @@ function MemoCopyStage({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [markingSent, setMarkingSent] = useState(false);
+  const [confirmingMemo, setConfirmingMemo] = useState(false);
   const memoInputRef = useRef<HTMLInputElement>(null);
   const photo = useSignedUrl(influencer.photo_path);
   const channel = useSignedUrl(influencer.channel_photo_path);
@@ -306,16 +402,31 @@ function MemoCopyStage({
   const memoUploaded = !!influencer.memo_file_path;
   const memoSent = !!influencer.docs_sent_at;
 
-  /** ติ๊ก/ยกเลิก "ส่ง Memo แล้ว" — ป้ายยืนยันว่ายื่นเอกสารไปขออนุมัติแล้ว (กันทีมส่งซ้ำ)
-      โชว์เป็นติ๊กถูกเล็กๆ บนการ์ดบอร์ดด้วย · คนละเรื่องกับ "ไฟล์ Memo ที่อนุมัติแล้ว"
-      ซึ่งเป็นขาขากลับ (อัพไฟล์ = ผ่านขั้นนี้ไปขั้นสัญญาเลย) */
+  // ขั้นย่อยของ Memo (1 → 1.1 → 1.2) + สิทธิ์ของขั้น 1.1/1.2
+  // — ผูกกับบทบาท "ผู้ออก Memo"; เคสที่ยังไม่ได้ assign ใคร = คนที่แก้ไขได้ทำแทนได้
+  //   (กันเคสเก่าก่อนระบบบทบาทค้างตาย เดินต่อไม่ได้)
+  const step = memoStepOf(influencer);
+  const makerIds = memoMakerIds(assignees);
+  const isMaker = userId != null && makerIds.includes(userId);
+  const canActMaker = fileEditable && (isMaker || makerIds.length === 0);
+  const makerNames = makerIds
+    .map((id) => peopleById.get(id)?.name ?? "?")
+    .join(" · ");
+
+  /** ขั้น 1: ยืนยัน/ยกเลิก "ส่งเรื่องขอ Memo" — ผู้ดูแลเคสยืนยันว่ายื่นเรื่องไปแล้ว
+      (กันทีมส่งซ้ำ; โชว์ติ๊กถูกบนการ์ดบอร์ดด้วย) · ยกเลิก = ถอยกลับขั้น 1
+      จึงต้องล้างขั้น 1.1 (memo_submitted_at) ที่ต่อจากมันทิ้งด้วย */
   const toggleMemoSent = async () => {
     setError(null);
     setMarkingSent(true);
     const next = memoSent ? null : new Date().toISOString();
     const { error: e } = await supabase
       .from("influencers")
-      .update({ docs_sent_at: next })
+      .update(
+        next
+          ? { docs_sent_at: next }
+          : { docs_sent_at: null, memo_submitted_at: null }
+      )
       .eq("id", influencer.id);
     setMarkingSent(false);
     if (e) {
@@ -328,16 +439,55 @@ function MemoCopyStage({
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
       summary: next
-        ? "ติ๊กว่าส่ง Memo ขออนุมัติแล้ว"
-        : 'ยกเลิกการติ๊ก "ส่ง Memo แล้ว"',
+        ? "ยืนยันส่งเรื่องขอ Memo แล้ว (ขั้น 1)"
+        : 'ย้อนกลับ "ส่งเรื่องขอ Memo" — เคสกลับมาขั้น 1',
     });
     notify({
       type: "memo_sent",
       scope: "memo",
       title: next
-        ? `ส่ง Memo ขออนุมัติของ ${logNameOf(influencer)} แล้ว`
-        : `ยกเลิกสถานะ “ส่ง Memo แล้ว” ของ ${logNameOf(influencer)}`,
-      body: next ? "รออนุมัติ — ได้ไฟล์แล้วอัพกลับเข้าขั้น Memo" : null,
+        ? `ส่งเรื่องขอ Memo ของ ${logNameOf(influencer)} แล้ว`
+        : `ยกเลิกสถานะ “ส่งเรื่อง Memo” ของ ${logNameOf(influencer)}`,
+      body: next
+        ? "ขั้นต่อไป: ผู้ออก Memo ทำเอกสารส่งขออนุมัติ (ขั้น 1.1)"
+        : null,
+      href: `/influencers/${influencer.id}?view=${INFLU_STAGE.memo}`,
+    });
+    router.refresh();
+  };
+
+  /** ขั้น 1.1: ผู้ออก Memo ยืนยันว่า "ทำเอกสาร Memo ส่งขออนุมัติแล้ว" → ไปขั้น 1.2
+      (ยกเลิก = ถอยกลับ 1.1 — ทำได้เฉพาะตอนยังไม่มีไฟล์อนุมัติ) */
+  const setMemoSubmitted = async (next: boolean) => {
+    setError(null);
+    setConfirmingMemo(true);
+    const { error: e } = await supabase
+      .from("influencers")
+      .update({ memo_submitted_at: next ? new Date().toISOString() : null })
+      .eq("id", influencer.id);
+    setConfirmingMemo(false);
+    if (e) {
+      setError(`บันทึกสถานะไม่สำเร็จ: ${e.message}`);
+      return;
+    }
+    log({
+      action: "status",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: next
+        ? "ยืนยันว่าทำเอกสาร Memo ส่งขออนุมัติแล้ว (ขั้น 1.1)"
+        : 'ย้อนกลับ "ทำเอกสาร Memo แล้ว" — เคสกลับมาขั้น 1.1',
+    });
+    notify({
+      type: "memo_submitted",
+      scope: "memo",
+      title: next
+        ? `ทำเอกสาร Memo ของ ${logNameOf(influencer)} ส่งขออนุมัติแล้ว`
+        : `ย้อนสถานะทำเอกสาร Memo ของ ${logNameOf(influencer)} กลับมาขั้น 1.1`,
+      body: next
+        ? "รออนุมัติ — ได้ไฟล์ Memo ที่อนุมัติแล้วให้อัพเข้าขั้น 1.2"
+        : null,
       href: `/influencers/${influencer.id}?view=${INFLU_STAGE.memo}`,
     });
     router.refresh();
@@ -428,12 +578,17 @@ function MemoCopyStage({
       setError(`อัพโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`);
       return;
     }
+    const nowIso = new Date().toISOString();
     const { error: linkErr } = await supabase
       .from("influencers")
       .update({
         memo_file_path: path,
         memo_file_name: file.name,
-        memo_uploaded_at: new Date().toISOString(),
+        memo_uploaded_at: nowIso,
+        // อัพไฟล์จากขั้นย่อยก่อนหน้า = เติมขั้น 1/1.1 ให้ครบไปด้วย (ไฟล์อนุมัติ
+        // คือหลักฐานว่าเรื่องถูกส่งและเอกสารถูกทำไปแล้วจริง)
+        ...(influencer.docs_sent_at ? {} : { docs_sent_at: nowIso }),
+        ...(influencer.memo_submitted_at ? {} : { memo_submitted_at: nowIso }),
         // มีไฟล์ Memo ที่อนุมัติแล้ว = ผ่านขั้น Memo ทันที ไปขั้นสัญญาเลย (ผู้ใช้ 2026-08-07)
         // — เคสที่เลยขั้นนี้ไปแล้วแค่มาเปลี่ยนไฟล์ ต้องไม่ถูกดึง stage ถอยหลัง
         ...(influencer.stage === INFLU_STAGE.memo && !influencer.completed
@@ -516,24 +671,39 @@ function MemoCopyStage({
         แล้วเคสจะไปขั้น &quot;เซนสัญญา + วันรับบริการ&quot; ให้อัตโนมัติ
       </p>
 
-      {/* ติ๊ก "ส่ง Memo แล้ว" — ป้ายยืนยันว่ายื่นขออนุมัติไปแล้ว (ทีมเห็นบนการ์ดบอร์ดด้วย)
-          ไม่ซ่อนตัวเองแม้อัพไฟล์ Memo แล้ว เพราะเป็นบันทึกว่าเคยส่งเมื่อไหร่ */}
-      <Card className="p-5">
-        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+      {/* เส้นขั้นย่อยของ Memo — 1 ส่งเรื่อง → 1.1 ทำเอกสาร → 1.2 อัพไฟล์อนุมัติ */}
+      <MemoStepStrip step={step} />
+
+      {/* ขั้น 1: เลือกผู้ออก Memo + ยืนยันส่งเรื่อง — คนสร้างเคส/ผู้ดูแลเป็นคนกด
+          ไม่ซ่อนตัวเองแม้ผ่านขั้นไปแล้ว เพราะเป็นบันทึกว่าเคยส่งเมื่อไหร่ */}
+      <Card className="space-y-4 p-5">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-stone-600">
           <ClipboardCheck size={14} />
-          สถานะการส่ง Memo
+          {MEMO_SUBSTEPS[0].title}
         </p>
+        {/* เลือกผู้ทำเอกสาร Memo ก่อนยืนยันส่งเรื่อง — เขาคือคนกดขั้น 1.1/1.2 ต่อ */}
+        <AssigneeRolePicker
+          role="memo"
+          assignees={assignees}
+          people={people}
+          peopleById={peopleById}
+          canEdit={fileEditable}
+          busyUserId={busyUserId}
+          onChange={onAssigneeChange}
+        />
         {memoSent ? (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
             <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-stone-800">ส่ง Memo แล้ว</p>
+              <p className="text-sm font-medium text-stone-800">
+                ส่งเรื่องขอ Memo แล้ว
+              </p>
               <p className="text-xs text-stone-500">
-                ติ๊กเมื่อ {formatDateTime(influencer.docs_sent_at!)} ·
-                การ์ดบนบอร์ดขึ้นติ๊กถูกให้ทีมเห็นแล้ว
+                ยืนยันเมื่อ {formatDateTime(influencer.docs_sent_at!)} ·
+                ขั้นต่อไปเป็นของผู้ออก Memo (ขั้น 1.1)
               </p>
             </div>
-            {fileEditable && (
+            {fileEditable && !memoUploaded && (
               <Button
                 variant="ghost"
                 onClick={() => void toggleMemoSent()}
@@ -541,27 +711,90 @@ function MemoCopyStage({
                 className="!px-2.5 !py-1 !text-xs"
               >
                 <Undo2 size={13} />
-                ยกเลิกติ๊ก
+                ย้อนกลับ
               </Button>
             )}
           </div>
         ) : !fileEditable ? (
-          <p className="text-xs text-stone-400">ยังไม่ได้ติ๊กว่าส่ง Memo</p>
+          <p className="text-xs text-stone-400">ยังไม่ได้ยืนยันส่งเรื่องขอ Memo</p>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="min-w-0 flex-1 text-xs text-stone-500">
-              ส่ง Memo ไปขออนุมัติแล้วให้ติ๊กที่นี่ —
-              การ์ดบนบอร์ดจะขึ้นติ๊กถูกว่า “ส่ง Memo แล้ว” กันทีมส่งซ้ำ
+              {makerIds.length === 0
+                ? "เลือกผู้ออก Memo ด้านบนก่อน แล้วจึงกดยืนยันว่าส่งเรื่องขอ Memo แล้ว"
+                : "ส่งเรื่องขอทำ Memo แล้วให้กดยืนยัน — เคสจะไปขั้น 1.1 รอผู้ออก Memo ทำเอกสาร"}
             </p>
             <Button
               variant="secondary"
               onClick={() => void toggleMemoSent()}
               loading={markingSent}
+              disabled={makerIds.length === 0}
             >
               <ClipboardCheck size={16} />
-              ติ๊กว่าส่ง Memo แล้ว
+              ยืนยันส่งเรื่อง Memo
             </Button>
           </div>
+        )}
+      </Card>
+
+      {/* ขั้น 1.1: ผู้ออก Memo ยืนยันว่าทำเอกสารส่งขออนุมัติแล้ว */}
+      <Card className="p-5">
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+          <Send size={14} />
+          {MEMO_SUBSTEPS[1].title}
+        </p>
+        {step === "1.0" ? (
+          <p className="text-xs text-stone-400">
+            จะทำขั้นนี้ได้เมื่อยืนยัน &quot;ส่งเรื่องขอ Memo&quot; (ขั้น 1) แล้ว
+          </p>
+        ) : influencer.memo_submitted_at ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+            <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-stone-800">
+                ทำเอกสาร Memo ส่งขออนุมัติแล้ว
+              </p>
+              <p className="text-xs text-stone-500">
+                ยืนยันเมื่อ {formatDateTime(influencer.memo_submitted_at)} ·
+                รออนุมัติ — ได้ไฟล์แล้วอัพเข้าขั้น 1.2
+              </p>
+            </div>
+            {canActMaker && !memoUploaded && (
+              <Button
+                variant="ghost"
+                onClick={() => void setMemoSubmitted(false)}
+                loading={confirmingMemo}
+                className="!px-2.5 !py-1 !text-xs"
+              >
+                <Undo2 size={13} />
+                ย้อนกลับ
+              </Button>
+            )}
+          </div>
+        ) : !fileEditable ? (
+          <p className="text-xs text-stone-400">
+            ยังไม่ได้ยืนยันว่าทำเอกสาร Memo แล้ว
+          </p>
+        ) : canActMaker ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 flex-1 text-xs text-stone-500">
+              ทำเอกสาร Memo ตามข้อความด้านล่างและส่งขออนุมัติแล้ว ให้กดยืนยันที่นี่
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => void setMemoSubmitted(true)}
+              loading={confirmingMemo}
+            >
+              <Send size={16} />
+              ยืนยันว่าทำ Memo ส่งแล้ว
+            </Button>
+          </div>
+        ) : (
+          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs leading-5 text-amber-800">
+            <Send size={14} className="mt-0.5 shrink-0" />
+            ขั้นนี้เป็นของผู้ออก Memo ({makerNames || "ยังไม่ได้เลือก"}) —
+            ต้องเป็นคนนั้นกดยืนยันว่าทำเอกสารส่งขออนุมัติแล้ว
+          </p>
         )}
       </Card>
 
@@ -652,11 +885,12 @@ function MemoCopyStage({
         </div>
       </Card>
 
-      {/* ไฟล์ Memo ที่อนุมัติแล้ว — อัพโหลดเก็บไว้ที่นี่ จึงจะไป stage ถัดไปได้ */}
+      {/* ขั้น 1.2: ไฟล์ Memo ที่อนุมัติแล้ว — อัพโหลดเก็บไว้ที่นี่ จึงจะไป stage ถัดไปได้
+          (ผู้ออก Memo เป็นคนอัพ — คนเดียวกับขั้น 1.1) */}
       <Card className="p-5">
         <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
           <FileText size={14} />
-          ไฟล์ Memo ที่อนุมัติแล้ว
+          {MEMO_SUBSTEPS[2].title}
         </p>
         {memoUploaded ? (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
@@ -705,6 +939,12 @@ function MemoCopyStage({
           </div>
         ) : !fileEditable ? (
           <p className="text-xs text-stone-400">ยังไม่มีไฟล์</p>
+        ) : !canActMaker ? (
+          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs leading-5 text-amber-800">
+            <Upload size={14} className="mt-0.5 shrink-0" />
+            ขั้นนี้เป็นของผู้ออก Memo ({makerNames || "ยังไม่ได้เลือก"}) —
+            ต้องเป็นคนนั้นอัพไฟล์ Memo ที่อนุมัติแล้ว
+          </p>
         ) : (
           <button
             type="button"

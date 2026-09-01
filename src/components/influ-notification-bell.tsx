@@ -53,6 +53,8 @@ import {
   INFLU_PROSPECT_ACTIVE,
   INFLU_STAGE,
   isLaterSection,
+  rolesCoverScope,
+  type InfluEventScope,
 } from "@/lib/influ-constants";
 import { influNotiMeta, type InfluNotiTone } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
@@ -158,8 +160,10 @@ function buildLiveAlerts(
   const active = cases.filter(
     (c) => !c.archived && !c.completed && c.declined_at === null
   );
-  const has = (id: string, s: InfluScope) =>
-    (scopesByCase.get(id) ?? []).includes(s);
+  // เทียบผ่านบทบาท (normalizeRoles) — แถวเก่าเก็บ scope ดิบ contract/followup
+  // ส่วนแถวใหม่เก็บบทบาท owner/follower/memo ต้องอ่านออกทั้งสองแบบ
+  const has = (id: string, s: InfluEventScope) =>
+    rolesCoverScope(scopesByCase.get(id) ?? [], s);
 
   /* 1) Memo ค้าง — อยู่ขั้น Memo แล้วยังไม่มีไฟล์ที่อนุมัติ */
   const memoPending = active.filter(
