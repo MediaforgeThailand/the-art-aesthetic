@@ -638,11 +638,24 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
-/** Product team ของหัตถการ (migration 0080) — บริษัทแบ่งทีมสินค้า:
-    aesthetics = สกินทั้งหมด / breast = หน้าอก / abdomen = หนังหน้าท้อง / lipo = ดูดไขมัน
+/** Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0103) — บริษัทแบ่งทีมสินค้า
+    aesthetics = สกินทั้งหมด / breast = เสริมหน้าอก / abdomen = ตัดหนังหน้าท้อง /
+    lipo = ดูดไขมัน-เติมไขมัน / noseopen = เสริมจมูก Open / noseclosed = เสริมจมูก Closed /
+    chin = เสริมคาง / eyes = ตาสองชั้น-Subbrow / facelift = ดึงหน้า Endotine
+    ค่าคีย์ = แฮชแท็กของทีม จึงต้องเป็นตัวพิมพ์เล็กล้วนเสมอ
     เพิ่มทีมใหม่ต้องแก้ 3 ที่: type นี้, INFLU_PRODUCT_TEAMS (influ-constants)
-    และ check constraint ใน migration ใหม่ (influ_services.team + influ_procedure_items.product_team) */
-export type InfluProductTeam = "aesthetics" | "breast" | "abdomen" | "lipo";
+    และ check constraint ใน migration ใหม่ (influ_services.team + influ_procedure_items.product_team
+    + doctors.teams) */
+export type InfluProductTeam =
+  | "aesthetics"
+  | "breast"
+  | "abdomen"
+  | "lipo"
+  | "noseopen"
+  | "noseclosed"
+  | "chin"
+  | "eyes"
+  | "facelift";
 
 /** โปรไฟล์ "ตัวบุคคล" ของ influencer (migration 0080) — 1 แถว = 1 คน
     มีโปรไฟล์ = ตกลงร่วมงานกันแล้ว แต่ยังไม่ confirm หัตถการ/วันนัด
@@ -880,6 +893,9 @@ export type DoctorRow = {
   nickname: string | null;
   /** รูปโปรไฟล์ใน bucket documents path doctors/{id}/... — null = แสดงไอคอนแทน */
   photo_path: string | null;
+  /** ทีม product ที่หมอท่านนี้ทำ (0103) — 1 คนอยู่ได้หลายทีม, DB บังคับอย่างน้อย 1 ทีม
+      ระบบทีมคอนเทนต์ (mention/แท็ก) แสดงเฉพาะหมอที่มี "aesthetics" อยู่ในชุดนี้ */
+  teams: InfluProductTeam[];
   active: boolean;
   created_at: string;
   updated_at: string;

@@ -289,10 +289,13 @@ export function TagManagementClient({
   doctors,
   influOptions,
   categories,
+  isAdmin,
 }: {
   doctors: DoctorRow[];
   influOptions: InfluTagOption[];
   categories: ContentCategoryRow[];
+  /** ผู้ดูแลระบบเท่านั้นที่เพิ่ม/แก้/ลบทะเบียนหมอได้ (เกณฑ์เดียวกับหน้า /influ-doctors) */
+  isAdmin: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>("doctor");
   return (
@@ -324,7 +327,15 @@ export function TagManagementClient({
         })}
       </div>
 
-      {tab === "doctor" && <DoctorManagerPanel doctors={doctors} />}
+      {/* ทะเบียนเดียวกับระบบ Influ แต่ทีมคอนเทนต์เห็นเฉพาะหมอทีม Aesthetics
+          — หมอที่เพิ่มในหน้าไหนก็ได้ ถ้าติดทีม aesthetics ไว้จะโผล่ที่นี่เอง */}
+      {tab === "doctor" && (
+        <DoctorManagerPanel
+          doctors={doctors}
+          canEdit={isAdmin}
+          teamFilter="aesthetics"
+        />
+      )}
       {tab === "influ" && <InfluTab options={influOptions} />}
       {tab === "category" && <CategoryTab categories={categories} />}
     </>
