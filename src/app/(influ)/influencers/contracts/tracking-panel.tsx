@@ -37,6 +37,11 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  menuBox,
+  useAnchoredMenu,
+  type MenuBox,
+} from "@/components/anchored-menu";
 import { Badge, Button, Input, Select, Textarea } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -498,6 +503,132 @@ function ContractBox({ row }: { row: TrackRow }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* ปุ่มเลือกช่องทางของลิงก์                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * dropdown ช่องทางที่เกาะอยู่ท้ายช่องกรอกลิงก์ (ผู้ใช้ 2026-09-01 —
+ * เดิมเป็น Select เต็มแถวเหนือช่องลิงก์) — ตัวเลือกยังมาจากเป้าที่ตั้งไว้
+ * ตามกติกาเดิม และโชว์ "ลงแล้ว x/เป้า" ต่อช่องทางในเมนู
+ */
+function PlatformDropdown({
+  value,
+  options,
+  showQuota,
+  quotas,
+  postCounts,
+  disabled,
+  onChange,
+}: {
+  value: InfluPostPlatform | "";
+  options: InfluPostPlatform[];
+  /** โหมดโพส = โชว์เป้า/ลงแล้วของแต่ละช่องทาง (คอมเมนต์ไม่นับเข้าเป้า) */
+  showQuota: boolean;
+  quotas: InfluPostQuotas;
+  postCounts: Partial<Record<InfluPostPlatform, number>>;
+  disabled?: boolean;
+  onChange: (p: InfluPostPlatform) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<MenuBox | null>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const place = (a: HTMLElement) =>
+    setBox(menuBox(a, { width: 260, maxHeight: 280 }));
+
+  useAnchoredMenu({
+    open,
+    anchorRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: place,
+  });
+
+  const pm = value ? INFLU_POST_PLATFORMS[value] : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={anchorRef}
+        disabled={disabled}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          if (anchorRef.current) place(anchorRef.current);
+          setOpen(true);
+        }}
+        aria-label="ช่องทางของลิงก์"
+        aria-expanded={open}
+        className="flex shrink-0 cursor-pointer items-center gap-1 self-stretch rounded-lg border border-stone-300/80 bg-white/80 px-2.5 text-base transition-colors hover:bg-stone-50 disabled:cursor-default disabled:bg-stone-50 sm:text-sm max-sm:min-h-11"
+      >
+        {pm ? (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${pm.chip}`}
+          >
+            {pm.short}
+          </span>
+        ) : (
+          <span className="text-stone-500">ช่องทาง *</span>
+        )}
+        <ChevronDown size={14} className="shrink-0 text-stone-400" />
+      </button>
+      {open &&
+        box &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[60] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-xl animate-scale-in"
+            style={{
+              left: box.x,
+              top: box.y,
+              width: box.width,
+              maxHeight: box.height,
+            }}
+          >
+            {options.map((p) => {
+              const o = INFLU_POST_PLATFORMS[p];
+              const selected = p === value;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    onChange(p);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-brand-50 max-sm:min-h-11 ${
+                    selected ? "font-semibold text-brand-700" : "text-stone-700"
+                  }`}
+                >
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${o.chip}`}
+                  >
+                    {o.short}
+                  </span>
+                  <span className="truncate">{o.label}</span>
+                  {selected && (
+                    <Check size={14} className="shrink-0 text-brand-600" />
+                  )}
+                  {showQuota && (
+                    <span className="ml-auto shrink-0 text-xs tabular-nums text-stone-400">
+                      ลงแล้ว {postCounts[p] ?? 0}/{quotas[p] ?? 0}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* โหมด "ติดตามงาน"                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -821,33 +952,29 @@ function TrackMode({
                   </button>
                 ))}
               </div>
-              {/* บังคับเลือกช่องทาง — ตัวเลือกมาจากเป้าที่ตั้งไว้ (ผู้ใช้ 2026-08-29) */}
-              <Select
-                value={linkPlatform}
-                onChange={(e) =>
-                  setLinkPlatform(e.target.value as InfluPostPlatform | "")
-                }
-                aria-label="ช่องทางของลิงก์"
-              >
-                <option value="">เลือกช่องทางของลิงก์นี้ *</option>
-                {platformOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {INFLU_POST_PLATFORMS[p].label}
-                    {linkKind === "post"
-                      ? ` — เป้า ${row.quotas[p] ?? 0} โพส (ลงแล้ว ${row.postCounts[p] ?? 0})`
-                      : ""}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                value={linkUrl}
-                disabled={linkBusy}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void submitLink();
-                }}
-                placeholder="วางลิงก์โพส เช่น https://www.tiktok.com/@.../video/..."
-              />
+              {/* บังคับเลือกช่องทาง — ตัวเลือกมาจากเป้าที่ตั้งไว้ (ผู้ใช้ 2026-08-29)
+                  เลือกจากปุ่ม dropdown ท้ายช่องกรอกลิงก์ (ผู้ใช้ 2026-09-01) */}
+              <div className="flex gap-1.5">
+                <Input
+                  value={linkUrl}
+                  disabled={linkBusy}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitLink();
+                  }}
+                  placeholder="วางลิงก์โพส เช่น https://www.tiktok.com/@.../video/..."
+                  className="min-w-0 flex-1"
+                />
+                <PlatformDropdown
+                  value={linkPlatform}
+                  options={platformOptions}
+                  showQuota={linkKind === "post"}
+                  quotas={row.quotas}
+                  postCounts={row.postCounts}
+                  disabled={linkBusy}
+                  onChange={setLinkPlatform}
+                />
+              </div>
               <div className="flex gap-1.5">
                 <Input
                   value={linkNote}
