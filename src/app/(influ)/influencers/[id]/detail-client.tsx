@@ -197,6 +197,10 @@ function ProfileSidebar({
     influencer.contract_start && influencer.contract_months
       ? contractEndDate(influencer.contract_start, influencer.contract_months)
       : null;
+  // ประวัติการแก้ไข — แต่ละแถวย่อเหลือ 1 บรรทัด กดดูรายละเอียดเต็มในป็อปอัพ
+  const [openLogId, setOpenLogId] = useState<string | null>(null);
+  const openLog = activityLog.find((l) => l.id === openLogId) ?? null;
+  const openLogMeta = openLog ? influLogActionMeta(openLog.action) : null;
   return (
     <Card className="p-0">
       {/* ตัวตน: รูป + ชื่อ + สถานะปัจจุบัน */}
@@ -330,35 +334,63 @@ function ProfileSidebar({
         {activityLog.length === 0 ? (
           <p className="text-sm text-stone-400">ยังไม่มีประวัติการแก้ไข</p>
         ) : (
-          <ol className="max-h-96 space-y-3 overflow-y-auto lg:max-h-none">
+          <ol className="max-h-96 space-y-0.5 overflow-y-auto lg:max-h-none">
             {activityLog.map((l) => {
               const meta = influLogActionMeta(l.action);
               return (
-                <li key={l.id} className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-1.5">
+                <li key={l.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenLogId(l.id)}
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-stone-50 max-sm:py-2"
+                  >
                     <span
-                      className={`rounded-full px-1.5 py-px text-[10px] font-medium ${meta.chip}`}
+                      className={`shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium ${meta.chip}`}
                     >
                       {meta.label}
                     </span>
-                    <span className="text-[11px] text-stone-400">
+                    <span className="min-w-0 flex-1 truncate text-xs text-stone-700">
+                      {l.summary}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-stone-400">
                       {logTimeLabel(l.created_at, today)}
                     </span>
-                  </div>
-                  <p className="text-xs leading-snug text-stone-700">
-                    {l.summary}
-                  </p>
-                  {l.actor_name && (
-                    <p className="text-[11px] text-stone-400">
-                      โดย {l.actor_name}
-                    </p>
-                  )}
+                  </button>
                 </li>
               );
             })}
           </ol>
         )}
       </div>
+
+      <Modal
+        open={openLog !== null}
+        onClose={() => setOpenLogId(null)}
+        title="รายละเอียดการแก้ไข"
+      >
+        {openLog && openLogMeta && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${openLogMeta.chip}`}
+              >
+                {openLogMeta.label}
+              </span>
+              <span className="text-xs text-stone-400">
+                {formatNotiTime(openLog.created_at)}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-line text-stone-800">
+              {openLog.summary}
+            </p>
+            {openLog.actor_name && (
+              <p className="text-xs text-stone-500">
+                โดย {openLog.actor_name}
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
     </Card>
   );
 }
