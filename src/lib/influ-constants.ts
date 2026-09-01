@@ -63,11 +63,13 @@ export function tierFromFollowers(followers: number): InfluTier {
   return "nano";
 }
 
-/* ---------- Product team ของหัตถการ (migration 0080) ----------
+/* ---------- Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0103) ----------
    บริษัทแบ่งทีมสินค้าแยกกัน — เลือกทีมก่อนแล้วช่องค้นหาหัตถการจะขึ้นตามทีมที่เลือก
    aesthetics ใช้ price_items เป็นเมนูหลัก + influ_services ที่ทีมเพิ่มเอง
    ทีมอื่นใช้ influ_services (ทีมเพิ่มเองทั้งหมด — ยังไม่มีเมนูกลาง)
-   เพิ่มทีมใหม่ต้องแก้ 3 ที่: type InfluProductTeam, ตารางนี้ และ check constraint (migration ใหม่) */
+   เพิ่มทีมใหม่ต้องแก้ 3 ที่: type InfluProductTeam, ตารางนี้ และ check constraint (migration ใหม่)
+   ⚠️ key = แฮชแท็ก — ต้องเป็นตัวพิมพ์เล็กล้วน ไม่มีเว้นวรรค/ขีด (คำสั่งผู้ใช้ 2026-09-01)
+   IG/FB ตัดแท็กที่ `-` ทิ้ง และแท็กพิมพ์ใหญ่ทำให้ทีมพิมพ์ตามไม่ตรง */
 
 export const INFLU_PRODUCT_TEAMS: Record<
   InfluProductTeam,
@@ -76,22 +78,47 @@ export const INFLU_PRODUCT_TEAMS: Record<
   aesthetics: {
     label: "Aesthetics (สกิน)",
     chip: "border border-brand-200 bg-brand-50 text-brand-700",
-    tag: "Aesthetics",
+    tag: "aesthetics",
   },
   breast: {
-    label: "หน้าอก",
+    label: "เสริมหน้าอก",
     chip: "border border-rose-200 bg-rose-50 text-rose-700",
-    tag: "หน้าอก",
+    tag: "breast",
   },
   abdomen: {
-    label: "หนังหน้าท้อง",
+    label: "ตัดหนังหน้าท้อง",
     chip: "border border-amber-200 bg-amber-50 text-amber-700",
-    tag: "หนังหน้าท้อง",
+    tag: "abdomen",
   },
   lipo: {
-    label: "ดูดไขมัน",
+    label: "ดูดไขมัน / เติมไขมัน",
     chip: "border border-sky-200 bg-sky-50 text-sky-700",
-    tag: "ดูดไขมัน",
+    tag: "lipo",
+  },
+  noseopen: {
+    label: "เสริมจมูก Open",
+    chip: "border border-violet-200 bg-violet-50 text-violet-700",
+    tag: "noseopen",
+  },
+  noseclosed: {
+    label: "เสริมจมูก Closed",
+    chip: "border border-indigo-200 bg-indigo-50 text-indigo-700",
+    tag: "noseclosed",
+  },
+  chin: {
+    label: "เสริมคาง",
+    chip: "border border-teal-200 bg-teal-50 text-teal-700",
+    tag: "chin",
+  },
+  eyes: {
+    label: "ตาสองชั้น / Subbrow",
+    chip: "border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+    tag: "eyes",
+  },
+  facelift: {
+    label: "ดึงหน้า Endotine",
+    chip: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+    tag: "facelift",
   },
 };
 
@@ -100,6 +127,11 @@ export const INFLU_PRODUCT_TEAM_ORDER: InfluProductTeam[] = [
   "breast",
   "abdomen",
   "lipo",
+  "noseopen",
+  "noseclosed",
+  "chin",
+  "eyes",
+  "facelift",
 ];
 
 export const DEFAULT_PRODUCT_TEAM: InfluProductTeam = "aesthetics";

@@ -40,6 +40,7 @@ export default async function TagManagementPage() {
     <PageContainer>
       <TagManagementClient
         doctors={(doctorsResult.data ?? []) as DoctorRow[]}
+        isAdmin={access.isAdmin}
         influOptions={influOptions}
         categories={(categoriesResult.data ?? []) as ContentCategoryRow[]}
       />
