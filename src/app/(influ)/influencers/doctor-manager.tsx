@@ -21,13 +21,43 @@ import {
   Select,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
-import { doctorDisplayName, DOCTOR_TITLES } from "@/lib/influ-constants";
+import {
+  DEFAULT_PRODUCT_TEAM,
+  doctorDisplayName,
+  DOCTOR_TITLES,
+  INFLU_PRODUCT_TEAMS,
+  INFLU_PRODUCT_TEAM_ORDER,
+} from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
-import type { DoctorRow } from "@/lib/types";
+import type { DoctorRow, InfluProductTeam } from "@/lib/types";
 import { DoctorAvatar } from "./doctor-select";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+/** ทีมของหมอเรียงตามลำดับกลาง (คัดลอกก่อน sort — ห้ามแก้ array ที่มาจาก props) */
+function sortedTeams(teams: InfluProductTeam[] | null | undefined) {
+  return [...(teams ?? [])].sort(
+    (a, b) =>
+      INFLU_PRODUCT_TEAM_ORDER.indexOf(a) - INFLU_PRODUCT_TEAM_ORDER.indexOf(b)
+  );
+}
+
+/** ชิปทีม product ของหมอ 1 ท่าน */
+function TeamChips({ teams }: { teams: InfluProductTeam[] }) {
+  return (
+    <span className="flex flex-wrap gap-1">
+      {sortedTeams(teams).map((t) => (
+        <span
+          key={t}
+          className={`rounded-full px-1.5 py-0.5 text-[11px] leading-4 ${INFLU_PRODUCT_TEAMS[t].chip}`}
+        >
+          {INFLU_PRODUCT_TEAMS[t].label}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /* ---------- ฟอร์มเพิ่ม/แก้หมอ ----------
@@ -38,12 +68,16 @@ function sanitizeFileName(fileName: string): string {
 function DoctorFormModal({
   doctor,
   doctors,
+  requiredTeam,
   onClose,
   onSaved,
 }: {
   /** null = เพิ่มหมอใหม่ */
   doctor: DoctorRow | null;
   doctors: DoctorRow[];
+  /** ทีมของหน้าที่เปิดฟอร์มนี้ (ระบบทีมคอนเทนต์ส่ง "aesthetics") — ติ๊กไว้ให้ตั้งแต่แรก
+      และเตือนเมื่อเอาออก เพราะหมอจะหายจากลิสต์ของหน้านั้นทันที */
+  requiredTeam?: InfluProductTeam;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -53,6 +87,11 @@ function DoctorFormModal({
   const [lastName, setLastName] = useState(doctor?.last_name ?? "");
   const [nickname, setNickname] = useState(doctor?.nickname ?? "");
   const [licenseNo, setLicenseNo] = useState(doctor?.license_no ?? "");
+  const [teams, setTeams] = useState<InfluProductTeam[]>(() => {
+    const current = doctor?.teams ?? [];
+    if (current.length > 0) return current;
+    return [requiredTeam ?? DEFAULT_PRODUCT_TEAM];
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -62,6 +101,11 @@ function DoctorFormModal({
     last_name: lastName,
     nickname,
   });
+
+  const toggleTeam = (team: InfluProductTeam) =>
+    setTeams((prev) =>
+      prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team]
+    );
 
   const friendly = (message: string) => {
     if (message.includes("doctors_license_no_key")) {
@@ -84,6 +128,11 @@ function DoctorFormModal({
       setErr("ชื่อที่แสดงว่างไม่ได้");
       return;
     }
+    // DB บังคับอย่างน้อย 1 ทีม (constraint doctors_teams_valid) — เช็คก่อนยิงให้ได้ข้อความไทย
+    if (teams.length === 0) {
+      setErr("เลือกทีม product อย่างน้อย 1 ทีม");
+      return;
+    }
     setBusy(true);
     setErr(null);
     const payload = {
@@ -93,6 +142,7 @@ function DoctorFormModal({
       last_name: lastName.trim() || null,
       nickname: nickname.trim() || null,
       license_no: licenseNo.trim() || null,
+      teams,
     };
 
     if (!doctor) {
@@ -244,6 +294,37 @@ function DoctorFormModal({
           </p>
         </div>
 
+        <div>
+          <Label>ทีม product ที่รับเคส *</Label>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {INFLU_PRODUCT_TEAM_ORDER.map((t) => {
+              const on = teams.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={on}
+                  onClick={() => toggleTeam(t)}
+                  className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] max-sm:min-h-11 ${
+                    on
+                      ? INFLU_PRODUCT_TEAMS[t].chip
+                      : "border border-stone-200 bg-white text-stone-500 hover:border-stone-300"
+                  }`}
+                >
+                  {INFLU_PRODUCT_TEAMS[t].label}
+                </button>
+              );
+            })}
+          </div>
+          {requiredTeam && !teams.includes(requiredTeam) && (
+            <p className="mt-1.5 text-xs leading-5 text-amber-700">
+              ไม่ได้ติดทีม {INFLU_PRODUCT_TEAMS[requiredTeam].label} —
+              บันทึกแล้วหมอท่านนี้จะหายจากลิสต์ของหน้านี้
+            </p>
+          )}
+        </div>
+
         <div className="rounded-lg bg-stone-50 px-3 py-2.5">
           <p className="text-xs text-stone-400">ชื่อที่จะแสดงในระบบ</p>
           <p className="mt-0.5 text-sm font-semibold text-stone-800">
@@ -285,7 +366,17 @@ function DoctorFormModal({
  * เปลี่ยนชื่อ = ระบบตามแก้ doctor_name ในเคส (influencers) และคิว (influ_calendar_events)
  * ที่สะกดตรงกับชื่อเดิมให้ทั้งหมด; เปลี่ยนเป็นชื่อที่มีอยู่แล้วในทะเบียน = รวมเป็นคนเดียวกัน
  */
-export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
+export function DoctorManagerPanel({
+  doctors,
+  canEdit = true,
+  teamFilter,
+}: {
+  doctors: DoctorRow[];
+  /** false = ดูอย่างเดียว (ไม่ใช่ผู้ดูแลระบบ) — ซ่อนปุ่มเพิ่ม/แก้/ซ่อน/ลบ/เปลี่ยนรูปทั้งหมด */
+  canEdit?: boolean;
+  /** แสดงเฉพาะหมอที่อยู่ทีมนี้ (ระบบทีมคอนเทนต์ส่ง "aesthetics") — ไม่ส่ง = ทุกทีม */
+  teamFilter?: InfluProductTeam;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   /** null = ปิด · { doctor: null } = เพิ่มใหม่ */
@@ -298,7 +389,12 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoTargetRef = useRef<DoctorRow | null>(null);
 
-  const sorted = [...doctors].sort((a, b) => a.name.localeCompare(b.name, "th"));
+  const visible = teamFilter
+    ? doctors.filter((d) => (d.teams ?? []).includes(teamFilter))
+    : doctors;
+  // ทีมอื่นถูกกรองออก ไม่ได้หายจากทะเบียน — บอกจำนวนไว้กันเข้าใจผิดว่าข้อมูลหาย
+  const hiddenByTeam = doctors.length - visible.length;
+  const sorted = [...visible].sort((a, b) => a.name.localeCompare(b.name, "th"));
   const missingLicense = sorted.filter(
     (d) => d.active && !d.license_no
   ).length;
@@ -391,9 +487,21 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
     <Card className="p-3 sm:p-5">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => setFormFor({ doctor: null })}>
-            <Plus size={15} /> เพิ่มแพทย์
-          </Button>
+          {canEdit ? (
+            <Button onClick={() => setFormFor({ doctor: null })}>
+              <Plus size={15} /> เพิ่มแพทย์
+            </Button>
+          ) : (
+            <span className="rounded-lg bg-stone-100 px-2.5 py-1.5 text-xs font-medium text-stone-500">
+              ดูอย่างเดียว — เพิ่ม/แก้ทะเบียนได้เฉพาะผู้ดูแลระบบ
+            </span>
+          )}
+          {teamFilter && hiddenByTeam > 0 && (
+            <span className="rounded-lg bg-stone-100 px-2.5 py-1.5 text-xs font-medium text-stone-500">
+              แสดงเฉพาะหมอทีม {INFLU_PRODUCT_TEAMS[teamFilter].label} ·
+              ทีมอื่นซ่อนอยู่ {hiddenByTeam} ท่าน
+            </span>
+          )}
           {missingLicense > 0 && (
             <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
               ยังไม่มีเลขใบ ปว. {missingLicense} ท่าน — เคสของหมอท่านนั้นจะติดแท็กไม่ครบ
@@ -411,7 +519,9 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
         <div className="space-y-1">
           {sorted.length === 0 && (
             <p className="py-6 text-center text-sm text-stone-400">
-              ยังไม่มีหมอในทะเบียน — กด &quot;เพิ่มแพทย์&quot; ด้านบน
+              {canEdit
+                ? 'ยังไม่มีหมอในทะเบียน — กด "เพิ่มแพทย์" ด้านบน'
+                : "ยังไม่มีหมอในทะเบียน"}
             </p>
           )}
           {sorted.map((d) => (
@@ -422,19 +532,25 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
                 d.active ? "" : "opacity-55"
               }`}
             >
-              {/* กดรูปเพื่อเปลี่ยนรูปโปรไฟล์ */}
-              <button
-                type="button"
-                onClick={() => pickPhoto(d)}
-                title="เปลี่ยนรูปโปรไฟล์"
-                aria-label={`เปลี่ยนรูปโปรไฟล์ของ ${d.name}`}
-                className="group relative shrink-0 cursor-pointer rounded-full active:scale-95"
-              >
-                <DoctorAvatar doctor={d} size="lg" />
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full border border-white bg-brand-500 text-white shadow-sm transition-transform group-hover:scale-110">
-                  <Camera size={10} />
+              {/* กดรูปเพื่อเปลี่ยนรูปโปรไฟล์ (เฉพาะผู้ดูแลระบบ) */}
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => pickPhoto(d)}
+                  title="เปลี่ยนรูปโปรไฟล์"
+                  aria-label={`เปลี่ยนรูปโปรไฟล์ของ ${d.name}`}
+                  className="group relative shrink-0 cursor-pointer rounded-full active:scale-95"
+                >
+                  <DoctorAvatar doctor={d} size="lg" />
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full border border-white bg-brand-500 text-white shadow-sm transition-transform group-hover:scale-110">
+                    <Camera size={10} />
+                  </span>
+                </button>
+              ) : (
+                <span className="shrink-0">
+                  <DoctorAvatar doctor={d} size="lg" />
                 </span>
-              </button>
+              )}
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-stone-800">
@@ -462,12 +578,19 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
                     ยังไม่มีเลขใบ ปว. — เคสของหมอท่านนี้จะติดแท็กไม่ครบ
                   </p>
                 )}
+                <div className="mt-1">
+                  <TeamChips teams={d.teams ?? []} />
+                </div>
               </div>
 
               {/* กลุ่มปุ่มจัดการ — จอแคบตกลงมาทั้งกลุ่มในบรรทัดล่าง: ต้องมี w-full
                   ถึงจะดัน flex-wrap ให้ทำงาน (ช่องชื่อเป็น flex-1 ยุบได้เรื่อยๆ
                   ปุ่ม 44px 3 ปุ่มจึงบีบชื่อจนอ่านไม่ออกแทนที่จะขึ้นบรรทัดใหม่) */}
-              <div className="flex items-center gap-2.5 max-sm:w-full max-sm:justify-end">
+              <div
+                className={`flex items-center gap-2.5 max-sm:w-full max-sm:justify-end ${
+                  canEdit ? "" : "hidden"
+                }`}
+              >
                 <button
                   type="button"
                   title="แก้ข้อมูล (ตามแก้ชื่อในเคส/คิวเดิมให้)"
@@ -537,6 +660,7 @@ export function DoctorManagerPanel({ doctors }: { doctors: DoctorRow[] }) {
           key={formFor.doctor?.id ?? "new"}
           doctor={formFor.doctor}
           doctors={doctors}
+          requiredTeam={teamFilter}
           onClose={() => setFormFor(null)}
           onSaved={() => {
             setFormFor(null);
