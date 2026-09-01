@@ -342,8 +342,15 @@ export function kpiEventsOf(
   const out: { basis: ContentKpiBasis; ownerId: string | null; ms: number }[] =
     [];
   const work = workTimeOf(t);
-  if (work !== null)
+  if (work !== null) {
     out.push({ basis: "work", ownerId: t.assignee_id, ms: work });
+    // ผู้ใช้ 2026-09-01: "ชิ้นงานที่รับ brief มาและส่งตรวจแล้ว" ก็ต้องนับได้ —
+    // เป็น subset ของ work (เฉพาะการ์ดลูกของใบ Brief) เจ้าของคือคนทำ ไม่ใช่ผู้สั่ง
+    // และนับตอนตัวเองกดส่งตรวจ ไม่รอด่านผู้สั่ง Brief (คุมเวลาคนอื่นไม่ได้);
+    // ถูกตีกลับ = 0036 ล้าง review_submitted_at ผลงานชิ้นนี้จึงหลุดออกเอง
+    if (t.brief_source_id !== null)
+      out.push({ basis: "brief_work", ownerId: t.assignee_id, ms: work });
+  }
   const brief = briefEventMs(t, childrenByBrief);
   if (brief !== null)
     out.push({ basis: "brief", ownerId: t.created_by, ms: brief });
@@ -709,6 +716,7 @@ export const STATUS_RANK: Record<PersonStatus, number> = {
 
 const EMPTY_BASIS_COUNTS = (): Record<ContentKpiBasis, number> => ({
   work: 0,
+  brief_work: 0,
   brief: 0,
   posted: 0,
 });

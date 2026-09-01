@@ -600,7 +600,7 @@ export const CONTENT_KPI_PERIODS: Record<
 
 export const CONTENT_KPI_PERIOD_ORDER: ContentKpiPeriod[] = ["month", "day"];
 
-/* ---------- ฐานการนับของกติกา KPI (migration 0095) ----------
+/* ---------- ฐานการนับของกติกา KPI (migration 0095 + 0101) ----------
    "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน — content ที่ brief อย่างเดียวไม่มีการ์ด creative ของตัวเอง
    เลยเคยได้ KPI 0 ตลอด; แต่ละกติกาจึงเลือกได้ว่านับจากอะไร (ดู `kpiEventsOf` ใน kpi-utils.ts) */
 export const CONTENT_KPI_BASES: Record<
@@ -623,6 +623,16 @@ export const CONTENT_KPI_BASES: Record<
     chip: "bg-stone-100 text-stone-700",
     dot: "bg-stone-500",
   },
+  brief_work: {
+    label: "ชิ้นงานที่รับจาก Brief",
+    short: "รับ Brief",
+    // ผู้ใช้ 2026-09-01: บางคนวัดเฉพาะงานที่รับ brief มาทำ ไม่รวมงานที่ตัดเอง — เจ้าของคือคนทำ
+    // (assignee) และนับตอน "ตัวเองกดส่งตรวจ" ไม่รอด่านผู้สั่ง Brief เหมือนฐาน 'brief'
+    // เพราะคนทำคุมเวลาที่ผู้สั่ง Brief จะมาตรวจให้ไม่ได้
+    desc: "นับตอนกดส่งตรวจ — เฉพาะการ์ดที่รับงานมาจากใบ Brief ของคนอื่น",
+    chip: "bg-sky-100 text-sky-800",
+    dot: "bg-sky-500",
+  },
   brief: {
     label: "Brief ที่ส่งตรวจแล้ว",
     short: "Brief",
@@ -643,6 +653,7 @@ export const CONTENT_KPI_BASES: Record<
 
 export const CONTENT_KPI_BASIS_ORDER: ContentKpiBasis[] = [
   "work",
+  "brief_work",
   "brief",
   "posted",
 ];

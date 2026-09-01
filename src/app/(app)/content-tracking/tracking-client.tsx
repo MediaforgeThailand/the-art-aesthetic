@@ -12,7 +12,11 @@ import {
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, EmptyState, Modal } from "@/components/ui";
-import { CONTENT_FORMATS, CONTENT_KPI_BASES } from "@/lib/constants";
+import {
+  CONTENT_FORMATS,
+  CONTENT_KPI_BASES,
+  CONTENT_KPI_BASIS_ORDER,
+} from "@/lib/constants";
 import { isImagePath, isVideoPath } from "@/lib/media";
 import type {
   ContentCategoryRow,
@@ -366,7 +370,7 @@ export function TrackingClient({
   const summary: ScopeSummary = useMemo(() => {
     const s: ScopeSummary = {
       total: 0,
-      byBasis: { work: 0, brief: 0, posted: 0 },
+      byBasis: { work: 0, brief_work: 0, brief: 0, posted: 0 },
       submitted: 0,
       approved: 0,
       waiting: 0,
@@ -807,22 +811,24 @@ export function TrackingClient({
             </div>
 
             {/* ผลงานแยกตามฐาน — โชว์เมื่อขอบเขตนี้มีผลงานที่ไม่ใช่ "ส่งงาน" ปนอยู่ */}
-            {(summary.byBasis.brief > 0 || summary.byBasis.posted > 0) && (
+            {CONTENT_KPI_BASIS_ORDER.some(
+              (b) => b !== "work" && summary.byBasis[b] > 0
+            ) && (
               <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-stone-500">
-                {(["work", "brief", "posted"] as const)
-                  .filter((b) => summary.byBasis[b] > 0)
-                  .map((b) => (
+                {CONTENT_KPI_BASIS_ORDER.filter(
+                  (b) => summary.byBasis[b] > 0
+                ).map((b) => (
+                  <span
+                    key={b}
+                    title={CONTENT_KPI_BASES[b].desc}
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${CONTENT_KPI_BASES[b].chip}`}
+                  >
                     <span
-                      key={b}
-                      title={CONTENT_KPI_BASES[b].desc}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${CONTENT_KPI_BASES[b].chip}`}
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${CONTENT_KPI_BASES[b].dot}`}
-                      />
-                      {CONTENT_KPI_BASES[b].label} {summary.byBasis[b]}
-                    </span>
-                  ))}
+                      className={`h-1.5 w-1.5 rounded-full ${CONTENT_KPI_BASES[b].dot}`}
+                    />
+                    {CONTENT_KPI_BASES[b].label} {summary.byBasis[b]}
+                  </span>
+                ))}
               </p>
             )}
 
