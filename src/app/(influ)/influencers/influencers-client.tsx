@@ -39,6 +39,7 @@ import {
   type BoardFilters,
   DEFAULT_BOARD_FILTERS,
   matchBoardFilters,
+  StageTrackerPicker,
 } from "./board-filters";
 import type { InfluLinkLite } from "./influ-links";
 import { NewCaseModal } from "./new-case-modal";
@@ -48,7 +49,6 @@ import type {
 } from "./procedure-items-editor";
 import {
   boardPos,
-  effectiveSizeGroup,
   InfluBoard,
   influName,
   type InfluencerListRow,
@@ -549,7 +549,7 @@ export function InfluencersClient({
           ห้ามเอาแบนเนอร์เตือนกลับมาแปะบนหน้าอีก */}
 
       {/* แถบเครื่องมือเหลือ 3 ชิ้น: ค้นหา · ตัวกรอง (ปุ่มเดียว) · สร้างนัดใหม่ */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 animate-fade-in-up">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
             size={16}
@@ -578,15 +578,11 @@ export function InfluencersClient({
             people={people}
             meId={me.id}
             campaigns={campaigns}
-            countFor={countFor}
             statusCount={(st) =>
               items.filter((i) => influStatusOf(i) === st).length
             }
             bookingCount={bookingAlertIds.size}
             unassignedCount={unassignedCount}
-            sizeCount={(g) =>
-              items.filter((i) => effectiveSizeGroup(i) === g).length
-            }
           />
         </InfluFilterButton>
         {me.canEdit && (
@@ -597,6 +593,18 @@ export function InfluencersClient({
             </Button>
           </div>
         )}
+      </div>
+
+      {/* เส้นขั้นงาน — **อยู่นอกแผงตัวกรองโดยตั้งใจ** (ผู้ใช้ 2026-09-01)
+          เป็นตัวกรองที่ใช้บ่อยที่สุดของหน้านี้ ต้องกดเลือกขั้นได้ในคลิกเดียว
+          ห้ามย้ายกลับเข้าไปอยู่ในแผงอีก */}
+      <div className="mb-3 shrink-0 overflow-x-auto pb-0.5 animate-fade-in-up">
+        <StageTrackerPicker
+          className="min-w-[min(26rem,100%)]"
+          value={filters.stage}
+          countFor={countFor}
+          onChange={(stage) => filterApi.patch({ stage })}
+        />
       </div>
 
       {/* ชิปสรุป — ตัวกรองที่ซ่อนอยู่ในแผงต้องเห็นได้เสมอว่ากำลังกรองอะไร */}
