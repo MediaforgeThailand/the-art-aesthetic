@@ -22,6 +22,7 @@ import {
   Repeat,
   Undo2,
   UserRound,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1188,38 +1189,7 @@ export function InfluDetailClient({
 
       <div className="animate-fade-in" key={String(view)}>
         {view === "overview" && (
-          <>
-            {/* ผู้รับผิดชอบเคส (0095) — ใครถือขั้นไหน = ใครได้แจ้งเตือนแบบ "ต้องลงมือ" */}
-            <Card className="mb-5 p-5">
-              <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <h2 className="text-sm font-semibold text-stone-800">
-                  ผู้รับผิดชอบเคส
-                </h2>
-                <p className="text-xs text-stone-400">
-                  เลือกได้ว่าใครถือขั้นไหน — คนที่ถือขั้นนั้นจะได้แจ้งเตือนแบบเด่นเมื่อขั้นนั้นมีความเคลื่อนไหว
-                </p>
-              </div>
-              {assigneeErr && (
-                <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                  {assigneeErr}
-                </p>
-              )}
-              <AssigneeEditor
-                assignees={assignedList}
-                people={people}
-                peopleById={peopleById}
-                canEdit={canEdit}
-                busyUserId={assigneeBusy}
-                onChange={(c) => void applyAssigneeChange(c)}
-              />
-              {ownerName && (
-                <p className="mt-3 border-t border-stone-100 pt-2.5 text-xs text-stone-400">
-                  สร้างการ์ดโดย{" "}
-                  <span className="text-stone-500">{ownerName}</span>
-                </p>
-              )}
-            </Card>
-            <OverviewPanel
+          <OverviewPanel
             influencer={influencer}
             followupTasks={activeTasks}
             contentTasks={contentTasks}
@@ -1234,10 +1204,17 @@ export function InfluDetailClient({
             }
             doctors={doctors}
             campaigns={campaigns}
-              canManage={canManage}
-              onGoStage={(step) => setView(step)}
-            />
-          </>
+            canManage={canManage}
+            onGoStage={(step) => setView(step)}
+            assignees={assignedList}
+            people={people}
+            peopleById={peopleById}
+            canEditAssignees={canEdit}
+            assigneeBusy={assigneeBusy}
+            assigneeErr={assigneeErr}
+            onAssigneeChange={(c) => void applyAssigneeChange(c)}
+            ownerName={ownerName}
+          />
         )}
         {view === "detail" && (
           // รายละเอียดเคสแก้ได้เสมอจนกว่าจะปิดงาน (ไม่ใช้ readOnly รวมที่ล็อก stage ที่ผ่านแล้ว) —
@@ -1513,6 +1490,14 @@ function OverviewPanel({
   campaigns,
   canManage,
   onGoStage,
+  assignees,
+  people,
+  peopleById,
+  canEditAssignees,
+  assigneeBusy,
+  assigneeErr,
+  onAssigneeChange,
+  ownerName,
 }: {
   influencer: InfluencerRow;
   followupTasks: InfluTaskRow[];
@@ -1530,6 +1515,16 @@ function OverviewPanel({
   /** false = สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี — ซ่อนปุ่มแก้ไขทั้งหมด */
   canManage: boolean;
   onGoStage: (step: number) => void;
+  /* ผู้รับผิดชอบเคส (0095) — อยู่ท้ายเอกสารแทนการ์ดแยก (ผู้ใช้ 2026-09-01) */
+  assignees: CaseAssignee[];
+  people: InfluPerson[];
+  peopleById: Map<string, InfluPerson>;
+  canEditAssignees: boolean;
+  assigneeBusy: string | null;
+  assigneeErr: string | null;
+  onAssigneeChange: (change: AssigneeChange) => void;
+  /** ชื่อคนสร้างการ์ด (owner_id) — คนละเรื่องกับผู้รับผิดชอบ */
+  ownerName: string | null;
 }) {
   const [caseInfoOpen, setCaseInfoOpen] = useState(false);
   // ต้นทุนค่าบริการ (Influencer Cost) — รายการ support ของแบรนด์นับเป็น 0
@@ -1934,6 +1929,32 @@ function OverviewPanel({
           ) : (
             <p className="text-sm text-stone-400">
               เคสนี้สร้างก่อนระบบโปรไฟล์ — ยังไม่มีข้อมูลโปรไฟล์กลางของคนนี้
+            </p>
+          )}
+        </DocSection>
+
+        {/* ผู้รับผิดชอบเคส (0095) — ใครถือขั้นไหน = ใครได้แจ้งเตือนแบบ "ต้องลงมือ" */}
+        <DocSection
+          icon={<Users size={15} className="text-brand-600" />}
+          title="ผู้รับผิดชอบเคส"
+        >
+          {assigneeErr && (
+            <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+              {assigneeErr}
+            </p>
+          )}
+          <AssigneeEditor
+            assignees={assignees}
+            people={people}
+            peopleById={peopleById}
+            canEdit={canEditAssignees}
+            busyUserId={assigneeBusy}
+            onChange={onAssigneeChange}
+          />
+          {ownerName && (
+            <p className="mt-3 text-xs text-stone-400">
+              สร้างการ์ดโดย{" "}
+              <span className="text-stone-500">{ownerName}</span>
             </p>
           )}
         </DocSection>

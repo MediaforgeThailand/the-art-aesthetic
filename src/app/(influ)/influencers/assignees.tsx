@@ -15,9 +15,16 @@
  * - เมาส์ชี้ = ชื่อจาก `title` (ทำงานทุกที่ ไม่ต้องรอ JS) · แตะ/คลิก = แผงรายชื่อเต็ม
  *   ผ่าน portal z-[60] (ทัชสกรีนไม่มี hover — กติกาเป้านิ้วของระบบ)
  * - บนการ์ดของบอร์ดต้อง `stopPropagation` ไม่งั้นแตะรูปแล้วเด้งเข้าหน้าเคส
+ *
+ * ผู้ใช้ 2026-09-01 (หน้าเคส): "นี้มันเป็น row แถวยาวซึ่งไม่ดี ... ส่วนที่รับผิดชอบทำให้มีปุ่มตั้งค่า
+ * และกดแล้วค่อยให้เลือกว่ารับผิดชอบอะไร โดยการเพิ่มใหม่ ... ต้องไม่เลือกว่ารับผิดชอบอะไรเลย"
+ * ⇒ `AssigneeEditor` ยุบเป็นการ์ดคนละใบเรียง 2 คอลัมน์ (ชิปสรุปขอบเขต ไม่กางปุ่มค้างไว้),
+ *   ขอบเขตงานแก้ผ่าน `ScopeSettingsButton` (เมนูลอย portal z-[60]) และ **เพิ่มคนใหม่ = `scopes: []`
+ *   เสมอ** (DB ยอมรับอยู่แล้ว = "ผู้เกี่ยวข้อง" ได้แจ้งเตือนระดับ update ไม่มี badge แดง)
+ *   — แผงนี้ย้ายไปเป็น section สุดท้ายของเอกสารภาพรวมในหน้าเคส ไม่ใช่การ์ดแยกอีกแล้ว
  */
 
-import { Check, Plus, Search, UserRound, X } from "lucide-react";
+import { Check, Plus, Search, Settings2, UserRound, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -95,7 +102,7 @@ function ScopeLine({ scopes }: { scopes: InfluScope[] }) {
   if (scopes.length === 0) {
     return (
       <span className="text-[10px] text-stone-400">
-        ผู้เกี่ยวข้อง (ได้แจ้งเตือนแบบเงียบ)
+        ยังไม่ได้เลือกส่วนที่รับผิดชอบ · แจ้งเตือนแบบเงียบ
       </span>
     );
   }
@@ -253,7 +260,125 @@ export type AssigneeChange =
   | { kind: "scopes"; userId: string; scopes: InfluScope[] };
 
 /**
- * แผงจัดการผู้รับผิดชอบของเคส — เพิ่ม/ถอด/เลือกขอบเขตงานรายคน
+ * ปุ่มตั้งค่า "ส่วนที่รับผิดชอบ" ของคนหนึ่งคน — กดแล้วค่อยเลือกว่าถือขั้นไหน
+ *
+ * ผู้ใช้ 2026-09-01: แถวเดิมกางปุ่มขอบเขตทั้ง 3 อันค้างไว้ทุกคน กลายเป็น "row แถวยาว"
+ * อ่านยาก ⇒ ยุบเป็นชิปสรุป + ปุ่มตั้งค่าที่เปิดเมนูลอย (portal z-[60] ตามกติกาเมนูลอย)
+ */
+function ScopeSettingsButton({
+  assignee,
+  name,
+  disabled,
+  onChange,
+}: {
+  assignee: CaseAssignee;
+  name: string;
+  disabled: boolean;
+  onChange: (change: AssigneeChange) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<MenuBox | null>(null);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const place = (a: HTMLElement) =>
+    setBox(menuBox(a, { width: 264, maxHeight: 340 }));
+  useAnchoredMenu({
+    open,
+    anchorRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: place,
+  });
+
+  const toggle = (s: InfluScope) => {
+    const next = assignee.scopes.includes(s)
+      ? assignee.scopes.filter((x) => x !== s)
+      : [...assignee.scopes, s];
+    onChange({ kind: "scopes", userId: assignee.userId, scopes: next });
+  };
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          const a = anchorRef.current;
+          if (a) place(a);
+          setOpen((v) => !v);
+        }}
+        aria-label={`ตั้งค่าส่วนที่รับผิดชอบของ ${name}`}
+        aria-expanded={open}
+        title="ตั้งค่าส่วนที่รับผิดชอบ"
+        className={`flex shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-brand-50 hover:text-brand-700 disabled:cursor-default max-sm:h-11 max-sm:w-11 sm:h-8 sm:w-8 ${
+          disabled ? "" : "cursor-pointer"
+        } ${open ? "bg-brand-50 text-brand-700" : "text-stone-400"}`}
+      >
+        <Settings2 size={15} />
+      </button>
+
+      {open &&
+        box &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              left: box.x,
+              top: box.y,
+              width: box.width,
+              maxHeight: box.height,
+            }}
+            className="z-[60] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl animate-scale-in"
+          >
+            <p className="px-2 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+              {name} รับผิดชอบขั้นไหน
+            </p>
+            {INFLU_SCOPE_ORDER.map((s) => {
+              const on = assignee.scopes.includes(s);
+              const m = INFLU_SCOPES[s];
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggle(s)}
+                  aria-pressed={on}
+                  className="flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-brand-50/70 max-sm:min-h-11"
+                >
+                  <span
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      on
+                        ? "border-brand-500 bg-brand-500 text-white"
+                        : "border-stone-300 bg-white"
+                    }`}
+                  >
+                    {on && <Check size={11} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-stone-800">
+                      {m.label}
+                    </span>
+                    <span className="block text-[11px] text-stone-400">
+                      {m.desc}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+            <p className="border-t border-stone-100 px-2 pb-0.5 pt-1.5 text-[11px] leading-relaxed text-stone-400">
+              ไม่เลือกเลย = ผู้เกี่ยวข้อง/หัวหน้างาน — ยังได้แจ้งเตือนทุกความเคลื่อนไหว
+              แต่เป็นระดับ “อัพเดท” ไม่เด่น
+            </p>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
+/**
+ * แผงจัดการผู้รับผิดชอบของเคส — เพิ่ม/ถอด + ปุ่มตั้งค่าขอบเขตงานรายคน
  * ตัวเขียน DB + log + แจ้งเตือนอยู่ที่หน้าเคส (ส่งมาทาง `onChange`) เพื่อให้ที่นี่เป็น UI ล้วน
  */
 export function AssigneeEditor({
@@ -288,91 +413,61 @@ export function AssigneeEditor({
       .slice(0, 40);
   }, [people, taken, q]);
 
-  const toggleScope = (a: CaseAssignee, s: InfluScope) => {
-    const next = a.scopes.includes(s)
-      ? a.scopes.filter((x) => x !== s)
-      : [...a.scopes, s];
-    onChange({ kind: "scopes", userId: a.userId, scopes: next });
-  };
-
   return (
-    <div className="space-y-2">
-      {assignees.length === 0 && (
-        <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-xs text-stone-500">
+    <div className="space-y-2.5">
+      {assignees.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-stone-300 px-3 py-2.5 text-xs text-stone-500">
           ยังไม่มีผู้รับผิดชอบ — เคสนี้จะไม่มีใครได้รับแจ้งเตือนเมื่อมีความเคลื่อนไหว
         </p>
-      )}
-
-      {assignees.map((a) => {
-        const p = peopleById.get(a.userId);
-        const busy = busyUserId === a.userId;
-        return (
-          <div
-            key={a.userId}
-            className={`rounded-lg border border-stone-200 bg-white/80 p-2.5 ${
-              busy ? "opacity-60" : ""
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <PersonAvatar person={p} size={30} ring={false} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-stone-800">
-                  {p?.name ?? "ไม่ทราบชื่อ"}
-                </span>
-                {p?.jobTitle && (
-                  <span className="block truncate text-[11px] text-stone-400">
-                    {p.jobTitle}
+      ) : (
+        <ul className="grid grid-cols-1 gap-2 min-[560px]:grid-cols-2">
+          {assignees.map((a) => {
+            const p = peopleById.get(a.userId);
+            const name = p?.name ?? "ไม่ทราบชื่อ";
+            const busy = busyUserId === a.userId;
+            return (
+              <li
+                key={a.userId}
+                className={`flex items-center gap-2 rounded-xl border border-stone-200 bg-white/80 px-2.5 py-2 ${
+                  busy ? "opacity-60" : ""
+                }`}
+              >
+                <PersonAvatar person={p} size={30} ring={false} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-stone-800">
+                    {name}
                   </span>
+                  <span className="mt-0.5 block">
+                    <ScopeLine scopes={a.scopes} />
+                  </span>
+                </span>
+                {canEdit && (
+                  <ScopeSettingsButton
+                    assignee={a}
+                    name={name}
+                    disabled={busy}
+                    onChange={onChange}
+                  />
                 )}
-              </span>
-              {canEdit && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onChange({ kind: "remove", userId: a.userId })}
-                  aria-label={`ถอด ${p?.name ?? "คนนี้"} ออกจากผู้รับผิดชอบ`}
-                  title="ถอดออกจากผู้รับผิดชอบ"
-                  className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default max-sm:h-11 max-sm:w-11 sm:h-8 sm:w-8"
-                >
-                  <X size={15} />
-                </button>
-              )}
-            </div>
-
-            {/* ขอบเขตงาน = ตัวตัดสินว่าใครได้แจ้งเตือนแบบ "ต้องลงมือ" */}
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {INFLU_SCOPE_ORDER.map((s) => {
-                const on = a.scopes.includes(s);
-                const m = INFLU_SCOPES[s];
-                return (
+                {canEdit && (
                   <button
-                    key={s}
                     type="button"
-                    disabled={!canEdit || busy}
-                    onClick={() => toggleScope(a, s)}
-                    title={m.desc}
-                    aria-pressed={on}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] transition-colors max-sm:min-h-11 max-sm:px-3 max-sm:text-sm ${
-                      on
-                        ? `${m.chip} font-medium`
-                        : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
-                    } ${canEdit && !busy ? "cursor-pointer" : "cursor-default"}`}
+                    disabled={busy}
+                    onClick={() =>
+                      onChange({ kind: "remove", userId: a.userId })
+                    }
+                    aria-label={`ถอด ${name} ออกจากผู้รับผิดชอบ`}
+                    title="ถอดออกจากผู้รับผิดชอบ"
+                    className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default max-sm:h-11 max-sm:w-11 sm:h-8 sm:w-8"
                   >
-                    {on && <Check size={11} />}
-                    {m.label}
+                    <X size={15} />
                   </button>
-                );
-              })}
-            </div>
-            {a.scopes.length === 0 && (
-              <p className="mt-1.5 text-[11px] text-stone-400">
-                ไม่ได้ถือขั้นไหน = หัวหน้างาน/ผู้เกี่ยวข้อง — ได้แจ้งเตือนทุกความเคลื่อนไหว
-                แต่เป็นระดับ “อัพเดท” ไม่เด่น
-              </p>
-            )}
-          </div>
-        );
-      })}
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {canEdit && !adding && (
         <button
@@ -389,7 +484,7 @@ export function AssigneeEditor({
       )}
 
       {canEdit && adding && (
-        <div className="rounded-lg border border-brand-200 bg-white p-2">
+        <div className="rounded-xl border border-brand-200 bg-white p-2">
           <div className="relative">
             <Search
               size={15}
@@ -401,7 +496,7 @@ export function AssigneeEditor({
               onChange={(e) => setQ(e.target.value)}
               placeholder="ค้นหาชื่อ..."
               aria-label="ค้นหาบัญชีเพื่อเพิ่มเป็นผู้รับผิดชอบ"
-              className="w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-2 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
+              className="w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-2 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
             />
           </div>
           <div className="mt-1.5 max-h-56 overflow-y-auto">
@@ -415,13 +510,9 @@ export function AssigneeEditor({
                 key={p.id}
                 type="button"
                 onClick={() => {
-                  // เพิ่มเข้ามาแบบ "ทุกขั้น" ก่อน แล้วค่อยติ๊กเอาออกให้ตรงงานจริง —
-                  // ปลอดภัยกว่าเพิ่มมาแบบไม่มีขอบเขต (จะไม่ได้แจ้งเตือนที่ต้องลงมือเลย)
-                  onChange({
-                    kind: "add",
-                    userId: p.id,
-                    scopes: [...INFLU_SCOPE_ORDER],
-                  });
+                  // เพิ่มมาแบบ "ยังไม่เลือกขั้นไหนเลย" (ผู้ใช้ 2026-09-01) —
+                  // แล้วค่อยกดปุ่มตั้งค่าเลือกส่วนที่รับผิดชอบทีหลัง
+                  onChange({ kind: "add", userId: p.id, scopes: [] });
                   setAdding(false);
                   setQ("");
                 }}
