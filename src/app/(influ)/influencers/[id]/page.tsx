@@ -12,6 +12,7 @@ import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type {
   DoctorRow,
+  InfluActivityLogRow,
   InfluCalendarEventRow,
   InfluCampaignDefRow,
   InfluencerRow,
@@ -81,6 +82,7 @@ export default async function InfluencerDetailPage({
     { data: campaigns },
     { data: assignees },
     { data: profiles },
+    { data: activityLog },
   ] = await Promise.all([
     getAccess(),
     // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
@@ -170,6 +172,13 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id),
     // บัญชีทั้งหมด — ตัวเลือกตอนมอบหมายงาน + รูป/ชื่อของผู้รับผิดชอบ
     supabase.from("profiles").select("id, full_name, email, avatar_path, job_title"),
+    // ประวัติการใช้งานล่าสุดของเคส — โชว์ท้าย sidebar โปรไฟล์ให้ทีมที่รับช่วงงานตามสถานะทัน
+    supabase
+      .from("influ_activity_log")
+      .select("*")
+      .eq("influencer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -252,6 +261,8 @@ export default async function InfluencerDetailPage({
             jobTitle: p.job_title ?? null,
           })) as InfluPerson[]
         }
+        activityLog={(activityLog ?? []) as InfluActivityLogRow[]}
+        today={todayBkk}
         canManage={canEditInflu(access)}
         initialStage={initialStage}
       />
