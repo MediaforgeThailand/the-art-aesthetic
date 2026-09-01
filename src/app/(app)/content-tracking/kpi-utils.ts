@@ -32,6 +32,11 @@ export type TrackedTask = {
   approved_at: string | null;
   review_submitted_at: string | null;
   review_status: string;
+  /**
+   * ทอดการตรวจปัจจุบัน — 0 = การ์ดที่เกิดจาก Brief ซึ่งยังรอ "ผู้สั่ง Brief" ตรวจก่อน
+   * (migration 0098); ฐาน 'brief' ใช้ช่องนี้ตัดสินว่างานถูกส่งถึงผู้ตรวจจริงแล้วหรือยัง
+   */
+  review_step: number;
   completed: boolean;
   content_format: ContentFormat | null;
   content_category_id: string | null;
@@ -235,8 +240,9 @@ export const WORK_STATE_ORDER: WorkState[] = [
 
 /**
  * งาน 1 การ์ดสร้าง "ผลงาน" ให้คนได้มากกว่า 1 แบบ และคนละคนกัน — ผู้ใช้ 2026-08-29:
- * content บางคนทำหน้าที่ brief อย่างเดียว KPI ของเขาคือ "การ์ด Brief ที่มีคนกดรับงาน"
- * ไม่ใช่การ์ด creative; ส่วนการโพส ถ้าการ์ดมาจาก Brief คนสั่ง Brief เป็นคนถือ KPI การโพส
+ * content บางคนทำหน้าที่ brief อย่างเดียว KPI ของเขาคือ "ใบ Brief ที่ถูกรับงานและถูกส่ง
+ * ตรวจถึงผู้ตรวจจริงแล้ว" (ผู้ใช้ 2026-09-01) ไม่ใช่การ์ด creative; ส่วนการโพส
+ * ถ้าการ์ดมาจาก Brief คนสั่ง Brief เป็นคนถือ KPI การโพส
  * แต่ถ้าไม่มี Brief (ตัดเอง/สร้างการ์ดเอง) คนรับผิดชอบต้องโพสเอง
  *
  * ทุกการนับของระบบ KPI ผ่านตัวนี้ที่เดียว — เพิ่มฐานใหม่ต้องแก้ 3 ที่:
@@ -259,16 +265,86 @@ const parseMs = (raw: string | null): number | null => {
   return Number.isNaN(ms) ? null : ms;
 };
 
+/* ---------- ฐาน 'brief': นับเมื่อ "ถูกรับงาน + ถูกส่งตรวจถึงผู้ตรวจจริงแล้ว" ---------- */
+
+/**
+ * ผู้สั่ง Brief ของการ์ด creative ใบนี้ (null = ไม่ได้มาจาก Brief หรือคนสั่งเป็นคนทำเอง)
+ * — เกณฑ์เดียวกับ `briefReviewerId()` ใน tasks/task-card.tsx แต่ทำงานบน TrackedTask ที่ผอมกว่า
+ */
+function briefReviewerIdOf(t: TrackedTask): string | null {
+  if (t.brief_source_id === null) return null;
+  const owner = t.created_by;
+  if (owner === null || owner === t.assignee_id) return null;
+  return owner;
+}
+
+/**
+ * การ์ด creative ใบนี้ผ่านด่าน "ผู้สั่ง Brief ตรวจก่อน" (ทอด 0 ของ migration 0098)
+ * ไปถึงผู้ตรวจจริงแล้วหรือยัง — คืนเวลาที่เข้าสายตรวจจริง (epoch ms) หรือ null ถ้ายังไม่ถึง
+ */
+function realReviewMsOf(child: TrackedTask): number | null {
+  const atBriefTier =
+    child.review_status !== "approved" &&
+    child.review_step <= 0 &&
+    briefReviewerIdOf(child) !== null;
+  if (atBriefTier) return null; // ยังค้างอยู่ที่ผู้สั่ง Brief เอง
+  return (
+    parseMs(child.review_submitted_at) ??
+    parseMs(child.approved_at) ??
+    parseMs(child.posted_at)
+  );
+}
+
+/**
+ * จัดกลุ่มการ์ด creative ตามใบ Brief ต้นทาง — ฐาน 'brief' ต้องมองการ์ดลูกเพื่อรู้ว่า
+ * งานถูกส่งตรวจต่อแล้วหรือยัง (computeKpiMonth สร้างครั้งเดียวแล้วส่งเข้า kpiEventsOf)
+ */
+export function indexBriefChildren(
+  tasks: TrackedTask[]
+): Map<string, TrackedTask[]> {
+  const map = new Map<string, TrackedTask[]>();
+  for (const t of tasks) {
+    if (t.brief_source_id === null) continue;
+    const list = map.get(t.brief_source_id);
+    if (list) list.push(t);
+    else map.set(t.brief_source_id, [t]);
+  }
+  return map;
+}
+
+/**
+ * เวลาที่ใบ Brief ใบนี้กลายเป็น "ผลงาน 1 ชิ้น" ของผู้สั่ง — null = ยังไม่นับ
+ * เกณฑ์ (ผู้ใช้ 2026-09-01): **ถูกกดรับงาน และการ์ดที่เกิดจากมันถูกส่งตรวจถึงผู้ตรวจจริงแล้ว**
+ * แค่มีคนกด "รับงาน" ยังไม่พอ เพราะงานอาจค้างอยู่ที่คนทำ หรือค้างที่ด่านผู้สั่ง Brief เอง
+ * เวลาที่ใช้คือ "วันที่งานถูกส่งตรวจ" ตามกติกาเดียวกับฐาน work (ไม่ใช่วันที่กดรับงาน)
+ */
+function briefEventMs(
+  t: TrackedTask,
+  childrenByBrief: Map<string, TrackedTask[]>
+): number | null {
+  const accepted = parseMs(t.brief_accepted_at);
+  if (accepted === null) return null; // ยังไม่มีใครกดรับงาน
+  let sent: number | null = null;
+  for (const child of childrenByBrief.get(t.id) ?? []) {
+    const ms = realReviewMsOf(child);
+    if (ms === null) continue;
+    if (sent === null || ms < sent) sent = ms;
+  }
+  if (sent === null) return null; // รับงานแล้ว แต่ยังไม่ถูกส่งตรวจถึงผู้ตรวจจริง
+  return Math.max(sent, accepted);
+}
+
 /** ผลงานทุกแบบที่การ์ดใบนี้สร้างขึ้น (ยังไม่ผูกเดือน — computeKpiMonth เป็นคนคัดต่อ) */
 export function kpiEventsOf(
-  t: TrackedTask
+  t: TrackedTask,
+  childrenByBrief: Map<string, TrackedTask[]>
 ): { basis: ContentKpiBasis; ownerId: string | null; ms: number }[] {
   const out: { basis: ContentKpiBasis; ownerId: string | null; ms: number }[] =
     [];
   const work = workTimeOf(t);
   if (work !== null)
     out.push({ basis: "work", ownerId: t.assignee_id, ms: work });
-  const brief = parseMs(t.brief_accepted_at);
+  const brief = briefEventMs(t, childrenByBrief);
   if (brief !== null)
     out.push({ basis: "brief", ownerId: t.created_by, ms: brief });
   const posted = parseMs(t.posted_at);
@@ -813,8 +889,11 @@ export function computeKpiMonth({
   const workInMonth: TaskAt[] = [];
   const workPrevMonth: TrackedTask[] = [];
 
+  /* การ์ด creative ที่เกิดจาก Brief — ฐาน 'brief' ต้องดูว่าใบไหนถูกส่งตรวจต่อแล้ว */
+  const briefChildren = indexBriefChildren(tasks);
+
   for (const t of tasks) {
-    for (const raw of kpiEventsOf(t)) {
+    for (const raw of kpiEventsOf(t, briefChildren)) {
       const inThis = raw.ms >= bounds.start && raw.ms < bounds.end;
       const inPrev = raw.ms >= prevBounds.start && raw.ms < prevBounds.end;
       if (!inThis && !inPrev) continue;
