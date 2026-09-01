@@ -369,11 +369,11 @@ export const SALES_ASSISTANT_FROM = "sales";
  *
  * **แอปนี้ serve ที่ root ของโดเมนตัวเอง ไม่มี base path แบบ `SALES_ASSISTANT_URL`**
  * (อันนั้นต้องมี `/salestool/` ต่อท้าย ห้ามตัด) — ที่นี่ใส่ origin ล้วนพอ
- * ยังไม่ได้ผูกโดเมนบริษัท ใช้โดเมน Vercel ไปก่อน; ผูก `queue.theartbb.com` เมื่อไหร่
- * แก้ค่านี้จุดเดียว การ์ดบนหน้าประตูจะตามเอง (ไม่มีสัญญา referrer ข้าม repo แบบแอปขาย)
+ * ผูกโดเมนบริษัท `queue.theartbb.com` แล้วเมื่อ 2026-09-01 (CNAME ที่ GoDaddy ชี้เข้า Vercel)
+ * ลิงก์ `the-art-sales-queue.vercel.app` เดิมยังเข้าได้ แต่ห้ามเอากลับมาเป็นค่าในโค้ด
+ * ย้ายโดเมนอีกแก้ค่านี้จุดเดียว การ์ดบนหน้าประตูจะตามเอง (ไม่มีสัญญา referrer ข้าม repo แบบแอปขาย)
  */
-export const SALES_OPERATION_URL: string | null =
-  "https://the-art-sales-queue.vercel.app";
+export const SALES_OPERATION_URL: string | null = "https://queue.theartbb.com";
 
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
