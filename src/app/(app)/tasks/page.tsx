@@ -71,9 +71,11 @@ export default async function TasksPage() {
     // พร้อมข้อมูลที่ใช้ประกอบแฮชแท็กบังคับ ดู `fetchInfluTagOptions`
     fetchInfluTagOptions(),
     // ทะเบียนหมอที่ยังเปิดใช้ — หมอที่ถูกซ่อนแล้วยังโชว์บนงานเก่าได้ผ่าน embed `doctor`
+    // ทีมคอนเทนต์ติดแท็กเฉพาะหมอทีม Aesthetics (0101) — กรองที่ DB ไม่ต้อง select teams
     supabase
       .from("doctors")
       .select("id, name, nickname, license_no, photo_path")
+      .contains("teams", ["aesthetics"])
       .eq("active", true)
       .order("name", { ascending: true }),
     supabase.from("task_reviewers").select("profile_id"),

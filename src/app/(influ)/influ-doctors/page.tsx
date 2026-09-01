@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { canManageInflu, getAccess } from "@/lib/access";
+import { canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
 import { DoctorManagerPanel } from "../influencers/doctor-manager";
@@ -13,8 +13,9 @@ export const metadata: Metadata = {
 /**
  * ทะเบียนแพทย์ — หน้าของตัวเอง (เดิมเป็นโมดัลบนหัวบอร์ดเคส, ย้ายมา 2026-08-19)
  *
- * งานผู้ดูแลระบบเท่านั้น (canManageInflu) เหมือนตอนเป็นปุ่มบนบอร์ด — เพิ่ม/แก้ชื่อหมอ
- * ต้องผ่านหน้านี้ที่เดียว กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม
+ * เปิดดูได้ทุกระดับของระบบ Influencer แต่ **เพิ่ม/แก้/ลบได้เฉพาะ admin** (0101 —
+ * ทะเบียนเดียวกับหน้าจัดการแท็กของทีมคอนเทนต์ จึงต้องใช้เกณฑ์สิทธิ์เดียวกันทั้งสองหน้า);
+ * เพิ่ม/แก้ชื่อหมอต้องผ่านหน้านี้หรือหน้าจัดการแท็กเท่านั้น กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม
  */
 export default async function InfluDoctorsPage() {
   const supabase = await createClient();
@@ -24,11 +25,14 @@ export default async function InfluDoctorsPage() {
     getAccess(),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
   ]);
-  if (!canManageInflu(access)) return <AccessNotice />;
+  if (!canViewInflu(access)) return <AccessNotice />;
 
   return (
     <PageContainer>
-      <DoctorManagerPanel doctors={(doctors ?? []) as DoctorRow[]} />
+      <DoctorManagerPanel
+        doctors={(doctors ?? []) as DoctorRow[]}
+        canEdit={access.isAdmin}
+      />
     </PageContainer>
   );
 }
