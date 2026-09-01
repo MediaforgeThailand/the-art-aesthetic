@@ -63,7 +63,7 @@ export function tierFromFollowers(followers: number): InfluTier {
   return "nano";
 }
 
-/* ---------- Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0101) ----------
+/* ---------- Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0103) ----------
    บริษัทแบ่งทีมสินค้าแยกกัน — เลือกทีมก่อนแล้วช่องค้นหาหัตถการจะขึ้นตามทีมที่เลือก
    aesthetics ใช้ price_items เป็นเมนูหลัก + influ_services ที่ทีมเพิ่มเอง
    ทีมอื่นใช้ influ_services (ทีมเพิ่มเองทั้งหมด — ยังไม่มีเมนูกลาง)

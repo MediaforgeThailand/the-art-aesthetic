@@ -638,7 +638,7 @@ export type InfluCalendarEventRow = {
   updated_at: string;
 };
 
-/** Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0101) — บริษัทแบ่งทีมสินค้า
+/** Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0103) — บริษัทแบ่งทีมสินค้า
     aesthetics = สกินทั้งหมด / breast = เสริมหน้าอก / abdomen = ตัดหนังหน้าท้อง /
     lipo = ดูดไขมัน-เติมไขมัน / noseopen = เสริมจมูก Open / noseclosed = เสริมจมูก Closed /
     chin = เสริมคาง / eyes = ตาสองชั้น-Subbrow / facelift = ดึงหน้า Endotine
@@ -893,7 +893,7 @@ export type DoctorRow = {
   nickname: string | null;
   /** รูปโปรไฟล์ใน bucket documents path doctors/{id}/... — null = แสดงไอคอนแทน */
   photo_path: string | null;
-  /** ทีม product ที่หมอท่านนี้ทำ (0101) — 1 คนอยู่ได้หลายทีม, DB บังคับอย่างน้อย 1 ทีม
+  /** ทีม product ที่หมอท่านนี้ทำ (0103) — 1 คนอยู่ได้หลายทีม, DB บังคับอย่างน้อย 1 ทีม
       ระบบทีมคอนเทนต์ (mention/แท็ก) แสดงเฉพาะหมอที่มี "aesthetics" อยู่ในชุดนี้ */
   teams: InfluProductTeam[];
   active: boolean;
