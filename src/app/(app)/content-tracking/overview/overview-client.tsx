@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, EmptyState, Input, Modal, Select } from "@/components/ui";
-import { CONTENT_FORMATS } from "@/lib/constants";
+import { CONTENT_FORMATS, CONTENT_KPI_BASIS_ORDER } from "@/lib/constants";
 import {
   MEDIA_RANGES,
   type MediaRangeKey,
@@ -1117,17 +1117,17 @@ export function OverviewClient({
                   >
                     {personName(s2.profile)}
                   </Link>
-                  {(["work", "brief", "posted"] as const)
-                    .filter((b) => s2.basisCounts[b] > 0)
-                    .map((b) => (
-                      <span
-                        key={b}
-                        className="inline-flex items-center gap-1 text-[11px] text-stone-500"
-                      >
-                        <BasisChip basis={b} />
-                        <span className="tabular-nums">{s2.basisCounts[b]}</span>
-                      </span>
-                    ))}
+                  {CONTENT_KPI_BASIS_ORDER.filter(
+                    (b) => s2.basisCounts[b] > 0
+                  ).map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center gap-1 text-[11px] text-stone-500"
+                    >
+                      <BasisChip basis={b} />
+                      <span className="tabular-nums">{s2.basisCounts[b]}</span>
+                    </span>
+                  ))}
                   <span className="ml-auto shrink-0 text-xs font-bold tabular-nums text-stone-800">
                     {s2.doneTotal}
                     <span className="font-normal text-stone-400">

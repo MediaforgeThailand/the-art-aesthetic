@@ -187,12 +187,14 @@ export type ContentCategoryRow = {
     (แดชบอร์ดแปลงกติกา day เป็นเป้าทั้งเดือน = target × จำนวนวันของเดือนที่ดู) */
 export type ContentKpiPeriod = "month" | "day";
 
-/** ฐานการนับของกติกา KPI (migration 0095) — "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน:
-    'work'   = การ์ดชิ้นงานที่ตัวเองรับผิดชอบ นับตอนกดส่งตรวจ (พฤติกรรมเดิม / ค่า default)
-    'brief'  = การ์ด Brief ที่ตัวเองสั่ง นับตอนมีคนกด "รับงาน" (สำหรับ content ที่ brief อย่างเดียว)
-    'posted' = งานที่ตัวเองต้องเป็นคนโพส นับตอนกด "โพสแล้ว"
+/** ฐานการนับของกติกา KPI (migration 0095 + 'brief_work' ที่ 0101) —
+    "ผลงาน 1 ชิ้น" ของแต่ละคนไม่เหมือนกัน:
+    'work'       = การ์ดชิ้นงานที่ตัวเองรับผิดชอบ นับตอนกดส่งตรวจ (พฤติกรรมเดิม / ค่า default)
+    'brief_work' = เฉพาะการ์ดที่ "รับมาจากใบ Brief ของคนอื่น" นับตอนกดส่งตรวจ (subset ของ 'work')
+    'brief'      = การ์ด Brief ที่ตัวเองสั่ง นับตอนถูกรับงาน **และ** การ์ดลูกถูกส่งตรวจถึงผู้ตรวจจริงแล้ว
+    'posted'     = งานที่ตัวเองต้องเป็นคนโพส นับตอนกด "โพสแล้ว"
     เจ้าของแต่ละฐานอยู่ที่ `postOwnerIdOf`/`CONTENT_KPI_BASES` ใน constants.ts */
-export type ContentKpiBasis = "work" | "brief" | "posted";
+export type ContentKpiBasis = "work" | "brief_work" | "brief" | "posted";
 
 /** กติกา KPI รายคนของทีมคอนเทนต์ — เป้าจำนวนชิ้นต่อคาบ (ไม่มีคอลัมน์เดือน = กติกายืน
     แดชบอร์ดคำนวณผลของเดือนที่เลือกจาก "วันส่งงาน" ของ tasks เอง)
@@ -205,7 +207,7 @@ export type ContentKpiRow = {
   target: number;
   /** คาบของเป้า (migration 0087) — DB default 'month' */
   period: ContentKpiPeriod;
-  /** ฐานการนับ (migration 0095) — DB default 'work' (งานที่ทำเอง) */
+  /** ฐานการนับ (migration 0095 + 0101) — DB default 'work' (งานที่ทำเอง) */
   basis: ContentKpiBasis;
   position: number;
   created_at: string;
