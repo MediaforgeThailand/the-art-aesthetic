@@ -174,7 +174,7 @@ function NavButton({
 
 /* ---------- ไฟล์ใหญ่ตรงกลาง ---------- */
 
-function LightboxMedia({ item }: { item: LightboxItem }) {
+export function LightboxMedia({ item }: { item: LightboxItem }) {
   const { url, failed } = useSignedUrl(item.file_path);
 
   if (failed) {
@@ -231,7 +231,7 @@ function LightboxMedia({ item }: { item: LightboxItem }) {
 
 /* ---------- thumbnail เล็กในแถบล่าง ---------- */
 
-function ThumbPreview({ item }: { item: LightboxItem }) {
+export function ThumbPreview({ item }: { item: LightboxItem }) {
   const { url } = useSignedUrl(item.file_path);
   if (url && isImagePath(item.file_path)) {
     return (
