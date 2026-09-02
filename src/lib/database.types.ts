@@ -698,6 +698,23 @@ export type InfluProfilePhotoRow = {
   created_at: string;
 };
 
+/** kind ของ influ_case_photos — "photo" = รูป influencer, "channel" = รูปช่องทาง/สกรีนช็อตยอดผู้ติดตาม */
+export type InfluCasePhotoKind = "photo" | "channel";
+
+/** รูปภาพของ "เคส" (migration 0105) — หลายรูปต่อเคส แยกชนิด photo/channel
+    รูปแรกตาม position (ต่อชนิด) = รูปหน้าปก ฝั่งแอป sync ลง influencers.photo_path /
+    channel_photo_path เสมอ — ไฟล์อยู่ documents/influencers/{influencer_id}/ */
+export type InfluCasePhotoRow = {
+  id: string;
+  influencer_id: string;
+  kind: InfluCasePhotoKind;
+  file_path: string;
+  file_name: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** ช่องทางติดต่อ/โซเชียลของโปรไฟล์ — หลายช่องต่อคน (IG/TikTok/Line/เบอร์สำรอง ...) */
 export type InfluProfileChannelRow = {
   id: string;
@@ -1476,6 +1493,16 @@ export interface Database {
           file_path: string;
         };
         Update: Partial<InfluProfilePhotoRow>;
+        Relationships: [];
+      };
+      influ_case_photos: {
+        Row: InfluCasePhotoRow;
+        Insert: Partial<InfluCasePhotoRow> & {
+          influencer_id: string;
+          kind: InfluCasePhotoKind;
+          file_path: string;
+        };
+        Update: Partial<InfluCasePhotoRow>;
         Relationships: [];
       };
       influ_prospects: {
