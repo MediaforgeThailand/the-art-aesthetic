@@ -65,6 +65,7 @@ import { MobileTabs } from "./mobile-tabs";
 import { PersonSelect } from "./person-select";
 import { PostingList } from "./posting-list";
 import { ReviewList } from "./review-list";
+import { ReviewViewer } from "./review-viewer";
 import { TagRequiredModal } from "./tag-required-modal";
 import {
   AssigneeAvatar,
@@ -213,6 +214,9 @@ export function TasksClient({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // viewer ตรวจงาน (แท็บ "รอตรวจ") — ต้องไม่เปิดพร้อมแผงรายละเอียด (selectedId):
+  // ทั้งคู่ mount useTaskChat ของงานเดียวกัน = realtime channel ชื่อชนกัน
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [tab, setTab] = useState<
     "work" | "review" | "posting" | "approved" | "analysis" | "trash"
   >("work");
@@ -702,6 +706,13 @@ export function TasksClient({
               ? cur.map((t) => (t.id === row.id ? row : t))
               : [...cur, row]
           );
+          // soft delete จากเครื่องอื่นมาเป็น event UPDATE (deleted_at ถูกตั้ง) —
+          // ต้องล้าง id ที่เปิดค้างเหมือน event DELETE ไม่งั้นกู้คืนจากถังขยะแล้ว
+          // แผง/viewer ของงานนั้นเด้งเปิดขึ้นมาเอง
+          if (row.deleted_at) {
+            setSelectedId((sel) => (sel === row.id ? null : sel));
+            setViewerId((sel) => (sel === row.id ? null : sel));
+          }
         });
     };
     const channel = supabase
@@ -724,6 +735,7 @@ export function TasksClient({
           if (!id) return;
           setItems((cur) => cur.filter((t) => t.id !== id));
           setSelectedId((sel) => (sel === id ? null : sel));
+          setViewerId((sel) => (sel === id ? null : sel));
         }
       )
       .on(
@@ -959,6 +971,10 @@ export function TasksClient({
   const selectedRaw = selectedId ? (taskById.get(selectedId) ?? null) : null;
   const selectedTask =
     selectedRaw !== null && !selectedRaw.deleted_at ? selectedRaw : null;
+  // viewer ตรวจงานใช้ guard เดียวกัน — งานถูกลบ/หายจาก realtime = viewer ปิดเอง
+  const viewerRaw = viewerId ? (taskById.get(viewerId) ?? null) : null;
+  const viewerTask =
+    viewerRaw !== null && !viewerRaw.deleted_at ? viewerRaw : null;
 
   /* ---------- ลิงก์ Brief ↔ Creative (การ์ดที่เชื่อมกัน) ---------- */
 
@@ -982,6 +998,7 @@ export function TasksClient({
     skipPersistRef.current = true;
     clearFilters();
     setTab("work");
+    setViewerId(null);
     setSelectedId(taskId);
     // รอบอร์ด re-render (สลับแท็บ/ล้างตัวกรอง/masonry) แล้วค่อยหา element เพื่อเลื่อน
     const scroll = (attempts = 0) => {
@@ -2033,6 +2050,7 @@ export function TasksClient({
       message: `ย้ายงาน "${task.title}" ไปถังขยะใช่หรือไม่? งานจะถูกเก็บไว้ ${TRASH_KEEP_DAYS} วัน กู้คืนได้จากแท็บ "ถังขยะ"`,
       onConfirm: () => {
         setSelectedId((sel) => (sel === task.id ? null : sel));
+        setViewerId((sel) => (sel === task.id ? null : sel));
         patchTask(task.id, { db: { deleted_at: new Date().toISOString() } });
       },
     });
@@ -2849,7 +2867,12 @@ export function TasksClient({
                 onAssign={assignTask}
                 onMoveTask={moveTask}
                 onReorderSections={reorderSections}
-                onCardClick={(t) => setSelectedId(t.id)}
+                onCardClick={(t) => {
+                  // ปิด viewer ก่อนเสมอ — แผงกับ viewer เปิดงานเดียวกันพร้อมกันไม่ได้
+                  // (useTaskChat สองตัวบน task เดียว = realtime channel ชนกัน)
+                  setViewerId(null);
+                  setSelectedId(t.id);
+                }}
                 onQuickAdd={(sectionId, title, placement) =>
                   void quickAdd(sectionId, title, placement)
                 }
@@ -2864,7 +2887,12 @@ export function TasksClient({
                 tasksBySection={tasksBySection}
                 today={today}
                 selectedId={selectedId}
-                onCardClick={(t) => setSelectedId(t.id)}
+                onCardClick={(t) => {
+                  // ปิด viewer ก่อนเสมอ — แผงกับ viewer เปิดงานเดียวกันพร้อมกันไม่ได้
+                  // (useTaskChat สองตัวบน task เดียว = realtime channel ชนกัน)
+                  setViewerId(null);
+                  setSelectedId(t.id);
+                }}
                 onQuickAdd={(sectionId, title, placement) =>
                   void quickAdd(sectionId, title, placement)
                 }
@@ -2880,23 +2908,29 @@ export function TasksClient({
                 sections={sections}
                 today={today}
                 userId={userId}
-                selectedId={selectedId}
-                onRowClick={(t) => setSelectedId(t.id)}
+                selectedId={viewerId}
+                onRowClick={(t) => {
+                  setSelectedId(null);
+                  setViewerId(t.id);
+                }}
                 onApprove={approveTask}
                 onApproveBypass={requestApproveBypass}
                 onReject={requestReject}
               />
             </div>
-            {/* มือถือ: การ์ดโปสเตอร์ชุดเดียวกับบอร์ด — ปุ่มอนุมัติ/ตีกลับอยู่บนสุด
-                ของชีตรายละเอียดที่เลื่อนขึ้นมาตอนกดการ์ด (ไม่มีปุ่มบนการ์ด) */}
+            {/* มือถือ: การ์ดโปสเตอร์ชุดเดียวกับบอร์ด — กดการ์ดเปิด viewer ตรวจงาน
+                เต็มจอ (ตัวเล่นวิดีโอ + แถบอนุมัติ/ตีกลับ/ลิงก์/แชท) เหมือนจอใหญ่ */}
             <div className="lg:hidden">
               <MobileReviewList
                 queue={reviewQueue}
                 teamPending={teamPendingReview}
                 userId={userId}
                 today={today}
-                selectedId={selectedId}
-                onRowClick={(t) => setSelectedId(t.id)}
+                selectedId={viewerId}
+                onRowClick={(t) => {
+                  setSelectedId(null);
+                  setViewerId(t.id);
+                }}
               />
             </div>
           </>
@@ -2907,7 +2941,11 @@ export function TasksClient({
             sections={sections}
             contentCategories={contentCategories}
             selectedId={selectedId}
-            onRowClick={(t) => setSelectedId(t.id)}
+            onRowClick={(t) => {
+              // ปิด viewer ก่อนเสมอ — กติกาเดียวกับ onCardClick ของบอร์ด
+              setViewerId(null);
+              setSelectedId(t.id);
+            }}
             onMarkPosted={togglePosted}
           />
         ) : tab === "approved" ? (
@@ -2917,7 +2955,11 @@ export function TasksClient({
             sections={sections}
             today={today}
             selectedId={selectedId}
-            onRowClick={(t) => setSelectedId(t.id)}
+            onRowClick={(t) => {
+              // ปิด viewer ก่อนเสมอ — กติกาเดียวกับ onCardClick ของบอร์ด
+              setViewerId(null);
+              setSelectedId(t.id);
+            }}
             onTogglePosted={togglePosted}
           />
         ) : tab === "analysis" ? (
@@ -2987,6 +3029,26 @@ export function TasksClient({
           onSetDoctor={setDoctor}
           onAcceptBrief={acceptBrief}
           onSetBriefContentType={setBriefContentType}
+        />
+      )}
+
+      {/* viewer ตรวจงาน — ตัวเล่นวิดีโอเต็มจอ + sidebar (ลิงก์/ดาวน์โหลด/ผู้รับผิดชอบ/แชท) */}
+      {viewerTask && (
+        <ReviewViewer
+          key={viewerTask.id}
+          task={viewerTask}
+          profiles={profiles}
+          userId={userId}
+          me={meProfile}
+          onClose={() => setViewerId(null)}
+          onOpenFull={() => {
+            setViewerId(null);
+            setSelectedId(viewerTask.id);
+          }}
+          onApprove={approveTask}
+          onApproveBypass={requestApproveBypass}
+          onReject={requestReject}
+          suspendEsc={rejectTarget !== null || confirm !== null}
         />
       )}
 
