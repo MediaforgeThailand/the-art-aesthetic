@@ -434,8 +434,11 @@ export type InfluencerRow = {
   memo_uploaded_at: string | null;
   /** เวลาที่ถือว่าข้อมูลพร้อมทำ Memo (null = ยังไม่พร้อม) — เคสที่สร้างจาก "สร้างนัดใหม่" ตั้งให้ทันที */
   memo_ready_at: string | null;
-  /** เวลาที่ติ๊กว่า "ส่ง Memo แล้ว" (null = ยังไม่ส่ง) — ติ๊กในหน้าเคส, โชว์ติ๊กถูกบนการ์ดบอร์ด */
+  /** เวลาที่ยืนยัน "ส่งเรื่อง Memo" ในขั้น 1.0 (null = ยังไม่ส่ง) — จบขั้น 1.0 เข้าสู่ 1.1 (0104) */
   docs_sent_at: string | null;
+  /** เวลาที่ผู้ออก Memo ยืนยันว่า "ทำ Memo ส่งแล้ว" (ขั้น 1.1 → 1.2, 0104) — null = ยังไม่ยืนยัน;
+      ขั้น 1.2 จบเมื่ออัพไฟล์ Memo ที่อนุมัติแล้ว (memo_file_path) ซึ่งเลื่อนเข้า stage 2 ให้เอง */
+  memo_submitted_at: string | null;
   /** ไฟล์สัญญาที่เซนแล้ว (อัพโหลดในขั้น "เซนสัญญา + วันรับบริการ") */
   contract_file_path: string | null;
   contract_file_name: string | null;
@@ -502,10 +505,13 @@ export type InfluLogAction =
   | "upload"
   | "status";
 
-/** ขอบเขตงานที่ผู้รับผิดชอบคนหนึ่งถือในเคส (0095)
-    memo = ขั้น 1 · contract = ขั้น 2 (สัญญา+รับบริการ) · followup = การตามงานที่หน้า Follow Up
+/** บทบาทผู้รับผิดชอบในเคส (0095 → รื้อเป็นบทบาท 0104)
+    owner = ผู้ดูแล (สร้างเคส ตามจนเซนสัญญา) · follower = ผู้ติดตาม (สัญญา → follow up)
+    memo = ผู้ออก Memo (ทำขั้น 1.1, 1.2)
+    — `contract`/`followup` เป็นค่าเก่าก่อน 0104 ที่ยังอยู่ในแถวเดิม/ถังขยะ
+    อ่านผ่าน normalizeRoles() (influ-constants) เสมอ: contract→owner, followup→follower
     — array ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน (เห็นความเคลื่อนไหวแต่ไม่ใช่เจ้าของงาน) */
-export type InfluScope = "memo" | "contract" | "followup";
+export type InfluScope = "owner" | "follower" | "memo" | "contract" | "followup";
 
 /** ผู้รับผิดชอบเคส (0095) — 1 เคสมีได้หลายคน แต่ละคนถือขอบเขตของตัวเอง
     คนละเรื่องกับ `influencers.owner_id` ที่ยังเป็น "ผู้สร้างการ์ด" ตามเดิม */

@@ -72,8 +72,8 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
+  roleSummary,
   scopeOfStage,
-  scopeSummary,
   tierFromFollowers,
 } from "@/lib/influ-constants";
 import { influLogActionMeta, logInflu } from "@/lib/influ-log";
@@ -314,7 +314,7 @@ function ProfileSidebar({
                       {p?.name ?? "ไม่ทราบชื่อ"}
                     </p>
                     <p className="truncate text-[11px] text-stone-400">
-                      {scopeSummary(a.scopes)}
+                      {roleSummary(a.scopes)}
                     </p>
                   </div>
                 </li>
@@ -1073,7 +1073,7 @@ export function InfluDetailClient({
         entityId: influencer.id,
         influencerId: influencer.id,
         influencerName: caseName,
-        summary: `เพิ่ม ${who} เป็นผู้รับผิดชอบของ ${caseName} (${scopeSummary(change.scopes)})`,
+        summary: `เพิ่ม ${who} เป็นผู้รับผิดชอบของ ${caseName} (${roleSummary(change.scopes)})`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
       // คนที่เพิ่งถูกมอบหมายต้องรู้ทันทีเสมอ ไม่ว่าจะถือขอบเขตไหน
@@ -1085,7 +1085,7 @@ export function InfluDetailClient({
         forceAction: [change.userId],
         type: "assigned",
         title: `คุณได้รับมอบหมายเคส ${caseName}`,
-        body: `ขอบเขตงาน: ${scopeSummary(change.scopes)}`,
+        body: `บทบาท: ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
     } else if (change.kind === "remove") {
@@ -1143,7 +1143,7 @@ export function InfluDetailClient({
         entityId: influencer.id,
         influencerId: influencer.id,
         influencerName: caseName,
-        summary: `เปลี่ยนขอบเขตงานของ ${who} ในเคส ${caseName} เป็น ${scopeSummary(change.scopes)}`,
+        summary: `เปลี่ยนบทบาทของ ${who} ในเคส ${caseName} เป็น ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
       notifyInflu(supabase, actor, {
@@ -1152,7 +1152,7 @@ export function InfluDetailClient({
         assignees: notifyTargets,
         forceAction: [change.userId],
         type: "scope_changed",
-        title: `ขอบเขตงานของ ${who} ในเคส ${caseName} เปลี่ยนเป็น ${scopeSummary(change.scopes)}`,
+        title: `บทบาทของ ${who} ในเคส ${caseName} เปลี่ยนเป็น ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
     }
@@ -1530,6 +1530,12 @@ export function InfluDetailClient({
             userName={userName}
             readOnly={readOnly}
             fileEditable={canEdit}
+            userId={userId}
+            assignees={assignedList}
+            people={people}
+            peopleById={peopleById}
+            busyUserId={assigneeBusy}
+            onAssigneeChange={(c) => void applyAssigneeChange(c)}
           />
         )}
         {view === INFLU_STAGE.contractService && (

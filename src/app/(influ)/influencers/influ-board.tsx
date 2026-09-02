@@ -40,6 +40,7 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -51,6 +52,8 @@ import {
   INFLU_STAGE,
   INFLU_STAGES,
   INFLU_TIERS,
+  MEMO_SUBSTEPS,
+  memoStepOf,
   roundLabel,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
@@ -288,64 +291,130 @@ function ContractChip({
   );
 }
 
-/* ---------- แถบ stage แบบแอปส่งของ ----------
-   เดิมเป็นแท่งสีเปล่า 5 อัน ดูแล้วไม่รู้ว่าอยู่ขั้นไหนและขั้นนั้นชื่ออะไร (ผู้ใช้ 2026-08-14)
-   ใหม่ = จุดร้อยเส้นแบบ delivery tracking: ผ่านแล้ว = ติ๊กถูก · ขั้นที่อยู่ตอนนี้ = จุดทึบมีวงรอบ ·
-   ยังไม่ถึง = วงเปล่า + บรรทัดเดียวใต้จุดบอกชื่อขั้นปัจจุบันกับ x/5
+/* ---------- แถบ stage แบบแอปส่งของ (แตกขั้น Memo เป็น 1 / 1.1 / 1.2 — 0104) ----------
+   ผู้ใช้ 2026-09-01: การ์ดต้องเห็น 5 จุด — 1. ส่งเรื่อง Memo · 1.1 ทำเอกสาร · 1.2 อัพไฟล์ ·
+   2. สัญญา/รับบริการ · 3. Follow Up และเคสที่อยู่ Follow Up กดแล้วพาไปหน้ารวม
+   /influencers/contracts ได้เลย. เลข stage ใน DB ยังเป็น 1/2 เท่าเดิม — จุดบนเส้นเป็น
+   "มุมมอง" จาก memoStepOf() + contract_start (กติกา 0092: ห้ามเทียบเลข stage ดิบ)
    ปรับ contrast 2026-08-19 (ผู้ใช้: "ขั้นที่ถึงมองไม่ค่อยชัด") — ขั้นปัจจุบัน = จุด brand-600→700
-   เข้ม + ชื่อขั้นเป็น pill ทึบตัวขาว (จบงาน = pill เขียว) แลกกับป้ายคิวหมอที่เลิกเรืองแสง
-   (จำนวนขั้นอ่านจาก INFLU_STAGES เสมอ ห้าม hardcode — เคยยุบจาก 6 เหลือ 5 ขั้นมาแล้วใน 0062) */
-function StageTracker({
-  stage,
-  completed,
-  declined,
-  declinedAt,
-}: {
-  stage: number;
-  completed: boolean;
-  declined: boolean;
-  declinedAt: string | null;
-}) {
-  const total = INFLU_STAGES.length;
+   เข้ม + ชื่อขั้นเป็น pill ทึบตัวขาว (จบงาน = pill เขียว) แลกกับป้ายคิวหมอที่เลิกเรืองแสง */
+const TRACK_NODES: { key: string; num: string; title: string }[] = [
+  ...MEMO_SUBSTEPS.map((s, idx) => ({
+    key: s.key,
+    num: idx === 0 ? "1" : s.key,
+    title: s.title,
+  })),
+  {
+    key: "2",
+    num: "2",
+    title: `2. ${
+      INFLU_STAGES.find((s) => s.step === INFLU_STAGE.contractService)?.title ??
+      "เซนสัญญา + วันรับบริการ"
+    }`,
+  },
+  { key: "3", num: "3", title: "3. Follow Up" },
+];
+
+/** จุดที่เคสอยู่บนเส้น (index ใน TRACK_NODES) — "เข้าสู่การติดตามแล้ว" ตัดสินด้วย
+    contract_start ไม่ใช่เลข stage (กติกา 0092) */
+const trackIndexOf = (i: InfluencerListRow): number => {
+  if (i.contract_start !== null) return TRACK_NODES.length - 1;
+  if (i.stage >= INFLU_STAGE.contractService) return 3;
+  const step = memoStepOf(i);
+  return step === "1.0" ? 0 : step === "1.1" ? 1 : 2;
+};
+
+function StageTracker({ influ: i }: { influ: InfluencerListRow }) {
+  const router = useRouter();
+  const declined = i.declined_at !== null;
+  const completed = i.completed;
+  const total = TRACK_NODES.length;
+  const current = trackIndexOf(i);
   const label = declined
     ? "ปฏิเสธแล้ว"
     : completed
       ? "จบงานแล้ว"
-      : (INFLU_STAGES.find((s) => s.step === stage)?.title ?? "");
+      : TRACK_NODES[current].title;
+  // อยู่จุด Follow Up (ยังไม่ปิดงาน/ปฏิเสธ) = จุดกับ pill กดไปหน้ารวม Follow Up ได้
+  const followupLink = !declined && !completed && current === total - 1;
 
   return (
     <div className="mt-3">
-      <div className="flex items-center gap-1">
-        {INFLU_STAGES.map((s, idx) => {
-          const done = !declined && (completed || stage > s.step);
-          const here = !completed && !declined && stage === s.step;
+      <div className="flex items-start gap-1">
+        {TRACK_NODES.map((n, idx) => {
+          const done = !declined && (completed || idx < current);
+          const here = !completed && !declined && idx === current;
+          const clickable = followupLink && idx === total - 1;
+          // ขั้นปัจจุบันต้อง contrast ชัด (ผู้ใช้ 2026-08-19: "มองไม่ค่อยชัด") —
+          // จุดใหญ่สีเข้ม brand-600→700 + วงรอบ ไม่กลืนกับจุดที่ผ่านแล้ว
+          const dot = (
+            <span
+              className={`flex shrink-0 items-center justify-center rounded-full ${
+                here
+                  ? "h-5 w-5 bg-gradient-to-b from-brand-600 to-brand-700 shadow-sm ring-4 ring-brand-200"
+                  : done
+                    ? "h-3.5 w-3.5 bg-brand-500 text-white"
+                    : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white"
+              }`}
+            >
+              {here ? (
+                <span className="h-2 w-2 rounded-full bg-white" />
+              ) : done ? (
+                <Check size={9} strokeWidth={4} />
+              ) : null}
+            </span>
+          );
+          // ทุกจุดสูงเท่ากัน (h-5) แล้วค่อยวางเลขขั้นใต้จุด — จุดทุกขนาดอยู่แนวเดียวกัน
+          const column = (
+            <>
+              <span className="flex h-5 items-center">{dot}</span>
+              <span
+                className={`text-[9px] leading-none tabular-nums ${
+                  here
+                    ? "font-bold text-brand-700"
+                    : done
+                      ? "text-brand-500"
+                      : "text-stone-400"
+                }`}
+              >
+                {n.num}
+              </span>
+            </>
+          );
           return (
-            <Fragment key={s.step}>
+            <Fragment key={n.key}>
               {idx > 0 && (
                 <span
-                  className={`h-0.5 flex-1 rounded-full ${
+                  className={`mt-[9px] h-0.5 flex-1 rounded-full ${
                     done || here ? "bg-brand-400" : "bg-stone-200"
                   }`}
                 />
               )}
-              {/* ขั้นปัจจุบันต้อง contrast ชัด (ผู้ใช้ 2026-08-19: "มองไม่ค่อยชัด") —
-                  จุดใหญ่สีเข้ม brand-600→700 + วงรอบ ไม่กลืนกับจุดที่ผ่านแล้ว */}
-              <span
-                title={`${s.step}. ${s.title}`}
-                className={`flex shrink-0 items-center justify-center rounded-full ${
-                  here
-                    ? "h-5 w-5 bg-gradient-to-b from-brand-600 to-brand-700 shadow-sm ring-4 ring-brand-200"
-                    : done
-                      ? "h-3.5 w-3.5 bg-brand-500 text-white"
-                      : "h-3.5 w-3.5 border-[1.5px] border-stone-300 bg-white"
-                }`}
-              >
-                {here ? (
-                  <span className="h-2 w-2 rounded-full bg-white" />
-                ) : done ? (
-                  <Check size={9} strokeWidth={4} />
-                ) : null}
-              </span>
+              {clickable ? (
+                <button
+                  type="button"
+                  title={`${n.title} — เปิดหน้ารวม Follow Up`}
+                  aria-label="เปิดหน้ารวม Follow Up"
+                  onClick={(e) => {
+                    // การ์ดทั้งใบกดเปิดหน้าเคส + เป็น sortable — กันอีเวนต์ทะลุทุกทาง
+                    e.stopPropagation();
+                    e.preventDefault();
+                    router.push("/influencers/contracts");
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="flex shrink-0 flex-col items-center gap-1"
+                >
+                  {column}
+                </button>
+              ) : (
+                <span
+                  title={n.title}
+                  className="flex shrink-0 flex-col items-center gap-1"
+                >
+                  {column}
+                </span>
+              )}
             </Fragment>
           );
         })}
@@ -356,14 +425,32 @@ function StageTracker({
         {declined ? (
           <span
             title={
-              declinedAt
-                ? `ปฏิเสธเมื่อ ${formatDate(thaiDateISO(declinedAt))}`
+              i.declined_at
+                ? `ปฏิเสธเมื่อ ${formatDate(thaiDateISO(i.declined_at))}`
                 : undefined
             }
             className="truncate text-stone-400"
           >
             {label}
           </span>
+        ) : followupLink ? (
+          <button
+            type="button"
+            title="เปิดหน้ารวม Follow Up"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              router.push("/influencers/contracts");
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="inline-flex min-w-0 items-center gap-1 rounded-full bg-gradient-to-b from-brand-600 to-brand-700 px-2.5 py-1 shadow-sm active:scale-[0.97]"
+          >
+            <span className="truncate text-[11px] font-semibold leading-none text-white">
+              {label}
+            </span>
+            <ChevronsRight size={11} className="shrink-0 text-white" />
+          </button>
         ) : (
           <span
             className={`inline-flex min-w-0 items-center rounded-full px-2.5 py-1 shadow-sm ${
@@ -378,7 +465,7 @@ function StageTracker({
           </span>
         )}
         <span className="shrink-0 tabular-nums text-stone-400">
-          {completed ? total : stage}/{total}
+          {completed ? total : current + 1}/{total}
         </span>
       </p>
     </div>
@@ -625,12 +712,7 @@ export function InfluCardContent({
         <CardHashtags tags={hashtags} />
       )}
 
-      <StageTracker
-        stage={i.stage}
-        completed={i.completed}
-        declined={declined}
-        declinedAt={i.declined_at}
-      />
+      <StageTracker influ={i} />
     </div>
   );
 }

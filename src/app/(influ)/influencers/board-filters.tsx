@@ -27,9 +27,11 @@ import {
 } from "@/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import {
-  INFLU_SCOPE_ORDER,
-  INFLU_SCOPES,
+  INFLU_ROLE_ORDER,
+  INFLU_ROLES,
+  INFLU_STAGE,
   INFLU_STAGES,
+  normalizeRoles,
 } from "@/lib/influ-constants";
 import type { InfluCampaignDefRow, InfluScope } from "@/lib/types";
 import type { CaseAssignee } from "./assignees";
@@ -42,18 +44,21 @@ import {
 
 /* ---------- ชนิดข้อมูล ---------- */
 
-/** ขั้นที่กำลังเจาะดู — number = เลข stage, "all" = ทุกขั้น */
+/** ขั้นที่กำลังเจาะดู — number = เลข stage, "all" = ทุกขั้น,
+    "memowait" = คิว "Case รอส่ง memo" (ขั้นย่อย 1.0 — ปุ่มบนแถบเครื่องมือ, 0104) */
 export type BoardStageFilter =
   | number
   | "all"
   | "done"
   | "declined"
-  | "needbooking";
+  | "needbooking"
+  | "memowait";
 
 export type BoardFilters = {
   /** "all" | "mine" | "none" (ยังไม่มีผู้รับผิดชอบ) | uid */
   owner: string;
-  /** ขอบเขตงานที่สนใจ — ใช้คู่กับ owner (ว่าง = ทุกขอบเขต) */
+  /** บทบาทที่สนใจ — ใช้คู่กับ owner (ว่าง = ทุกบทบาท); ค่าเก่าก่อน 0104
+      (contract/followup) ที่ค้างใน localStorage ถูกแปลงผ่าน normalizeRoles ตอนใช้ */
   scopes: InfluScope[];
   /** ขั้นที่เจาะดู — เลือกจากเส้น tracker บนแถบเครื่องมือ (ไม่ได้อยู่ในแผง) */
   stage: BoardStageFilter;
@@ -78,8 +83,9 @@ export const DEFAULT_BOARD_FILTERS: BoardFilters = {
 
 /**
  * จำนวนตัวกรองที่เปิดอยู่ **เฉพาะที่อยู่ในแผง** — ขั้นที่เลือกจากเส้น tracker ไม่นับ
- * (เห็นอยู่แล้วบนแถบ) นับเฉพาะ "รอลงคิวหมอ" ซึ่งเป็นชิปในแผงจริงๆ ไม่งั้นป้ายตัวเลข
- * บนปุ่มจะบอกว่ามีตัวกรองเปิดอยู่ แต่เปิดแผงมาแล้วไม่เจอว่าคืออันไหน
+ * (เห็นอยู่แล้วบนแถบ) และ "memowait" ก็ไม่นับด้วยเหตุเดียวกัน (ปุ่ม "Case รอส่ง memo"
+ * บนแถบโชว์สถานะ active ของตัวเอง) นับเฉพาะ "รอลงคิวหมอ" ซึ่งเป็นชิปในแผงจริงๆ
+ * ไม่งั้นป้ายตัวเลขบนปุ่มจะบอกว่ามีตัวกรองเปิดอยู่ แต่เปิดแผงมาแล้วไม่เจอว่าคืออันไหน
  */
 export function boardFilterCount(f: BoardFilters): number {
   return (
@@ -112,6 +118,16 @@ export function matchBoardFilters(
 
   if (f.stage === "needbooking") {
     if (!ctx.bookingAlertIds.has(i.id)) return false;
+  } else if (f.stage === "memowait") {
+    // "Case รอส่ง memo" = ขั้นย่อย 1.0 — ยังไม่กดยืนยันส่งเรื่อง Memo (0104)
+    // เป็นคิวเตือนแบบเดียวกับ "รอลงคิวหมอ" — ข้ามตัวกรอง "ยกเว้น" เพื่อเห็นครบเสมอ
+    if (
+      i.stage !== INFLU_STAGE.memo ||
+      i.docs_sent_at !== null ||
+      i.completed ||
+      status === "declined"
+    )
+      return false;
   } else if (f.stage === "declined") {
     if (status !== "declined") return false;
   } else {
@@ -137,12 +153,21 @@ export function matchBoardFilters(
     if (!want) return false;
     const row = list.find((a) => a.userId === want);
     if (!row) return false;
-    // เลือกขอบเขตด้วย = ดูเฉพาะเคสที่คนนั้นถือขั้นนั้นจริง
-    if (f.scopes.length && !f.scopes.some((s) => row.scopes.includes(s)))
-      return false;
+    // เลือกบทบาทด้วย = ดูเฉพาะเคสที่คนนั้นถือบทบาทนั้นจริง
+    // (เทียบผ่าน normalizeRoles ทั้งสองฝั่ง — ข้อมูล/ค่าที่บันทึกไว้ก่อน 0104 ยังใช้ได้)
+    if (f.scopes.length) {
+      const wantRoles = normalizeRoles(f.scopes);
+      if (!normalizeRoles(row.scopes).some((r) => wantRoles.includes(r)))
+        return false;
+    }
   } else if (f.scopes.length) {
-    // ไม่เจาะคน แต่เจาะขอบเขต = เคสที่มีใครสักคนถือขอบเขตนั้น
-    if (!list.some((a) => f.scopes.some((s) => a.scopes.includes(s))))
+    // ไม่เจาะคน แต่เจาะบทบาท = เคสที่มีใครสักคนถือบทบาทนั้น
+    const wantRoles = normalizeRoles(f.scopes);
+    if (
+      !list.some((a) =>
+        normalizeRoles(a.scopes).some((r) => wantRoles.includes(r))
+      )
+    )
       return false;
   }
 
@@ -177,8 +202,8 @@ export function boardFilterChips(
   if (f.scopes.length) {
     out.push({
       key: "scopes",
-      label: `ขอบเขต: ${INFLU_SCOPE_ORDER.filter((s) => f.scopes.includes(s))
-        .map((s) => INFLU_SCOPES[s].short)
+      label: `บทบาท: ${normalizeRoles(f.scopes)
+        .map((r) => INFLU_ROLES[r].short)
         .join(", ")}`,
       next: { ...f, scopes: [] },
     });
@@ -363,6 +388,9 @@ export function BoardFilterSections({
 }) {
   const set = (part: Partial<BoardFilters>) =>
     onChange({ ...filters, ...part });
+  // ค่าที่บันทึกไว้ก่อน 0104 (contract/followup) ถูกแปลงเป็นบทบาทใหม่ตอนแสดง —
+  // กดชิปครั้งแรกก็เก็บกลับเป็นคีย์บทบาทใหม่ให้เอง
+  const selectedRoles = normalizeRoles(filters.scopes);
 
   return (
     <>
@@ -404,17 +432,17 @@ export function BoardFilterSections({
             ))}
         </Select>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {INFLU_SCOPE_ORDER.map((s) => (
+          {INFLU_ROLE_ORDER.map((r) => (
             <FilterChip
-              key={s}
-              active={filters.scopes.includes(s)}
-              onClick={() => set({ scopes: toggle(filters.scopes, s) })}
-              title={INFLU_SCOPES[s].desc}
+              key={r}
+              active={selectedRoles.includes(r)}
+              onClick={() => set({ scopes: toggle(selectedRoles, r) })}
+              title={INFLU_ROLES[r].desc}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${INFLU_SCOPES[s].dot}`}
+                className={`h-1.5 w-1.5 rounded-full ${INFLU_ROLES[r].dot}`}
               />
-              {INFLU_SCOPES[s].short}
+              {INFLU_ROLES[r].short}
             </FilterChip>
           ))}
         </div>
