@@ -105,12 +105,21 @@ export function useInfluFilters<T extends object>({
   page,
   userId,
   factory,
+  seed = null,
+  seedKey = null,
 }: {
   page: string;
   userId: string | null;
   /** **ต้องเป็นค่าคงที่ระดับโมดูล** (เช่น DEFAULT_BOARD_FILTERS) — hook ใช้ identity ของมัน
       เป็น dependency ถ้าสร้าง object ใหม่ทุก render ค่าที่บันทึกไว้จะถูกอ่านทับซ้ำๆ */
   factory: T;
+  /** ตัวกรองตั้งต้นของ "รอบนี้" จาก deep link (เช่น `?filter=` บนบอร์ดเคส — ปุ่มแจ้งเตือน
+      บนปฏิทิน/กระดิ่งพามา) — ทับค่าเริ่มต้นเฉพาะรอบนี้ ไม่ถูกบันทึก ต้องส่ง seedKey คู่กัน */
+  seed?: Partial<T> | null;
+  /** คีย์ของ seed (string จาก URL) — เปลี่ยนค่าเมื่อไหร่ seed ถูกใส่ใหม่, null = ไม่มี deep link
+      **เทียบเป็น string ไม่ใช่ identity ของ object** เพราะ router.refresh() ส่ง props ใหม่
+      ทุกครั้ง ถ้าเทียบ object ตัวกรองจะเด้งกลับไป seed ทุกครั้งที่ refresh */
+  seedKey?: string | null;
 }): InfluFilterApi<T> {
   const key = storageKeyOf(page, userId);
 
@@ -132,18 +141,33 @@ export function useInfluFilters<T extends object>({
 
   /** null = ยังไม่แตะตัวกรองรอบนี้ (ใช้ค่าเริ่มต้นอยู่) */
   const [override, setOverride] = useState<T | null>(null);
+  /* seed จาก deep link — ปรับ state ระหว่าง render ตามแพตเทิร์น useSyncedState
+     (ไม่ใช่ effect sync): seedKey เปลี่ยน = ใส่ seed ใหม่และล้างสิ่งที่ผู้ใช้แก้ค้างไว้ */
+  const [seedPatch, setSeedPatch] = useState<Partial<T> | null>(null);
+  const [seedApplied, setSeedApplied] = useState<string | null>(null);
+  if (seedKey !== seedApplied) {
+    setSeedApplied(seedKey);
+    setSeedPatch(seedKey !== null ? seed : null);
+    setOverride(null);
+  }
 
   const defaults = saved ?? factory;
-  const filters = override ?? defaults;
+  /** ค่าตั้งต้นของรอบนี้ = ค่าเริ่มต้น (ที่บันทึกไว้/โรงงาน) ทับด้วย seed ถ้ามี — ยังตามค่าที่
+      บันทึกไว้ที่โหลดหลัง hydrate ได้ เพราะไม่ได้ snapshot ตอน seed */
+  const base = useMemo<T>(
+    () => (seedPatch ? { ...defaults, ...seedPatch } : defaults),
+    [defaults, seedPatch]
+  );
+  const filters = override ?? base;
 
   const setFilters = useCallback(
     (next: T | ((cur: T) => T)) =>
       setOverride((cur) =>
         typeof next === "function"
-          ? (next as (cur: T) => T)(cur ?? defaults)
+          ? (next as (cur: T) => T)(cur ?? base)
           : next
       ),
-    [defaults]
+    [base]
   );
 
   const patch = useCallback(
@@ -159,6 +183,7 @@ export function useInfluFilters<T extends object>({
       return;
     }
     setOverride(null); // ค่าที่ตั้งอยู่กลายเป็นค่าเริ่มต้นแล้ว
+    setSeedPatch(null);
     emitSaved();
   }, [filters, key]);
 
@@ -169,10 +194,15 @@ export function useInfluFilters<T extends object>({
       // เพิกเฉย
     }
     setOverride(null);
+    setSeedPatch(null);
     emitSaved();
   }, [key]);
 
-  const reset = useCallback(() => setOverride(null), []);
+  // "คืนค่าเริ่มต้น" = ทิ้งทั้งสิ่งที่แก้ค้างและ seed จาก deep link
+  const reset = useCallback(() => {
+    setOverride(null);
+    setSeedPatch(null);
+  }, []);
 
   return {
     filters,

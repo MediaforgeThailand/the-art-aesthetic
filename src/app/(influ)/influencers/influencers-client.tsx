@@ -27,6 +27,7 @@ import {
   INFLU_STAGE,
   INFLU_STAGE_LAST,
   isLaterSection,
+  memoApprovedNeedsBooking,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
@@ -45,6 +46,7 @@ import {
   boardFilterChips,
   boardFilterCount,
   type BoardFilters,
+  boardSeedFromParam,
   DEFAULT_BOARD_FILTERS,
   matchBoardFilters,
   StageTrackerPicker,
@@ -110,6 +112,7 @@ export function InfluencersClient({
   services,
   people,
   assignees,
+  initialFilter,
   me,
   loadError,
 }: {
@@ -136,6 +139,9 @@ export function InfluencersClient({
   people: InfluPerson[];
   /** ผู้รับผิดชอบของทุกเคส (0095) — สิ่งที่การ์ดแสดงแทน owner_id เดิม */
   assignees: CaseAssigneeRow[];
+  /** `?filter=` จาก URL (deep link ของปุ่มแจ้งเตือนบนปฏิทิน/กระดิ่ง) — ตั้งตัวกรองให้อัตโนมัติ
+      เฉพาะรอบนี้ ไม่ทับค่าเริ่มต้นที่บันทึกไว้ (ดู boardSeedFromParam) */
+  initialFilter: string | null;
   me: InfluMe;
   loadError: string | null;
 }) {
@@ -275,15 +281,24 @@ export function InfluencersClient({
       ),
     [items, bookedIds]
   );
+  /* subset: ผ่านขั้น 1.2 (เอกสารผ่าน) แล้วแต่ยังไม่ลงคิว — ตัวเลขบนชิปตัวกรอง
+     "เอกสารผ่านแล้ว ยังไม่ลงคิว" (ตรงกับปุ่มแจ้งเตือนท้ายแผงขวาของปฏิทิน) */
+  const approvedBookingCount = useMemo(
+    () => items.filter((i) => memoApprovedNeedsBooking(i, bookedIds)).length,
+    [items, bookedIds]
+  );
 
   const [search, setSearch] = useState("");
 
   /* ตัวกรองทั้งหมดอยู่ในปุ่มเดียว (ผู้ใช้ 2026-08-29) — ค่าโรงงานเริ่มที่ "เคสของฉัน"
-     และผู้ใช้กด "บันทึกเป็นค่าเริ่มต้น" ในแผงเพื่อเปลี่ยนค่าตั้งต้นของตัวเองได้ */
+     และผู้ใช้กด "บันทึกเป็นค่าเริ่มต้น" ในแผงเพื่อเปลี่ยนค่าตั้งต้นของตัวเองได้
+     `?filter=` จาก deep link = seed ของรอบนี้ (ปุ่มแจ้งเตือนบนปฏิทิน/กระดิ่งพามา) */
   const filterApi = useInfluFilters<BoardFilters>({
     page: "board",
     userId: me.id,
     factory: DEFAULT_BOARD_FILTERS,
+    seed: boardSeedFromParam(initialFilter),
+    seedKey: initialFilter,
   });
   const { filters } = filterApi;
 
@@ -529,7 +544,9 @@ export function InfluencersClient({
     () => boardFilterChips(filters, peopleById, campaigns),
     [filters, peopleById, campaigns]
   );
-  const bookingAlertActive = filters.stage === "needbooking";
+  const bookingAlertActive =
+    filters.stage === "needbooking" ||
+    filters.stage === "needbooking_approved";
   const memoWaitActive = filters.stage === "memowait";
   // คิว "รอส่งเรื่อง Memo" (ขั้นย่อย 1.0) — นับจากทุกเคสข้ามตัวกรองเสมอ (สัญญาณเตือนต้องเห็นครบ)
   const memoWaitCount = useMemo(
@@ -644,6 +661,7 @@ export function InfluencersClient({
               items.filter((i) => influStatusOf(i) === st).length
             }
             bookingCount={bookingAlertIds.size}
+            approvedBookingCount={approvedBookingCount}
             unassignedCount={unassignedCount}
           />
         </InfluFilterButton>
@@ -697,8 +715,16 @@ export function InfluencersClient({
           ) : bookingAlertActive && search === "" ? (
             <EmptyState
               icon={<CalendarClock size={40} strokeWidth={1.5} />}
-              title="ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
-              description="ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึงขั้น Memo แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+              title={
+                filters.stage === "needbooking_approved"
+                  ? "ทุกเคสที่เอกสารผ่านแล้วมีคิวหมอในปฏิทินแล้ว"
+                  : "ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
+              }
+              description={
+                filters.stage === "needbooking_approved"
+                  ? "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่ออัพไฟล์ Memo ที่อนุมัติ (ผ่านขั้น 1.2) แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+                  : "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึงขั้น Memo แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+              }
             />
           ) : (
             <EmptyState
