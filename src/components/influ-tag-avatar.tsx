@@ -7,9 +7,12 @@ import { useSignedUrl } from "@/lib/use-signed-url";
    แพตเทิร์นเดียวกับ DoctorAvatar: signed URL ผ่าน cache กลาง useSignedUrl,
    ไม่มีรูป/ยังโหลดไม่เสร็จ = วงตัวอักษรแรก */
 
+/* sm/md ขยาย +15% เมื่อ 2026-09-02 (จาก h-6/h-7 เป็น h-7/h-8) ตามคำสั่งผู้ใช้ —
+   ใช้เฉพาะในตัวเลือก/dropdown ของหน้า Task (task-panel.tsx=sm, tag-required-modal.tsx=md)
+   lg (หน้าจัดการแท็ก) ไม่ได้อยู่ในขอบเขตคำสั่งนี้ ไม่แตะ */
 const SIZES = {
-  sm: { circle: "h-6 w-6", text: "text-[10px]" },
-  md: { circle: "h-7 w-7", text: "text-[10px]" },
+  sm: { circle: "h-7 w-7", text: "text-[11px]" },
+  md: { circle: "h-8 w-8", text: "text-[12px]" },
   lg: { circle: "h-11 w-11", text: "text-sm" },
 } as const;
 

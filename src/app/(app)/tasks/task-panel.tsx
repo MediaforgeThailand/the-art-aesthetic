@@ -1972,7 +1972,7 @@ export function TaskPanel({
                           onSetInfluencer(task, i.id);
                           setInfluOpen(false);
                         }}
-                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-brand-50 ${
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-base transition-colors hover:bg-brand-50 ${
                           task.influencer_id === i.id
                             ? "bg-brand-50/60 font-medium text-brand-700"
                             : "text-stone-700"
@@ -1983,7 +1983,7 @@ export function TaskPanel({
                           {influLabel(i)}
                         </span>
                         {i.influ_code && (
-                          <span className="shrink-0 font-mono text-[10px] text-stone-400">
+                          <span className="shrink-0 font-mono text-[11px] text-stone-400">
                             {i.influ_code}
                           </span>
                         )}

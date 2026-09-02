@@ -266,11 +266,12 @@ export function roundLabel(roundNo: number): string | null {
   return roundNo > 1 ? `รอบ ${roundNo}` : null;
 }
 
-/** ชื่อ influ แบบเต็มบรรทัดเดียว "ชื่อ นามสกุล (ชื่อเล่น) · รอบ N"
+/** ชื่อ influ แบบเต็มบรรทัดเดียว "ชื่อเล่น (ชื่อ นามสกุล) · รอบ N" —
+    ชื่อเล่นนำหน้าเพราะทีมจำ/เรียก influ กันด้วยชื่อเล่นเป็นหลัก (ผู้ใช้ 2026-09-02)
     ใช้ร่วมกันทั้งตัวเลือกในหน้า Task และหน้าจัดการแท็ก */
 export function influLabel(i: InfluencerLite): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
-  const name = i.nickname ? `${full} (${i.nickname})` : full;
+  const name = i.nickname ? (full ? `${i.nickname} (${full})` : i.nickname) : full;
   const round = roundLabel(i.round_no);
   return round ? `${name} · ${round}` : name;
 }
