@@ -93,7 +93,7 @@ export type TaskRow = {
   review1_approved_at: string | null;
   /** เวลาที่กดส่งตรวจ — ใช้แสดง "รอมานานเท่าไร" (ล้างตอนยกเลิก/ตีกลับ/เปิดงานใหม่) */
   review_submitted_at: string | null;
-  /** แท็ก influencer ที่ใช้ทำคอนเทนต์ — เลือกได้เฉพาะเคสที่ผ่าน Memo แล้ว (stage สัญญาขึ้นไป) */
+  /** แท็ก influencer ที่ใช้ทำคอนเทนต์ — เลือกได้ทุกเคสที่ยังเดินงานอยู่ (ไม่เอา archived/ปฏิเสธ) */
   influencer_id: string | null;
   /** แท็กหมอเจ้าของเคสในคอนเทนต์ชิ้นนี้ (ทะเบียนเดียวกับระบบ Influ) — migration 0100 */
   doctor_id: string | null;
@@ -1784,7 +1784,7 @@ export type DoctorLite = Pick<
   "id" | "name" | "nickname" | "license_no" | "photo_path"
 >;
 
-/** ตัวเลือกแท็ก influencer ของทีมคอนเทนต์ — เคสที่ผ่าน Memo แล้ว พร้อมของที่ใช้ทำแฮชแท็ก */
+/** ตัวเลือกแท็ก influencer ของทีมคอนเทนต์ — เคสที่ยังเดินงานอยู่ พร้อมของที่ใช้ทำแฮชแท็ก */
 export type InfluTagOption = InfluencerLite & {
   influ_code: string | null;
   doctor_name: string | null;

@@ -67,7 +67,7 @@ export default async function TasksPage() {
       // ต้องไม่โผล่ในตัวเลือกผู้รับผิดชอบ/ผู้ตรวจ และเมนูแท็กคนในแชท
       .contains("permissions", ["team"])
       .order("full_name", { ascending: true }),
-    // ตัวเลือก influ ของแท็ก — เฉพาะเคสที่ผ่าน Memo แล้ว (ตั้งแต่ขั้นสัญญาเป็นต้นไป)
+    // ตัวเลือก influ ของแท็ก — ทุกเคสที่ยังเดินงานอยู่ (ไม่เอา archived/ปฏิเสธ)
     // พร้อมข้อมูลที่ใช้ประกอบแฮชแท็กบังคับ ดู `fetchInfluTagOptions`
     fetchInfluTagOptions(),
     // ทะเบียนหมอที่ยังเปิดใช้ — หมอที่ถูกซ่อนแล้วยังโชว์บนงานเก่าได้ผ่าน embed `doctor`

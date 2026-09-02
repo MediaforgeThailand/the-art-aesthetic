@@ -1,5 +1,4 @@
 // ฝั่ง server เท่านั้น — ใช้ createClient ของ server ที่ดึง next/headers (import จาก client จะพัง)
-import { INFLU_STAGE } from "./influ-constants";
 import { createClient } from "./supabase/server";
 import type { InfluProductTeam, InfluTagOption } from "./types";
 
@@ -13,10 +12,9 @@ type ProcedureLite = {
 /**
  * ตัวเลือกแท็ก influencer ของทีมคอนเทนต์ — **ความจริงแหล่งเดียว** ว่า influ คนไหนแท็กได้
  *
- * เกณฑ์ (ผู้ใช้ 2026-08-31): "influ ที่มี profile แล้วและผ่าน memo แล้วเท่านั้น
- * (ไปถึง stage สัญญาเป็นต้นไป)" ⇒
- *   - `stage >= INFLU_STAGE.contractService` (ผ่านขั้น Memo มาแล้ว — ห้ามเทียบเลขดิบ
- *     เพราะเลขขั้นถูกเลื่อนมาแล้ว 3 ครั้ง: 0062 / 0086 / 0092)
+ * เกณฑ์ (ผู้ใช้ 2026-09-01): ทุกเคสที่มีโปรไฟล์และยังเดินงานอยู่ — **ไม่กรอง stage**
+ * (เกณฑ์เดิม 2026-08-31 เอาเฉพาะเคสที่ผ่าน Memo แล้ว ทำให้เคสขั้น Memo 17 เคสหายจาก
+ * ตัวเลือกทั้งที่ทีมคอนเทนต์เริ่มทำงานได้ตั้งแต่ตอนนั้น — ผู้ใช้แจ้งว่า "มาไม่ครบ") ⇒
  *   - `archived = false` — ข้อมูลเก่าที่นำเข้าจาก Excel (146 เคส) ไม่ใช่ตัวเลือกผูกงาน
  *   - ไม่เอาเคสที่ปฏิเสธ (`declined_at`) — งานไม่เกิด ก็ไม่มีคอนเทนต์ให้แท็ก
  * ทุกเคสมี `person_id` (FK → influ_profiles ตั้งแต่ 0080) จึงแปลว่า "มีโปรไฟล์แล้ว" อยู่ในตัว
@@ -34,7 +32,6 @@ export async function fetchInfluTagOptions(): Promise<InfluTagOption[]> {
         "id, first_name, last_name, nickname, round_no, influ_code, doctor_name, campaign_id, photo_path"
       )
       .eq("archived", false)
-      .gte("stage", INFLU_STAGE.contractService)
       .is("declined_at", null)
       .order("created_at", { ascending: false }),
     supabase

@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Check, Search, Sparkles, Stethoscope, X } from "lucide-react";
 import { DoctorAvatar } from "@/app/(influ)/influencers/doctor-select";
+import { InfluTagAvatar } from "@/components/influ-tag-avatar";
 import { Button, Modal } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
 import {
@@ -252,9 +253,7 @@ export function TagRequiredModal({
                     : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream">
-                  {(o.nickname || o.first_name || "?").slice(0, 1)}
-                </span>
+                <InfluTagAvatar influ={o} size="md" />
                 <span className="min-w-0 flex-1 truncate">{influLabel(o)}</span>
                 {o.teams.map((t) => (
                   <span
@@ -273,7 +272,8 @@ export function TagRequiredModal({
             ))}
             {influList.length === 0 && (
               <p className="px-2.5 py-2 text-xs text-stone-400">
-                ไม่พบชื่อที่ใกล้เคียง — รายชื่อมีเฉพาะเคสที่ผ่านขั้น Memo แล้ว
+                ไม่พบชื่อที่ใกล้เคียง — รายชื่อมาจากเคสในบอร์ด Influencer
+                ที่ยังเดินงานอยู่
               </p>
             )}
             <NoneRow

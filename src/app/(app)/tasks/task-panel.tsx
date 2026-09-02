@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSyncedState } from "@/lib/use-synced-state";
 import { DoctorAvatar } from "@/app/(influ)/influencers/doctor-select";
 import { HashtagChips } from "@/components/hashtag-chips";
+import { InfluTagAvatar } from "@/components/influ-tag-avatar";
 import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
@@ -319,7 +320,7 @@ export function TaskPanel({
   reviewerProfiles: ProfileOption[];
   /** ผู้ตรวจลำดับ 2 ของทีม (ตั้งใน "จัดการผู้ตรวจ") — โชว์ preview ก่อนส่งตรวจ; null = ตรวจชั้นเดียว */
   teamReviewer2: ProfileOption | null;
-  /** influ ที่ติดแท็กได้ = มีโปรไฟล์และผ่านขั้น Memo แล้ว (0100) */
+  /** influ ที่ติดแท็กได้ = ทุกเคสที่ยังเดินงานอยู่ (0100 — เลิกกรอง stage 2026-09-01) */
   influencers: InfluTagOption[];
   /** ทะเบียนหมอที่เปิดใช้อยู่ — แท็กหมอของชิ้นงาน (0100) */
   doctors: DoctorLite[];
@@ -1959,8 +1960,8 @@ export function TaskPanel({
                   <div className="max-h-52 overflow-y-auto py-1">
                     {influMatches.length === 0 && (
                       <p className="px-3 py-2 text-xs text-stone-400">
-                        ไม่พบชื่อที่ใกล้เคียง — รายชื่อมีเฉพาะเคสที่ผ่านขั้น
-                        Memo แล้ว
+                        ไม่พบชื่อที่ใกล้เคียง — รายชื่อมาจากเคสในบอร์ด
+                        Influencer ที่ยังเดินงานอยู่
                       </p>
                     )}
                     {influMatches.map((i) => (
@@ -1977,9 +1978,7 @@ export function TaskPanel({
                             : "text-stone-700"
                         }`}
                       >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream">
-                          {i.first_name.charAt(0)}
-                        </span>
+                        <InfluTagAvatar influ={i} size="sm" />
                         <span className="min-w-0 flex-1 truncate">
                           {influLabel(i)}
                         </span>
