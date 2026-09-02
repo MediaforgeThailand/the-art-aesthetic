@@ -25,19 +25,22 @@ import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import {
-  INFLU_SCOPE_ORDER,
-  INFLU_STAGE,
-  procedureSummaryText,
-} from "@/lib/influ-constants";
+import { INFLU_STAGE, procedureSummaryText } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
   InfluCampaignDefRow,
   InfluProfileRow,
+  InfluScope,
   InfluServiceRow,
 } from "@/lib/types";
+import {
+  type AssigneeChange,
+  AssigneeRolePicker,
+  type CaseAssignee,
+  type InfluPerson,
+} from "./assignees";
 import { DoctorSelect } from "./doctor-select";
 import type {
   PriceCatalogEntry,
@@ -59,6 +62,7 @@ export function NewCaseModal({
   promoCatalog,
   doctors,
   campaigns,
+  people,
   me,
   actor,
   onServiceCreated,
@@ -76,6 +80,8 @@ export function NewCaseModal({
   doctors: DoctorRow[];
   /** แคมเปญที่เปิดใช้งาน — เลือกได้ตอนสร้างเคส (ไม่บังคับ) */
   campaigns: InfluCampaignDefRow[];
+  /** บัญชีทีมทั้งหมด — ตัวเลือก "ผู้ออก Memo" (assign ตั้งแต่ตอนสร้างเคส) */
+  people: InfluPerson[];
   me: { id: string | null; name: string };
   actor: InfluLogActor;
   /** หัตถการใหม่ที่เพิ่งลงทะเบียน — แจ้ง parent ให้ลิสต์กลางอัปเดต */
@@ -111,6 +117,8 @@ export function NewCaseModal({
   const [doctorName, setDoctorName] = useState("");
   /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
   const [contactChannel, setContactChannel] = useState("");
+  /** ผู้ออก Memo (ขั้น 1.1/1.2) เลือกได้ตั้งแต่ตอนสร้างเคส — draft ในฟอร์ม insert จริงหลังสร้างสำเร็จ */
+  const [memoMakers, setMemoMakers] = useState<CaseAssignee[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -124,7 +132,25 @@ export function NewCaseModal({
     setServiceDate("");
     setDoctorName("");
     setContactChannel("");
+    setMemoMakers([]);
     setErr(null);
+  };
+
+  const peopleById = useMemo(
+    () => new Map(people.map((p) => [p.id, p])),
+    [people]
+  );
+  /** AssigneeRolePicker คุยเป็น AssigneeChange — ตรงนี้ยังไม่มีเคสจึง apply กับ draft ในฟอร์มแทน DB */
+  const applyMemoDraft = (change: AssigneeChange) => {
+    setMemoMakers((prev) => {
+      if (change.kind === "add")
+        return [...prev, { userId: change.userId, scopes: change.scopes }];
+      if (change.kind === "remove")
+        return prev.filter((a) => a.userId !== change.userId);
+      return prev.map((a) =>
+        a.userId === change.userId ? { ...a, scopes: change.scopes } : a
+      );
+    });
   };
 
   // เลือกได้เฉพาะแคมเปญที่ยังเปิดใช้งาน — ของที่ปิดไปแล้วไม่ควรผูกเคสใหม่เข้าไป
@@ -280,18 +306,29 @@ export function NewCaseModal({
       }
     }
 
-    // ผู้สร้าง = ผู้รับผิดชอบตั้งต้นของทุกขั้น (0095) — ปรับใครถือขั้นไหนได้ที่หน้าเคส
+    // บทบาทตั้งต้น: ผู้สร้าง = "ผู้ดูแล" (owner) + ผู้ออก Memo ที่เลือกในฟอร์ม = "memo"
+    // (เลือกผู้สร้างเป็นผู้ออก Memo เอง = รวมเป็นแถวเดียว 2 บทบาท — unique (influencer_id, user_id))
     // ทำหลังสร้างเคสสำเร็จเสมอ ไม่งั้นการ์ดใหม่จะไม่มีเจ้าภาพและไม่มีใครได้แจ้งเตือน
-    if (me.id) {
-      const { error: asErr } = await supabase.from("influ_assignees").insert({
-        influencer_id: created.id,
-        user_id: me.id,
-        scopes: [...INFLU_SCOPE_ORDER],
-        created_by: me.id,
-      });
-      if (asErr) {
-        // ไม่บล็อคการสร้างเคส — บอกให้ไปกำหนดเองที่หน้าเคสแทน
-        console.warn("ตั้งผู้รับผิดชอบตั้งต้นไม่สำเร็จ:", asErr.message);
+    {
+      const rows = new Map<string, InfluScope[]>();
+      if (me.id) rows.set(me.id, ["owner"]);
+      for (const a of memoMakers) {
+        const prev = rows.get(a.userId);
+        rows.set(a.userId, prev ? [...prev, "memo"] : ["memo"]);
+      }
+      if (rows.size > 0) {
+        const { error: asErr } = await supabase.from("influ_assignees").insert(
+          [...rows.entries()].map(([userId, scopes]) => ({
+            influencer_id: created.id,
+            user_id: userId,
+            scopes,
+            created_by: me.id,
+          }))
+        );
+        if (asErr) {
+          // ไม่บล็อคการสร้างเคส — บอกให้ไปกำหนดเองที่หน้าเคสแทน
+          console.warn("ตั้งผู้รับผิดชอบตั้งต้นไม่สำเร็จ:", asErr.message);
+        }
       }
     }
 
@@ -558,6 +595,17 @@ export function NewCaseModal({
               />
             </div>
           </div>
+
+          {/* ผู้ออก Memo — assign ตั้งแต่ตอนสร้างเคส (ขั้น 1.1/1.2 เป็นของคนนี้)
+              ไม่บังคับ: ยังไม่เลือก = ไปเลือกได้ที่การ์ดขั้น 1.0 ของหน้าเคส */}
+          <AssigneeRolePicker
+            role="memo"
+            assignees={memoMakers}
+            people={people}
+            peopleById={peopleById}
+            canEdit={!saving}
+            onChange={applyMemoDraft}
+          />
 
           {err && (
             <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">

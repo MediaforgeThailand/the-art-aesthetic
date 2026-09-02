@@ -71,6 +71,7 @@ import {
   platformOptionsOf,
   type HuntFilters,
 } from "./hunting-filters";
+import type { InfluPerson } from "../influencers/assignees";
 import { NewCaseModal } from "../influencers/new-case-modal";
 import type {
   PriceCatalogEntry,
@@ -120,7 +121,8 @@ export function HuntingClient({
   doctors: DoctorRow[];
   /** แคมเปญทั้งหมด (0093) — ตัวเลือกในฟอร์มสร้างนัด */
   campaigns: InfluCampaignDefRow[];
-  people: { id: string; name: string }[];
+  /** บัญชีทีมทั้งหมด — ตัวกรองผู้รับผิดชอบ + ตัวเลือก "ผู้ออก Memo" ใน NewCaseModal */
+  people: InfluPerson[];
   me: Me;
   loadError: string | null;
 }) {
@@ -732,6 +734,7 @@ export function HuntingClient({
           promoCatalog={promoCatalog}
           doctors={doctors}
           campaigns={campaigns}
+          people={people}
           me={{ id: me.id, name: me.name }}
           actor={actor}
           onServiceCreated={(svc) => setExtraServices((prev) => [...prev, svc])}

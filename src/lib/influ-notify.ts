@@ -22,6 +22,7 @@
  */
 
 import type { Json } from "@/lib/database.types";
+import { type InfluEventScope, rolesCoverScope } from "@/lib/influ-constants";
 import type { createClient } from "@/lib/supabase/client";
 import type { InfluNotiLevel, InfluScope } from "@/lib/types";
 
@@ -50,7 +51,8 @@ export const INFLU_NOTI_TYPES: Record<string, InfluNotiMeta> = {
   stage_back: { label: "ย้อนขั้นงาน", icon: "rotate", tone: "amber" },
   /* --- เอกสาร --- */
   memo_uploaded: { label: "ไฟล์ Memo", icon: "file", tone: "sky" },
-  memo_sent: { label: "ส่ง Memo", icon: "send", tone: "sky" },
+  memo_sent: { label: "ส่งเรื่อง Memo", icon: "send", tone: "sky" },
+  memo_submitted: { label: "ทำ Memo ส่งแล้ว", icon: "send", tone: "brand" },
   contract_uploaded: {
     label: "ไฟล์สัญญา",
     icon: "file-signature",
@@ -107,8 +109,9 @@ export type InfluNotifyInput = {
   body?: string | null;
   /** ปลายทางตอนกด — ไม่ส่ง = สร้างให้อัตโนมัติจาก influencerId */
   href?: string | null;
-  /** ขอบเขตที่ "เป็นเจ้าของ" เหตุการณ์นี้ — ผู้ที่ถือขอบเขตนี้ได้ระดับ action */
-  scope?: InfluScope | null;
+  /** ขอบเขตที่ "เป็นเจ้าของ" เหตุการณ์นี้ — ผู้ที่ถือบทบาทที่คุมขอบเขตนี้
+      (ตาม covers ใน INFLU_ROLES หลัง normalizeRoles) ได้ระดับ action */
+  scope?: InfluEventScope | null;
   /** ระดับของคนที่ไม่ได้ถือขอบเขตนั้น (และของทุกคนเมื่อ scope เป็น null) */
   baseLevel?: InfluNotiLevel;
   /** ผู้รับผิดชอบทั้งหมดของเคส (รวมหัวหน้างานที่ scopes ว่าง) */
@@ -159,9 +162,9 @@ export function buildInfluNotifications(
   };
 
   for (const a of input.assignees) {
-    const owns = input.scope !== null && input.scope !== undefined
-      ? a.scopes.includes(input.scope)
-      : false;
+    // ค่าใน scopes เป็น "บทบาท" (0104 — และค่าขอบเขตเก่าก่อนหน้านั้น) ห้ามเทียบดิบ:
+    // ต้อง normalize เป็นบทบาทก่อนแล้วดูว่ามีบทบาทไหนคุมขอบเขตของเหตุการณ์นี้
+    const owns = rolesCoverScope(a.scopes, input.scope);
     put(a.userId, owns ? "action" : base);
   }
   for (const uid of input.extra ?? []) {

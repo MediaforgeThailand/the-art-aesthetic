@@ -1,6 +1,13 @@
 "use client";
 
-import { CalendarClock, Eye, Plus, Search, Sparkles } from "lucide-react";
+import {
+  CalendarClock,
+  Eye,
+  FileClock,
+  Plus,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSyncedState } from "@/lib/use-synced-state";
@@ -17,6 +24,7 @@ import { notifyInflu } from "@/lib/influ-notify";
 import {
   type CaseHashtag,
   caseHashtags,
+  INFLU_STAGE,
   INFLU_STAGE_LAST,
   isLaterSection,
   sizeGroupFromFollowers,
@@ -522,6 +530,19 @@ export function InfluencersClient({
     [filters, peopleById, campaigns]
   );
   const bookingAlertActive = filters.stage === "needbooking";
+  const memoWaitActive = filters.stage === "memowait";
+  // คิว "รอส่งเรื่อง Memo" (ขั้นย่อย 1.0) — นับจากทุกเคสข้ามตัวกรองเสมอ (สัญญาณเตือนต้องเห็นครบ)
+  const memoWaitCount = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.stage === INFLU_STAGE.memo &&
+          i.docs_sent_at === null &&
+          !i.completed &&
+          influStatusOf(i) !== "declined"
+      ).length,
+    [items]
+  );
   const unassignedCount = useMemo(
     () => items.filter((i) => assigneesOf(i.id).length === 0).length,
     [items, assigneesOf]
@@ -548,7 +569,7 @@ export function InfluencersClient({
           ย้ายไปอยู่ในกระดิ่งแจ้งเตือนของระบบ ส่วน "ค้างอยู่" ซึ่งนับเฉพาะเคสของฉัน
           ห้ามเอาแบนเนอร์เตือนกลับมาแปะบนหน้าอีก */}
 
-      {/* แถบเครื่องมือเหลือ 3 ชิ้น: ค้นหา · ตัวกรอง (ปุ่มเดียว) · สร้างนัดใหม่ */}
+      {/* แถบเครื่องมือแถวเดียว: ค้นหา · เส้นขั้นงาน · Case รอส่ง memo · ตัวกรอง · สร้างนัดใหม่ */}
       <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 animate-fade-in-up">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
           <Search
@@ -564,6 +585,47 @@ export function InfluencersClient({
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        {/* เส้นขั้นงาน — อยู่แถวเดียวกับช่องค้นหา (ผู้ใช้ 2026-09-01: UI เดิมตกไปเป็นแถวของตัวเองดูเป็นบัค)
+            และ**อยู่นอกแผงตัวกรองโดยตั้งใจ** เป็นตัวกรองที่ใช้บ่อยที่สุดของหน้านี้
+            ต้องกดเลือกขั้นได้ในคลิกเดียว ห้ามย้ายกลับเข้าไปอยู่ในแผงอีก
+            (จอแคบ = flex-wrap พาตกบรรทัดเป็นแถวของตัวเอง เลื่อนแนวนอนในกล่องได้) */}
+        <div className="min-w-[19rem] flex-[2] overflow-x-auto pb-0.5">
+          <StageTrackerPicker
+            className="min-w-[min(26rem,100%)]"
+            value={filters.stage}
+            countFor={countFor}
+            onChange={(stage) => filterApi.patch({ stage })}
+          />
+        </div>
+        {/* คิวขั้นย่อย 1.0 — เคสที่ยังไม่ได้กดยืนยันส่งเรื่อง Memo (ข้ามตัวกรอง "ยกเว้น" แบบเดียวกับรอลงคิวหมอ) */}
+        <button
+          type="button"
+          aria-pressed={memoWaitActive}
+          onClick={() =>
+            filterApi.patch({
+              stage: memoWaitActive ? "all" : "memowait",
+            })
+          }
+          className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition active:scale-[0.97] max-sm:min-h-11 ${
+            memoWaitActive
+              ? "border-brand-500 bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm"
+              : "border-stone-200 bg-white/80 text-stone-600 hover:border-brand-300 hover:text-brand-700"
+          }`}
+        >
+          <FileClock size={15} className="shrink-0" />
+          Case รอส่ง memo
+          {memoWaitCount > 0 && (
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums ${
+                memoWaitActive
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {memoWaitCount}
+            </span>
+          )}
+        </button>
         <InfluFilterButton
           api={filterApi}
           count={boardFilterCount(filters)}
@@ -593,18 +655,6 @@ export function InfluencersClient({
             </Button>
           </div>
         )}
-      </div>
-
-      {/* เส้นขั้นงาน — **อยู่นอกแผงตัวกรองโดยตั้งใจ** (ผู้ใช้ 2026-09-01)
-          เป็นตัวกรองที่ใช้บ่อยที่สุดของหน้านี้ ต้องกดเลือกขั้นได้ในคลิกเดียว
-          ห้ามย้ายกลับเข้าไปอยู่ในแผงอีก */}
-      <div className="mb-3 shrink-0 overflow-x-auto pb-0.5 animate-fade-in-up">
-        <StageTrackerPicker
-          className="min-w-[min(26rem,100%)]"
-          value={filters.stage}
-          countFor={countFor}
-          onChange={(stage) => filterApi.patch({ stage })}
-        />
       </div>
 
       {/* ชิปสรุป — ตัวกรองที่ซ่อนอยู่ในแผงต้องเห็นได้เสมอว่ากำลังกรองอะไร */}
@@ -638,7 +688,13 @@ export function InfluencersClient({
         </Card>
       ) : filtered.length === 0 ? (
         <Card>
-          {bookingAlertActive && search === "" ? (
+          {memoWaitActive && search === "" ? (
+            <EmptyState
+              icon={<FileClock size={40} strokeWidth={1.5} />}
+              title="ไม่มีเคสค้างรอส่งเรื่อง Memo"
+              description="ทุกเคสในขั้น Memo กดยืนยันส่งเรื่องแล้ว — เคสใหม่จะโผล่ที่นี่จนกว่าผู้ดูแลจะกด 'ยืนยันส่งเรื่อง Memo' ในขั้น 1.0"
+            />
+          ) : bookingAlertActive && search === "" ? (
             <EmptyState
               icon={<CalendarClock size={40} strokeWidth={1.5} />}
               title="ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
@@ -703,6 +759,7 @@ export function InfluencersClient({
         promoCatalog={promoCatalog}
         doctors={doctors}
         campaigns={campaigns}
+        people={people}
         me={{ id: me.id, name: me.name }}
         actor={actor}
         onServiceCreated={(sv) => setExtraServices((prev) => [...prev, sv])}

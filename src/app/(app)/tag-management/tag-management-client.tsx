@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { DoctorManagerPanel } from "@/app/(influ)/influencers/doctor-manager";
 import { HashtagChips } from "@/components/hashtag-chips";
+import { InfluTagAvatar } from "@/components/influ-tag-avatar";
 import { Button, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
 import {
@@ -23,7 +24,6 @@ import {
   influTagHashtags,
   missingHashtagCount,
 } from "@/lib/influ-constants";
-import { useSignedUrl } from "@/lib/use-signed-url";
 import type {
   ContentCategoryRow,
   DoctorRow,
@@ -42,33 +42,13 @@ const TABS: { key: TabKey; label: string; icon: typeof Stethoscope }[] = [
 
 /* ---------- แท็บ Influencer ---------- */
 
-function InfluAvatar({ option }: { option: InfluTagOption }) {
-  const { url } = useSignedUrl(option.photo_path);
-  const initial = (option.nickname || option.first_name || "?").slice(0, 1);
-  if (option.photo_path && url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={influLabel(option)}
-        className="h-11 w-11 shrink-0 rounded-full object-cover shadow-sm"
-      />
-    );
-  }
-  return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-sm font-semibold text-brand-700">
-      {initial}
-    </span>
-  );
-}
-
 function InfluTagCard({ option }: { option: InfluTagOption }) {
   const tags = influTagHashtags(option);
   const missing = missingHashtagCount(tags);
   return (
     <div className="rounded-xl border border-stone-200 bg-white/70 p-3 sm:p-4">
       <div className="flex items-start gap-3">
-        <InfluAvatar option={option} />
+        <InfluTagAvatar influ={option} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-stone-800">
             {influLabel(option)}
@@ -163,8 +143,8 @@ function InfluTab({ options }: { options: InfluTagOption[] }) {
     <Card className="p-3 sm:p-5">
       <div className="space-y-4">
         <p className="text-sm leading-6 text-stone-500">
-          รายชื่อที่ติดแท็กได้ = influencer ที่มีโปรไฟล์แล้วและผ่านขั้น Memo
-          แล้ว (ตั้งแต่ขั้นสัญญาเป็นต้นไป) —
+          รายชื่อที่ติดแท็กได้ = influencer
+          ทุกเคสที่ยังเดินงานอยู่บนบอร์ดเคส (ไม่รวมข้อมูลเก่าและเคสที่ปฏิเสธ) —
           แฮชแท็กของแต่ละคนมาจากข้อมูลในระบบ Influ แก้ที่หน้าเคสของคนนั้น
         </p>
 

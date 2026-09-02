@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Copy,
   Hash,
+  History,
   FileSignature,
   FolderOpen,
   ImagePlus,
@@ -35,6 +36,7 @@ import { SignaturePad } from "@/components/signature-pad";
 import {
   AssigneeEditor,
   AssigneeStack,
+  PersonAvatar,
   type AssigneeChange,
   type CaseAssignee,
   type InfluPerson,
@@ -55,6 +57,7 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
+  formatNotiTime,
   formatNumber,
 } from "@/lib/format";
 import {
@@ -69,15 +72,16 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
+  roleSummary,
   scopeOfStage,
-  scopeSummary,
   tierFromFollowers,
 } from "@/lib/influ-constants";
-import { logInflu } from "@/lib/influ-log";
+import { influLogActionMeta, logInflu } from "@/lib/influ-log";
 import { notifyInflu } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
+  InfluActivityLogRow,
   InfluCalendarEventRow,
   InfluCampaignDefRow,
   InfluencerRow,
@@ -120,6 +124,274 @@ function logNameOf(
 ): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
+}
+
+/** วันก่อนหน้าของ YYYY-MM-DD (เลขคณิตบน Date.UTC — ไม่แตะ timezone เครื่อง) */
+function yesterdayOf(todayIso: string): string {
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const t = new Date(Date.UTC(y, (m ?? 1) - 1, (d ?? 1) - 1));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** เวลาบนไทม์ไลน์ sidebar — วันนี้/เมื่อวานเป็นคำ เก่ากว่านั้นใช้รูปแบบเดียวกับกระดิ่ง */
+function logTimeLabel(createdAt: string, today: string): string {
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+  }).format(d);
+  if (day !== today && day !== yesterdayOf(today)) return formatNotiTime(createdAt);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
+  return `${day === today ? "วันนี้" : "เมื่อวาน"} ${time}`;
+}
+
+/** รูปบน sidebar โปรไฟล์ — ตัวย่อรูปเดียว ไม่ใช่จุดอัพโหลด (อัพ/เปลี่ยนรูปทำในแท็บภาพรวมเหมือนเดิม) */
+function SidebarPhoto({ path, name }: { path: string | null; name: string }) {
+  const { url, failed } = useSignedUrl(path);
+  if (path && !url && !failed)
+    return <div className="h-16 w-16 shrink-0 animate-pulse rounded-2xl bg-stone-200" />;
+  if (url)
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={name}
+        className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-1 ring-stone-200"
+      />
+    );
+  return (
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-brand-300 text-xl font-semibold text-brand-700">
+      {name.trim().charAt(0) || "?"}
+    </div>
+  );
+}
+
+/** sidebar โปรไฟล์ฝั่งซ้าย — ข้อมูลหลักของ influ + ผู้รับผิดชอบ + ประวัติการแก้ไขล่าสุด
+    ติดตามตลอดตอนเลื่อน (lg:sticky) และเห็นเหมือนกันทุกแท็บ — งานส่งต่อกันหลายคน
+    คนที่เพิ่งเปิดเคสต้องรู้ทันทีว่าใครทำอะไรไปล่าสุด โดยไม่ต้องกดเข้าหน้า LOG กลาง */
+function ProfileSidebar({
+  influencer,
+  fullName,
+  assignees,
+  peopleById,
+  activityLog,
+  today,
+}: {
+  influencer: InfluencerRow;
+  fullName: string;
+  assignees: CaseAssignee[];
+  peopleById: Map<string, InfluPerson>;
+  activityLog: InfluActivityLogRow[];
+  today: string;
+}) {
+  const tier = influencer.tier ? INFLU_TIERS[influencer.tier] : null;
+  const stageTitle =
+    INFLU_STAGES.find((s) => s.step === influencer.stage)?.title ?? null;
+  const contractEnd =
+    influencer.contract_start && influencer.contract_months
+      ? contractEndDate(influencer.contract_start, influencer.contract_months)
+      : null;
+  // ประวัติการแก้ไข — แต่ละแถวย่อเหลือ 1 บรรทัด กดดูรายละเอียดเต็มในป็อปอัพ
+  const [openLogId, setOpenLogId] = useState<string | null>(null);
+  const openLog = activityLog.find((l) => l.id === openLogId) ?? null;
+  const openLogMeta = openLog ? influLogActionMeta(openLog.action) : null;
+  return (
+    <Card className="p-0">
+      {/* ตัวตน: รูป + ชื่อ + สถานะปัจจุบัน */}
+      <div className="flex items-start gap-3 p-4">
+        <SidebarPhoto path={influencer.photo_path} name={fullName} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-stone-900">
+            คุณ{fullName || "-"}
+          </p>
+          {influencer.nickname && (
+            <p className="truncate text-sm text-stone-500">
+              ({influencer.nickname})
+            </p>
+          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {influencer.influ_code && (
+              <span className="rounded-md bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-600">
+                {influencer.influ_code}
+              </span>
+            )}
+            {influencer.declined_at ? (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                ปฏิเสธ
+              </span>
+            ) : influencer.completed ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                จบงานแล้ว
+              </span>
+            ) : stageTitle ? (
+              <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">
+                {stageTitle}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* ข้อมูลหลัก — เอาเฉพาะที่ต้องเหลือบดูตอนทำงาน ไม่ยกการ์ดภาพรวมมาทั้งชุด */}
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-stone-100 p-4">
+        <Field
+          label="ผู้ติดตาม"
+          value={
+            influencer.followers ? (
+              <>
+                {formatNumber(influencer.followers)}
+                {tier && (
+                  <span className="ml-1 text-xs text-stone-400">
+                    · {tier.label}
+                  </span>
+                )}
+              </>
+            ) : null
+          }
+        />
+        <Field label="เบอร์ติดต่อ" value={influencer.phone} />
+        <div className="col-span-2">
+          <Field
+            label="หัตถการ"
+            value={
+              influencer.procedure_text ? (
+                <span className="line-clamp-2">{influencer.procedure_text}</span>
+              ) : null
+            }
+          />
+        </div>
+        <Field
+          label="วันรับบริการ"
+          value={
+            influencer.service_date ? formatDate(influencer.service_date) : null
+          }
+        />
+        <Field label="แพทย์" value={influencer.doctor_name} />
+        <div className="col-span-2">
+          <Field
+            label="อายุสัญญา"
+            value={
+              influencer.contract_start ? (
+                <>
+                  {formatDate(influencer.contract_start)}
+                  {contractEnd && ` – ${formatDate(contractEnd)}`}
+                </>
+              ) : null
+            }
+          />
+        </div>
+      </dl>
+
+      {/* ผู้รับผิดชอบ — ใครดูขั้นไหน (แก้/มอบหมายทำที่การ์ดในแท็บภาพรวมเหมือนเดิม) */}
+      <div className="border-t border-stone-100 p-4">
+        <p className="mb-2 text-xs font-medium text-stone-400">ผู้รับผิดชอบ</p>
+        {assignees.length === 0 ? (
+          <p className="text-sm text-stone-400">ยังไม่มีผู้รับผิดชอบ</p>
+        ) : (
+          <ul className="space-y-2">
+            {assignees.map((a) => {
+              const p = peopleById.get(a.userId);
+              return (
+                <li key={a.userId} className="flex items-center gap-2">
+                  <PersonAvatar
+                    person={
+                      p ?? {
+                        id: a.userId,
+                        name: "ไม่ทราบชื่อ",
+                        avatarPath: null,
+                        jobTitle: null,
+                      }
+                    }
+                    size={24}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-stone-800">
+                      {p?.name ?? "ไม่ทราบชื่อ"}
+                    </p>
+                    <p className="truncate text-[11px] text-stone-400">
+                      {roleSummary(a.scopes)}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* การแก้ไขล่าสุด — ไทม์ไลน์ให้คนที่รับช่วงงานตามสถานะทัน (เช่น "เมื่อวาน 13:00 ส่ง Memo แล้ว") */}
+      <div className="border-t border-stone-100 p-4">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-stone-400">
+          <History className="h-3.5 w-3.5" />
+          การแก้ไขล่าสุด
+        </p>
+        {activityLog.length === 0 ? (
+          <p className="text-sm text-stone-400">ยังไม่มีประวัติการแก้ไข</p>
+        ) : (
+          <ol className="max-h-96 space-y-0.5 overflow-y-auto lg:max-h-none">
+            {activityLog.map((l) => {
+              const meta = influLogActionMeta(l.action);
+              return (
+                <li key={l.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenLogId(l.id)}
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-stone-50 max-sm:py-2"
+                  >
+                    <span
+                      className={`shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium ${meta.chip}`}
+                    >
+                      {meta.label}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-stone-700">
+                      {l.summary}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-stone-400">
+                      {logTimeLabel(l.created_at, today)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+
+      <Modal
+        open={openLog !== null}
+        onClose={() => setOpenLogId(null)}
+        title="รายละเอียดการแก้ไข"
+      >
+        {openLog && openLogMeta && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${openLogMeta.chip}`}
+              >
+                {openLogMeta.label}
+              </span>
+              <span className="text-xs text-stone-400">
+                {formatNotiTime(openLog.created_at)}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-line text-stone-800">
+              {openLog.summary}
+            </p>
+            {openLog.actor_name && (
+              <p className="text-xs text-stone-500">
+                โดย {openLog.actor_name}
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
+    </Card>
+  );
 }
 
 /** กล่องอัพโหลด/แสดงรูป — อยู่ module scope กัน remount ทุก keystroke ของฟอร์ม */
@@ -504,6 +776,8 @@ export function InfluDetailClient({
   campaigns,
   assignees,
   people,
+  activityLog,
+  today,
   canManage,
   initialStage = null,
 }: {
@@ -541,6 +815,10 @@ export function InfluDetailClient({
   assignees: CaseAssignee[];
   /** บัญชีทั้งหมด — ตัวเลือกตอนมอบหมายงาน */
   people: InfluPerson[];
+  /** ประวัติการใช้งานล่าสุดของเคส (30 รายการ) — ไทม์ไลน์ท้าย sidebar โปรไฟล์ */
+  activityLog: InfluActivityLogRow[];
+  /** วันนี้ตามเวลาไทย (YYYY-MM-DD จาก server — กฎ react-hooks/purity ห้ามอ่านเวลาตอน render) */
+  today: string;
   /** true = สิทธิ์ `influ` (เดินงานได้เต็ม) · false = สิทธิ์ `team` ที่เข้ามาจากแกลเลอรี
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
@@ -795,7 +1073,7 @@ export function InfluDetailClient({
         entityId: influencer.id,
         influencerId: influencer.id,
         influencerName: caseName,
-        summary: `เพิ่ม ${who} เป็นผู้รับผิดชอบของ ${caseName} (${scopeSummary(change.scopes)})`,
+        summary: `เพิ่ม ${who} เป็นผู้รับผิดชอบของ ${caseName} (${roleSummary(change.scopes)})`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
       // คนที่เพิ่งถูกมอบหมายต้องรู้ทันทีเสมอ ไม่ว่าจะถือขอบเขตไหน
@@ -807,7 +1085,7 @@ export function InfluDetailClient({
         forceAction: [change.userId],
         type: "assigned",
         title: `คุณได้รับมอบหมายเคส ${caseName}`,
-        body: `ขอบเขตงาน: ${scopeSummary(change.scopes)}`,
+        body: `บทบาท: ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
     } else if (change.kind === "remove") {
@@ -865,7 +1143,7 @@ export function InfluDetailClient({
         entityId: influencer.id,
         influencerId: influencer.id,
         influencerName: caseName,
-        summary: `เปลี่ยนขอบเขตงานของ ${who} ในเคส ${caseName} เป็น ${scopeSummary(change.scopes)}`,
+        summary: `เปลี่ยนบทบาทของ ${who} ในเคส ${caseName} เป็น ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
       notifyInflu(supabase, actor, {
@@ -874,7 +1152,7 @@ export function InfluDetailClient({
         assignees: notifyTargets,
         forceAction: [change.userId],
         type: "scope_changed",
-        title: `ขอบเขตงานของ ${who} ในเคส ${caseName} เปลี่ยนเป็น ${scopeSummary(change.scopes)}`,
+        title: `บทบาทของ ${who} ในเคส ${caseName} เปลี่ยนเป็น ${roleSummary(change.scopes)}`,
         meta: { user_id: change.userId, scopes: change.scopes },
       });
     }
@@ -1067,6 +1345,21 @@ export function InfluDetailClient({
         </p>
       )}
 
+      {/* 2 คอลัมน์บนจอ ≥lg: sidebar โปรไฟล์ซ้าย (sticky ติดตามตอนเลื่อน) + เนื้อหางานขวา
+          จอเล็ก sidebar ตกไปต่อท้าย (order-last) — งานที่ต้องลงมือทำยังอยู่บนสุด
+          wrapper อยู่นอก key={view} โดยตั้งใจ ให้ sidebar คงอยู่ตอนสลับแท็บ ไม่ re-mount */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <aside className="order-last w-full shrink-0 lg:order-first lg:sticky lg:top-0 lg:max-h-[calc(100dvh-2rem)] lg:w-80 lg:overflow-y-auto">
+          <ProfileSidebar
+            influencer={influencer}
+            fullName={fullName}
+            assignees={assignedList}
+            peopleById={peopleById}
+            activityLog={activityLog}
+            today={today}
+          />
+        </aside>
+        <div className="min-w-0 flex-1">
       {/* stepper — มีปุ่ม "ภาพรวม" นำหน้า */}
       <div className="mb-6 flex flex-wrap gap-2 animate-fade-in-up">
         <button
@@ -1237,6 +1530,12 @@ export function InfluDetailClient({
             userName={userName}
             readOnly={readOnly}
             fileEditable={canEdit}
+            userId={userId}
+            assignees={assignedList}
+            people={people}
+            peopleById={peopleById}
+            busyUserId={assigneeBusy}
+            onAssigneeChange={(c) => void applyAssigneeChange(c)}
           />
         )}
         {view === INFLU_STAGE.contractService && (
@@ -1262,6 +1561,9 @@ export function InfluDetailClient({
             />
           </div>
         )}
+      </div>
+
+        </div>
       </div>
 
       {nameOpen && (

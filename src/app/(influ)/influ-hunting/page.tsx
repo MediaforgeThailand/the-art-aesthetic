@@ -17,6 +17,7 @@ import type {
   InfluProspectRow,
   InfluServiceRow,
 } from "@/lib/types";
+import type { InfluPerson } from "../influencers/assignees";
 import type {
   PriceCatalogEntry,
   PromoCatalogEntry,
@@ -80,7 +81,9 @@ export default async function InfluHuntingPage() {
       .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
       .order("name", { ascending: true }),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
-    supabase.from("profiles").select("id, full_name, email"),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_path, job_title"),
     // แคมเปญ (0093) — ตัวเลือกในฟอร์มสร้างนัดที่เปิดต่อจากปุ่ม "ตอบรับ"
     supabase
       .from("influ_campaign_defs")
@@ -102,10 +105,14 @@ export default async function InfluHuntingPage() {
         promoCatalog={(promoCatalog ?? []) as PromoCatalogEntry[]}
         doctors={(doctors ?? []) as DoctorRow[]}
         campaigns={(campaigns ?? []) as InfluCampaignDefRow[]}
-        people={(profiles ?? []).map((p) => ({
-          id: p.id,
-          name: p.full_name || p.email || "ไม่ทราบชื่อ",
-        }))}
+        people={
+          (profiles ?? []).map((p) => ({
+            id: p.id,
+            name: p.full_name || p.email || "ไม่ทราบชื่อ",
+            avatarPath: p.avatar_path ?? null,
+            jobTitle: p.job_title ?? null,
+          })) as InfluPerson[]
+        }
         me={{
           id: access.uid,
           name: me?.full_name || me?.email || "",

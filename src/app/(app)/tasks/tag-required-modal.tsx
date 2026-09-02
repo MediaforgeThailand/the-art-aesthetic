@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Check, Search, Sparkles, Stethoscope, X } from "lucide-react";
 import { DoctorAvatar } from "@/app/(influ)/influencers/doctor-select";
+import { InfluTagAvatar } from "@/components/influ-tag-avatar";
 import { Button, Modal } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
 import {
@@ -23,6 +24,11 @@ type Answer = string | null | undefined;
 
 const ROW =
   "flex w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm transition-colors max-sm:min-h-11 sm:py-2";
+
+/* แถวของ influencer ขยาย +15% เมื่อ 2026-09-02 (ผู้ใช้: รูปโปรไฟล์ + แถวใหญ่ขึ้น) —
+   แยกจาก ROW เพราะแถวหมอในโมดัลเดียวกันไม่ได้อยู่ในขอบเขตคำสั่งนี้ ใช้ ROW เดิมต่อไป */
+const ROW_INFLU =
+  "flex w-full items-center gap-2 rounded-lg px-2.5 text-left text-base transition-colors max-sm:min-h-12 sm:py-2.5";
 
 function SectionHead({
   icon,
@@ -87,22 +93,29 @@ function NoneRow({
   label,
   on,
   onClick,
+  size = "md",
 }: {
   label: string;
   on: boolean;
   onClick: () => void;
+  /** "lg" = แถวขนาดเดียวกับตัวเลือก influencer ที่ขยาย +15% แล้ว */
+  size?: "md" | "lg";
 }) {
+  const row = size === "lg" ? ROW_INFLU : ROW;
+  const circle = size === "lg" ? "h-8 w-8" : "h-7 w-7";
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${ROW} ${
+      className={`${row} ${
         on
           ? "bg-stone-100 font-medium text-stone-700 ring-1 ring-stone-300"
           : "text-stone-500 hover:bg-stone-50"
       }`}
     >
-      <span className="h-7 w-7 shrink-0 rounded-full border border-dashed border-stone-300" />
+      <span
+        className={`${circle} shrink-0 rounded-full border border-dashed border-stone-300`}
+      />
       {label}
     </button>
   );
@@ -246,26 +259,24 @@ export function TagRequiredModal({
                 key={o.id}
                 type="button"
                 onClick={() => setInfluId(o.id)}
-                className={`${ROW} ${
+                className={`${ROW_INFLU} ${
                   influId === o.id
                     ? "bg-brand-50 font-medium text-brand-700 ring-1 ring-brand-200"
                     : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-semibold text-cream">
-                  {(o.nickname || o.first_name || "?").slice(0, 1)}
-                </span>
+                <InfluTagAvatar influ={o} size="md" />
                 <span className="min-w-0 flex-1 truncate">{influLabel(o)}</span>
                 {o.teams.map((t) => (
                   <span
                     key={t}
-                    className={`hidden shrink-0 rounded-md px-1.5 py-0.5 text-[11px] sm:inline ${INFLU_PRODUCT_TEAMS[t].chip}`}
+                    className={`hidden shrink-0 rounded-md px-1.5 py-0.5 text-[13px] sm:inline ${INFLU_PRODUCT_TEAMS[t].chip}`}
                   >
                     {INFLU_PRODUCT_TEAMS[t].label}
                   </span>
                 ))}
                 {o.influ_code && (
-                  <span className="shrink-0 font-mono text-[11px] text-stone-400">
+                  <span className="shrink-0 font-mono text-[13px] text-stone-400">
                     {o.influ_code}
                   </span>
                 )}
@@ -273,13 +284,15 @@ export function TagRequiredModal({
             ))}
             {influList.length === 0 && (
               <p className="px-2.5 py-2 text-xs text-stone-400">
-                ไม่พบชื่อที่ใกล้เคียง — รายชื่อมีเฉพาะเคสที่ผ่านขั้น Memo แล้ว
+                ไม่พบชื่อที่ใกล้เคียง — รายชื่อมาจากเคสในบอร์ด Influencer
+                ที่ยังเดินงานอยู่
               </p>
             )}
             <NoneRow
               label="ไม่มี influencer ในชิ้นงานนี้"
               on={influId === null}
               onClick={() => setInfluId(null)}
+              size="lg"
             />
           </div>
           {missing > 0 && (

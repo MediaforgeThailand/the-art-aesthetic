@@ -139,7 +139,7 @@ export function TasksClient({
   sections: TaskSectionRow[];
   tasks: TaskWithAssignee[];
   profiles: ProfileWithDefault[];
-  /** influ ที่ติดแท็กได้ = มีโปรไฟล์และผ่านขั้น Memo แล้ว (0100) */
+  /** influ ที่ติดแท็กได้ = ทุกเคสที่ยังเดินงานอยู่ (0100 — เลิกกรอง stage 2026-09-01) */
   influencers: InfluTagOption[];
   /** ทะเบียนหมอที่เปิดใช้อยู่ — ใช้ติดแท็กหมอบนชิ้นงาน (0100) */
   doctors: DoctorLite[];
