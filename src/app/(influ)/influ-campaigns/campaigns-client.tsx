@@ -935,38 +935,43 @@ export function CampaignsClient({
                   </Badge>
                 </div>
 
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-stone-400">
-                  <CalendarRange size={12} /> {dateRangeLabel(c)}
-                </p>
+                {/* วันที่ + ปุ่มแก้ไข/ลบ อยู่แถวเดียวกัน — ของเดิมแยกเป็น 2 แถว
+                    เหลือที่ว่างข้างล่างเปล่าๆ ทั้งที่ยัดพอดีบรรทัดเดียวได้ */}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="flex min-w-0 items-center gap-1.5 text-xs text-stone-400">
+                    <CalendarRange size={12} className="shrink-0" />
+                    <span className="truncate">{dateRangeLabel(c)}</span>
+                  </p>
 
-                {canManage && (
-                  <div className="mt-2 flex items-center justify-end gap-1">
-                    <button
-                      type="button"
-                      title="แก้ไขแคมเปญ"
-                      aria-label={`แก้ไขแคมเปญ ${c.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFormFor({ campaign: c });
-                      }}
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 max-sm:h-11 max-sm:w-11"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      title="ลบแคมเปญ"
-                      aria-label={`ลบแคมเปญ ${c.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDelete(c);
-                      }}
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 max-sm:h-11 max-sm:w-11"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                )}
+                  {canManage && (
+                    <div className="-my-1 -mr-1.5 flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        title="แก้ไขแคมเปญ"
+                        aria-label={`แก้ไขแคมเปญ ${c.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormFor({ campaign: c });
+                        }}
+                        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-brand-50 hover:text-brand-700 max-sm:h-11 max-sm:w-11"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        title="ลบแคมเปญ"
+                        aria-label={`ลบแคมเปญ ${c.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete(c);
+                        }}
+                        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-600 max-sm:h-11 max-sm:w-11"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
