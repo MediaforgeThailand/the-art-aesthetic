@@ -23,6 +23,7 @@ import {
   Undo2,
   UserRound,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -79,11 +80,14 @@ import {
 import { influLogActionMeta, logInflu } from "@/lib/influ-log";
 import { notifyInflu } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
+import { tooLargeSummary } from "@/lib/upload";
+import { prepareUploadFiles } from "@/lib/upload-prepare";
 import type {
   DoctorRow,
   InfluActivityLogRow,
   InfluCalendarEventRow,
   InfluCampaignDefRow,
+  InfluCasePhotoRow,
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
@@ -124,6 +128,14 @@ function logNameOf(
 ): string {
   const full = [i.first_name, i.last_name].filter(Boolean).join(" ");
   return i.nickname ? `${full} (${i.nickname})` : full;
+}
+
+/** สถานะของรอบงานหนึ่งรอบ — ใช้แทน "ขั้น N/M" ด้วยชื่อขั้นจริง (ผู้ใช้ 2026-09-02:
+    ไม่ต้องบอก stage แบบเศษส่วน ให้บอกว่ากำลังอยู่ขั้นอะไรแทน) */
+function roundStatusLabel(r: InfluRoundLite): string {
+  if (r.declined_at) return "ปฏิเสธ";
+  if (r.completed) return "จบงานแล้ว";
+  return INFLU_STAGES.find((s) => s.step === r.stage)?.title ?? `ขั้นที่ ${r.stage}`;
 }
 
 /** วันก่อนหน้าของ YYYY-MM-DD (เลขคณิตบน Date.UTC — ไม่แตะ timezone เครื่อง) */
@@ -200,8 +212,10 @@ function ProfileSidebar({
   const [openLogId, setOpenLogId] = useState<string | null>(null);
   const openLog = activityLog.find((l) => l.id === openLogId) ?? null;
   const openLogMeta = openLog ? influLogActionMeta(openLog.action) : null;
+  // ไม่มี Card ห่อตัวเองแล้ว (2026-09-03) — parent (<aside>) เป็นคนให้พื้นหลัง glass/มุมโค้ง
+  // เพราะต้องยืดเต็มความสูงแถวให้กลืนกับคอลัมน์เนื้อหาขวา ส่วนกล่องนี้แค่เป็น sticky scroller
   return (
-    <Card className="p-0">
+    <>
       {/* ตัวตน: รูป + ชื่อ + สถานะปัจจุบัน */}
       <div className="flex items-start gap-3 p-4">
         <SidebarPhoto path={influencer.photo_path} name={fullName} />
@@ -390,53 +404,112 @@ function ProfileSidebar({
           </div>
         )}
       </Modal>
-    </Card>
+    </>
   );
 }
 
-/** กล่องอัพโหลด/แสดงรูป — อยู่ module scope กัน remount ทุก keystroke ของฟอร์ม */
-function PhotoBox({
+/** แกลเลอรีรูปของเคส (0105) — อัพได้หลายรูป, รูปแรก (position ต่ำสุด) = รูปหน้าปกที่ใช้
+    โชว์ทุกที่ (การ์ดบอร์ด/sidebar/หัวเอกสารภาพรวม) — ทุกทิ้งเป็น module scope กัน remount
+    ทุก keystroke ของฟอร์ม; แสดงรูปด้วย object-contain (สูงคงที่ กว้างตามสัดส่วนจริง)
+    ไม่บังคับครอปเป็นสี่เหลี่ยมจัตุรัสแบบเดิม */
+function CasePhotoGallery({
   label,
-  url,
+  photos,
   disabled,
-  onPick,
+  onAddFiles,
+  onRemove,
 }: {
   label: string;
-  url: string | null;
+  photos: InfluCasePhotoRow[];
   disabled: boolean;
-  onPick: (file: File) => void;
+  onAddFiles: (files: File[]) => void;
+  onRemove: (photo: InfluCasePhotoRow) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <div>
-      <Label>{label}</Label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-        className="flex h-40 w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-stone-300 bg-white/60 transition-colors hover:border-brand-400 hover:bg-brand-50/40 disabled:cursor-default"
-      >
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={label} className="h-full w-full object-cover" />
-        ) : (
-          <span className="flex flex-col items-center gap-1 text-xs text-stone-400">
-            <ImagePlus size={22} />
-            กดเพื่ออัพโหลดรูป
+      <Label>
+        {label}{" "}
+        {photos.length > 0 && (
+          <span className="font-normal text-stone-400">
+            (รูปแรก = รูปที่ใช้แสดงบนโปรไฟล์)
           </span>
         )}
-      </button>
+      </Label>
+      <div className="flex flex-wrap gap-2">
+        {photos.map((p, idx) => (
+          <CasePhotoTile
+            key={p.id}
+            photo={p}
+            cover={idx === 0}
+            disabled={disabled}
+            onRemove={() => onRemove(p)}
+          />
+        ))}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+          className="flex h-28 w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-stone-300 bg-white/60 text-stone-400 transition-colors hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600 disabled:cursor-default disabled:opacity-60"
+        >
+          <ImagePlus size={20} />
+          <span className="text-xs font-medium">เพิ่มรูป</span>
+        </button>
+      </div>
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPick(f);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) onAddFiles(files);
           e.target.value = "";
         }}
       />
+    </div>
+  );
+}
+
+function CasePhotoTile({
+  photo,
+  cover,
+  disabled,
+  onRemove,
+}: {
+  photo: InfluCasePhotoRow;
+  cover: boolean;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const { url, failed } = useSignedUrl(photo.file_path);
+  return (
+    <div className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200">
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- object-contain คงสัดส่วนจริง ไม่ crop
+        <img src={url} alt="" className="h-full w-full object-contain" />
+      ) : failed ? (
+        <span className="px-2 text-center text-[11px] text-stone-400">
+          เปิดรูปไม่ได้
+        </span>
+      ) : (
+        <div className="h-full w-full animate-pulse bg-stone-200" />
+      )}
+      {cover && (
+        <span className="absolute bottom-1 left-1 rounded-full bg-brand-600/90 px-2 py-0.5 text-[10px] font-semibold text-white">
+          หน้าปก
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="ลบรูปนี้"
+        onClick={onRemove}
+        className="absolute -right-2 -top-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white text-stone-500 shadow ring-1 ring-stone-200 transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-90 disabled:cursor-default disabled:opacity-60"
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 }
@@ -769,6 +842,7 @@ export function InfluDetailClient({
   personProfile,
   profileChannels,
   sourceLinks,
+  casePhotos,
   ownerName,
   userId,
   userName,
@@ -803,6 +877,8 @@ export function InfluDetailClient({
   profileChannels: InfluProfileChannelRow[];
   /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
   sourceLinks: InfluLinkRow[];
+  /** รูปภาพหลายรูปของเคสนี้ (0105) — แยก kind photo/channel ในแท็บรายละเอียดเคส */
+  casePhotos: InfluCasePhotoRow[];
   /** ชื่อผู้รับผิดชอบเคส (owner_id — คนที่สร้างการ์ด); null = เคสเก่าที่ยังไม่มีเจ้าของ */
   ownerName: string | null;
   /** ผู้ใช้ที่กำลังเปิดหน้านี้ — ใช้เป็น "ผู้ทำ" ของประวัติการใช้งาน (influ_activity_log) */
@@ -1160,13 +1236,13 @@ export function InfluDetailClient({
     router.refresh();
   };
 
-  // สรุป: follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  // follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  // ตัวเลข/badge สรุปย้ายไปอยู่ในหัวเอกสาร "ภาพรวม" ทั้งหมดแล้ว (OverviewPanel คำนวณเอง
+  // จาก prop นี้) — ที่นี่เหลือแค่ส่งรายการดิบต่อไปให้
   const activeTasks = useMemo(
     () => activeFollowupTasks(influencer.followup_mode, tasks),
     [influencer.followup_mode, tasks]
   );
-  const followupLeft = activeTasks.filter((t) => !t.done).length;
-  const followupTotal = activeTasks.length;
 
   return (
     // ทุกจุดที่แก้ข้อมูลในหน้านี้เรียก useInfluLog() เอง — ไม่ต้องส่ง actor เป็น prop ทีละชั้น
@@ -1180,9 +1256,14 @@ export function InfluDetailClient({
       }}
     >
     <div>
-      {/* header */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
-        {/* จอเล็ก: แถวแรกกระชับ [กลับ][ชื่อ][ปุ่มแก้ชื่อ] แล้วดัน Badge ที่เหลือลงบรรทัดถัดไป
+      {/* header + แท็บนำทาง รวมเป็นแถวเดียวกัน (ผู้ใช้ 2026-09-03: เดิมแยกเป็น 2 แถวมีช่องว่าง
+          คั่นทำให้ดูเป็นคนละส่วน) — อยู่เต็มความกว้างหน้า เหนือ 2 คอลัมน์ ไม่ถูกบีบด้วย sidebar
+          จึงมีที่พอให้ชื่อ+แท็บอยู่แถวเดียวกันบนจอเดสก์ท็อป (จอแคบ flex-wrap ตกบรรทัดเอง)
+          ข้อมูลระบุตัวตน/สถานะ (Influ ID, Tier, สถานะงาน, ส่ง Memo แล้ว, รอปรึกษา, เช็คลิสต์,
+          จำนวนคอนเทนต์) ย้ายไปรวมไว้ที่หัวเอกสาร "ภาพรวม" จุดเดียวแทน กันซ้ำซ้อนกับตรงนี้ —
+          แถวนี้เหลือแค่สิ่งที่ต้องกดได้จากทุกที่ (นำทาง/ผู้รับผิดชอบ/เปิดรอบใหม่) */}
+      <div className="mb-5 flex flex-wrap items-center gap-2 animate-fade-in-up">
+        {/* จอเล็ก: แถวแรกกระชับ [กลับ][ชื่อ][ปุ่มแก้ชื่อ] แล้วดันแท็บลงบรรทัดถัดไป
             (w-full ในแถบ flex-wrap) — ที่ ≥sm ใช้ display:contents ให้ลูกกลับไปเป็น flex item
             ของแถบเดิมตรงๆ หน้าตาเดสก์ท็อปจึงไม่เปลี่ยนเลย */}
         <div className="flex min-w-0 items-center gap-2 max-sm:w-full sm:contents">
@@ -1213,155 +1294,14 @@ export function InfluDetailClient({
             )}
           </h1>
         </div>
-        {influencer.influ_code && (
-          <span
-            title="รหัส Influ ID"
-            className="rounded-md border border-stone-200 bg-white/70 px-2 py-0.5 font-mono text-xs text-stone-500"
-          >
-            {influencer.influ_code}
-          </span>
-        )}
         {/* ผู้รับผิดชอบ = รูปโปรไฟล์ (0095) — ชื่อผู้สร้างย้ายไปอยู่ในการ์ด "ผู้รับผิดชอบ" ข้างล่าง */}
         <AssigneeStack
           assignees={assignedList}
           peopleById={peopleById}
           size={24}
         />
-        {/* Badge ที่ซ้ำกับหัวเอกสารใน "ภาพรวม" (tier / จบงานแล้ว / รอปรึกษา / จำนวนคอนเทนต์ /
-            รอบที่ N) ถูกซ่อนที่ <sm — จอเล็กมีที่จำกัด ให้เหลือแต่ของที่หาที่อื่นไม่ได้ */}
-        {influencer.tier && (
-          <Badge
-            className={`${INFLU_TIERS[influencer.tier].badge} max-sm:hidden`}
-          >
-            {INFLU_TIERS[influencer.tier].label}
-          </Badge>
-        )}
-        {influencer.completed && (
-          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 max-sm:hidden">
-            <CheckCircle2 size={12} /> จบงานแล้ว
-          </Badge>
-        )}
-        {/* ติ๊ก "ส่ง Memo แล้ว" (ติ๊กที่ขั้น Memo) — โชว์บนหัวด้วย จะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู */}
-        {influencer.docs_sent_at && (
-          <span
-            title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
-              influencer.docs_sent_at
-            )}`}
-          >
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> ส่ง Memo แล้ว
-            </Badge>
-          </span>
-        )}
-        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคส) */}
-        {influencer.consult_only && !influencer.procedure_text && (
-          <Badge className="border border-amber-200 bg-amber-50 text-amber-700 max-sm:hidden">
-            <MessageCircleQuestion size={12} /> รอปรึกษา
-          </Badge>
-        )}
-        {/* เช็คลิสต์ผลลัพธ์ที่เหลือ — เคสที่เริ่มนับสัญญาแล้ว (การตามงานจริงอยู่หน้า Follow Up) */}
-        {influencer.contract_start !== null &&
-          !influencer.completed &&
-          followupTotal > 0 && (
-            <Link href="/influencers/contracts" title="ไปหน้า Follow Up">
-              {followupLeft > 0 ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-                  <ListChecks size={12} /> เช็คลิสต์เหลือ {followupLeft}/
-                  {followupTotal} ข้อ
-                </Badge>
-              ) : (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                  <CheckCircle2 size={12} /> เช็คลิสต์ครบทุกข้อ
-                </Badge>
-              )}
-            </Link>
-          )}
-        {/* จำนวนงานคอนเทนต์ที่ผูกกับคนนี้ */}
-        {contentTasks.length > 0 && (
-          <Badge className="border border-brand-200 bg-brand-50 text-brand-700 max-sm:hidden">
-            <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
-          </Badge>
-        )}
-        {/* คนนี้มีหลายรอบ — บอกว่าการ์ดนี้คือรอบที่เท่าไหร่ (สลับรอบได้ที่แถบใต้หัวข้อ)
-            ซ่อนที่ <sm เพราะแถบสลับรอบข้างล่างไฮไลต์รอบปัจจุบันอยู่แล้ว */}
-        {personRounds.length > 1 && (
-          <Badge className="border border-stone-200 bg-stone-50 text-stone-500 max-sm:hidden">
-            <Repeat size={12} /> รอบที่ {influencer.round_no}
-          </Badge>
-        )}
-        {/* เปิดรอบใหม่ — influ คนเดิมกลับมาทำอีกครั้ง ต้องออก Memo ใหม่ + การ์ดใหม่ */}
-        {canStartNewRound && (
-          <button
-            type="button"
-            onClick={() => setNewRoundOpen(true)}
-            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
-          >
-            <Repeat size={14} />
-            เปิดรอบใหม่
-          </button>
-        )}
-      </div>
-
-      {/* แถบสลับรอบ — คนเดิมมีหลายการ์ด (หลายรอบงาน) กดดูรอบอื่นได้จากตรงนี้ */}
-      {personRounds.length > 1 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5 animate-fade-in-up">
-          <span className="text-xs text-stone-400">รอบงานของคนนี้:</span>
-          {personRounds.map((r) => {
-            const current = r.id === influencer.id;
-            const status = r.declined_at
-              ? "ปฏิเสธ"
-              : r.completed
-                ? "จบงาน"
-                : `ขั้น ${r.stage}/${INFLU_STAGES.length}`;
-            const label = `รอบ ${r.round_no} · ${status}`;
-            return current ? (
-              <span
-                key={r.id}
-                className="inline-flex items-center gap-1 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 py-1 text-xs font-medium text-cream shadow-sm max-sm:min-h-11 max-sm:px-4"
-              >
-                {label}
-              </span>
-            ) : (
-              <Link
-                key={r.id}
-                href={`/influencers/${r.id}`}
-                title={
-                  r.service_date
-                    ? `เข้ารับบริการ ${formatDate(r.service_date)}`
-                    : undefined
-                }
-                className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white/70 px-3 py-1 text-xs font-medium text-stone-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11 max-sm:px-4"
-              >
-                {label}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-      {newRoundErr && (
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-          {newRoundErr}
-        </p>
-      )}
-
-      {/* 2 คอลัมน์บนจอ ≥lg: sidebar โปรไฟล์ซ้าย (sticky ติดตามตอนเลื่อน) + เนื้อหางานขวา
-          จอเล็ก sidebar ตกไปต่อท้าย (order-last) — งานที่ต้องลงมือทำยังอยู่บนสุด
-          wrapper อยู่นอก key={view} โดยตั้งใจ ให้ sidebar คงอยู่ตอนสลับแท็บ ไม่ re-mount */}
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <aside className="order-last w-full shrink-0 lg:order-first lg:sticky lg:top-0 lg:max-h-[calc(100dvh-2rem)] lg:w-80 lg:overflow-y-auto">
-          <ProfileSidebar
-            influencer={influencer}
-            fullName={fullName}
-            assignees={assignedList}
-            peopleById={peopleById}
-            activityLog={activityLog}
-            today={today}
-          />
-        </aside>
-        <div className="min-w-0 flex-1">
-      {/* stepper — มีปุ่ม "ภาพรวม" นำหน้า */}
-      <div className="mb-6 flex flex-wrap gap-2 animate-fade-in-up">
+        <span className="mx-1 hidden h-6 w-px shrink-0 bg-stone-200 sm:block" />
+        {/* แท็บนำทาง — ภาพรวม / รายละเอียดเคส / ขั้นตอนงาน */}
         <button
           type="button"
           onClick={() => setView("overview")}
@@ -1449,7 +1389,25 @@ export function InfluDetailClient({
             ย้อน Stage {influencer.stage} → {influencer.stage - 1}
           </button>
         )}
+        {/* เปิดรอบใหม่ — influ คนเดิมกลับมาทำอีกครั้ง ต้องออก Memo ใหม่ + การ์ดใหม่ */}
+        {canStartNewRound && (
+          <button
+            type="button"
+            onClick={() => setNewRoundOpen(true)}
+            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
+          >
+            <Repeat size={14} />
+            เปิดรอบใหม่
+          </button>
+        )}
       </div>
+
+      {newRoundErr && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+          {newRoundErr}
+        </p>
+      )}
 
       {/* เริ่มนับสัญญาไปแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
           — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสไปโผล่หน้า Follow Up โดยไม่มีสัญญาแบบเงียบๆ */}
@@ -1478,10 +1436,33 @@ export function InfluDetailClient({
         </p>
       )}
 
+      {/* 2 คอลัมน์บนจอ ≥lg: sidebar โปรไฟล์ซ้าย (sticky ติดตามตอนเลื่อน) + เนื้อหางานขวา
+          จอเล็ก sidebar ตกไปต่อท้าย (order-last) — งานที่ต้องลงมือทำยังอยู่บนสุด
+          wrapper อยู่นอก key={view} โดยตั้งใจ ให้ sidebar คงอยู่ตอนสลับแท็บ ไม่ re-mount */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+        {/* aside ยืดเต็มความสูงแถว (lg:items-stretch ของ parent) ให้พื้นหลัง glass กลืนกับ
+            คอลัมน์เนื้อหาขวา ไม่เห็นเป็นกล่องสั้นๆ ลอยเหนือช่องว่างเปล่าด้านล่าง (ผู้ใช้ 2026-09-03)
+            — ตัวเนื้อหาจริง (ProfileSidebar) อยู่ใน div sticky ชั้นในซึ่งลอยติดขอบบนระหว่างเลื่อน
+            หน้า ไม่ใช่ตัว aside เอง (ห้ามรวมเป็นชั้นเดียว — max-h ของกล่องที่ถูกยืดจะไปตัด
+            "รางเลื่อน" ของ sticky ให้สั้นแค่ 1 จอ แล้วหลุดสติกกี้เร็วเกินไป) */}
+        <aside className="glass order-last w-full shrink-0 rounded-xl shadow-[0_8px_28px_rgba(94,58,49,0.08)] transition-shadow duration-300 hover:shadow-[0_12px_36px_rgba(94,58,49,0.14)] lg:order-first lg:w-80">
+          <div className="lg:sticky lg:top-0 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
+            <ProfileSidebar
+              influencer={influencer}
+              fullName={fullName}
+              assignees={assignedList}
+              peopleById={peopleById}
+              activityLog={activityLog}
+              today={today}
+            />
+          </div>
+        </aside>
+        <div className="min-w-0 flex-1">
       <div className="animate-fade-in" key={String(view)}>
         {view === "overview" && (
           <OverviewPanel
             influencer={influencer}
+            personRounds={personRounds}
             followupTasks={activeTasks}
             contentTasks={contentTasks}
             procedureItems={procedureItems}
@@ -1518,6 +1499,7 @@ export function InfluDetailClient({
             services={services}
             doctors={doctors}
             campaigns={campaigns}
+            casePhotos={casePhotos}
             readOnly={!canEdit}
           />
         )}
@@ -1742,9 +1724,7 @@ function HashtagBlock({ tags }: { tags: CaseHashtag[] }) {
       )}
 
       <p className="text-[11px] leading-5 text-stone-400">
-        แท็กชุดนี้เป็นข้อบังคับของทุกโพส — ระบบใช้จับคู่กับข้อมูลจาก Meta
-        เพื่อดูว่ายอดมาจากใคร/แคมเปญไหน
-        (เครื่องหมาย &quot;-&quot; ถูกตัดออกจากแท็กเพราะ IG/FB ตัดคำตรงนั้น)
+        แท็กชุดนี้เป็นข้อบังคับของทุกโพส
       </p>
     </div>
   );
@@ -1776,6 +1756,7 @@ function DocSection({
 
 function OverviewPanel({
   influencer,
+  personRounds,
   followupTasks,
   contentTasks,
   procedureItems,
@@ -1797,6 +1778,9 @@ function OverviewPanel({
   ownerName,
 }: {
   influencer: InfluencerRow;
+  /** รอบงานทั้งหมดของคนเดียวกัน — โชว์เป็นแถบสลับรอบท้ายหัวเอกสาร (ผู้ใช้ 2026-09-02:
+      ย้ายจากเดิมที่อยู่บนหัวหน้าเคสมาไว้ในการ์ดภาพรวมแทน) */
+  personRounds: InfluRoundLite[];
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   procedureItems: ProcedureItemWithPromo[];
@@ -1881,6 +1865,14 @@ function OverviewPanel({
                 {influencer.nickname || fullName || "—"}
               </h2>
               {tier && <Badge className={tier.badge}>{tier.label}</Badge>}
+              {influencer.influ_code && (
+                <span
+                  title="รหัส Influ ID"
+                  className="rounded-md border border-stone-200 bg-white/70 px-2 py-0.5 font-mono text-xs text-stone-500"
+                >
+                  {influencer.influ_code}
+                </span>
+              )}
             </div>
             {influencer.nickname && fullName && (
               <p className="text-sm text-stone-500">{fullName}</p>
@@ -1896,8 +1888,94 @@ function OverviewPanel({
                 <> · อัปเดตล่าสุด {formatDateTime(influencer.updated_at)}</>
               )}
             </p>
+            {/* สถานะเสริม — ย้ายมารวมจากหัวหน้าเคส (ผู้ใช้ 2026-09-03: กันซ้ำซ้อนกับด้านบน
+                ให้ "ภาพรวม" เป็นที่เดียวที่บอกสถานะพวกนี้) */}
+            {(influencer.docs_sent_at ||
+              (influencer.consult_only && !influencer.procedure_text) ||
+              (influencer.contract_start !== null &&
+                !influencer.completed &&
+                followupTotal > 0) ||
+              contentTasks.length > 0) && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {influencer.docs_sent_at && (
+                  <span
+                    title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
+                      influencer.docs_sent_at
+                    )}`}
+                  >
+                    <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                      <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+                    </Badge>
+                  </span>
+                )}
+                {influencer.consult_only && !influencer.procedure_text && (
+                  <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                    <MessageCircleQuestion size={12} /> รอปรึกษา
+                  </Badge>
+                )}
+                {influencer.contract_start !== null &&
+                  !influencer.completed &&
+                  followupTotal > 0 && (
+                    <Link href="/influencers/contracts" title="ไปหน้า Follow Up">
+                      {followupLeft > 0 ? (
+                        <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                          <ListChecks size={12} /> เช็คลิสต์เหลือ {followupLeft}/
+                          {followupTotal} ข้อ
+                        </Badge>
+                      ) : (
+                        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                          <CheckCircle2 size={12} /> เช็คลิสต์ครบทุกข้อ
+                        </Badge>
+                      )}
+                    </Link>
+                  )}
+                {contentTasks.length > 0 && (
+                  <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+                    <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* รอบงานของคนนี้ — ย้ายมาจากหัวหน้าเคส (ผู้ใช้ 2026-09-02: ให้อยู่ในการ์ดภาพรวมแทน
+            แต่ละชิปไม่บอก "ขั้น N/M" อีกต่อไป ใช้ชื่อขั้นจริง + ไฮไลต์รอบที่เปิดอยู่ตอนนี้ชัดๆ) */}
+        {personRounds.length > 1 && (
+          <DocSection
+            icon={<Repeat size={15} className="text-brand-600" />}
+            title={`รอบงานของคนนี้ (${personRounds.length} รอบ)`}
+          >
+            <ul className="flex flex-wrap gap-2">
+              {personRounds.map((r) => {
+                const current = r.id === influencer.id;
+                const label = `รอบ ${r.round_no} · ${roundStatusLabel(r)}`;
+                return (
+                  <li key={r.id}>
+                    {current ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3.5 py-1.5 text-xs font-medium text-cream shadow-sm max-sm:min-h-11">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cream" />
+                        {label} · กำลังดูอยู่
+                      </span>
+                    ) : (
+                      <Link
+                        href={`/influencers/${r.id}`}
+                        title={
+                          r.service_date
+                            ? `เข้ารับบริการ ${formatDate(r.service_date)}`
+                            : undefined
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white/70 px-3.5 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 max-sm:min-h-11"
+                      >
+                        {label}
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </DocSection>
+        )}
 
         {/* แฮชแท็กบังคับ (0093) — ชุดที่ influ ต้องติดในโพส ทีมกดคัดลอกส่งให้ได้ทันที
             วางไว้บนสุดเพราะเป็นสิ่งที่ต้องส่งให้ influ ทุกเคส ไม่ใช่ข้อมูลอ้างอิงท้ายเอกสาร */}
@@ -2278,6 +2356,7 @@ function CaseDetailStage({
   services,
   doctors,
   campaigns,
+  casePhotos,
   readOnly,
 }: {
   influencer: InfluencerRow;
@@ -2290,6 +2369,8 @@ function CaseDetailStage({
   doctors: DoctorRow[];
   /** แคมเปญทั้งหมด (0093) — ตัวเลือก "แคมเปญ" ของเคสนี้ */
   campaigns: InfluCampaignDefRow[];
+  /** รูปภาพหลายรูปของเคสนี้ (0105) — ทั้ง kind photo/channel ปนกันมา แยกกรองในนี้ */
+  casePhotos: InfluCasePhotoRow[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -2328,9 +2409,114 @@ function CaseDetailStage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // failed ไม่ต้องใช้ — PhotoBox แสดงกล่องอัพโหลด (placeholder นิ่ง) เมื่อไม่มี url อยู่แล้ว
-  const { url: photoUrl } = useSignedUrl(influencer.photo_path);
-  const { url: channelUrl } = useSignedUrl(influencer.channel_photo_path);
+  // รูปภาพ (0105) — คำนวณสดจาก prop ทุก render (ไม่เก็บ state ซ้อน) เพราะ router.refresh()
+  // หลังอัพ/ลบจะส่ง casePhotos ชุดใหม่ลงมาให้ตรงอยู่แล้ว เหมือนที่ photo_path เดิมทำ
+  const photos = casePhotos.filter((p) => p.kind === "photo");
+  const channelPhotos = casePhotos.filter((p) => p.kind === "channel");
+  /** null = ไม่มีอะไรกำลังอัพ/ลบอยู่ — ใช้ล็อกเฉพาะแกลเลอรีที่กำลังทำงาน ไม่ล็อกอีกฝั่ง */
+  const [photoBusy, setPhotoBusy] = useState<"photo" | "channel" | null>(null);
+
+  const addCasePhotos = async (kind: "photo" | "channel", files: File[]) => {
+    setError(null);
+    setPhotoBusy(kind);
+    const prepared = await prepareUploadFiles(files);
+    const tooBig = tooLargeSummary(prepared);
+    if (tooBig) {
+      setPhotoBusy(null);
+      setError(tooBig);
+      return;
+    }
+    const existing = kind === "photo" ? photos : channelPhotos;
+    const maxPos = Math.max(0, ...existing.map((p) => p.position));
+    const uploaded: { path: string; name: string }[] = [];
+    for (const f of prepared) {
+      const path = `influencers/${influencer.id}/${Date.now()}_${uploaded.length}_${sanitizeFileName(f.name)}`;
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET_DOCUMENTS)
+        .upload(path, f);
+      if (!upErr) uploaded.push({ path, name: f.name });
+    }
+    if (uploaded.length === 0) {
+      setPhotoBusy(null);
+      setError("อัพโหลดรูปไม่สำเร็จ");
+      return;
+    }
+    const { error: insErr } = await supabase.from("influ_case_photos").insert(
+      uploaded.map((u, i) => ({
+        influencer_id: influencer.id,
+        kind,
+        file_path: u.path,
+        file_name: u.name,
+        position: maxPos + i + 1,
+      }))
+    );
+    if (insErr) {
+      setPhotoBusy(null);
+      setError(`บันทึกรูปไม่สำเร็จ: ${insErr.message}`);
+      return;
+    }
+    // รูปแรกของทั้งชุด (ตาม position) = รูปหน้าปก — sync คอลัมน์เดิมให้ consumer อื่น
+    // (การ์ดบอร์ด/sidebar/หัวเอกสารภาพรวม/copy รูปตอนเปิดรอบใหม่) ยังอ่านได้เหมือนเดิม
+    // (update ต้อง literal key แยกสาขา — object key คำนวณชนกับ excess-property check ของ supabase-js)
+    if (existing.length === 0) {
+      if (kind === "photo") {
+        await supabase
+          .from("influencers")
+          .update({ photo_path: uploaded[0].path })
+          .eq("id", influencer.id);
+      } else {
+        await supabase
+          .from("influencers")
+          .update({ channel_photo_path: uploaded[0].path })
+          .eq("id", influencer.id);
+      }
+    }
+    setPhotoBusy(null);
+    router.refresh();
+  };
+
+  const removeCasePhoto = async (photo: InfluCasePhotoRow) => {
+    setError(null);
+    setPhotoBusy(photo.kind);
+    const { error: delErr } = await supabase
+      .from("influ_case_photos")
+      .delete()
+      .eq("id", photo.id);
+    if (delErr) {
+      setPhotoBusy(null);
+      setError(`ลบรูปไม่สำเร็จ: ${delErr.message}`);
+      return;
+    }
+    try {
+      await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([photo.file_path]);
+    } catch {
+      // best effort — ไฟล์ค้างดีกว่าฟอร์มพัง
+    }
+    // เหลือรูปแรกใหม่ (ถ้ามี) = รูปหน้าปกใหม่ ไม่เหลือเลย = ล้าง cover
+    const remaining = (photo.kind === "photo" ? photos : channelPhotos).filter(
+      (p) => p.id !== photo.id
+    );
+    const currentCover =
+      photo.kind === "photo"
+        ? influencer.photo_path
+        : influencer.channel_photo_path;
+    const nextCover = remaining[0]?.file_path ?? null;
+    if (nextCover !== currentCover) {
+      if (photo.kind === "photo") {
+        await supabase
+          .from("influencers")
+          .update({ photo_path: nextCover })
+          .eq("id", influencer.id);
+      } else {
+        await supabase
+          .from("influencers")
+          .update({ channel_photo_path: nextCover })
+          .eq("id", influencer.id);
+      }
+    }
+    setPhotoBusy(null);
+    router.refresh();
+  };
 
   const followersNum = Number(followers.replace(/[^0-9]/g, "")) || 0;
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
@@ -2353,52 +2539,6 @@ function CaseDetailStage({
     occupation.trim() !== "" &&
     (items.length > 0 || consultOnly) &&
     followersNum > 0;
-
-  const upload = async (
-    file: File,
-    field: "photo_path" | "channel_photo_path"
-  ) => {
-    setError(null);
-    const oldPath =
-      field === "photo_path"
-        ? influencer.photo_path
-        : influencer.channel_photo_path;
-    const path = `influencers/${influencer.id}/${Date.now()}_${sanitizeFileName(file.name)}`;
-    const { error: upErr } = await supabase.storage
-      .from(STORAGE_BUCKET_DOCUMENTS)
-      .upload(path, file);
-    if (upErr) {
-      setError(`อัพโหลดรูปไม่สำเร็จ: ${upErr.message}`);
-      return;
-    }
-    const { error: linkErr } = await supabase
-      .from("influencers")
-      .update(
-        field === "photo_path"
-          ? { photo_path: path }
-          : { channel_photo_path: path }
-      )
-      .eq("id", influencer.id);
-    if (linkErr) {
-      // ผูกกับ DB ไม่สำเร็จ — เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
-      try {
-        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([path]);
-      } catch {
-        // เพิกเฉย
-      }
-      setError(`บันทึกรูปไม่สำเร็จ: ${linkErr.message}`);
-      return;
-    }
-    // ลบรูปเก่าที่ถูกแทนที่ (best effort — กันไฟล์กำพร้าสะสมใน storage)
-    if (oldPath) {
-      try {
-        await supabase.storage.from(STORAGE_BUCKET_DOCUMENTS).remove([oldPath]);
-      } catch {
-        // เพิกเฉย
-      }
-    }
-    router.refresh();
-  };
 
   const save = async () => {
     // ยังต้องมีค่าบังคับครบทุกครั้ง — แต่ห้ามปิดปุ่มบันทึกทิ้ง
@@ -2653,18 +2793,20 @@ function CaseDetailStage({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 self-start">
-          <PhotoBox
+        <div className="space-y-4 self-start">
+          <CasePhotoGallery
             label="รูป Influencer"
-            url={photoUrl}
-            disabled={readOnly}
-            onPick={(f) => void upload(f, "photo_path")}
+            photos={photos}
+            disabled={readOnly || photoBusy === "photo"}
+            onAddFiles={(files) => void addCasePhotos("photo", files)}
+            onRemove={(p) => void removeCasePhoto(p)}
           />
-          <PhotoBox
+          <CasePhotoGallery
             label="รูปช่องทาง (Channel)"
-            url={channelUrl}
-            disabled={readOnly}
-            onPick={(f) => void upload(f, "channel_photo_path")}
+            photos={channelPhotos}
+            disabled={readOnly || photoBusy === "channel"}
+            onAddFiles={(files) => void addCasePhotos("channel", files)}
+            onRemove={(p) => void removeCasePhoto(p)}
           />
         </div>
       </div>

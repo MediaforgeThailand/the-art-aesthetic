@@ -15,6 +15,7 @@ import type {
   InfluActivityLogRow,
   InfluCalendarEventRow,
   InfluCampaignDefRow,
+  InfluCasePhotoRow,
   InfluencerRow,
   InfluRoundLite,
   InfluLinkRow,
@@ -83,6 +84,7 @@ export default async function InfluencerDetailPage({
     { data: assignees },
     { data: profiles },
     { data: activityLog },
+    { data: casePhotos },
   ] = await Promise.all([
     getAccess(),
     // owner = ผู้รับผิดชอบเคส (คนที่สร้างการ์ด) — join ชื่อมาโชว์บนหัวหน้า
@@ -179,6 +181,13 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .order("created_at", { ascending: false })
       .limit(30),
+    // รูปภาพหลายรูปของเคสนี้ (0105) — แท็บรายละเอียดเคสแยกเรนเดอร์ตาม kind เอง
+    supabase
+      .from("influ_case_photos")
+      .select("*")
+      .eq("influencer_id", id)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
   ]);
 
   // โปรไฟล์รายคนเปิดจากแกลเลอรีได้ด้วย → เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
@@ -243,6 +252,7 @@ export default async function InfluencerDetailPage({
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}
         sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
+        casePhotos={(casePhotos ?? []) as InfluCasePhotoRow[]}
         userId={userId}
         userName={profile?.full_name || profile?.email || ""}
         doctors={(doctors ?? []) as DoctorRow[]}

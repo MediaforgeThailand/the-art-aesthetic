@@ -1307,18 +1307,28 @@ export function caseHashtags(input: CaseHashtagInput): CaseHashtag[] {
     missingHint: "เคสนี้ยังไม่มีรหัส Influ ID — กดออกรหัสที่หน้าเคส",
   });
 
-  tags.push({
-    key: "doctor",
-    label: "รหัสหมอ",
-    tag: input.doctorLicense
-      ? `#${DOCTOR_TAG_PREFIX}${hashtagSafe(input.doctorLicense)}`
-      : null,
-    source: input.doctorName ?? null,
-    required: true,
-    missingHint: input.doctorName
-      ? `"${input.doctorName}" ยังไม่มีเลขใบ ปว. ในทะเบียนหมอ — เพิ่มที่เมนู "จัดการหมอ"`
-      : "ยังไม่ได้ระบุแพทย์ที่รับเคส",
-  });
+  // ผู้ใช้ 2026-09-02: เอาแจ้งเตือน "หมอยังไม่มีเลขใบ ปว." ออก — นางเป็นตัวเลือกเก็บทีหลัง
+  // ไม่ใช่สิ่งที่ต้องเร่งกรอก, ทีมไม่ต้องการให้ทุกเคสขึ้นเตือนซ้ำเดิม
+  // (ระบุแพทย์แล้วแต่ยังไม่มีเลขในทะเบียน = ไม่ต้องมีแท็กนี้เลย ไม่นับเป็นแท็กที่ขาด;
+  // ยังไม่ได้ระบุแพทย์เลย = ยังคงเตือนไว้ เพราะเป็นข้อมูลเคสที่ขาดจริงๆ)
+  if (input.doctorLicense) {
+    tags.push({
+      key: "doctor",
+      label: "รหัสหมอ",
+      tag: `#${DOCTOR_TAG_PREFIX}${hashtagSafe(input.doctorLicense)}`,
+      source: input.doctorName ?? null,
+      required: true,
+    });
+  } else if (!input.doctorName) {
+    tags.push({
+      key: "doctor",
+      label: "รหัสหมอ",
+      tag: null,
+      source: null,
+      required: true,
+      missingHint: "ยังไม่ได้ระบุแพทย์ที่รับเคส",
+    });
+  }
 
   // แคมเปญไม่บังคับ — เคสที่ไม่ได้อยู่ในแคมเปญไหนไม่ต้องมีแท็กนี้
   if (input.campaignTag) {
