@@ -25,7 +25,13 @@ import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { INFLU_STAGE, procedureSummaryText } from "@/lib/influ-constants";
+import {
+  caseValueOf,
+  INFLU_STAGE,
+  INFLU_VOUCHER_UNIT,
+  procedureSummaryText,
+  voucherCreditOf,
+} from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -48,6 +54,7 @@ import type {
 } from "./procedure-items-editor";
 import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
 import { ProfileFormModal, profileName } from "./profile-form";
+import { VoucherPicker } from "./voucher-picker";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -113,6 +120,8 @@ export function NewCaseModal({
   const [consultOnly, setConsultOnly] = useState(false);
   /** ค่าตัว (บาท) — เคสที่ influ คิดเงิน ต้องขึ้นเป็นบรรทัดหนึ่งใน Memo ให้ผู้อนุมัติเห็น */
   const [talentFee, setTalentFee] = useState("");
+  /** จำนวน voucher ที่เปิดวงเงินให้เคสใหม่ (0106) — 0 = ยังไม่เปิด (เติมทีหลังที่แท็บรายละเอียดเคสได้) */
+  const [voucherCount, setVoucherCount] = useState(0);
   const [serviceDate, setServiceDate] = useState("");
   const [doctorName, setDoctorName] = useState("");
   /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
@@ -193,8 +202,12 @@ export function NewCaseModal({
     }
     // มูลค่าเคสคำนวณให้เอง = Σ ราคาหัตถการที่เลือก + ค่าตัว (กติกาผู้ใช้ 2026-08-27)
     // ยังไม่มีอะไรตีมูลค่าได้ (รอปรึกษา/ราคา 0 ทั้งหมด) = null ไม่ใช่ 0
-    const caseValue =
-      procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + (feeNum ?? 0);
+    // มูลค่าเคส = วงเงิน voucher + ค่าตัว (0106) — ราคาหัตถการที่เลือกไม่เข้าสมการแล้ว
+    const caseValue = caseValueOf({
+      voucher_count: voucherCount,
+      voucher_unit: INFLU_VOUCHER_UNIT,
+      talent_fee: feeNum,
+    });
     setSaving(true);
     setErr(null);
 
@@ -247,7 +260,10 @@ export function NewCaseModal({
         // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
         consult_only: consultOnly && procedures.length === 0,
         talent_fee: feeNum,
-        case_value: caseValue > 0 ? caseValue : null,
+        voucher_count: voucherCount,
+        // ราคาต่อใบ ณ ตอนเปิด — snapshot ลงแถว ไม่อ่านค่าคงที่สดตอนแสดงผล
+        voucher_unit: INFLU_VOUCHER_UNIT,
+        case_value: caseValue,
         // สร้างจากฟอร์มนี้ = ข้อมูลครบพร้อมทำ Memo ทันที (ไม่มีคิว "รอทำ Memo" ให้ติ๊กเองแล้ว)
         memo_ready_at: new Date().toISOString(),
         service_date: serviceDate || null,
@@ -562,17 +578,31 @@ export function NewCaseModal({
               placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
             />
             {(() => {
-              // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert
+              // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert (วงเงิน + ค่าตัว)
               const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
               const total =
-                procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + fee;
+                voucherCreditOf({
+                  voucher_count: voucherCount,
+                  voucher_unit: INFLU_VOUCHER_UNIT,
+                }) + fee;
               return total > 0 ? (
                 <p className="mt-1.5 text-xs font-medium text-brand-700">
-                  มูลค่าเคสรวม {formatCurrency(total)} (หัตถการที่เลือก + ค่าตัว)
+                  มูลค่าเคสรวม {formatCurrency(total)} (วงเงิน voucher + ค่าตัว)
                 </p>
               ) : null;
             })()}
           </div>
+          {/* วงเงิน voucher (0106) — เปิดตั้งแต่สร้างนัดได้เลย หรือเว้นไว้เติมทีหลัง */}
+          <VoucherPicker
+            count={voucherCount}
+            unit={INFLU_VOUCHER_UNIT}
+            onChange={setVoucherCount}
+            disabled={saving}
+            itemsTotal={procedures.reduce(
+              (sum, p) => sum + (Number(p.price) || 0),
+              0
+            )}
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>

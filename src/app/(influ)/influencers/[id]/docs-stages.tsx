@@ -45,6 +45,7 @@ import {
   memoStepOf,
   type MemoRole,
   type MemoSubStep,
+  voucherLabelOf,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluencerRow, InfluSignatureRow } from "@/lib/types";
@@ -501,6 +502,8 @@ function MemoCopyStage({
   }`;
 
   const subjectText = `ขออนุมัติเคสทางการตลาด ${nameWithNick}`;
+  /** "Voucher 10,000 × 5 = 50,000 บาท" — null = ยังไม่เปิดวงเงิน (บรรทัดนี้หายไปจาก Memo) */
+  const voucherText = voucherLabelOf(influencer);
   const tierText = influencer.tier
     ? `${INFLU_TIERS[influencer.tier].label} (${INFLU_TIERS[influencer.tier].range})`
     : "-";
@@ -513,15 +516,19 @@ function MemoCopyStage({
       influencer.procedure_text ||
       (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")
     }`,
-    `มูลค่า : ${
-      influencer.case_value != null
-        ? formatCurrency(influencer.case_value)
-        : "-"
-    }`,
+    /* มูลค่าในเอกสารมาจาก **วงเงิน voucher + ค่าตัว** เท่านั้น (ผู้ใช้ 2026-09-03)
+       — ราคาของสินค้าที่กดเลือกห้ามโผล่ในเอกสารที่ส่งขออนุมัติ (ยังดูได้ในระบบที่
+       แท็บรายละเอียดเคส/หน้าต้นทุน) */
+    ...(voucherText ? [`วงเงินที่ขออนุมัติ : ${voucherText}`] : []),
     // ค่าตัว = เคสที่ต้องจ่ายเงินให้ influ — บรรทัดนี้โผล่เฉพาะเคสที่กรอกไว้
     ...(influencer.talent_fee != null
       ? [`ค่าตัว : ${formatCurrency(influencer.talent_fee)}`]
       : []),
+    `มูลค่ารวม : ${
+      influencer.case_value != null
+        ? formatCurrency(influencer.case_value)
+        : "-"
+    }`,
     // วันที่ไม่บังคับกรอก — บอกให้ชัดว่ายังไม่เคาะวัน ไม่ใช่ลืมกรอก (ข้อความนี้ถูกก๊อปไปลงเอกสารจริง)
     `วันที่ทำหัตถการ : ${
       influencer.service_date
@@ -1201,19 +1208,26 @@ export function MemoFormStage({
                   (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")}
               </Line>
             </p>
+{/* มูลค่า = วงเงิน voucher + ค่าตัว เท่านั้น — ราคาสินค้าไม่โผล่ในเอกสาร (0106) */}
+            {voucherLabelOf(influencer) && (
+              <p>
+                วงเงินที่ขออนุมัติ :{" "}
+                <Line>{voucherLabelOf(influencer)}</Line>
+              </p>
+            )}
+            {influencer.talent_fee != null && (
+              <p>
+                ค่าตัว : <Line>{formatCurrency(influencer.talent_fee)}</Line>
+              </p>
+            )}
             <p>
-              มูลค่า :{" "}
+              มูลค่ารวม :{" "}
               <Line>
                 {influencer.case_value != null
                   ? formatCurrency(influencer.case_value)
                   : "-"}
               </Line>
             </p>
-            {influencer.talent_fee != null && (
-              <p>
-                ค่าตัว : <Line>{formatCurrency(influencer.talent_fee)}</Line>
-              </p>
-            )}
             <p>
               วันที่ทำหัตถการ :{" "}
               <Line>
