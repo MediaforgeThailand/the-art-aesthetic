@@ -24,19 +24,25 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { INFLU_STAGE, procedureSummaryText } from "@/lib/influ-constants";
+import {
+  INFLU_STAGE,
+  normalizeRoles,
+  procedureSummaryText,
+  roleSummary,
+} from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+import { notifyInflu } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
+import type { Json } from "@/lib/database.types";
 import type {
   DoctorRow,
   InfluCampaignDefRow,
   InfluProfileRow,
-  InfluScope,
   InfluServiceRow,
 } from "@/lib/types";
 import {
   type AssigneeChange,
-  AssigneeRolePicker,
+  AssigneeEditor,
   type CaseAssignee,
   type InfluPerson,
 } from "./assignees";
@@ -48,6 +54,30 @@ import type {
 } from "./procedure-items-editor";
 import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
 import { ProfileFormModal, profileName } from "./profile-form";
+
+/** หัวข้อมีเลขของฟอร์ม — ทำให้ 4 ส่วนของโมดัลอ่านเป็นลำดับ ไม่ใช่ช่องกรอกยาวติดกัน
+    (ผู้ใช้ 2026-09-03: "ทำให้ setting ใหญ่กว่านี้ ดูง่ายครบครันกว่านี้") */
+function FormSection({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-stone-200 bg-white/70 p-3 sm:p-4">
+      <h3 className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-stone-800">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">
+          {n}
+        </span>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
 
 export function NewCaseModal({
   open,
@@ -121,8 +151,11 @@ export function NewCaseModal({
   const [doctorName, setDoctorName] = useState("");
   /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
   const [contactChannel, setContactChannel] = useState("");
-  /** ผู้ออก Memo (ขั้น 1.1/1.2) เลือกได้ตั้งแต่ตอนสร้างเคส — draft ในฟอร์ม insert จริงหลังสร้างสำเร็จ */
-  const [memoMakers, setMemoMakers] = useState<CaseAssignee[]>([]);
+  /** ผู้รับผิดชอบทั้งชุด (ผู้ดูแล/ผู้ติดตาม/ผู้ออก Memo/ผู้เกี่ยวข้อง) — draft ในฟอร์ม
+      เขียนจริงพร้อมเคสใน RPC เดียว (0108) ตั้งต้น: คนที่กดสร้าง = ผู้ดูแล */
+  const [draftAssignees, setDraftAssignees] = useState<CaseAssignee[]>(
+    me.id ? [{ userId: me.id, scopes: ["owner"] }] : []
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -136,7 +169,7 @@ export function NewCaseModal({
     setServiceDate("");
     setDoctorName("");
     setContactChannel("");
-    setMemoMakers([]);
+    setDraftAssignees(me.id ? [{ userId: me.id, scopes: ["owner"] }] : []);
     setErr(null);
   };
 
@@ -144,9 +177,9 @@ export function NewCaseModal({
     () => new Map(people.map((p) => [p.id, p])),
     [people]
   );
-  /** AssigneeRolePicker คุยเป็น AssigneeChange — ตรงนี้ยังไม่มีเคสจึง apply กับ draft ในฟอร์มแทน DB */
-  const applyMemoDraft = (change: AssigneeChange) => {
-    setMemoMakers((prev) => {
+  /** AssigneeEditor คุยเป็น AssigneeChange — ตรงนี้ยังไม่มีเคส จึง apply กับ draft ในฟอร์มแทน DB */
+  const applyAssigneeDraft = (change: AssigneeChange) => {
+    setDraftAssignees((prev) => {
       if (change.kind === "add")
         return [...prev, { userId: change.userId, scopes: change.scopes }];
       if (change.kind === "remove")
@@ -164,6 +197,11 @@ export function NewCaseModal({
   );
   const selectedCampaign =
     activeCampaigns.find((c) => c.id === campaignId) ?? null;
+
+  /** มีคนถือบทบาท "ผู้ดูแล" ไหม — ไม่มี = เตือน (ไม่บล็อค) เพราะเคสจะไม่มีเจ้าภาพขั้น Memo/สัญญา */
+  const hasOwner = draftAssignees.some((a) =>
+    normalizeRoles(a.scopes).includes("owner")
+  );
 
   /** รอบที่ยังเดินอยู่ของโปรไฟล์ที่เลือก — เตือนก่อนเปิดซ้อน (ไม่บล็อค) */
   const openRounds = selected
@@ -207,37 +245,12 @@ export function NewCaseModal({
     setSaving(true);
     setErr(null);
 
-    // เลขรอบอ่านสดจาก DB — กันหน้าค้าง/สอง session สร้างพร้อมกันแล้วได้เลขซ้ำ (กติกา 0073)
-    const { data: latest, error: latestErr } = await supabase
-      .from("influencers")
-      .select("round_no")
-      .eq("person_id", selected.id)
-      .order("round_no", { ascending: false })
-      .limit(1);
-    if (latestErr) {
-      setSaving(false);
-      setErr(`สร้างนัดไม่สำเร็จ: ${latestErr.message}`);
-      return;
-    }
-    const roundNo = (latest?.[0]?.round_no ?? 0) + 1;
-
-    // รหัส Influ ID ไม่ต้องออกที่นี่แล้ว (0107) — เป็นของ "ตัวบุคคล" ติดมากับโปรไฟล์
-    // และ trigger influencers_sync_code เติมให้ตอน insert ทุกรอบของคนนี้จึงรหัสเดียวกัน
-    const { data: created, error } = await supabase
-      .from("influencers")
-      .insert({
+    // สร้างทั้งก้อนใน RPC เดียว (0108): เลขรอบคำนวณใน DB (ล็อกแถวโปรไฟล์),
+    // เคส + หัตถการ + ผู้รับผิดชอบ อยู่ใน transaction เดียวกัน — ล้มตรงไหน = ไม่มีเคสค้าง
+    // (ของเดิมยิงทีละคำสั่งจาก client แล้วผู้รับผิดชอบ/หัตถการหลุดได้แบบเงียบๆ)
+    const { data: newId, error } = await supabase.rpc("influ_create_case", {
+      p: {
         person_id: selected.id,
-        round_no: roundNo,
-        // ข้อมูลตัวบุคคลคัดลอกจากโปรไฟล์ (การ์ด/บอร์ด/Memo อ่านจากแถวเคสโดยตรง)
-        first_name: selected.first_name,
-        last_name: selected.last_name,
-        nickname: selected.nickname,
-        phone: selected.phone,
-        occupation: selected.occupation,
-        followers: selected.followers,
-        follower_note: selected.follower_note,
-        tier: selected.tier,
-        // ขั้นติดต่อ+รายละเอียดจบตอนทำโปรไฟล์/ฟอร์มนี้แล้ว — เริ่มที่ Memo เลย
         stage: INFLU_STAGE.memo,
         campaign_id: campaignId || null,
         // รอปรึกษา = ทำ Memo ได้ทั้งที่ยังไม่มีหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคสเมื่อเคาะแล้ว)
@@ -245,19 +258,25 @@ export function NewCaseModal({
         consult_only: consultOnly && procedures.length === 0,
         talent_fee: feeNum,
         case_value: caseValue > 0 ? caseValue : null,
-        // สร้างจากฟอร์มนี้ = ข้อมูลครบพร้อมทำ Memo ทันที (ไม่มีคิว "รอทำ Memo" ให้ติ๊กเองแล้ว)
-        memo_ready_at: new Date().toISOString(),
         service_date: serviceDate || null,
         doctor_name: doctorName.trim() || null,
         contact_channel: contactChannel.trim() || null,
-        owner_id: me.id,
-        created_by: me.id,
         // sync ข้อความสรุปตั้งแต่แรก — Memo/ปฏิทิน/ช่องค้นหาใช้ค่านี้
         procedure_text: procedureSummaryText(procedures) || null,
-      })
-      .select("id")
-      .single();
-    if (error || !created) {
+        procedures: procedures.map((pr) => ({
+          name: pr.name,
+          price: pr.price,
+          price_item_id: pr.priceItemId,
+          promo_package_id: pr.promoPackageId,
+          product_team: pr.team,
+        })),
+        assignees: draftAssignees.map((a) => ({
+          user_id: a.userId,
+          scopes: a.scopes,
+        })),
+      } as unknown as Json,
+    });
+    if (error || !newId) {
       setSaving(false);
       // 23505 บน unique (person_id, round_no) = มีคนเปิดรอบนี้พร้อมกันจากอีกหน้าต่าง (0106)
       setErr(
@@ -267,97 +286,81 @@ export function NewCaseModal({
       );
       return;
     }
-
-    // หัตถการที่เลือก → influ_procedure_items (ราคาอ้างอิง = ต้นทุนตั้งต้น, แยก product team)
-    // เคส "รอปรึกษา" ยังไม่มีรายการ — ข้ามไปเลย (ไม่ยิง insert ด้วยลิสต์ว่าง)
-    const { error: itemsError } =
-      procedures.length > 0
-        ? await supabase.from("influ_procedure_items").insert(
-            procedures.map((p, idx) => ({
-              influencer_id: created.id,
-              name: p.name,
-              price: p.price,
-              price_item_id: p.priceItemId,
-              promo_package_id: p.promoPackageId,
-              product_team: p.team,
-              position: idx + 1,
-            }))
-          )
-        : { error: null };
+    const createdId = newId as string;
 
     // รูปโปรไฟล์ copy เข้าโฟลเดอร์เคสใหม่ (best effort) ผ่าน helper กลาง —
     // สร้างแถวในแกลเลอรีของเคส (influ_case_photos, 0105) ให้ด้วย ไม่ใช่แค่คอลัมน์หน้าปก
     await copyPhotoIntoCase(
       supabase,
-      created.id,
+      createdId,
       selected.photo_path ?? copyFrom?.photo_path ?? null,
       "photo"
     );
     await copyPhotoIntoCase(
       supabase,
-      created.id,
+      createdId,
       copyFrom?.channel_photo_path ?? null,
       "channel"
     );
 
-    // บทบาทตั้งต้น: ผู้สร้าง = "ผู้ดูแล" (owner) + ผู้ออก Memo ที่เลือกในฟอร์ม = "memo"
-    // (เลือกผู้สร้างเป็นผู้ออก Memo เอง = รวมเป็นแถวเดียว 2 บทบาท — unique (influencer_id, user_id))
-    // ทำหลังสร้างเคสสำเร็จเสมอ ไม่งั้นการ์ดใหม่จะไม่มีเจ้าภาพและไม่มีใครได้แจ้งเตือน
-    {
-      const rows = new Map<string, InfluScope[]>();
-      if (me.id) rows.set(me.id, ["owner"]);
-      for (const a of memoMakers) {
-        const prev = rows.get(a.userId);
-        rows.set(a.userId, prev ? [...prev, "memo"] : ["memo"]);
-      }
-      if (rows.size > 0) {
-        const { error: asErr } = await supabase.from("influ_assignees").insert(
-          [...rows.entries()].map(([userId, scopes]) => ({
-            influencer_id: created.id,
-            user_id: userId,
-            scopes,
-            created_by: me.id,
-          }))
-        );
-        if (asErr) {
-          // ไม่บล็อคการสร้างเคส — บอกให้ไปกำหนดเองที่หน้าเคสแทน
-          console.warn("ตั้งผู้รับผิดชอบตั้งต้นไม่สำเร็จ:", asErr.message);
-        }
-      }
-    }
-
     const name = profileName(selected);
     logInflu(supabase, actor, {
       action: "create",
-      entityId: created.id,
-      influencerId: created.id,
+      entityId: createdId,
+      influencerId: createdId,
       influencerName: name,
-      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name} (รหัส ${selected.influ_code}) — ${
+      summary: `สร้างนัดใหม่ของ ${name} (รหัส ${selected.influ_code}) — ${
         procedures.length > 0
           ? `หัตถการ: ${procedureSummaryText(procedures)}`
           : "รอปรึกษา (ยังไม่ระบุหัตถการ)"
       }${feeNum !== null ? ` · ค่าตัว ${formatNumber(feeNum)} บาท` : ""}`,
       meta: {
         person_id: selected.id,
-        round_no: roundNo,
         procedures: procedures.length,
         consult_only: consultOnly,
         talent_fee: feeNum,
         influ_code: selected.influ_code,
         campaign: selectedCampaign?.tag ?? null,
         contact_channel: contactChannel.trim() || null,
+        assignees: draftAssignees.length,
       },
     });
 
+    // แจ้งเตือน 2 ก้อน: คนที่ถูกมอบหมาย (เด่น — forceAction) และ "มีเคสใหม่" ของขั้น Memo
+    // (ผู้ทำเองถูกตัดออกให้แล้วใน notifyInflu — จุดเรียกไม่ต้องกรองเอง)
+    notifyInflu(supabase, actor, {
+      influencerId: createdId,
+      influencerName: name,
+      assignees: draftAssignees,
+      type: "assigned",
+      title: `คุณถูกมอบหมายเคส ${name}`,
+      body: draftAssignees
+        .filter((a) => a.userId !== me.id)
+        .map((a) => roleSummary(a.scopes))
+        .join(" · "),
+      href: `/influencers/${createdId}`,
+      forceAction: draftAssignees
+        .filter((a) => a.scopes.length > 0)
+        .map((a) => a.userId),
+    });
+    notifyInflu(supabase, actor, {
+      influencerId: createdId,
+      influencerName: name,
+      assignees: draftAssignees,
+      scope: "memo",
+      type: "case_created",
+      title: `เปิดเคสใหม่: ${name}`,
+      body:
+        procedures.length > 0
+          ? procedureSummaryText(procedures)
+          : "รอปรึกษา (ยังไม่ระบุหัตถการ)",
+      href: `/influencers/${createdId}`,
+    });
+
     setSaving(false);
-    if (itemsError) {
-      setErr(
-        `สร้างเคสแล้ว แต่บันทึกหัตถการไม่สำเร็จ (${itemsError.message}) — เพิ่มรายการอีกครั้งได้ที่แท็บรายละเอียดเคส`
-      );
-    }
     onClose();
     reset();
-    router.push(`/influencers/${created.id}`);
+    router.push(`/influencers/${createdId}`);
     router.refresh();
   };
 
@@ -371,6 +374,7 @@ export function NewCaseModal({
           reset();
         }}
         title="สร้างนัดใหม่ (เปิดเคส)"
+        wide
       >
         <form onSubmit={(e) => void submit(e)} className="space-y-4">
           <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs leading-5 text-brand-700">
@@ -378,12 +382,12 @@ export function NewCaseModal({
             <span>
               เลือกโปรไฟล์ที่ตกลงร่วมงานแล้ว + หัตถการที่จะเข้ารับ —
               เคสจะเริ่มที่ขั้น <span className="font-semibold">Memo ขออนุมัติ</span>{" "}
-              ทันที · ผู้รับผิดชอบเคสคือ{" "}
-              <span className="font-semibold">{me.name || "บัญชีของคุณ"}</span>
+              ทันที (กรอกครบ 4 ส่วนด้านล่างแล้วกดสร้าง)
             </span>
           </p>
 
-          {/* ---- ขั้น 1: เลือกโปรไฟล์ ---- */}
+          {/* ---- 1. โปรไฟล์ Influencer ---- */}
+          <FormSection n={1} title="โปรไฟล์ Influencer">
           <div>
             <Label>โปรไฟล์ Influencer *</Label>
             {selected ? (
@@ -472,7 +476,6 @@ export function NewCaseModal({
               </div>
             )}
           </div>
-
           {/* มีรอบที่ยังเดินอยู่ = เตือนให้รู้ตัว แต่เปิดซ้อนได้ (กติกาผู้ใช้ 2026-09-03) */}
           {openRounds.length > 0 && (
             <p className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-800">
@@ -481,52 +484,26 @@ export function NewCaseModal({
               เปิดรอบใหม่ซ้อนได้ แต่จะเป็นคนละการ์ด คนละ Memo และคนละสัญญา
             </p>
           )}
-
-          {/* ---- ขั้น 2: ข้อมูลเคส ---- */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label>รหัส Influ ID</Label>
-              {/* 0107: รหัสเป็นของ "ตัวบุคคล" — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
-                  (แฮชแท็กที่ใช้ track ยอดจาก Meta จึงชี้กลับมาที่คนเดียวเสมอ) */}
-              <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
-                <Hash size={15} className="shrink-0 text-brand-500" />
-                <span className="font-mono text-sm font-semibold text-stone-700">
-                  {selected?.influ_code ?? "INF-XXXXX"}
-                </span>
-                <span className="ml-auto text-xs text-stone-500">
-                  {selected ? "รหัสประจำตัว" : "ตามโปรไฟล์ที่เลือก"}
-                </span>
+            <div className="mt-3">
+              <div>
+                <Label>รหัส Influ ID</Label>
+                {/* 0107: รหัสเป็นของ "ตัวบุคคล" — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
+                    (แฮชแท็กที่ใช้ track ยอดจาก Meta จึงชี้กลับมาที่คนเดียวเสมอ) */}
+                <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+                  <Hash size={15} className="shrink-0 text-brand-500" />
+                  <span className="font-mono text-sm font-semibold text-stone-700">
+                    {selected?.influ_code ?? "INF-XXXXX"}
+                  </span>
+                  <span className="ml-auto text-xs text-stone-500">
+                    {selected ? "รหัสประจำตัว" : "ตามโปรไฟล์ที่เลือก"}
+                  </span>
+                </div>
               </div>
             </div>
-            <div>
-              <Label htmlFor="nc-contact">ช่องทางการติดต่อ</Label>
-              <Input
-                id="nc-contact"
-                disabled={saving}
-                value={contactChannel}
-                onChange={(e) => setContactChannel(e.target.value)}
-                placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
-              />
-            </div>
-          </div>
+          </FormSection>
 
-          {/* แคมเปญ (ไม่บังคับ) — เลือกแล้วเคสนี้จะมีแฮชแท็กของแคมเปญเพิ่มเข้าไปในชุดที่ influ ต้องติด */}
-          <div>
-            <Label htmlFor="nc-campaign">แคมเปญ</Label>
-            <Select
-              id="nc-campaign"
-              disabled={saving}
-              value={campaignId}
-              onChange={(e) => setCampaignId(e.target.value)}
-            >
-              <option value="">— ไม่อยู่ในแคมเปญ —</option>
-              {activeCampaigns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} (#{c.tag})
-                </option>
-              ))}
-            </Select>
-          </div>
+          {/* ---- 2. หัตถการที่จะเข้ารับ ---- */}
+          <FormSection n={2} title="หัตถการที่จะเข้ารับ">
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="!mb-0">
@@ -556,6 +533,79 @@ export function NewCaseModal({
               />
             </div>
           </div>
+          </FormSection>
+
+          {/* ---- 3. นัดหมาย ---- */}
+          <FormSection n={3} title="นัดหมาย (ไม่บังคับ — เคาะทีหลังได้)">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>
+              <Input
+                id="nc-date"
+                type="date"
+                disabled={saving}
+                value={serviceDate}
+                onChange={(e) => setServiceDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>
+              <DoctorSelect
+                id="nc-doctor"
+                doctors={doctors}
+                value={doctorName}
+                onChange={setDoctorName}
+                disabled={saving}
+              />
+            </div>
+          </div>
+            <div className="mt-3">
+            <div>
+              <Label htmlFor="nc-campaign">แคมเปญ</Label>
+              <Select
+                id="nc-campaign"
+                disabled={saving}
+                value={campaignId}
+                onChange={(e) => setCampaignId(e.target.value)}
+              >
+                <option value="">— ไม่อยู่ในแคมเปญ —</option>
+                {activeCampaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} (#{c.tag})
+                  </option>
+                ))}
+              </Select>
+            </div>
+            </div>
+          </FormSection>
+
+          {/* ---- 4. ผู้รับผิดชอบเคส ----
+              ผู้ใช้ 2026-09-03: "เลือกผู้รับผิดชอบต้องมีให้เลือกทุกส่วน
+              ผู้ดูแล > ผู้ติดตาม > ผู้ออก Memo" — ใช้เช็คลิสต์ตัวเดียวกับหน้าเคส
+              (เขียนจริงพร้อมเคสใน RPC เดียว ไม่ใช่ insert ตามหลังแบบเดิมที่หลุดได้เงียบๆ) */}
+          <FormSection n={4} title="ผู้รับผิดชอบเคส">
+            {!hasOwner && (
+              <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-800">
+                ยังไม่มี &ldquo;ผู้ดูแล&rdquo; ของเคสนี้ —
+                สร้างได้ แต่จะไม่มีใครถือขั้น Memo/สัญญา และเคสจะไม่โผล่ในตัวกรอง
+                &ldquo;เคสของฉัน&rdquo; ของใครเลย
+              </p>
+            )}
+            <AssigneeEditor
+              assignees={draftAssignees}
+              people={people}
+              peopleById={peopleById}
+              canEdit={!saving}
+              onChange={applyAssigneeDraft}
+            />
+          </FormSection>
+
+          {/* ---- ตัวเลือกเพิ่มเติม (พับไว้ — ทีมกรอกไม่ถึง 1 ใน 10 เคส) ---- */}
+          <details className="rounded-xl border border-stone-200 bg-white/70 p-3 sm:p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-stone-700 marker:text-stone-400">
+              ตัวเลือกเพิ่มเติม (ค่าตัว · ช่องทางคุยงาน)
+            </summary>
+            <div className="mt-3 space-y-4">
           <div>
             <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
             <Input
@@ -581,39 +631,19 @@ export function NewCaseModal({
               ) : null;
             })()}
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>
+              <Label htmlFor="nc-contact">ช่องทางการติดต่อ</Label>
               <Input
-                id="nc-date"
-                type="date"
+                id="nc-contact"
                 disabled={saving}
-                value={serviceDate}
-                onChange={(e) => setServiceDate(e.target.value)}
+                value={contactChannel}
+                onChange={(e) => setContactChannel(e.target.value)}
+                placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
               />
             </div>
-            <div>
-              <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>
-              <DoctorSelect
-                id="nc-doctor"
-                doctors={doctors}
-                value={doctorName}
-                onChange={setDoctorName}
-                disabled={saving}
-              />
             </div>
-          </div>
+          </details>
 
-          {/* ผู้ออก Memo — assign ตั้งแต่ตอนสร้างเคส (ขั้น 1.1/1.2 เป็นของคนนี้)
-              ไม่บังคับ: ยังไม่เลือก = ไปเลือกได้ที่การ์ดขั้น 1.0 ของหน้าเคส */}
-          <AssigneeRolePicker
-            role="memo"
-            assignees={memoMakers}
-            people={people}
-            peopleById={peopleById}
-            canEdit={!saving}
-            onChange={applyMemoDraft}
-          />
 
           {err && (
             <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 animate-fade-in">

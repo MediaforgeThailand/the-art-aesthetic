@@ -188,6 +188,8 @@ export function MemoStage({
   /** เปลี่ยนไฟล์ Memo ได้ไหม — จริงจนกว่าเคสจะปิดงาน แม้ขั้น Memo ผ่านไปแล้ว
       (ไฟล์เอกสารเป็นของเคส ไม่ใช่สถานะงาน — มัก memo ผิด/ได้ฉบับอนุมัติจริงทีหลัง) */
   fileEditable: boolean;
+  /** ผู้ดูแลระบบ Influencer — ทำขั้น 1.1/1.2 แทนผู้ออก Memo ได้ */
+  canManageSystem?: boolean;
   /** ขั้นย่อย 1.1/1.2 ผูกกับบทบาท "ผู้ออก Memo" — ต้องรู้ว่าใครเปิดหน้าอยู่และใครถือบทบาท */
   userId: string | null;
   assignees: CaseAssignee[];
@@ -366,6 +368,7 @@ function MemoCopyStage({
   influencer,
   readOnly,
   fileEditable,
+  canManageSystem = false,
   userId,
   assignees,
   people,
@@ -379,6 +382,8 @@ function MemoCopyStage({
   readOnly: boolean;
   /** เปลี่ยน/อัพโหลดไฟล์ Memo ได้ไหม — แยกจาก readOnly ที่ล็อกการเดิน stage */
   fileEditable: boolean;
+  /** ผู้ดูแลระบบ Influencer — ทำขั้น 1.1/1.2 แทนผู้ออก Memo ได้ (กันเคสค้างตาย) */
+  canManageSystem?: boolean;
   userId: string | null;
   assignees: CaseAssignee[];
   people: InfluPerson[];
@@ -408,7 +413,10 @@ function MemoCopyStage({
   const step = memoStepOf(influencer);
   const makerIds = memoMakerIds(assignees);
   const isMaker = userId != null && makerIds.includes(userId);
-  const canActMaker = fileEditable && (isMaker || makerIds.length === 0);
+  // ขั้น 1.1/1.2 เป็นของ "ผู้ออก Memo" — ผู้ดูแลระบบทำแทนได้เสมอ (กันเคสค้างตาย)
+  // **ยังไม่เลือกผู้ออก Memo = ล็อกไว้** ให้ตรงกับขั้น 1.0 ที่บังคับเลือกก่อนกดยืนยัน
+  // (เดิมปล่อยให้ใครก็ได้อัพไฟล์ข้ามไปเมื่อยังไม่มีคนถือบทบาท — กติกา 2 ขั้นขัดกันเอง)
+  const canActMaker = fileEditable && (isMaker || canManageSystem);
   const makerNames = makerIds
     .map((id) => peopleById.get(id)?.name ?? "?")
     .join(" · ");
@@ -942,8 +950,9 @@ function MemoCopyStage({
         ) : !canActMaker ? (
           <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs leading-5 text-amber-800">
             <Upload size={14} className="mt-0.5 shrink-0" />
-            ขั้นนี้เป็นของผู้ออก Memo ({makerNames || "ยังไม่ได้เลือก"}) —
-            ต้องเป็นคนนั้นอัพไฟล์ Memo ที่อนุมัติแล้ว
+            {makerIds.length === 0
+              ? "ยังไม่ได้เลือกผู้ออก Memo — เลือกที่ขั้น 1 ด้านบนก่อน แล้วคนนั้นถึงอัพไฟล์ที่อนุมัติแล้วได้"
+              : `ขั้นนี้เป็นของผู้ออก Memo (${makerNames}) — ต้องเป็นคนนั้นอัพไฟล์ Memo ที่อนุมัติแล้ว`}
           </p>
         ) : (
           <button

@@ -81,9 +81,10 @@ export default async function InfluHuntingPage() {
       .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
       .order("name", { ascending: true }),
     supabase.from("doctors").select("*").order("name", { ascending: true }),
+    // ทุกบัญชี + สิทธิ์ (ตัวเลือกผู้รับผิดชอบในโมดัลสร้างนัดกรองด้วยธง canInflu)
     supabase
       .from("profiles")
-      .select("id, full_name, email, avatar_path, job_title"),
+      .select("id, full_name, email, avatar_path, job_title, role, permissions"),
     // แคมเปญ (0093) — ตัวเลือกในฟอร์มสร้างนัดที่เปิดต่อจากปุ่ม "ตอบรับ"
     supabase
       .from("influ_campaign_defs")
@@ -111,6 +112,13 @@ export default async function InfluHuntingPage() {
             name: p.full_name || p.email || "ไม่ทราบชื่อ",
             avatarPath: p.avatar_path ?? null,
             jobTitle: p.job_title ?? null,
+            // เข้าระบบ Influencer ได้ไหม — คนที่เข้าไม่ได้ยังแสดงชื่อ/รูปได้ (เผื่อเป็น
+            // ผู้รับผิดชอบเดิม) แต่ไม่โผล่ในตัวเลือกตอนมอบหมายงาน
+            canInflu:
+              p.role === "admin" ||
+              (p.permissions ?? []).some((x) =>
+                ["influ", "influ_hunter", "influ_view"].includes(x)
+              ),
           })) as InfluPerson[]
         }
         me={{

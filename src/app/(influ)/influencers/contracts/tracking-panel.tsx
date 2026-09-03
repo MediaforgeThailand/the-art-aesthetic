@@ -1194,7 +1194,6 @@ function TrackMode({
                   "เปิดเคสที่ปิดงานแล้วกลับมาติดตามต่อ",
                   {
                     type: "case_reopened",
-                    baseLevel: "action",
                     title: `เปิดเคส ${influName(i)} กลับมาติดตามต่อ`,
                   }
                 )
@@ -1210,7 +1209,6 @@ function TrackMode({
                 onClick={() =>
                   onPatchInflu({ completed: true }, "ปิดงานเคสนี้ (จบงาน)", {
                     type: "case_completed",
-                    baseLevel: "action",
                     title: `ปิดงานเคส ${influName(i)} แล้ว`,
                     body:
                       row.quotaTotal > 0

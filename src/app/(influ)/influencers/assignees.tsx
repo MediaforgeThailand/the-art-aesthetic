@@ -47,6 +47,10 @@ export type InfluPerson = {
   name: string;
   avatarPath: string | null;
   jobTitle: string | null;
+  /** เข้าระบบ Influencer ได้ไหม (admin หรือมีสิทธิ์ influ*) — `false` = ยังแสดงชื่อ/รูปได้
+      (เผื่อเป็นผู้รับผิดชอบเดิมที่เพิ่งถูกถอดสิทธิ์) แต่ไม่โผล่ใน "ตัวเลือก" ตอนมอบหมาย
+      เพราะมอบงานให้คนที่เปิดระบบไม่ได้ = ขั้นนั้นล็อกตาย; ไม่ส่ง = ถือว่าเข้าได้ */
+  canInflu?: boolean;
 };
 
 /** ผู้รับผิดชอบ 1 คนของเคส */
@@ -260,12 +264,24 @@ export type AssigneeChange =
   | { kind: "remove"; userId: string }
   | { kind: "scopes"; userId: string; scopes: InfluScope[] };
 
+/** ผู้เกี่ยวข้อง = แถวใน influ_assignees ที่ scopes ว่าง (0095) — ได้แจ้งเตือนทุกอย่าง
+    แบบเงียบ (ระดับ "อัพเดท" ไม่นับใน badge แดง) ตามที่ผู้ใช้สั่ง "second primary"
+    แถวนี้เป็น `null` ในเช็คลิสต์ เพื่อให้ใช้ AssigneeRolePicker ตัวเดียวกับ 3 บทบาท */
+const WATCHER_META = {
+  label: "4. ผู้เกี่ยวข้อง",
+  short: "ผู้เกี่ยวข้อง",
+  desc: "ไม่มีหน้าที่ในเคส แต่ได้แจ้งเตือนทุกความเคลื่อนไหวแบบเงียบ",
+  dot: "bg-stone-300",
+};
+
 /** เพิ่มบทบาทให้คนหนึ่ง — คืน AssigneeChange ที่ถูกต้อง (แถวใหม่หรือแก้ scopes แถวเดิม) */
 function addRoleChange(
   existing: CaseAssignee | undefined,
   userId: string,
-  role: InfluRole
+  role: InfluRole | null
 ): AssigneeChange {
+  // ผู้เกี่ยวข้อง = แถวใหม่ที่ scopes ว่าง (คนที่ถือบทบาทอยู่แล้วไม่โผล่ในตัวเลือกแถวนี้)
+  if (role === null) return { kind: "add", userId, scopes: [] };
   if (!existing) return { kind: "add", userId, scopes: [role] };
   const roles = new Set(normalizeRoles(existing.scopes));
   roles.add(role);
@@ -279,8 +295,9 @@ function addRoleChange(
 /** ถอดบทบาทออกจากคนหนึ่ง — ไม่เหลือบทบาทเลย = ถอดออกจากเคส */
 function removeRoleChange(
   existing: CaseAssignee,
-  role: InfluRole
+  role: InfluRole | null
 ): AssigneeChange {
+  if (role === null) return { kind: "remove", userId: existing.userId };
   const rest = normalizeRoles(existing.scopes).filter((r) => r !== role);
   if (rest.length === 0) return { kind: "remove", userId: existing.userId };
   return { kind: "scopes", userId: existing.userId, scopes: rest };
@@ -300,7 +317,8 @@ export function AssigneeRolePicker({
   busyUserId,
   onChange,
 }: {
-  role: InfluRole;
+  /** null = แถว "ผู้เกี่ยวข้อง" (ไม่ถือบทบาทไหน — แจ้งเตือนแบบเงียบ) */
+  role: InfluRole | null;
   assignees: CaseAssignee[];
   people: InfluPerson[];
   peopleById: Map<string, InfluPerson>;
@@ -311,23 +329,34 @@ export function AssigneeRolePicker({
 }) {
   const [picking, setPicking] = useState(false);
   const [q, setQ] = useState("");
-  const m = INFLU_ROLES[role];
+  const m = role === null ? WATCHER_META : INFLU_ROLES[role];
 
   const members = useMemo(
-    () => assignees.filter((a) => normalizeRoles(a.scopes).includes(role)),
+    () =>
+      assignees.filter((a) =>
+        role === null
+          ? normalizeRoles(a.scopes).length === 0
+          : normalizeRoles(a.scopes).includes(role)
+      ),
     [assignees, role]
   );
   const memberIds = useMemo(
     () => new Set(members.map((a) => a.userId)),
     [members]
   );
+  /** แถว "ผู้เกี่ยวข้อง" ต้องไม่เสนอคนที่ถือบทบาทอยู่แล้ว (เขาได้แจ้งเตือนเด่นอยู่แล้ว) */
+  const hiddenIds = useMemo(
+    () => (role === null ? new Set(assignees.map((a) => a.userId)) : memberIds),
+    [role, assignees, memberIds]
+  );
   const options = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return people
-      .filter((p) => !memberIds.has(p.id))
+      .filter((p) => p.canInflu !== false)
+      .filter((p) => !hiddenIds.has(p.id))
       .filter((p) => needle === "" || p.name.toLowerCase().includes(needle))
       .slice(0, 40);
-  }, [people, memberIds, q]);
+  }, [people, hiddenIds, q]);
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white/80 p-2.5">
@@ -374,6 +403,14 @@ export function AssigneeRolePicker({
             >
               <PersonAvatar person={p} size={20} ring={false} />
               <span className="max-w-40 truncate">{p?.name ?? "ไม่ทราบชื่อ"}</span>
+              {p?.canInflu === false && (
+                <span
+                  title="บัญชีนี้ไม่มีสิทธิ์เข้าระบบ Influencer แล้ว — งานขั้นนี้จะไม่มีใครทำได้"
+                  className="rounded-full bg-amber-100 px-1.5 text-[10px] font-medium text-amber-700"
+                >
+                  ไม่มีสิทธิ์
+                </span>
+              )}
               {canEdit && (
                 <button
                   type="button"
@@ -480,11 +517,6 @@ export function AssigneeEditor({
   busyUserId?: string | null;
   onChange: (change: AssigneeChange) => void;
 }) {
-  // คนที่ไม่ได้ถือบทบาทไหนเลย = ผู้เกี่ยวข้อง/หัวหน้างาน (แจ้งเตือนแบบเงียบ — 0095)
-  const watchers = assignees.filter(
-    (a) => normalizeRoles(a.scopes).length === 0
-  );
-
   return (
     <div className="space-y-2">
       {assignees.length === 0 && (
@@ -506,50 +538,18 @@ export function AssigneeEditor({
         />
       ))}
 
-      {watchers.length > 0 && (
-        <div className="rounded-xl border border-stone-200 bg-white/80 p-2.5">
-          <span className="block text-sm font-semibold text-stone-800">
-            ผู้เกี่ยวข้อง
-          </span>
-          <span className="block text-[11px] text-stone-500">
-            ไม่ได้ถือบทบาทไหน — ได้แจ้งเตือนทุกความเคลื่อนไหวแบบเงียบ (ระดับ
-            &ldquo;อัพเดท&rdquo;)
-          </span>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {watchers.map((a) => {
-              const p = peopleById.get(a.userId);
-              const busy = busyUserId === a.userId;
-              return (
-                <span
-                  key={a.userId}
-                  className={`inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white py-1 pl-1.5 pr-2 text-xs text-stone-700 ${
-                    busy ? "opacity-60" : ""
-                  }`}
-                >
-                  <PersonAvatar person={p} size={20} ring={false} />
-                  <span className="max-w-40 truncate">
-                    {p?.name ?? "ไม่ทราบชื่อ"}
-                  </span>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        onChange({ kind: "remove", userId: a.userId })
-                      }
-                      aria-label={`ถอด ${p?.name ?? "คนนี้"} ออกจากผู้เกี่ยวข้อง`}
-                      title="ถอดออกจากเคส"
-                      className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-default"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* ผู้เกี่ยวข้อง — แถวที่ 4 ของเช็คลิสต์ (ผู้ใช้ 2026-09-03: "ต้องมีผู้เกี่ยวข้องด้วย
+          เป็นการเพิ่มผู้เกี่ยวข้องที่ไม่ได้มีหน้าที่อะไรแต่ต้องได้รับแจ้งเตือนเป็น second primary")
+          — โผล่เสมอ ไม่ใช่เฉพาะตอนมีคนอยู่แล้ว ไม่งั้นไม่มีทางเพิ่มคนแรกได้ */}
+      <AssigneeRolePicker
+        role={null}
+        assignees={assignees}
+        people={people}
+        peopleById={peopleById}
+        canEdit={canEdit}
+        busyUserId={busyUserId}
+        onChange={onChange}
+      />
     </div>
   );
 }

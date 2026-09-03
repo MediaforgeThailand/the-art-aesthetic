@@ -163,11 +163,15 @@ export function canManageInflu(access: Access): boolean {
     (ownerId ว่าง = เคสเก่าที่ไม่มีเจ้าของ → เฉพาะผู้ดูแลเท่านั้น) */
 export function canDeleteInflu(
   access: Access,
-  ownerId: string | null | undefined
+  ownerId: string | null | undefined,
+  /** ถือบทบาท "ผู้ดูแล" (owner) ในเคสนี้ไหม — ผู้รับผิดชอบตัวจริงตั้งแต่ 0104
+      (owner_id คือ "ผู้สร้าง" คนละเรื่องกัน — เคสที่ถูกมอบต่อจึงลบไม่ได้ถ้าดูแค่ owner_id) */
+  isCaseOwner = false
 ): boolean {
   const lvl = influLevel(access);
   if (lvl === "manager") return true;
   if (lvl !== "hunter") return false;
+  if (isCaseOwner) return true;
   return ownerId !== null && ownerId !== undefined && ownerId === access.uid;
 }
 

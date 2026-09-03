@@ -27,6 +27,7 @@ import {
   INFLU_STAGE,
   INFLU_STAGE_LAST,
   isLaterSection,
+  normalizeRoles,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
@@ -172,11 +173,16 @@ export function InfluencersClient({
     [assigneesByInflu]
   );
 
-  /** ลบได้ไหม — ผู้ดูแลลบได้ทุกเคส, Hunter ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ
-      (กติกาเดียวกับ canDeleteInflu ใน permissions.ts แต่คิดจาก me ที่ส่งลงมา) */
+  /** ลบได้ไหม — ผู้ดูแลระบบลบได้ทุกเคส, Hunter ลบได้เมื่อเป็น **ผู้สร้าง** หรือถือบทบาท
+      **ผู้ดูแล (owner)** ในเคสนั้น (กติกาเดียวกับ canDeleteInflu + RPC ใน 0106 —
+      เดิมดูแค่ owner_id ทำให้คนที่ถูกมอบให้ดูแลเคสต่อลบไม่ได้ แถม error บอกผิดเหตุ) */
   const mayDelete = (i: InfluencerListRow) =>
     me.canManage ||
-    (me.level === "hunter" && i.owner_id !== null && i.owner_id === me.id);
+    (me.level === "hunter" &&
+      ((i.owner_id !== null && i.owner_id === me.id) ||
+        assigneesOf(i.id).some(
+          (a) => a.userId === me.id && normalizeRoles(a.scopes).includes("owner")
+        )));
 
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useSyncedState<InfluencerListRow[]>(influencers);
@@ -355,7 +361,9 @@ export function InfluencersClient({
       (ลูกทุกตาราง cascade ตามไป แต่ payload ถูกเก็บครบก่อนลบ — กู้คืนได้ที่หน้าถังขยะ) */
   const handleDelete = async (target: InfluencerListRow) => {
     if (!mayDelete(target)) {
-      setActionError("บัญชีนี้ลบเคสของคนอื่นไม่ได้ — ให้ผู้ดูแลระบบเป็นคนลบ");
+      setActionError(
+        "ลบได้เฉพาะเคสที่ตัวเองสร้างหรือเป็นผู้ดูแล — เคสอื่นให้ผู้ดูแลระบบเป็นคนลบ"
+      );
       return;
     }
     setDeletingId(target.id);
@@ -375,11 +383,15 @@ export function InfluencersClient({
     }
     void cleanupStorage(target.id); // fire-and-forget หลังลบ record สำเร็จ
     // ลบเคสของคนอื่น = เรื่องใหญ่ ผู้รับผิดชอบทุกคนต้องรู้ (ไม่มี href — เคสไม่มีแล้ว)
+    // ใช้ forceAction กับ "คนที่ถือบทบาท" แทน baseLevel เหมารวม — ผู้เกี่ยวข้อง
+    // (scopes ว่าง) ต้องได้แบบเงียบเสมอตามนิยามของบทบาทนั้น
     notifyInflu(supabase, actor, {
       influencerId: null,
       influencerName: influName(target),
       assignees: targets,
-      baseLevel: "action",
+      forceAction: targets
+        .filter((t) => normalizeRoles(t.scopes).length > 0)
+        .map((t) => t.userId),
       type: "case_deleted",
       title: `เคส ${influName(target)} ถูกลบ`,
       body: "ข้อมูลถูกสำรองไว้ในถังขยะ 30 วัน — ให้ผู้ดูแลระบบกู้คืนได้",
@@ -471,7 +483,12 @@ export function InfluencersClient({
       influencerId: target.id,
       influencerName: influName(target),
       assignees: assigneesOf(target.id),
-      baseLevel: next ? "action" : "update",
+      // ปฏิเสธ = ทุกคนที่ถือบทบาทต้องรู้แบบเด่น (ผู้เกี่ยวข้องยังเงียบตามนิยาม)
+      forceAction: next
+        ? assigneesOf(target.id)
+            .filter((t) => normalizeRoles(t.scopes).length > 0)
+            .map((t) => t.userId)
+        : [],
       type: next ? "case_declined" : "case_declined_undo",
       title: next
         ? `${influName(target)} ถูกทำเครื่องหมายว่าปฏิเสธ`

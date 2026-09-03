@@ -806,6 +806,7 @@ export function InfluDetailClient({
   activityLog,
   today,
   canManage,
+  canManageSystem = false,
   initialStage = null,
 }: {
   influencer: InfluencerRow;
@@ -852,6 +853,8 @@ export function InfluDetailClient({
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
   canManage: boolean;
+  /** ผู้ดูแลระบบ Influencer (สิทธิ์ influ) — ทำแทนขั้นที่ผูกบทบาทได้เสมอ */
+  canManageSystem?: boolean;
   /** ?view=<เลขขั้น> จากบอร์ดตอนกรอง stage — เปิดหน้ามาที่ขั้นนั้นเลยแทนภาพรวม
       (clamp ที่นี่เพราะฝั่ง client รู้ stage จริงของเคส; เกินที่เคสเดินถึง = ตกไปภาพรวม) */
   initialStage?: number | null;
@@ -1370,6 +1373,7 @@ export function InfluDetailClient({
             userName={userName}
             readOnly={readOnly}
             fileEditable={canEdit}
+            canManageSystem={canManageSystem}
             userId={userId}
             assignees={assignedList}
             people={people}

@@ -1777,6 +1777,16 @@ export interface Database {
         };
         Returns: undefined;
       };
+      /** สร้างเคส Influ ใหม่ทั้งก้อนใน transaction เดียว (0108) — เคส + หัตถการ +
+          ผู้รับผิดชอบ; เลขรอบคำนวณใน DB (ล็อกแถวโปรไฟล์) และรหัส Influ ID มาจาก trigger
+          payload: { person_id, stage?, campaign_id?, consult_only?, talent_fee?, case_value?,
+          service_date?, doctor_name?, contact_channel?, procedure_text?,
+          procedures: [{name, price, price_item_id, promo_package_id, product_team}],
+          assignees: [{user_id, scopes}] } */
+      influ_create_case: {
+        Args: { p: Json };
+        Returns: string;
+      };
       /** ลบเคส Influ = สำรองลง influ_deleted_backups ก่อนเสมอ — คืน id ของสำเนา */
       influ_delete_with_backup: {
         Args: { p_id: string };
