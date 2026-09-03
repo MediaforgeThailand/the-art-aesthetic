@@ -508,10 +508,11 @@ export type InfluLogAction =
 /** บทบาทผู้รับผิดชอบในเคส (0095 → รื้อเป็นบทบาท 0104)
     owner = ผู้ดูแล (สร้างเคส ตามจนเซนสัญญา) · follower = ผู้ติดตาม (สัญญา → follow up)
     memo = ผู้ออก Memo (ทำขั้น 1.1, 1.2)
-    — `contract`/`followup` เป็นค่าเก่าก่อน 0104 ที่ยังอยู่ในแถวเดิม/ถังขยะ
-    อ่านผ่าน normalizeRoles() (influ-constants) เสมอ: contract→owner, followup→follower
+    — ค่าเก่าก่อน 0104 (`contract`/`followup`) ถูกแปลงเป็น owner/follower ทั้งฐาน
+    ที่ migration 0106 แล้ว (รวม payload ในถังขยะ) และ check ของ DB บีบเหลือ 3 ค่านี้ —
+    แต่โค้ดยังอ่านผ่าน normalizeRoles() (influ-constants) เสมอเพื่อกันข้อมูลที่มาจาก SQL มือ
     — array ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน (เห็นความเคลื่อนไหวแต่ไม่ใช่เจ้าของงาน) */
-export type InfluScope = "owner" | "follower" | "memo" | "contract" | "followup";
+export type InfluScope = "owner" | "follower" | "memo";
 
 /** ผู้รับผิดชอบเคส (0095) — 1 เคสมีได้หลายคน แต่ละคนถือขอบเขตของตัวเอง
     คนละเรื่องกับ `influencers.owner_id` ที่ยังเป็น "ผู้สร้างการ์ด" ตามเดิม */

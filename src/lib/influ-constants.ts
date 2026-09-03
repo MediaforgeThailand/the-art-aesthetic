@@ -468,21 +468,23 @@ export const INFLU_ROLES: Record<
 
 export const INFLU_ROLE_ORDER: InfluRole[] = ["owner", "follower", "memo"];
 
-/** แปลงค่าใน `influ_assignees.scopes` (มีทั้งคีย์บทบาทใหม่และขอบเขตเก่าก่อน 0104)
-    เป็นชุดบทบาท — ทุกที่ที่อ่าน scopes ต้องผ่านตัวนี้ ห้ามเทียบค่าดิบ */
-export function normalizeRoles(scopes: InfluScope[]): InfluRole[] {
+/** แปลงค่าใน `influ_assignees.scopes` เป็นชุดบทบาท — ทุกที่ที่อ่าน scopes ต้องผ่านตัวนี้
+    ข้อมูลทั้งฐาน (รวมถังขยะ) ถูกแปลงเป็น owner/follower/memo แล้วที่ 0106 แต่ยังแปลง
+    ค่ายุคเก่า (contract/followup) ให้อยู่ กันแถวที่มาจาก SQL มือ/ข้อมูลนำเข้า
+    รับ `readonly string[]` เพราะค่านอกชุดต้องตกหล่นเงียบ ไม่ใช่พังทั้งหน้า */
+export function normalizeRoles(scopes: readonly string[]): InfluRole[] {
   const out = new Set<InfluRole>();
   for (const s of scopes) {
     if (s === "contract") out.add("owner");
     else if (s === "followup") out.add("follower");
-    else out.add(s);
+    else if (INFLU_ROLE_ORDER.includes(s as InfluRole)) out.add(s as InfluRole);
   }
   return INFLU_ROLE_ORDER.filter((r) => out.has(r));
 }
 
 /** บทบาทในชุดนี้มีคนคุมขอบเขตเหตุการณ์นั้นไหม — หัวใจของแจ้งเตือนระดับ "ต้องลงมือ" */
 export function rolesCoverScope(
-  scopes: InfluScope[],
+  scopes: readonly string[],
   scope: InfluEventScope | null | undefined
 ): boolean {
   if (!scope) return false;
@@ -499,7 +501,7 @@ export function scopeOfStage(stage: number): InfluEventScope | null {
 }
 
 /** ป้ายสั้นของชุดบทบาท — ว่าง = หัวหน้างาน/ผู้เกี่ยวข้อง (ไม่ได้ถือบทบาทไหน) */
-export function roleSummary(scopes: InfluScope[]): string {
+export function roleSummary(scopes: readonly string[]): string {
   const roles = normalizeRoles(scopes);
   if (roles.length === 0) return "ผู้เกี่ยวข้อง";
   if (roles.length === INFLU_ROLE_ORDER.length) return "ทุกบทบาท";
