@@ -540,8 +540,16 @@ export function InfluCardContent({
       ? "border border-emerald-200/80 bg-emerald-50/60"
       : "border border-stone-200 bg-white/90";
 
-  /** ส่ง Memo ไปขออนุมัติแล้ว (ติ๊กในหน้าเคส) — ติ๊กถูกเล็กๆ กันทีมส่งซ้ำ */
-  const memoSent = i.docs_sent_at !== null;
+  /* ขั้นย่อยของ Memo (0104) — docs_sent_at = "ส่งเรื่องขอ Memo" (ขั้น 1 → 1.1)
+     ส่วน memo_submitted_at = "ทำเอกสารส่งขออนุมัติแล้ว" (ขั้น 1.1 → 1.2)
+     ⚠️ ห้ามเขียนป้ายของสองช่องนี้เป็นข้อความเดียวกัน — ก่อนแก้ 2026-09-03 ป้ายบนการ์ด
+     อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว" (ความหมายเก่าก่อน 0104) ทีมจึงเห็นเคส
+     ที่เพิ่งยื่นเรื่องเป็น "ส่ง Memo ไปขออนุมัติแล้ว" ทั้งกอง */
+  // มีไฟล์ Memo ที่อนุมัติแล้ว = จบขั้นนี้ไปแล้ว ชิปความคืบหน้าของขั้น Memo ไม่ต้องโชว์อีก
+  // (เส้น tracker ด้านล่างการ์ดบอกอยู่แล้วว่าเลยไปขั้นไหน — ชิปมีไว้กันทีมส่งซ้ำระหว่างยังทำอยู่)
+  const inMemoStage = i.memo_file_path === null;
+  const memoRequested = inMemoStage && i.docs_sent_at !== null;
+  const memoSubmitted = inMemoStage && i.memo_submitted_at !== null;
   /** เคส "รอปรึกษา" ที่ยังไม่ได้เติมหัตถการ — บอกว่าทำไมการ์ดนี้ยังไม่มีโปรแกรม */
   const consultPending =
     i.consult_only && !i.completed && (i.procedure_text ?? "") === "";
@@ -550,7 +558,8 @@ export function InfluCardContent({
   const hasChips =
     needsBooking ||
     consultPending ||
-    memoSent ||
+    memoRequested ||
+    memoSubmitted ||
     (!i.completed && nextDueDays !== null) ||
     showFollowedChip ||
     i.contract_start !== null ||
@@ -670,14 +679,24 @@ export function InfluCardContent({
               </Badge>
             </span>
           )}
-          {memoSent && (
+          {memoSubmitted ? (
             <span
-              title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))}`}
+              title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDate(thaiDateISO(i.memo_submitted_at!))}`}
             >
               <Badge className={CHIP_DONE}>
-                <Check size={11} strokeWidth={3} /> ส่ง Memo แล้ว
+                <Check size={11} strokeWidth={3} /> ส่ง Memo ขออนุมัติแล้ว
               </Badge>
             </span>
+          ) : (
+            memoRequested && (
+              <span
+                title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))} — รอผู้ออก Memo ทำเอกสาร`}
+              >
+                <Badge className={CHIP_QUIET}>
+                  <Check size={11} strokeWidth={3} /> ส่งเรื่องขอ Memo แล้ว
+                </Badge>
+              </span>
+            )
           )}
           {!i.completed && nextDueDays !== null && (
             <FollowupCountdownChip

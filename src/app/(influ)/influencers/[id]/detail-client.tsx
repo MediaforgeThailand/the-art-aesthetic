@@ -1315,17 +1315,34 @@ export function InfluDetailClient({
             <CheckCircle2 size={12} /> จบงานแล้ว
           </Badge>
         )}
-        {/* ติ๊ก "ส่ง Memo แล้ว" (ติ๊กที่ขั้น Memo) — โชว์บนหัวด้วย จะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู */}
-        {influencer.docs_sent_at && (
+{/* ความคืบหน้าขั้น Memo — โชว์บนหัวจะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู
+            ⚠️ สองช่องนี้คนละเหตุการณ์ (0104) ห้ามยุบเป็นป้ายเดียว:
+              docs_sent_at      = ผู้ดูแลยื่นเรื่องขอ Memo (ขั้น 1 → 1.1)
+              memo_submitted_at = ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้ว (ขั้น 1.1 → 1.2)
+            ก่อนแก้ 2026-09-03 ป้ายนี้อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว"
+            (คำของความหมายเก่าก่อน 0104) ทำให้เคสที่เพิ่งยื่นเรื่องดูเหมือนส่งขออนุมัติไปแล้ว */}
+        {influencer.memo_submitted_at ? (
           <span
-            title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
-              influencer.docs_sent_at
+            title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDateTime(
+              influencer.memo_submitted_at
             )}`}
           >
             <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+              <CheckCircle2 size={12} /> ส่ง Memo ขออนุมัติแล้ว
             </Badge>
           </span>
+        ) : (
+          influencer.docs_sent_at && (
+            <span
+              title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
+                influencer.docs_sent_at
+              )} — รอผู้ออก Memo ทำเอกสาร`}
+            >
+              <Badge className="border border-stone-200 bg-stone-50 text-stone-600">
+                <CheckCircle2 size={12} /> ส่งเรื่องขอ Memo แล้ว
+              </Badge>
+            </span>
+          )
         )}
         {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคส) */}
         {influencer.consult_only && !influencer.procedure_text && (
