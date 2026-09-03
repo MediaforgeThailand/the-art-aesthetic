@@ -212,19 +212,8 @@ export function NewCaseModal({
     }
     const roundNo = (latest?.[0]?.round_no ?? 0) + 1;
 
-    // รหัส Influ ID ออกจาก DB (sequence) — ไม่ให้คนพิมพ์เอง เพราะเป็นกุญแจของแฮชแท็ก
-    // ที่ใช้ track ยอดจาก Meta ต้องไม่ซ้ำเด็ดขาด (0092)
-    const { data: newCode, error: codeErr } = await supabase.rpc(
-      "next_influ_code"
-    );
-    if (codeErr || !newCode) {
-      setSaving(false);
-      setErr(
-        `ออกรหัส Influ ID ไม่สำเร็จ: ${codeErr?.message ?? "ไม่ทราบสาเหตุ"}`
-      );
-      return;
-    }
-
+    // รหัส Influ ID ไม่ต้องออกที่นี่แล้ว (0107) — เป็นของ "ตัวบุคคล" ติดมากับโปรไฟล์
+    // และ trigger influencers_sync_code เติมให้ตอน insert ทุกรอบของคนนี้จึงรหัสเดียวกัน
     const { data: created, error } = await supabase
       .from("influencers")
       .insert({
@@ -241,7 +230,6 @@ export function NewCaseModal({
         tier: selected.tier,
         // ขั้นติดต่อ+รายละเอียดจบตอนทำโปรไฟล์/ฟอร์มนี้แล้ว — เริ่มที่ Memo เลย
         stage: INFLU_STAGE.memo,
-        influ_code: newCode,
         campaign_id: campaignId || null,
         // รอปรึกษา = ทำ Memo ได้ทั้งที่ยังไม่มีหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคสเมื่อเคาะแล้ว)
         // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
@@ -262,10 +250,10 @@ export function NewCaseModal({
       .single();
     if (error || !created) {
       setSaving(false);
-      // 23505 = รหัสชนกัน — แทบเป็นไปไม่ได้แล้วเพราะระบบออกให้ แต่บอกทางออกไว้เผื่อ
+      // 23505 บน unique (person_id, round_no) = มีคนเปิดรอบนี้พร้อมกันจากอีกหน้าต่าง (0106)
       setErr(
         error?.code === "23505"
-          ? `รหัส Influ ID ${newCode} ชนกับเคสอื่น — กดสร้างอีกครั้งเพื่อออกรหัสใหม่`
+          ? "มีคนเปิดรอบนี้ให้โปรไฟล์เดียวกันพร้อมกันอยู่ — กดสร้างอีกครั้งเพื่อรับเลขรอบถัดไป"
           : `สร้างนัดไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
       );
       return;
@@ -338,7 +326,7 @@ export function NewCaseModal({
       entityId: created.id,
       influencerId: created.id,
       influencerName: name,
-      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name} (รหัส ${newCode}) — ${
+      summary: `สร้างนัดใหม่ (รอบ ${roundNo}) ของ ${name} (รหัส ${selected.influ_code}) — ${
         procedures.length > 0
           ? `หัตถการ: ${procedureSummaryText(procedures)}`
           : "รอปรึกษา (ยังไม่ระบุหัตถการ)"
@@ -349,7 +337,7 @@ export function NewCaseModal({
         procedures: procedures.length,
         consult_only: consultOnly,
         talent_fee: feeNum,
-        influ_code: newCode,
+        influ_code: selected.influ_code,
         campaign: selectedCampaign?.tag ?? null,
         contact_channel: contactChannel.trim() || null,
       },
@@ -478,15 +466,15 @@ export function NewCaseModal({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>รหัส Influ ID</Label>
-              {/* ระบบออกให้เองตอนกดสร้าง (RPC next_influ_code) — ไม่ให้พิมพ์เอง
-                  เพราะรหัสนี้เป็นกุญแจของแฮชแท็กที่ใช้ track ยอดจาก Meta ต้องไม่ซ้ำเด็ดขาด */}
+              {/* 0107: รหัสเป็นของ "ตัวบุคคล" — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
+                  (แฮชแท็กที่ใช้ track ยอดจาก Meta จึงชี้กลับมาที่คนเดียวเสมอ) */}
               <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
                 <Hash size={15} className="shrink-0 text-brand-500" />
-                <span className="font-mono text-sm text-stone-500">
-                  INF-XXXXX
+                <span className="font-mono text-sm font-semibold text-stone-700">
+                  {selected?.influ_code ?? "INF-XXXXX"}
                 </span>
                 <span className="ml-auto text-xs text-stone-500">
-                  ออกให้อัตโนมัติ
+                  {selected ? "รหัสประจำตัว" : "ตามโปรไฟล์ที่เลือก"}
                 </span>
               </div>
             </div>

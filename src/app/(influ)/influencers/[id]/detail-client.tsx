@@ -530,48 +530,11 @@ function NameEditModal({
   const [firstName, setFirstName] = useState(influencer.first_name);
   const [lastName, setLastName] = useState(influencer.last_name ?? "");
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
-  /** รหัส Influ ID — อ่านอย่างเดียว (ระบบออกให้); เคสเก่าที่ยังว่างกดออกรหัสได้จากปุ่มในโมดัล */
-  const [code, setCode] = useState(influencer.influ_code ?? "");
-  const [issuing, setIssuing] = useState(false);
+  /** รหัส Influ ID — อ่านอย่างเดียว: 0107 ทำให้เป็นรหัส "ประจำตัวบุคคล" ที่ระบบออกให้
+      ตอนสร้างโปรไฟล์ และ trigger sync ลงทุกรอบ (ไม่มีปุ่มออกรหัส/ช่องกรอกอีกแล้ว) */
+  const code = influencer.influ_code ?? "";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  /** ออกรหัสให้เคสที่ยังไม่มี — บันทึกทันที ไม่ต้องรอกดปุ่มบันทึกชื่อ */
-  const issueCode = async () => {
-    if (issuing || code) return;
-    setIssuing(true);
-    setErr(null);
-    const { data: newCode, error: rpcErr } = await supabase.rpc(
-      "next_influ_code"
-    );
-    if (rpcErr || !newCode) {
-      setIssuing(false);
-      setErr(`ออกรหัสไม่สำเร็จ: ${rpcErr?.message ?? "ไม่ทราบสาเหตุ"}`);
-      return;
-    }
-    const { error: upErr } = await supabase
-      .from("influencers")
-      .update({ influ_code: newCode })
-      .eq("id", influencer.id);
-    setIssuing(false);
-    if (upErr) {
-      setErr(
-        upErr.code === "23505"
-          ? `รหัส ${newCode} ชนกับเคสอื่น — กดออกรหัสอีกครั้ง`
-          : `บันทึกรหัสไม่สำเร็จ: ${upErr.message}`
-      );
-      return;
-    }
-    setCode(newCode);
-    log({
-      action: "update",
-      entityId: influencer.id,
-      influencerId: influencer.id,
-      influencerName: logNameOf(influencer),
-      summary: `ออกรหัส Influ ID ให้เคสนี้: ${newCode}`,
-    });
-    router.refresh();
-  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -629,7 +592,7 @@ function NameEditModal({
   };
 
   return (
-    <Modal open onClose={onClose} title="แก้ไขชื่อ / รหัส Influ ID">
+    <Modal open onClose={onClose} title="แก้ไขชื่อ Influencer">
       <form onSubmit={save} className="space-y-3">
         <div>
           <Label htmlFor="influ-first">ชื่อ *</Label>
@@ -657,8 +620,8 @@ function NameEditModal({
             placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
           />
         </div>
-        {/* รหัส Influ ID ระบบออกให้เอง (0093) — แก้มือไม่ได้แล้ว เพราะเป็นกุญแจของแฮชแท็ก
-            ที่ใช้ track ยอดจาก Meta; เคสเก่าที่ยังไม่มีรหัสกดออกให้ได้จากตรงนี้ */}
+        {/* รหัส Influ ID = รหัสประจำตัวบุคคล (0107) — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
+            ระบบออกให้ตอนสร้างโปรไฟล์ ไม่มีทางแก้/ออกใหม่จากหน้าเคส */}
         <div>
           <Label>รหัส Influ ID</Label>
           <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
@@ -666,21 +629,10 @@ function NameEditModal({
             <span className="font-mono text-sm font-semibold text-stone-700">
               {code || "ยังไม่มีรหัส"}
             </span>
-            {!code && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="ml-auto shrink-0 !py-1.5 text-xs"
-                loading={issuing}
-                onClick={() => void issueCode()}
-              >
-                ออกรหัสให้
-              </Button>
-            )}
+            <span className="ml-auto text-xs text-stone-500">
+              รหัสประจำตัว ใช้ร่วมทุกรอบ
+            </span>
           </div>
-          <p className="mt-1 text-[11px] text-stone-400">
-            ระบบออกให้อัตโนมัติและไม่ซ้ำกับเคสอื่น — ใช้เป็นแฮชแท็กประจำเคสในโพส
-          </p>
         </div>
         {err && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">

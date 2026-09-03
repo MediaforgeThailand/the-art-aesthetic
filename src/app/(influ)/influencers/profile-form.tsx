@@ -13,7 +13,7 @@
  * กลับไปที่เคสทุกรอบของคนนี้ (person_id) ให้บอร์ด/การ์ดแสดงตรงกัน
  */
 
-import { ImagePlus, Link2, Plus, Trash2, UsersRound, X } from "lucide-react";
+import { Hash, ImagePlus, Link2, Plus, Trash2, UsersRound, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Textarea } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
@@ -390,6 +390,19 @@ function ProfileFormInner({
             บนบอร์ดแล้วเลือกโปรไฟล์คนนี้
           </span>
         </p>
+        {/* รหัสประจำตัว (0107) — ของ "คน" ไม่ใช่ของเคส ทุกรอบใช้รหัสเดียวกัน
+            โปรไฟล์ใหม่ยังไม่มีรหัสจนกว่าจะบันทึก (trigger ออกให้ตอน insert) */}
+        {profile && (
+          <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+            <Hash size={15} className="shrink-0 text-brand-500" />
+            <span className="font-mono text-sm font-semibold text-stone-700">
+              {profile.influ_code}
+            </span>
+            <span className="ml-auto text-xs text-stone-500">
+              รหัสประจำตัว ใช้ร่วมทุกรอบ
+            </span>
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="pf-first">ชื่อ *</Label>

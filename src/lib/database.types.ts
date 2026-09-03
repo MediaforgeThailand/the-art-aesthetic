@@ -669,6 +669,9 @@ export type InfluProductTeam =
     เคสทุกรอบของคนเดียวกันชี้มาที่นี่ผ่าน influencers.person_id (FK) */
 export type InfluProfileRow = {
   id: string;
+  /** รหัสประจำตัว INF-xxxxx (0107) — ต้นทางของ influencers.influ_code ทุกรอบของคนนี้
+      ระบบออกให้ตอน insert (trigger influ_profiles_set_code) ห้ามพิมพ์เอง */
+  influ_code: string;
   first_name: string;
   last_name: string | null;
   nickname: string | null;
