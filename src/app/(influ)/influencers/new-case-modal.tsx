@@ -23,7 +23,6 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
-import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { INFLU_STAGE, procedureSummaryText } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
@@ -41,6 +40,7 @@ import {
   type CaseAssignee,
   type InfluPerson,
 } from "./assignees";
+import { copyPhotoIntoCase } from "./case-photo-copy";
 import { DoctorSelect } from "./doctor-select";
 import type {
   PriceCatalogEntry,
@@ -48,10 +48,6 @@ import type {
 } from "./procedure-items-editor";
 import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
 import { ProfileFormModal, profileName } from "./profile-form";
-
-function sanitizeFileName(fileName: string): string {
-  return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-}
 
 export function NewCaseModal({
   open,
@@ -67,6 +63,8 @@ export function NewCaseModal({
   actor,
   onServiceCreated,
   initialProfile = null,
+  copyFrom = null,
+  openRoundsByPerson,
 }: {
   open: boolean;
   onClose: () => void;
@@ -89,6 +87,12 @@ export function NewCaseModal({
   /** โปรไฟล์ที่เลือกให้ล่วงหน้า (เช่นมาจากปุ่ม "ตอบรับ" บนบอร์ด Hunting)
       อ่านเฉพาะตอน mount — parent ที่เปลี่ยนค่านี้ต้อง remount ด้วย key */
   initialProfile?: InfluProfileRow | null;
+  /** เคสที่กดเปิดรอบใหม่มา — รูป "ช่องทาง" เป็นของเคส ไม่ได้อยู่บนโปรไฟล์
+      จึงต้องรับมาจากที่นี่ ไม่งั้นรอบใหม่ไม่มีสกรีนช็อตยอดผู้ติดตามติดไปด้วย */
+  copyFrom?: { photo_path: string | null; channel_photo_path: string | null } | null;
+  /** รอบที่ยังเดินอยู่ของแต่ละโปรไฟล์ (person_id → เลขรอบ) — ใช้ "เตือน" อย่างเดียว
+      ไม่บล็อค: ผู้ใช้ยืนยันว่าเปิดหลายรอบพร้อมกันได้ แต่ต้องรู้ตัวก่อนกด */
+  openRoundsByPerson?: Map<string, number[]>;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -160,6 +164,11 @@ export function NewCaseModal({
   );
   const selectedCampaign =
     activeCampaigns.find((c) => c.id === campaignId) ?? null;
+
+  /** รอบที่ยังเดินอยู่ของโปรไฟล์ที่เลือก — เตือนก่อนเปิดซ้อน (ไม่บล็อค) */
+  const openRounds = selected
+    ? (openRoundsByPerson?.get(selected.id) ?? [])
+    : [];
 
   const matchedProfiles = useMemo(() => {
     const q = profileQuery.trim().toLowerCase();
@@ -276,23 +285,20 @@ export function NewCaseModal({
           )
         : { error: null };
 
-    // รูปโปรไฟล์ copy เข้าโฟลเดอร์เคสใหม่ (best effort) — ห้ามชี้ path ข้ามเคส
-    // เพราะลบเคส = ลบโฟลเดอร์ influencers/{id}/ ของเคสนั้น (กติกา 0073)
-    if (selected.photo_path) {
-      const base = sanitizeFileName(
-        selected.photo_path.split("/").pop() ?? "photo.jpg"
-      );
-      const dest = `influencers/${created.id}/${Date.now()}-${base}`;
-      const { error: cpErr } = await supabase.storage
-        .from(STORAGE_BUCKET_DOCUMENTS)
-        .copy(selected.photo_path, dest);
-      if (!cpErr) {
-        await supabase
-          .from("influencers")
-          .update({ photo_path: dest })
-          .eq("id", created.id);
-      }
-    }
+    // รูปโปรไฟล์ copy เข้าโฟลเดอร์เคสใหม่ (best effort) ผ่าน helper กลาง —
+    // สร้างแถวในแกลเลอรีของเคส (influ_case_photos, 0105) ให้ด้วย ไม่ใช่แค่คอลัมน์หน้าปก
+    await copyPhotoIntoCase(
+      supabase,
+      created.id,
+      selected.photo_path ?? copyFrom?.photo_path ?? null,
+      "photo"
+    );
+    await copyPhotoIntoCase(
+      supabase,
+      created.id,
+      copyFrom?.channel_photo_path ?? null,
+      "channel"
+    );
 
     // บทบาทตั้งต้น: ผู้สร้าง = "ผู้ดูแล" (owner) + ผู้ออก Memo ที่เลือกในฟอร์ม = "memo"
     // (เลือกผู้สร้างเป็นผู้ออก Memo เอง = รวมเป็นแถวเดียว 2 บทบาท — unique (influencer_id, user_id))
@@ -436,6 +442,11 @@ export function NewCaseModal({
                       <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
                         {profileName(p)}
                       </span>
+                      {(openRoundsByPerson?.get(p.id)?.length ?? 0) > 0 && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                          มีเคสเปิดอยู่
+                        </span>
+                      )}
                       {p.followers != null && (
                         <span className="shrink-0 text-xs tabular-nums text-stone-400">
                           {formatNumber(p.followers)}
@@ -461,6 +472,15 @@ export function NewCaseModal({
               </div>
             )}
           </div>
+
+          {/* มีรอบที่ยังเดินอยู่ = เตือนให้รู้ตัว แต่เปิดซ้อนได้ (กติกาผู้ใช้ 2026-09-03) */}
+          {openRounds.length > 0 && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-800">
+              คนนี้มีเคสที่ยังเดินอยู่ (
+              {openRounds.map((n) => `รอบ ${n}`).join(" · ")}) —
+              เปิดรอบใหม่ซ้อนได้ แต่จะเป็นคนละการ์ด คนละ Memo และคนละสัญญา
+            </p>
+          )}
 
           {/* ---- ขั้น 2: ข้อมูลเคส ---- */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

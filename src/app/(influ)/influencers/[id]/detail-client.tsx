@@ -102,6 +102,7 @@ import type {
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../doctor-select";
 import { InfluLinksCard } from "../influ-links";
+import { NewCaseModal } from "../new-case-modal";
 import { ProfileFormModal } from "../profile-form";
 import {
   ProcedureItemsEditor,
@@ -949,103 +950,14 @@ export function InfluDetailClient({
     router.refresh();
   };
 
-  /* ---- เปิดรอบใหม่: influ คนเดิมกลับมาทำอีกครั้ง = การ์ดใหม่ + memo/สัญญา/checklist ชุดใหม่ ----
-     สร้างแถว influencers ใหม่ person_id เดียวกัน เริ่มที่ขั้น Memo — คัดลอกเฉพาะข้อมูลตัวบุคคล
-     (ชื่อ/เบอร์/อาชีพ/ผู้ติดตาม/รูป) ส่วนข้อมูลเคส (โปรแกรม/วัน/แพทย์/ไฟล์) เริ่มว่างทั้งหมด
-     เปิดได้เฉพาะเมื่อรอบนี้จบแล้ว (จบงาน/ปฏิเสธ/ข้อมูลเก่า) — รอบที่ยังเดินอยู่ให้เดินต่อในการ์ดเดิม */
+  /* ---- เปิดรอบใหม่ = โมดัล "สร้างนัดใหม่" ตัวเดียวกับบอร์ด (audit 2026-09-03) ----
+     เดิมมีโค้ดสร้างรอบของตัวเองที่นี่ ผลจึงไม่เท่ากับการสร้างนัดจากบอร์ด: รอบที่เปิดจากปุ่มนี้
+     ไม่มีหัตถการ ไม่มีผู้รับผิดชอบ (หายจากบอร์ดของคนกดทันทีเพราะตัวกรอง "เคสของฉัน")
+     ⇒ ลบทิ้ง ใช้ NewCaseModal ที่เลือกโปรไฟล์ไว้ให้แล้วแทน — ทางเดียวในการเปิดเคสใหม่
+     เงื่อนไขเปิด: ผู้ดูแลแก้ได้ + รู้จักโปรไฟล์ของคนนี้ (ไม่บังคับว่ารอบเดิมต้องจบก่อน —
+     ผู้ใช้ยอมรับว่ามี 2 รอบพร้อมกันได้ โมดัลเตือนให้เองตอนเลือกโปรไฟล์ที่ยังมีเคสเปิดอยู่) */
   const [newRoundOpen, setNewRoundOpen] = useState(false);
-  const [newRoundErr, setNewRoundErr] = useState<string | null>(null);
-  const canStartNewRound =
-    canManage && (influencer.completed || influencer.declined_at !== null);
-  const startNewRound = async () => {
-    setNewRoundErr(null);
-    // เลขรอบถัดไปอ่านสดจาก DB — กันหน้าค้าง/สอง session เปิดพร้อมกันแล้วได้เลขซ้ำ
-    const { data: latest, error: latestErr } = await supabase
-      .from("influencers")
-      .select("round_no")
-      .eq("person_id", influencer.person_id)
-      .order("round_no", { ascending: false })
-      .limit(1);
-    if (latestErr) {
-      setNewRoundErr(`เปิดรอบใหม่ไม่สำเร็จ: ${latestErr.message}`);
-      return;
-    }
-    const nextNo = (latest?.[0]?.round_no ?? influencer.round_no) + 1;
-    const { data: created, error } = await supabase
-      .from("influencers")
-      .insert({
-        person_id: influencer.person_id,
-        round_no: nextNo,
-        first_name: influencer.first_name,
-        last_name: influencer.last_name,
-        nickname: influencer.nickname,
-        phone: influencer.phone,
-        occupation: influencer.occupation,
-        followers: influencer.followers,
-        follower_note: influencer.follower_note,
-        tier: influencer.tier,
-        // เริ่มที่ Memo เหมือน "สร้างนัดใหม่" (0080/0081) — ขั้นติดต่อ/รายละเอียดเป็นงานก่อน
-        // ตอบรับ อยู่บอร์ด Hunting แล้ว; โปรแกรมของรอบใหม่กลับไปเติมที่แท็บรายละเอียดเคสได้เสมอ
-        stage: INFLU_STAGE.memo,
-        // การ์ดรอบใหม่เป็นของคนที่กดเปิดรอบ (กติกา "ผู้รับผิดชอบ = ผู้สร้างการ์ด")
-        // — รหัส Influ ID ไม่คัดลอกมา เพราะ unique ต่อการ์ด ต้องออกรหัสของรอบนี้เอง
-        owner_id: userId,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (error || !created) {
-      setNewRoundErr(
-        `เปิดรอบใหม่ไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
-      );
-      return;
-    }
-    // คัดลอกรูปเข้าโฟลเดอร์ของเคสใหม่ (best effort) — ห้ามชี้ path ของเคสเก่าข้ามการ์ด
-    // เพราะลบเคสเก่า = ไฟล์ใต้ influencers/{id}/ ถูกลบตาม รูปของรอบใหม่จะพังไปด้วย
-    const store = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
-    const copyPhoto = async (path: string | null): Promise<string | null> => {
-      if (!path) return null;
-      const base = sanitizeFileName(path.split("/").pop() ?? "photo.jpg");
-      const dest = `influencers/${created.id}/${Date.now()}-${base}`;
-      const { error: cpErr } = await store.copy(path, dest);
-      return cpErr ? null : dest;
-    };
-    const [photo, channelPhoto] = await Promise.all([
-      copyPhoto(influencer.photo_path),
-      copyPhoto(influencer.channel_photo_path),
-    ]);
-    if (photo || channelPhoto) {
-      await supabase
-        .from("influencers")
-        .update({
-          ...(photo ? { photo_path: photo } : {}),
-          ...(channelPhoto ? { channel_photo_path: channelPhoto } : {}),
-        })
-        .eq("id", created.id);
-    }
-    logInflu(supabase, actor, {
-      action: "create",
-      entityId: created.id,
-      influencerId: created.id,
-      influencerName: logNameOf(influencer),
-      summary: `เปิดรอบใหม่ (รอบ ${nextNo}) ของ ${logNameOf(influencer)}`,
-      meta: { person_id: influencer.person_id, round_no: nextNo },
-    });
-    // รอบใหม่ = การ์ดใหม่ที่ยังไม่มีผู้รับผิดชอบ — บอกทีมของรอบเดิมให้รู้ว่ามีงานใหม่เข้ามา
-    notifyInflu(supabase, actor, {
-      influencerId: created.id,
-      influencerName: logNameOf(influencer),
-      assignees: notifyTargets,
-      baseLevel: "action",
-      type: "round_started",
-      title: `เปิดรอบที่ ${nextNo} ของ ${logNameOf(influencer)}`,
-      body: "การ์ดใหม่เริ่มที่ขั้น Memo — อย่าลืมกำหนดผู้รับผิดชอบของรอบนี้",
-      href: `/influencers/${created.id}`,
-      meta: { person_id: influencer.person_id, round_no: nextNo },
-    });
-    router.push(`/influencers/${created.id}`);
-    router.refresh();
-  };
+  const canStartNewRound = canManage && personProfile !== null;
 
   /* ---------- ผู้รับผิดชอบเคส (0095) ----------
      การ์ดบนบอร์ดแสดงคนกลุ่มนี้ (ไม่ใช่ผู้สร้างอีกต่อไป) และเป็นตัวตัดสินว่าใครได้แจ้งเตือน
@@ -1346,7 +1258,7 @@ export function InfluDetailClient({
           <button
             type="button"
             onClick={() => setNewRoundOpen(true)}
-            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            title="influ คนนี้กลับมาทำอีกรอบ — เปิดโมดัลสร้างนัดโดยเลือกโปรไฟล์คนนี้ไว้ให้แล้ว (รอบเดิมไม่ถูกแตะ)"
             className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Repeat size={14} />
@@ -1354,12 +1266,6 @@ export function InfluDetailClient({
           </button>
         )}
       </div>
-
-      {newRoundErr && (
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-          {newRoundErr}
-        </p>
-      )}
 
       {/* เริ่มนับสัญญาไปแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
           — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสไปโผล่หน้า Follow Up โดยไม่มีสัญญาแบบเงียบๆ */}
@@ -1556,26 +1462,39 @@ export function InfluDetailClient({
         onClose={() => setRollbackOpen(false)}
       />
 
-      <ConfirmDialog
-        open={newRoundOpen}
-        title={`เปิดรอบใหม่ — รอบที่ ${influencer.round_no + 1}?`}
-        message={
-          <>
-            สร้างการ์ดใหม่ให้{" "}
-            <span className="font-medium text-stone-800">คุณ{fullName}</span>{" "}
-            บนบอร์ดเคสดำเนินงาน เริ่มที่ขั้น Memo —
-            ใช้เมื่อคนเดิมกลับมาทำอีกครั้ง ซึ่งต้องออก Memo ขออนุมัติ
-            และเซนสัญญาชุดใหม่ทั้งหมด (โปรแกรมของรอบใหม่กลับไปเติมได้ที่แท็บรายละเอียดเคส)
-            <br />
-            ข้อมูลตัวบุคคล (ชื่อ เบอร์ ยอดผู้ติดตาม รูป) ถูกคัดลอกไปให้ —
-            ส่วนโปรแกรม/วันนัด/เอกสารของรอบนี้ไม่ถูกแตะ และไม่ติดไปกับรอบใหม่
-          </>
-        }
-        confirmLabel="เปิดรอบใหม่"
-        confirmVariant="primary"
-        onConfirm={() => void startNewRound()}
-        onClose={() => setNewRoundOpen(false)}
-      />
+      {/* เปิดรอบใหม่ = โมดัลเดียวกับบอร์ด (เลือกโปรไฟล์คนนี้ไว้ให้แล้ว)
+          key = remount ทุกครั้งที่เปิด เพราะ NewCaseModal อ่าน initialProfile ตอน mount */}
+      {personProfile && (
+        <NewCaseModal
+          key={newRoundOpen ? "round-open" : "round-closed"}
+          open={newRoundOpen}
+          onClose={() => setNewRoundOpen(false)}
+          profiles={[personProfile]}
+          initialProfile={personProfile}
+          copyFrom={{
+            photo_path: influencer.photo_path,
+            channel_photo_path: influencer.channel_photo_path,
+          }}
+          openRoundsByPerson={
+            new Map([
+              [
+                influencer.person_id,
+                personRounds
+                  .filter((r) => !r.completed && r.declined_at === null)
+                  .map((r) => r.round_no),
+              ],
+            ])
+          }
+          services={services}
+          priceCatalog={priceCatalog}
+          promoCatalog={promoCatalog}
+          doctors={doctors}
+          campaigns={campaigns}
+          people={people}
+          me={{ id: userId, name: userName }}
+          actor={actor}
+        />
+      )}
     </div>
     </InfluLogProvider>
   );

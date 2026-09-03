@@ -130,9 +130,14 @@ export function matchFollowFilters(
   if (f.statuses.length && !f.statuses.includes(r.status)) return false;
 
   if (f.owner !== "all") {
+    // ผู้รับผิดชอบจริงอยู่ที่ influ_assignees (0099/0104) ไม่ใช่ owner_id ซึ่งแปลว่า "ผู้สร้าง"
+    // — ผู้ติดตาม (follower) ที่ไม่ได้สร้างการ์ดเคยไม่เห็นเคสของตัวเองเลยในหน้านี้
     const want = f.owner === "mine" ? meId : f.owner;
-    const owner = r.influ.owner_id ?? r.influ.created_by;
-    if (!want || owner !== want) return false;
+    if (!want) return false;
+    const mine = r.assignees.some((a) => a.userId === want);
+    // "เคสของฉัน" รวมเคสที่ยังไม่มีผู้รับผิดชอบเลยเสมอ (กติกาเดียวกับบอร์ด —
+    // งานไม่มีเจ้าภาพต้องเห็นเพื่อไปรับ ไม่ใช่หายไปจากทุกคน)
+    if (!mine && !(f.owner === "mine" && r.assignees.length === 0)) return false;
   }
 
   if (f.day && r.start !== f.day) return false;
@@ -176,7 +181,7 @@ export function followFilterChips(
       key: "owner",
       label:
         f.owner === "mine"
-          ? "เคสของฉัน"
+          ? "เคสของฉัน + ยังไม่มีผู้รับผิดชอบ"
           : `ผู้รับผิดชอบ: ${peopleById.get(f.owner) ?? "ไม่ทราบชื่อ"}`,
       next: { ...f, owner: "all" },
     });

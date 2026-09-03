@@ -483,7 +483,7 @@ function ContractBox({ row }: { row: TrackRow }) {
           ? "สัญญาหมดแล้ว"
           : `เหลืออีก ${formatNumber(row.daysLeft)} วัน`}
         {row.ownerName && (
-          <span className="text-stone-400"> · ดูแลโดย {row.ownerName}</span>
+          <span className="text-stone-400"> · สร้างโดย {row.ownerName}</span>
         )}
       </p>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200/70">

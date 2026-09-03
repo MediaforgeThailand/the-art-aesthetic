@@ -35,6 +35,7 @@ import {
   Hash,
   MessageCircleQuestion,
   Phone,
+  Repeat,
   RotateCcw,
   Timer,
   Trash2,
@@ -42,6 +43,12 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  menuBox,
+  useAnchoredMenu,
+  type MenuBox,
+} from "@/components/anchored-menu";
 import { Badge } from "@/components/ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -123,13 +130,16 @@ export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
    influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
    ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
    ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
-   ตัดที่ขั้น "สัญญา + รับบริการ" เพราะขึ้นขั้นตามงาน = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
+
+   **เริ่มเตือนเมื่อ Memo อนุมัติแล้วเท่านั้น (stage 2)** — เดิมเริ่มตั้งแต่ขั้น Memo (1.0)
+   ทำให้เคสเกือบทั้งบอร์ดติดป้าย "รอลงคิวหมอ" ทั้งที่ยังไม่ผ่านอนุมัติ จะลงคิวไม่ได้อยู่แล้ว
+   (audit 2026-09-03: 27 จาก 29 เคสที่เปิดอยู่ติดป้ายนี้ = สัญญาณที่ไม่มีความหมาย)
+   ตัดที่ขั้น "สัญญา + รับบริการ" เพราะเลยขั้นนั้น = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
 export const needsDoctorBooking = (
   i: InfluencerListRow,
   bookedIds: ReadonlySet<string>
 ): boolean =>
-  i.stage >= INFLU_STAGE.memo &&
-  i.stage <= INFLU_STAGE.contractService &&
+  i.stage === INFLU_STAGE.contractService &&
   !i.completed &&
   i.declined_at === null &&
   !bookedIds.has(i.id);
@@ -480,6 +490,121 @@ function StageTracker({ influ: i }: { influ: InfluencerListRow }) {
    · แถวชิปกลางการ์ดเหลือเฉพาะเรื่องที่ต้องลงมือทำ (ยังไม่ลงคิวหมอ · follow up · อายุสัญญา)
    · tier ย้ายไปเป็นข้อความเงียบๆ ข้างยอดผู้ติดตาม (เดิมเป็นชิปสีคนละสีต่อ tier) */
 
+/* ---------- ชั้น "โปรไฟล์" บนการ์ด (รอบงานของคนเดียวกัน) ----------
+   ผู้ใช้ 2026-09-03: "ควรแยกการ์ด จะเป็น Influ Profile >> Case 1, Case 2, Case 3"
+   บอร์ดเป็นการ์ดต่อ "รอบ" อยู่แล้ว สิ่งที่ขาดคือตัวบอกว่าการ์ดใบนี้เป็นรอบไหนของใคร
+   และรอบอื่นอยู่ไหน — ชิปนี้จึงโชว์ "รอบ N/M" เสมอเมื่อคนนั้นมีมากกว่า 1 รอบ
+   แล้วกดเปิดรายชื่อรอบทั้งหมด (รวมรอบที่ตัวกรองซ่อนอยู่ ซึ่งต้องบอกให้รู้ ไม่ใช่หายเงียบ) */
+function RoundsChip({
+  influ: i,
+  rounds,
+  visibleIds,
+}: {
+  influ: InfluencerListRow;
+  rounds: InfluencerListRow[];
+  /** id ของเคสที่แสดงอยู่บนบอร์ดตอนนี้ — ที่ไม่อยู่ในนี้คือถูกตัวกรองซ่อน */
+  visibleIds?: ReadonlySet<string>;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<MenuBox | null>(null);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const place = (a: HTMLElement) => setBox(menuBox(a, { width: 232, maxHeight: 300 }));
+  useAnchoredMenu({
+    open,
+    anchorRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: place,
+  });
+
+  const label = roundLabel(i.round_no, rounds.length);
+  if (!label) return null;
+  if (rounds.length <= 1) {
+    return <span className="font-medium text-stone-500">{label}</span>;
+  }
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        title={`คนนี้มี ${rounds.length} รอบ — กดเพื่อดูรอบอื่น`}
+        aria-label={`${label} — กดเพื่อดูรอบอื่นของคนนี้`}
+        onClick={(e) => {
+          // การ์ดกดแล้วเปิดหน้าเคส — แตะชิปต้องไม่ทะลุไป
+          e.stopPropagation();
+          e.preventDefault();
+          const a = anchorRef.current;
+          if (a) place(a);
+          setOpen((v) => !v);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-brand-200 bg-brand-50/80 px-1.5 py-px font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
+      >
+        <Repeat size={10} />
+        {label}
+      </button>
+      {open &&
+        box &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              left: box.x,
+              top: box.y,
+              width: box.width,
+              maxHeight: box.height,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="z-[60] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl animate-scale-in"
+          >
+            <p className="px-2 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+              รอบงานของคนนี้
+            </p>
+            {rounds.map((r) => {
+              const hidden = visibleIds ? !visibleIds.has(r.id) : false;
+              const status =
+                r.declined_at !== null
+                  ? "ปฏิเสธ"
+                  : r.completed
+                    ? "จบงาน"
+                    : (INFLU_STAGES.find((st) => st.step === r.stage)?.short ??
+                      "กำลังทำ");
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push(`/influencers/${r.id}`);
+                  }}
+                  className={`flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-brand-50/70 max-sm:min-h-11 ${
+                    r.id === i.id ? "bg-brand-50" : ""
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-stone-800">
+                      รอบ {r.round_no}
+                      {r.id === i.id ? " (การ์ดนี้)" : ""}
+                    </span>
+                    <span className="block text-[11px] text-stone-500">
+                      {status}
+                      {hidden ? " · ถูกตัวกรองซ่อนอยู่" : ""}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 export function InfluCardContent({
   influ: i,
   stats,
@@ -489,6 +614,8 @@ export function InfluCardContent({
   hashtags,
   assignees,
   peopleById,
+  rounds,
+  visibleIds,
   deleting = false,
   needsBooking = false,
   onDelete,
@@ -507,6 +634,10 @@ export function InfluCardContent({
   links?: InfluLinkLite[];
   /** แฮชแท็กบังคับของเคส (0093) — undefined = หน้าที่เรียกไม่ได้ส่งมา (ไม่โชว์แถวนี้) */
   hashtags?: CaseHashtag[];
+  /** ทุกรอบของ "คนเดียวกัน" (person_id) เรียงตามเลขรอบ — ที่มาของชิป "รอบ N/M" */
+  rounds?: InfluencerListRow[];
+  /** เคสที่แสดงอยู่บนบอร์ดตอนนี้ — ใช้บอกในชิปว่ารอบไหนถูกตัวกรองซ่อน */
+  visibleIds?: ReadonlySet<string>;
   deleting?: boolean;
   /** ถึง Memo แล้วแต่ยังไม่มีคิวหมอในปฏิทิน — ติดป้ายเรืองแสง (ดู needsDoctorBooking) */
   needsBooking?: boolean;
@@ -580,12 +711,12 @@ export function InfluCardContent({
                 {i.influ_code}
               </span>
             )}
-            {/* รอบ ≥2 = คนเดิมกลับมาทำใหม่ — ข้อความเงียบแบบเดียวกับ tier (ไม่ใช่ชิปสี ตามกติกา redesign) */}
-            {roundLabel(i.round_no) && (
-              <span className="font-medium text-stone-500">
-                {roundLabel(i.round_no)}
-              </span>
-            )}
+            {/* รอบงาน — มีหลายรอบ = ชิปกดได้ (ไปรอบอื่นของคนเดียวกัน), รอบเดียว = ไม่โชว์อะไร */}
+            <RoundsChip
+              influ={i}
+              rounds={rounds ?? [i]}
+              visibleIds={visibleIds}
+            />
             {i.followers !== null && (
               <span className="inline-flex items-center gap-1 font-medium text-stone-500">
                 <UsersRound size={11} /> {compactFollowers(i.followers)}
@@ -759,6 +890,8 @@ function SortableInfluCard({
   hashtags,
   assignees,
   peopleById,
+  rounds,
+  visibleIds,
   today,
   deleting,
   needsBooking,
@@ -776,6 +909,9 @@ function SortableInfluCard({
   hashtags?: CaseHashtag[];
   assignees?: CaseAssignee[];
   peopleById?: Map<string, InfluPerson>;
+  /** ทุกรอบของคนเดียวกัน — ชิป "รอบ N/M" บนการ์ด */
+  rounds?: InfluencerListRow[];
+  visibleIds?: ReadonlySet<string>;
   today: string;
   deleting: boolean;
   needsBooking: boolean;
@@ -829,6 +965,8 @@ function SortableInfluCard({
         hashtags={hashtags}
         assignees={assignees}
         peopleById={peopleById}
+        rounds={rounds}
+        visibleIds={visibleIds}
         today={today}
         deleting={deleting}
         needsBooking={needsBooking}
@@ -850,6 +988,8 @@ function BoardColumn({
   hashtagsByInflu,
   assigneesByInflu,
   peopleById,
+  roundsByPerson,
+  visibleIds,
   bookingAlertIds,
   today,
   highlight,
@@ -869,6 +1009,9 @@ function BoardColumn({
   hashtagsByInflu?: Map<string, CaseHashtag[]>;
   assigneesByInflu?: Map<string, CaseAssignee[]>;
   peopleById?: Map<string, InfluPerson>;
+  /** ทุกรอบของแต่ละคน (person_id → เคสทุกรอบ) — ชิป "รอบ N/M" บนการ์ด */
+  roundsByPerson?: Map<string, InfluencerListRow[]>;
+  visibleIds?: ReadonlySet<string>;
   bookingAlertIds: ReadonlySet<string>;
   today: string;
   highlight: boolean;
@@ -938,6 +1081,8 @@ function BoardColumn({
               hashtags={hashtagsByInflu?.get(i.id)}
               assignees={assigneesByInflu?.get(i.id)}
               peopleById={peopleById}
+              rounds={roundsByPerson?.get(i.person_id)}
+              visibleIds={visibleIds}
               today={today}
               deleting={deletingId === i.id}
               needsBooking={bookingAlertIds.has(i.id)}
@@ -968,6 +1113,7 @@ export function InfluBoard({
   hashtagsByInflu,
   assigneesByInflu,
   peopleById,
+  roundsByPerson,
   bookingAlertIds,
   today,
   deletingId,
@@ -989,6 +1135,8 @@ export function InfluBoard({
   assigneesByInflu?: Map<string, CaseAssignee[]>;
   /** บัญชีตาม uid — ที่มาของรูป/ชื่อในกองรูป */
   peopleById?: Map<string, InfluPerson>;
+  /** ทุกรอบของแต่ละคน (รวมรอบที่ตัวกรองซ่อนอยู่) — ชิป "รอบ N/M" บนการ์ด */
+  roundsByPerson?: Map<string, InfluencerListRow[]>;
   /** id ของเคสที่ต้องติดป้ายเรืองแสง "ยังไม่ได้ลงคิวหมอ" */
   bookingAlertIds: ReadonlySet<string>;
   today: string;
@@ -1077,13 +1225,28 @@ export function InfluBoard({
     [items]
   );
 
+  /** ตำแหน่งของ "คน" = ตำแหน่งที่ดีที่สุดในบรรดารอบของเขา — ทำให้ทุกรอบของคนเดียวกัน
+      เกาะกลุ่มกันในคอลัมน์ (ลากรอบไหนก็พาทั้งกลุ่มขยับ ซึ่งเป็นสิ่งที่ต้องการ) */
   const baseOrder = useMemo(() => {
-    const m: Record<InfluSizeGroup, string[]> = { s: [], m: [], l: [] };
-    for (const i of [...items].sort((a, b) => boardPos(a) - boardPos(b))) {
-      m[effectiveSizeGroup(i)].push(i.id);
+    const anchor = new Map<string, number>();
+    for (const i of items) {
+      const cur = anchor.get(i.person_id);
+      const pos = boardPos(i);
+      if (cur === undefined || pos < cur) anchor.set(i.person_id, pos);
     }
+    const m: Record<InfluSizeGroup, string[]> = { s: [], m: [], l: [] };
+    const sorted = [...items].sort(
+      (a, b) =>
+        (anchor.get(a.person_id) ?? 0) - (anchor.get(b.person_id) ?? 0) ||
+        (a.person_id < b.person_id ? -1 : a.person_id > b.person_id ? 1 : 0) ||
+        a.round_no - b.round_no
+    );
+    for (const i of sorted) m[effectiveSizeGroup(i)].push(i.id);
     return m;
   }, [items]);
+
+  /** เคสที่กำลังแสดงอยู่ — ชิป "รอบ N/M" ใช้บอกว่ารอบไหนถูกตัวกรองซ่อน */
+  const visibleIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
 
   const currentOrder = order ?? baseOrder;
 
@@ -1269,6 +1432,8 @@ export function InfluBoard({
               hashtagsByInflu={hashtagsByInflu}
               assigneesByInflu={assigneesByInflu}
               peopleById={peopleById}
+              roundsByPerson={roundsByPerson}
+              visibleIds={visibleIds}
               bookingAlertIds={bookingAlertIds}
               today={today}
               highlight={activeId !== null && overGroup === g}
@@ -1290,6 +1455,7 @@ export function InfluBoard({
               stats={statsByInflu.get(activeInflu.id)}
               assignees={assigneesByInflu?.get(activeInflu.id)}
               peopleById={peopleById}
+              rounds={roundsByPerson?.get(activeInflu.person_id)}
               today={today}
               needsBooking={bookingAlertIds.has(activeInflu.id)}
               overlay

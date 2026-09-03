@@ -181,12 +181,10 @@ function buildLiveAlerts(
     });
   }
 
-  /* 2) ยังไม่ลงคิวหมอ — เกณฑ์เดียวกับป้ายบนการ์ด (needsDoctorBooking) */
+  /* 2) ยังไม่ลงคิวหมอ — เกณฑ์เดียวกับป้ายบนการ์ด (needsDoctorBooking):
+     เริ่มเตือนเมื่อ Memo อนุมัติแล้ว (stage 2) เท่านั้น */
   const needBooking = active.filter(
-    (c) =>
-      c.stage >= INFLU_STAGE.memo &&
-      c.stage <= INFLU_STAGE.contractService &&
-      !bookedIds.has(c.id)
+    (c) => c.stage === INFLU_STAGE.contractService && !bookedIds.has(c.id)
   );
   if (needBooking.length > 0) {
     out.push({
