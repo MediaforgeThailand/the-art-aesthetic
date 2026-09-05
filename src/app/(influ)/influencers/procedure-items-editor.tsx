@@ -24,6 +24,7 @@ import {
   shortenProgramName,
 } from "@/lib/influ-constants";
 import { formatCurrency } from "@/lib/format";
+import { useInfluLog, useInfluNotify } from "@/components/influ-log-provider";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluProcedureItemRow,
@@ -322,6 +323,18 @@ export function ProcedureItemsEditor({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  // ทุก mutation ในระบบ Influ ต้องเขียน log (กติกา 0074) — ตัวนี้เคยหลุดทั้งไฟล์
+  // ทั้งที่แก้ "ต้นทุนของเคส" ซึ่งเป็นตัวเลขที่ทีมใช้ตัดสินใจ
+  const log = useInfluLog();
+  const notify = useInfluNotify();
+  const record = (summary: string, entityId: string | null = null) =>
+    log({
+      action: "update",
+      entity: "procedure_item",
+      entityId,
+      influencerId,
+      summary,
+    });
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -399,6 +412,12 @@ export function ProcedureItemsEditor({
     const next = [...items, data as InfluProcedureItemRow];
     setItems(next);
     syncText(next);
+    record(`เพิ่มหัตถการ "${clean}"${refPrice ? ` (ราคาอ้างอิง ${refPrice})` : ""}`, data.id);
+    notify({
+      type: "case_updated",
+      scope: "contract",
+      title: `เพิ่มหัตถการในเคส: ${clean}`,
+    });
     setQuery("");
     inputRef.current?.focus();
   };
@@ -435,7 +454,10 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`บันทึกชื่อไม่สำเร็จ: ${error.message}`);
-        else syncText(next);
+        else {
+          syncText(next);
+          record(`แก้ชื่อหัตถการ "${cur.name}" → "${clean}"`, id);
+        }
       });
     return clean;
   };
@@ -449,7 +471,11 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`บันทึกราคาไม่สำเร็จ: ${error.message}`);
-        else router.refresh();
+        else {
+          router.refresh();
+          const nm = items.find((i) => i.id === id)?.name ?? "รายการ";
+          record(`แก้ต้นทุน "${nm}" เป็น ${price}`, id);
+        }
       });
   };
 
@@ -467,12 +493,19 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`บันทึกสถานะ support ไม่สำเร็จ: ${error.message}`);
-        else router.refresh();
+        else {
+          router.refresh();
+          record(
+            `${nextVal ? "ตั้ง" : "ยกเลิก"} support ของ "${cur.name}" (ต้นทุนนับเป็น ${nextVal ? 0 : cur.price})`,
+            id
+          );
+        }
       });
   };
 
   const removeItem = (id: string) => {
     setErr(null);
+    const gone = items.find((i) => i.id === id);
     const next = items.filter((i) => i.id !== id);
     setItems(next);
     void supabase
@@ -481,7 +514,15 @@ export function ProcedureItemsEditor({
       .eq("id", id)
       .then(({ error }) => {
         if (error) setErr(`ลบรายการไม่สำเร็จ: ${error.message}`);
-        else syncText(next);
+        else {
+          syncText(next);
+          record(`ลบหัตถการ "${gone?.name ?? "ไม่ทราบชื่อ"}" ออกจากเคส`, id);
+          notify({
+            type: "case_updated",
+            scope: "contract",
+            title: `ลบหัตถการออกจากเคส: ${gone?.name ?? "ไม่ทราบชื่อ"}`,
+          });
+        }
       });
   };
 

@@ -30,7 +30,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Sparkles,
   Stethoscope,
   Trash2,
 } from "lucide-react";
@@ -280,30 +279,23 @@ export type CalendarFilters = {
   hiddenKinds: InfluCalendarKind[];
   /** ชื่อแพทย์ ("" = ทุกคน) */
   doctor: string;
-  /** แสดงวันรับบริการที่มาจากเคส (ยังไม่ได้ลงคิวจริง) */
-  showServiceDates: boolean;
 };
 
 export const DEFAULT_CALENDAR_FILTERS: CalendarFilters = {
   hiddenKinds: [],
   doctor: "",
-  showServiceDates: true,
 };
 
 /** ตัวกรองของปฏิทิน — เนื้อในแผงลอย (shell ใช้ InfluFilterButton ของกลาง) */
 function CalendarFilterSections({
   hiddenKinds,
   onToggleKind,
-  showServiceDates,
-  onToggleServiceDates,
   doctorOptions,
   doctorFilter,
   onDoctorFilter,
 }: {
   hiddenKinds: Set<InfluCalendarKind>;
   onToggleKind: (kind: InfluCalendarKind) => void;
-  showServiceDates: boolean;
-  onToggleServiceDates: () => void;
   doctorOptions: string[];
   doctorFilter: string;
   onDoctorFilter: (name: string) => void;
@@ -325,16 +317,6 @@ function CalendarFilterSections({
             );
           })}
         </div>
-      </FilterSection>
-
-      <FilterSection
-        title="วันรับบริการจากเคส"
-        hint="วันที่เคาะไว้ในเคสแต่ยังไม่ได้ลงคิวจริง — แสดงเป็นรายการอ่านอย่างเดียว"
-      >
-        <FilterChip active={showServiceDates} onClick={onToggleServiceDates}>
-          <Sparkles size={12} />
-          แสดงวันรับบริการจากเคส
-        </FilterChip>
       </FilterSection>
 
       {doctorOptions.length > 0 && (
@@ -947,7 +929,7 @@ export function CalendarClient({
     userId: userId,
     factory: DEFAULT_CALENDAR_FILTERS,
   });
-  const { doctor: doctorFilter, showServiceDates } = filterApi.filters;
+  const { doctor: doctorFilter } = filterApi.filters;
   const hiddenKinds = useMemo<Set<InfluCalendarKind>>(
     () => new Set(filterApi.filters.hiddenKinds),
     [filterApi.filters.hiddenKinds]
@@ -1203,14 +1185,32 @@ export function CalendarClient({
       setActionError(`บันทึกสถานะไม่สำเร็จ: ${error.message}`);
       return;
     }
+    logInflu(supabase, actor, {
+      action: "status",
+      entity: "calendar_event",
+      entityId: target.id,
+      influencerId: target.influencer_id,
+      influencerName: nameOf(target.influencer) || null,
+      summary: `${next ? "ติ๊กเสร็จ" : "ยกเลิกติ๊กเสร็จ"}คิว "${target.title}" วันที่ ${formatDate(target.event_date)}`,
+    });
+    if (target.influencer_id) {
+      notifyInfluByCase(supabase, actor, {
+        influencerId: target.influencer_id,
+        influencerName: nameOf(target.influencer) || null,
+        type: "calendar_changed",
+        baseLevel: "update",
+        title: `${next ? "ติ๊กเสร็จ" : "ยกเลิกติ๊กเสร็จ"}คิว "${target.title}" ของ ${nameOf(target.influencer) || "เคส"}`,
+        body: formatDate(target.event_date),
+        href: "/influ-calendar",
+      });
+    }
     router.refresh();
   };
 
   /** จำนวนกลุ่มตัวกรองที่เปิดอยู่ — เลขบนปุ่ม "ตัวกรอง" */
   const filterCount =
     (hiddenKinds.size > 0 ? 1 : 0) +
-    (doctorFilter !== "" ? 1 : 0) +
-    (showServiceDates ? 0 : 1);
+    (doctorFilter !== "" ? 1 : 0);
 
   const detailEvent = detail
     ? (events.find((e) => e.id === detail) ?? null)
@@ -1310,10 +1310,6 @@ export function CalendarClient({
           <CalendarFilterSections
             hiddenKinds={hiddenKinds}
             onToggleKind={toggleKind}
-            showServiceDates={showServiceDates}
-            onToggleServiceDates={() =>
-              filterApi.patch({ showServiceDates: !showServiceDates })
-            }
             doctorOptions={doctorOptions}
             doctorFilter={doctorFilter}
             onDoctorFilter={(doctor) => filterApi.patch({ doctor })}

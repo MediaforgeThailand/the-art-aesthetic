@@ -548,6 +548,9 @@ export type InfluNotificationRow = {
   body: string | null;
   href: string | null;
   meta: Json;
+  /** เห็นแล้ว (เปิดแผงกระดิ่ง) — badge ดับที่นี่ (0109) */
+  seen_at: string | null;
+  /** อ่านแล้ว (กดเข้าไปดู) — คนละเรื่องกับ seen_at */
   read_at: string | null;
   created_at: string;
 };

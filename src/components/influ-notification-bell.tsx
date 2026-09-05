@@ -41,10 +41,12 @@ import {
   Target,
   Trash2,
   UserCog,
+  Megaphone,
   UserMinus,
   UserPlus,
+  UserRoundX,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatDateTime, todayISO } from "@/lib/format";
@@ -88,6 +90,7 @@ const ICONS: Record<string, typeof Bell> = {
   "user-plus": UserPlus,
   "user-minus": UserMinus,
   "user-cog": UserCog,
+  megaphone: Megaphone,
 };
 
 const TONE_CLASS: Record<InfluNotiTone, string> = {
@@ -154,7 +157,9 @@ function buildLiveAlerts(
   scopesByCase: Map<string, InfluScope[]>,
   /** รายชื่อบอร์ด Hunting ของฉันที่เลยวันนัดตามแล้ว */
   huntOverdue: { name: string }[],
-  today: string
+  today: string,
+  /** เคสที่ยังไม่มีผู้รับผิดชอบเลย (เฉพาะผู้ดูแลระบบถึงจะได้รับมา) */
+  unassigned: { name: string }[] = []
 ): LiveAlert[] {
   const out: LiveAlert[] = [];
   const active = cases.filter(
@@ -280,6 +285,20 @@ function buildLiveAlerts(
     });
   }
 
+  /* 7) เคสที่ไม่มีผู้รับผิดชอบเลย — ไม่มีใครได้แจ้งเตือนของเคสพวกนี้เลยแม้แต่คนเดียว
+        ผู้ดูแลระบบจึงต้องเห็นแทน (audit 2026-09-03: 16 จาก 29 เคสที่เปิดอยู่) */
+  if (unassigned.length > 0) {
+    out.push({
+      key: "unassigned",
+      icon: UserRoundX,
+      tone: "amber",
+      title: `เคสยังไม่มีผู้รับผิดชอบ ${unassigned.length} เคส`,
+      body: unassigned.map((c) => c.name).slice(0, 4).join(" · "),
+      href: "/influencers",
+      mine: true,
+    });
+  }
+
   // งานของฉันขึ้นก่อนเสมอ
   return out.sort((a, b) => Number(b.mine) - Number(a.mine));
 }
@@ -288,8 +307,17 @@ function buildLiveAlerts(
 
 type Tab = "action" | "all";
 
-export function InfluNotificationBell({ userId }: { userId: string }) {
+export function InfluNotificationBell({
+  userId,
+  canManage = false,
+}: {
+  userId: string;
+  /** ผู้ดูแลระบบ Influencer — เห็น alert "เคสไม่มีผู้รับผิดชอบ" เพิ่มอีกหนึ่งรายการ
+      (เคสที่ไม่มีเจ้าภาพจะไม่มีใครได้แจ้งเตือนเลย ต้องมีคนเห็นแทนระบบ) */
+  canManage?: boolean;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
   const today = todayISO();
 
@@ -297,6 +325,11 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
   const [unreadAction, setUnreadAction] = useState(0);
   const [unreadUpdate, setUnreadUpdate] = useState(0);
+  /** "ยังไม่เห็น" — badge ดับตอนเปิดแผง ส่วน "ยังไม่อ่าน" (read_at) ยังคาไว้จนกดเข้าไปดู
+      (แพทเทิร์นเดียวกับกระดิ่งของระบบ Task ตั้งแต่ 0096 — กล่องอีเมล/Facebook) */
+  const [unseenAction, setUnseenAction] = useState(0);
+  /** ตัวสั่งคำนวณ "งานค้างของฉัน" ใหม่ — เพิ่มค่าเมื่อกดเปิดแผง (effect ผูกเป็น dependency) */
+  const [alertsTick, setAlertsTick] = useState(0);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("action");
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -319,6 +352,13 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
       .eq("level", "update")
       .is("read_at", null)
       .then(({ count }) => setUnreadUpdate(count ?? 0));
+    void supabase
+      .from("influ_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", userId)
+      .eq("level", "action")
+      .is("seen_at", null)
+      .then(({ count }) => setUnseenAction(count ?? 0));
   }, [supabase, userId]);
 
   /* ---- โหลดรายการ + realtime ---- */
@@ -379,7 +419,9 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
     };
   }, [supabase, userId, refreshUnread]);
 
-  /* ---- งานค้างของฉัน (คำนวณสด ครั้งเดียวตอนเข้าระบบ) ---- */
+  /* ---- งานค้างของฉัน (คำนวณสดจาก DB) ----
+     เดิมคำนวณครั้งเดียวตอนเข้าระบบ ⇒ ทำงานไปทั้งวันแล้วตัวเลขยังเป็นของตอนเช้า
+     ตอนนี้คำนวณใหม่เมื่อ (1) เปลี่ยนหน้าในระบบ (2) กดเปิดแผงกระดิ่ง */
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -397,6 +439,29 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
         )
         .map((p) => ({ name: p.name }));
 
+      // เคสที่ไม่มีใครรับผิดชอบเลย — ผู้ดูแลระบบเท่านั้นที่เห็น (ต้องมีคนไล่เก็บ)
+      let unassigned: { name: string }[] = [];
+      if (canManage) {
+        const [{ data: openCases }, { data: allAssignees }] = await Promise.all([
+          supabase
+            .from("influencers")
+            .select("id, first_name, last_name, nickname")
+            .eq("archived", false)
+            .eq("completed", false)
+            .is("declined_at", null),
+          supabase.from("influ_assignees").select("influencer_id"),
+        ]);
+        const taken = new Set((allAssignees ?? []).map((a) => a.influencer_id));
+        unassigned = (openCases ?? [])
+          .filter((c) => !taken.has(c.id))
+          .map((c) => ({
+            name:
+              c.nickname ||
+              [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+              "ไม่ระบุชื่อ",
+          }));
+      }
+
       const { data: mine } = await supabase
         .from("influ_assignees")
         .select("influencer_id, scopes")
@@ -405,7 +470,15 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
       if (!mine || mine.length === 0) {
         // ไม่มีเคสที่รับผิดชอบ แต่ยังอาจมีรายชื่อ Hunting ค้างอยู่
         setAlerts(
-          buildLiveAlerts([], [], new Set(), new Map(), huntOverdue, today)
+          buildLiveAlerts(
+            [],
+            [],
+            new Set(),
+            new Map(),
+            huntOverdue,
+            today,
+            unassigned
+          )
         );
         return;
       }
@@ -443,14 +516,16 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
           ),
           scopesByCase,
           huntOverdue,
-          today
+          today,
+          unassigned
         )
       );
     })();
     return () => {
       alive = false;
     };
-  }, [supabase, userId, today]);
+    // pathname = เปลี่ยนหน้าในระบบแล้วคำนวณใหม่ · alertsTick = กดเปิดแผงกระดิ่ง
+  }, [supabase, userId, today, pathname, alertsTick, canManage]);
 
   /* ---- เปิด/ปิดแผง ---- */
   useEffect(() => {
@@ -472,8 +547,23 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
   }, [open]);
 
   const mineAlerts = alerts.filter((a) => a.mine);
-  // badge = งานที่ต้องลงมือจริงๆ เท่านั้น (อัพเดทเงียบไม่นับ ไม่งั้นเลขแดงไม่มีความหมาย)
-  const badge = unreadAction + mineAlerts.length;
+  // badge = งานที่ต้องลงมือจริงๆ และ **ยังไม่เห็น** (อัพเดทเงียบไม่นับ ไม่งั้นเลขแดงไม่มีความหมาย)
+  const badge = unseenAction + mineAlerts.length;
+
+  /** เปิดแผง = เห็นแล้วทั้งหมด (เลขดับทันที) — แต่ละแถวยังเป็น "ยังไม่อ่าน" จนกดเข้าไปดู */
+  const markAllSeen = useCallback(() => {
+    const at = new Date().toISOString();
+    setItems((cur) => cur.map((x) => (x.seen_at ? x : { ...x, seen_at: at })));
+    setUnseenAction(0);
+    void supabase
+      .from("influ_notifications")
+      .update({ seen_at: at })
+      .eq("recipient_id", userId)
+      .is("seen_at", null)
+      .then(({ error }) => {
+        if (error) console.warn("บันทึกสถานะเห็นแล้วไม่สำเร็จ:", error.message);
+      });
+  }, [supabase, userId]);
 
   const toggle = () => {
     if (!open && btnRef.current) {
@@ -488,6 +578,9 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
       });
       // มีงานต้องลงมือ = เปิดมาที่แท็บนั้น ไม่งั้นเปิดมาเห็นทุกอย่าง
       setTab(badge > 0 ? "action" : "all");
+      // เปิดแผง = ตัวเลขดับ + คำนวณ "งานค้างของฉัน" ใหม่ (ค่าที่ค้างจากตอนเข้าระบบอาจเก่าไปแล้ว)
+      markAllSeen();
+      setAlertsTick((t) => t + 1);
     }
     setOpen((o) => !o);
   };

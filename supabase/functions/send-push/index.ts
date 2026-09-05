@@ -1,6 +1,9 @@
-// send-push — ส่ง Web Push ไปยังอุปกรณ์ที่ติดตั้งแอป (PWA) เมื่อมีแถวใน public.notifications
+// send-push — ส่ง Web Push ไปยังอุปกรณ์ที่ติดตั้งแอป (PWA) เมื่อมีแถวแจ้งเตือนใหม่
 //
-// เรียกจาก trigger `notifications_push_after_insert` ผ่าน net.http_post (ดู migration 0096)
+// รองรับ 2 ระบบ (แยกด้วย body.source):
+//   * ไม่ส่ง / "task" = public.notifications ของระบบ Task (trigger notifications_push_after_insert, 0096)
+//   * "influ"        = public.influ_notifications ของระบบ Influencer (trigger influ_notifications_push_after_insert, 0109)
+//     แถวของระบบ Influ **เก็บ title/body/href มาพร้อมแล้ว** จึงไม่ต้องมี messageOf ซ้ำอีกชุด
 // auth: verify_jwt=false แต่ต้องส่ง header `x-push-secret` ตรงกับ vault secret 'push_secret'
 // secrets ใน Vault (อ่านผ่าน RPC get_app_secret — service role เท่านั้น):
 //   push_secret / push_function_url / vapid_private_key / vapid_subject
@@ -247,7 +250,31 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const notificationId: string | null = body.notification_id ?? null;
+    const source: string = body.source ?? "task";
     if (!notificationId) return json(400, { error: "missing notification_id" });
+
+    // ---- ระบบ Influencer: ข้อความอยู่บนแถวแล้ว (title/body/href) ----
+    if (source === "influ") {
+      const { data: iRow, error: iErr } = await admin
+        .from("influ_notifications")
+        .select("id, recipient_id, title, body, href, level")
+        .eq("id", notificationId)
+        .maybeSingle();
+      if (iErr) return json(500, { error: iErr.message });
+      if (!iRow) return json(404, { error: "notification not found" });
+      if (iRow.level !== "action") return json(200, { sent: 0, reason: "update level" });
+      return await pushTo(
+        admin,
+        json,
+        iRow.recipient_id as string,
+        JSON.stringify({
+          id: iRow.id,
+          title: (iRow.title as string) || "ระบบ Influencer",
+          body: (iRow.body as string) ?? "",
+          url: (iRow.href as string) ?? "/influencers",
+        }),
+      );
+    }
 
     const { data: row, error: rowErr } = await admin
       .from("notifications")
@@ -260,87 +287,99 @@ Deno.serve(async (req) => {
     if (!row) return json(404, { error: "notification not found" });
     const noti = row as unknown as Row;
 
-    const { data: subs, error: subErr } = await admin
-      .from("push_subscriptions")
-      .select("id, endpoint, p256dh, auth")
-      .eq("user_id", noti.recipient_id);
-    if (subErr) return json(500, { error: subErr.message });
-    if (!subs || subs.length === 0) return json(200, { sent: 0, reason: "no devices" });
-
-    const [{ data: privRaw }, { data: subjRaw }, { data: pubRow }] = await Promise.all([
-      admin.rpc("get_app_secret", { p_name: "vapid_private_key" }),
-      admin.rpc("get_app_secret", { p_name: "vapid_subject" }),
-      admin.from("app_settings").select("value").eq("key", "vapid_public_key").maybeSingle(),
-    ]);
-    const publicKeyB64 = pubRow?.value ?? null;
-    if (!privRaw || !publicKeyB64) {
-      return json(500, { error: "ยังไม่ได้ตั้งคีย์ VAPID" });
-    }
-    const publicKey = unb64url(publicKeyB64);
-    const privateD = unb64url(privRaw);
-    const subject = subjRaw || "mailto:admin@artsurgery.co.th";
-
     const payload = JSON.stringify({
       id: noti.id,
       title: headingOf(noti),
-      body: noti.preview ? `${messageOf(noti)}\n${noti.preview}` : messageOf(noti),
+      body: noti.preview
+        ? `${messageOf(noti)}\n${noti.preview}`
+        : messageOf(noti),
       url: noti.task_id ? `/tasks?task=${noti.task_id}` : "/tasks",
     });
 
-    let sent = 0;
-    const dead: string[] = [];
-    const ok: string[] = [];
-    await Promise.all(
-      subs.map(async (s) => {
-        try {
-          const encrypted = await encryptPayload(
-            payload,
-            unb64url(s.p256dh as string),
-            unb64url(s.auth as string),
-          );
-          const res = await fetch(s.endpoint as string, {
-            method: "POST",
-            headers: {
-              Authorization: await vapidAuth(
-                s.endpoint as string,
-                publicKey,
-                privateD,
-                subject,
-              ),
-              "Content-Encoding": "aes128gcm",
-              "Content-Type": "application/octet-stream",
-              TTL: String(TTL_SECONDS),
-              Urgency: "normal",
-            },
-            body: encrypted,
-          });
-          if (res.status === 404 || res.status === 410) {
-            // เครื่องถอนการติดตั้ง/ล้างสิทธิ์แล้ว — เก็บกวาดแถวทิ้ง
-            dead.push(s.id as string);
-          } else if (res.ok) {
-            sent++;
-            ok.push(s.id as string);
-          } else {
-            console.warn("push ล้มเหลว", res.status, await res.text());
-          }
-        } catch (e) {
-          console.warn("push error", (e as Error).message);
-        }
-      }),
-    );
-
-    if (dead.length > 0) {
-      await admin.from("push_subscriptions").delete().in("id", dead);
-    }
-    if (ok.length > 0) {
-      await admin
-        .from("push_subscriptions")
-        .update({ last_success_at: new Date().toISOString() })
-        .in("id", ok);
-    }
-
-    return json(200, { sent, removed: dead.length });
+    return await pushTo(admin, json, noti.recipient_id, payload);
   } catch (e) {
     return json(500, { error: (e as Error).message });
   }
 });
+
+/** ส่ง payload ไปทุกอุปกรณ์ของผู้รับ + เก็บกวาด endpoint ที่ตายแล้ว
+    (ใช้ร่วมกันทั้งแจ้งเตือนของระบบ Task และของระบบ Influencer) */
+async function pushTo(
+  admin: ReturnType<typeof createClient>,
+  json: (status: number, body: unknown) => Response,
+  recipientId: string,
+  payload: string,
+): Promise<Response> {
+  const { data: subs, error: subErr } = await admin
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .eq("user_id", recipientId);
+  if (subErr) return json(500, { error: subErr.message });
+  if (!subs || subs.length === 0) return json(200, { sent: 0, reason: "no devices" });
+
+  const [{ data: privRaw }, { data: subjRaw }, { data: pubRow }] = await Promise.all([
+    admin.rpc("get_app_secret", { p_name: "vapid_private_key" }),
+    admin.rpc("get_app_secret", { p_name: "vapid_subject" }),
+    admin.from("app_settings").select("value").eq("key", "vapid_public_key").maybeSingle(),
+  ]);
+  const publicKeyB64 = pubRow?.value ?? null;
+  if (!privRaw || !publicKeyB64) {
+    return json(500, { error: "ยังไม่ได้ตั้งคีย์ VAPID" });
+  }
+  const publicKey = unb64url(publicKeyB64);
+  const privateD = unb64url(privRaw);
+  const subject = subjRaw || "mailto:admin@artsurgery.co.th";
+
+  let sent = 0;
+  const dead: string[] = [];
+  const ok: string[] = [];
+  await Promise.all(
+    subs.map(async (s) => {
+      try {
+        const encrypted = await encryptPayload(
+          payload,
+          unb64url(s.p256dh as string),
+          unb64url(s.auth as string),
+        );
+        const res = await fetch(s.endpoint as string, {
+          method: "POST",
+          headers: {
+            Authorization: await vapidAuth(
+              s.endpoint as string,
+              publicKey,
+              privateD,
+              subject,
+            ),
+            "Content-Encoding": "aes128gcm",
+            "Content-Type": "application/octet-stream",
+            TTL: String(TTL_SECONDS),
+            Urgency: "normal",
+          },
+          body: encrypted,
+        });
+        if (res.status === 404 || res.status === 410) {
+          // เครื่องถอนการติดตั้ง/ล้างสิทธิ์แล้ว — เก็บกวาดแถวทิ้ง
+          dead.push(s.id as string);
+        } else if (res.ok) {
+          sent++;
+          ok.push(s.id as string);
+        } else {
+          console.warn("push ล้มเหลว", res.status, await res.text());
+        }
+      } catch (e) {
+        console.warn("push error", (e as Error).message);
+      }
+    }),
+  );
+
+  if (dead.length > 0) {
+    await admin.from("push_subscriptions").delete().in("id", dead);
+  }
+  if (ok.length > 0) {
+    await admin
+      .from("push_subscriptions")
+      .update({ last_success_at: new Date().toISOString() })
+      .in("id", ok);
+  }
+  return json(200, { sent, removed: dead.length });
+}

@@ -671,8 +671,12 @@ export function InfluCardContent({
       ? "border border-emerald-200/80 bg-emerald-50/60"
       : "border border-stone-200 bg-white/90";
 
-  /** ส่ง Memo ไปขออนุมัติแล้ว (ติ๊กในหน้าเคส) — ติ๊กถูกเล็กๆ กันทีมส่งซ้ำ */
-  const memoSent = i.docs_sent_at !== null;
+  /** ขั้นย่อยของ Memo (1.0/1.1/1.2, 0104) — โชว์เฉพาะตอนยังอยู่ขั้น Memo จริง
+      (docs_sent_at ไม่เคยถูกล้างแม้เคสเดินผ่านไปแล้ว เดิมชิปนี้จึงค้างขึ้นตลอดกาล
+      ทับกับ StageTracker แถวล่างที่บอกว่าผ่านขั้น Memo ไปแล้ว — audit 2026-09-03) */
+  const memoSubStep =
+    i.stage === INFLU_STAGE.memo && !i.completed ? memoStepOf(i) : null;
+  const memoSent = memoSubStep === "1.1" || memoSubStep === "1.2";
   /** เคส "รอปรึกษา" ที่ยังไม่ได้เติมหัตถการ — บอกว่าทำไมการ์ดนี้ยังไม่มีโปรแกรม */
   const consultPending =
     i.consult_only && !i.completed && (i.procedure_text ?? "") === "";
@@ -801,12 +805,19 @@ export function InfluCardContent({
               </Badge>
             </span>
           )}
-          {memoSent && (
+          {memoSubStep === "1.1" && (
             <span
-              title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))}`}
+              title={`ยืนยันส่งเรื่องขอ Memo แล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))} — รอผู้ออก Memo ทำเอกสาร`}
             >
+              <Badge className={CHIP_WARN}>
+                <Check size={11} strokeWidth={3} /> รอทำเอกสาร Memo
+              </Badge>
+            </span>
+          )}
+          {memoSubStep === "1.2" && (
+            <span title="ทำเอกสาร Memo ส่งขออนุมัติแล้ว — รออัพไฟล์ที่อนุมัติแล้วเข้าระบบ">
               <Badge className={CHIP_DONE}>
-                <Check size={11} strokeWidth={3} /> ส่ง Memo แล้ว
+                <Check size={11} strokeWidth={3} /> Memo ยื่นแล้ว · รออนุมัติ
               </Badge>
             </span>
           )}

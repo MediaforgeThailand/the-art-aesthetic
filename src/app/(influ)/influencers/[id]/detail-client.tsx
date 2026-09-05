@@ -73,6 +73,7 @@ import {
   INFLU_STAGES,
   INFLU_TIERS,
   itemEffectiveCost,
+  memoStepOf,
   roleSummary,
   scopeOfStage,
   tierFromFollowers,
@@ -674,6 +675,7 @@ function CaseInfoEditModal({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [serviceDate, setServiceDate] = useState(influencer.service_date ?? "");
   const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
   const [contactChannel, setContactChannel] = useState(
@@ -713,6 +715,12 @@ function CaseInfoEditModal({
       } · ${nextDoctor ?? "ยังไม่ระบุแพทย์"} · ช่องทาง ${
         nextChannel ?? "ยังไม่ระบุ"
       }`,
+    });
+    notify({
+      type: "case_updated",
+      scope: "contract",
+      title: `แก้ข้อมูลนัดของ ${logNameOf(influencer)}`,
+      body: `${nextDate ? formatDate(nextDate) : "ยังไม่กำหนดวัน"} · ${nextDoctor ?? "ยังไม่ระบุแพทย์"}`,
     });
     onClose();
     router.refresh();
@@ -1696,6 +1704,12 @@ function OverviewPanel({
     [influencer.first_name, influencer.last_name].filter(Boolean).join(" ") ||
     null;
   const tier = influencer.tier ? INFLU_TIERS[influencer.tier] : null;
+  // ขั้นย่อยของ Memo — มีความหมายเฉพาะตอนยังอยู่ stage นี้ (เช็ค stage ก่อนเรียกเสมอ
+  // ตามกติกาของ memoStepOf — เคสที่เลยไปแล้วค่าที่ได้ไม่มีความหมาย)
+  const memoSubStep =
+    influencer.stage === INFLU_STAGE.memo && !influencer.completed
+      ? memoStepOf(influencer)
+      : null;
   const followupLeft = followupTasks.filter((t) => !t.done).length;
   const followupTotal = followupTasks.length;
   const contractEnd =
@@ -1765,21 +1779,28 @@ function OverviewPanel({
             </p>
             {/* สถานะเสริม — ย้ายมารวมจากหัวหน้าเคส (ผู้ใช้ 2026-09-03: กันซ้ำซ้อนกับด้านบน
                 ให้ "ภาพรวม" เป็นที่เดียวที่บอกสถานะพวกนี้) */}
-            {(influencer.docs_sent_at ||
+            {(memoSubStep === "1.1" || memoSubStep === "1.2" ||
               (influencer.consult_only && !influencer.procedure_text) ||
               (influencer.contract_start !== null &&
                 !influencer.completed &&
                 followupTotal > 0) ||
               contentTasks.length > 0) && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {influencer.docs_sent_at && (
+                {memoSubStep === "1.1" && (
                   <span
-                    title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
-                      influencer.docs_sent_at
-                    )}`}
+                    title={`ยืนยันส่งเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
+                      influencer.docs_sent_at!
+                    )} — รอผู้ออก Memo ทำเอกสาร`}
                   >
+                    <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                      <CheckCircle2 size={12} /> รอทำเอกสาร Memo
+                    </Badge>
+                  </span>
+                )}
+                {memoSubStep === "1.2" && (
+                  <span title="ทำเอกสาร Memo ส่งขออนุมัติแล้ว — รออัพไฟล์ที่อนุมัติแล้วเข้าระบบ">
                     <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                      <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+                      <CheckCircle2 size={12} /> Memo ยื่นแล้ว · รออนุมัติ
                     </Badge>
                   </span>
                 )}
@@ -2330,6 +2351,14 @@ function CaseDetailStage({
       setError(`บันทึกรูปไม่สำเร็จ: ${insErr.message}`);
       return;
     }
+    log({
+      action: "upload",
+      entity: "case_photo",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `เพิ่มรูป${kind === "photo" ? "ตัว influencer" : "ช่องทาง"} ${uploaded.length} รูป`,
+    });
     // รูปแรกของทั้งชุด (ตาม position) = รูปหน้าปก — sync คอลัมน์เดิมให้ consumer อื่น
     // (การ์ดบอร์ด/sidebar/หัวเอกสารภาพรวม/copy รูปตอนเปิดรอบใหม่) ยังอ่านได้เหมือนเดิม
     // (update ต้อง literal key แยกสาขา — object key คำนวณชนกับ excess-property check ของ supabase-js)
@@ -2367,6 +2396,14 @@ function CaseDetailStage({
     } catch {
       // best effort — ไฟล์ค้างดีกว่าฟอร์มพัง
     }
+    log({
+      action: "delete",
+      entity: "case_photo",
+      entityId: photo.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ลบรูป${photo.kind === "photo" ? "ตัว influencer" : "ช่องทาง"} (${photo.file_name ?? "ไม่ทราบชื่อไฟล์"})`,
+    });
     // เหลือรูปแรกใหม่ (ถ้ามี) = รูปหน้าปกใหม่ ไม่เหลือเลย = ล้าง cover
     const remaining = (photo.kind === "photo" ? photos : channelPhotos).filter(
       (p) => p.id !== photo.id
@@ -2956,6 +2993,7 @@ function ServiceDayStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [editOpen, setEditOpen] = useState(false);
   const [newProcedure, setNewProcedure] = useState("");
   const [supervisor, setSupervisor] = useState("");
@@ -3011,6 +3049,12 @@ function ServiceDayStage({
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
       summary: `แก้หัตถการหน้างาน: "${change.old || "(ว่าง)"}" → "${change.next}" (หัวหน้างานลงนาม: ${change.signed_by || "ไม่ระบุ"})`,
+    });
+    notify({
+      type: "case_updated",
+      scope: "followup",
+      title: `แก้หัตถการหน้างานของ ${logNameOf(influencer)}`,
+      body: `"${change.old || "(ว่าง)"}" → "${change.next}"`,
     });
     setNewProcedure("");
     setSupervisor("");

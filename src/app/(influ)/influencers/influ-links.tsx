@@ -12,6 +12,7 @@ import { ExternalLink, FolderOpen, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, Card, Input } from "@/components/ui";
+import { useInfluLog } from "@/components/influ-log-provider";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluLinkRow } from "@/lib/types";
 
@@ -118,6 +119,8 @@ export function InfluLinksCard({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  // ทุก mutation ของระบบ Influ ต้องเขียน log (กติกา 0074) — ไฟล์นี้เคยหลุดทั้งไฟล์
+  const log = useInfluLog();
   const [links, setLinks] = useState<InfluLinkRow[]>(initialLinks);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -149,6 +152,13 @@ export function InfluLinksCard({
       return;
     }
     setLinks((prev) => [...prev, data as InfluLinkRow]);
+    log({
+      action: "update",
+      entity: "link",
+      entityId: data.id,
+      influencerId,
+      summary: `เพิ่มลิงก์ไฟล์ Source: ${title.trim() || clean}`,
+    });
     setTitle("");
     setUrl("");
     router.refresh();
@@ -167,7 +177,17 @@ export function InfluLinksCard({
           // คืนลิงก์กลับมา — ไม่งั้นจอบอกว่าลบแล้วทั้งที่ยังอยู่ใน DB (หายไปจนกว่าจะรีเฟรช)
           setLinks(prevLinks);
           setErr(`ลบลิงก์ไม่สำเร็จ: ${error.message}`);
-        } else router.refresh();
+        } else {
+          const gone = prevLinks.find((l) => l.id === id);
+          log({
+            action: "update",
+            entity: "link",
+            entityId: id,
+            influencerId,
+            summary: `ลบลิงก์ไฟล์ Source: ${gone?.title || gone?.url || "ไม่ทราบ"}`,
+          });
+          router.refresh();
+        }
       });
   };
 

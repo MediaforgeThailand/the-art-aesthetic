@@ -229,7 +229,7 @@ export function InfluShell({
         <div className="flex items-center gap-2 px-3 py-2 sm:px-4 lg:gap-3">
           {userId && (
             <span className="order-first shrink-0 lg:order-5">
-              <InfluNotificationBell userId={userId} />
+              <InfluNotificationBell userId={userId} canManage={canManage} />
             </span>
           )}
 

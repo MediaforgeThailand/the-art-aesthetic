@@ -72,6 +72,7 @@ export const INFLU_NOTI_TYPES: Record<string, InfluNotiMeta> = {
   post_removed: { label: "ลบลิงก์ผลงาน", icon: "link", tone: "amber" },
   followup_task: { label: "เช็คลิสต์ผลลัพธ์", icon: "check", tone: "stone" },
   followup_overdue: { label: "งานตามเลยกำหนด", icon: "bell", tone: "amber" },
+  campaign_added: { label: "Sub Campaign ใหม่", icon: "megaphone", tone: "sky" },
   /* --- สถานะเคส --- */
   case_created: { label: "เคสใหม่", icon: "sparkles", tone: "emerald" },
   case_completed: { label: "ปิดงาน", icon: "check-circle", tone: "emerald" },

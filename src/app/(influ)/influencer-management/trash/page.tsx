@@ -35,6 +35,7 @@ export default async function InfluTrashPage() {
           (backups ?? []) as Omit<InfluDeletedBackupRow, "payload" | "restored_by">[] as TrashBackup[]
         }
         loadError={error?.message ?? null}
+        actor={{ id: access.uid, name: access.name }}
       />
     </PageContainer>
   );

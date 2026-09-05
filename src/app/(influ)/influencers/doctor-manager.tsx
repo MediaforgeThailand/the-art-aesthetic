@@ -28,6 +28,7 @@ import {
   INFLU_PRODUCT_TEAMS,
   INFLU_PRODUCT_TEAM_ORDER,
 } from "@/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type { DoctorRow, InfluProductTeam } from "@/lib/types";
 import { DoctorAvatar } from "./doctor-select";
@@ -69,6 +70,7 @@ function DoctorFormModal({
   doctor,
   doctors,
   requiredTeam,
+  actor,
   onClose,
   onSaved,
 }: {
@@ -78,6 +80,9 @@ function DoctorFormModal({
   /** ทีมของหน้าที่เปิดฟอร์มนี้ (ระบบทีมคอนเทนต์ส่ง "aesthetics") — ติ๊กไว้ให้ตั้งแต่แรก
       และเตือนเมื่อเอาออก เพราะหมอจะหายจากลิสต์ของหน้านั้นทันที */
   requiredTeam?: InfluProductTeam;
+  /** ผู้ทำ — ทะเบียนหมอเปิดจาก 2 หน้าที่ไม่มี InfluLogProvider (influ-doctors/tag-management)
+      จึงต้องรับ actor เป็น prop แล้วเรียก logInflu ตรงๆ (แนวเดียวกับ hunting-client) */
+  actor: InfluLogActor;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -146,12 +151,23 @@ function DoctorFormModal({
     };
 
     if (!doctor) {
-      const { error } = await supabase.from("doctors").insert(payload);
+      const { data: created, error } = await supabase
+        .from("doctors")
+        .insert(payload)
+        .select("id")
+        .single();
       setBusy(false);
       if (error) {
         setErr(`เพิ่มไม่สำเร็จ: ${friendly(error.message)}`);
         return;
       }
+      logInflu(supabase, actor, {
+        action: "create",
+        entity: "doctor",
+        entityId: created?.id ?? null,
+        summary: `เพิ่มหมอในทะเบียน: ${preview}`,
+        meta: { teams },
+      });
       onSaved();
       return;
     }
@@ -198,9 +214,21 @@ function DoctorFormModal({
               () => undefined
             );
         }
+        logInflu(supabase, actor, {
+          action: "delete",
+          entity: "doctor",
+          entityId: doctor.id,
+          summary: `รวมชื่อหมอ "${doctor.name}" เข้ากับ "${preview}" (ย้ายเคส/คิวไปแล้ว)`,
+        });
         onSaved();
         return;
       }
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "doctor",
+        entityId: doctor.id,
+        summary: `เปลี่ยนชื่อหมอ "${doctor.name}" → "${preview}" (แก้ตามในเคส/คิวให้แล้ว)`,
+      });
     }
 
     const { error } = await supabase
@@ -211,6 +239,15 @@ function DoctorFormModal({
     if (error) {
       setErr(`บันทึกไม่สำเร็จ: ${friendly(error.message)}`);
       return;
+    }
+    if (preview === doctor.name) {
+      logInflu(supabase, actor, {
+        action: "update",
+        entity: "doctor",
+        entityId: doctor.id,
+        summary: `แก้ข้อมูลหมอ: ${preview}`,
+        meta: { teams },
+      });
     }
     onSaved();
   };
@@ -370,12 +407,16 @@ export function DoctorManagerPanel({
   doctors,
   canEdit = true,
   teamFilter,
+  actor = { id: null, name: null },
 }: {
   doctors: DoctorRow[];
   /** false = ดูอย่างเดียว (ไม่ใช่ผู้ดูแลระบบ) — ซ่อนปุ่มเพิ่ม/แก้/ซ่อน/ลบ/เปลี่ยนรูปทั้งหมด */
   canEdit?: boolean;
   /** แสดงเฉพาะหมอที่อยู่ทีมนี้ (ระบบทีมคอนเทนต์ส่ง "aesthetics") — ไม่ส่ง = ทุกทีม */
   teamFilter?: InfluProductTeam;
+  /** ผู้ทำ — ไม่ส่ง = บันทึก log เป็นระบบไม่ระบุตัวตน (ทั้งสองหน้าที่ใช้ component นี้
+      ควรส่งมาเสมอ; ค่าปริยายกันพังกรณีมีที่เรียกใหม่ที่ลืมส่ง) */
+  actor?: InfluLogActor;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -418,7 +459,14 @@ export function DoctorManagerPanel({
         .from("doctors")
         .update({ active: !doctor.active })
         .eq("id", doctor.id);
-      return e ? `บันทึกไม่สำเร็จ: ${e.message}` : null;
+      if (e) return `บันทึกไม่สำเร็จ: ${e.message}`;
+      logInflu(supabase, actor, {
+        action: "status",
+        entity: "doctor",
+        entityId: doctor.id,
+        summary: `${doctor.active ? "ซ่อน" : "เปิด"}หมอ "${doctor.name}" ${doctor.active ? "จากตัวเลือก" : "กลับมาในตัวเลือก"}`,
+      });
+      return null;
     });
 
   const deleteDoctor = (doctor: DoctorRow) =>
@@ -437,6 +485,12 @@ export function DoctorManagerPanel({
             () => undefined
           );
       }
+      logInflu(supabase, actor, {
+        action: "delete",
+        entity: "doctor",
+        entityId: doctor.id,
+        summary: `ลบหมอออกจากทะเบียน: ${doctor.name}`,
+      });
       return null;
     });
 
@@ -458,6 +512,14 @@ export function DoctorManagerPanel({
         .from("doctors")
         .update({ photo_path: path })
         .eq("id", doctor.id);
+      if (!linkErr) {
+        logInflu(supabase, actor, {
+          action: "upload",
+          entity: "doctor",
+          entityId: doctor.id,
+          summary: `เปลี่ยนรูปหมอ: ${doctor.name}`,
+        });
+      }
       if (linkErr) {
         // ผูกกับ DB ไม่สำเร็จ — เก็บกวาดไฟล์ที่เพิ่งอัพ (best effort)
         void supabase.storage
@@ -661,6 +723,7 @@ export function DoctorManagerPanel({
           doctor={formFor.doctor}
           doctors={doctors}
           requiredTeam={teamFilter}
+          actor={actor}
           onClose={() => setFormFor(null)}
           onSaved={() => {
             setFormFor(null);

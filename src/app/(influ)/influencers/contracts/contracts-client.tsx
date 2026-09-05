@@ -499,6 +499,11 @@ export function ContractsClient({
       influencerName: influName(influ),
       summary: `เพิ่ม Sub Campaign "${f.name}"`,
     });
+    notifyFollowup(influ, {
+      type: "campaign_added",
+      title: `เพิ่ม Sub Campaign "${f.name}" ให้ ${influName(influ)}`,
+      baseLevel: "update",
+    });
     router.refresh();
     return null;
   };
