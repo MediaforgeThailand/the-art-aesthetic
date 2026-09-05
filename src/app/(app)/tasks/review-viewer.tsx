@@ -7,12 +7,14 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  MoreHorizontal,
   PanelRightOpen,
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { TaskWithAssignee } from "@/lib/types";
@@ -29,16 +31,42 @@ import { ChatComposer, ChatMessages, useTaskChat } from "./task-chat";
 
 /* ============================================================================
    หน้าตรวจงานแบบเต็มจอ — กดการ์ดในแท็บ "รอตรวจ" แล้วเปิดตัวเล่นวิดีโอ/ไฟล์ทันที
-   พร้อม sidebar ที่คัดมาเฉพาะของที่ใช้ตรวจ: ลิงก์งาน · ดาวน์โหลด · ผู้รับผิดชอบ ·
-   ปุ่มอนุมัติ/ตีกลับ · ช่องแชท — รายละเอียดอื่นทั้งหมดยังอยู่ในแผงงานเดิม
-   (ปุ่ม "ดูรายละเอียดทั้งหมด" → onOpenFull)
    ----------------------------------------------------------------------------
-   - z-[70]: สูงกว่าแผงงาน (50) แต่ต่ำกว่า Modal (80) — กล่องตีกลับ/ยืนยันจึงลอยทับได้
+   จอ ≥lg: sidebar ข้างขวาที่คัดมาเฉพาะของที่ใช้ตรวจ (โครงเดิม ไม่แตะ)
+   จอ <lg: วิดีโอ/กราฟิกเต็มจอ + แถบควบคุมลอยทับด้านบน/ล่าง (อนุมัติ/ตีกลับ/ช่องแชท
+   เด่นสุด เคียงข้างกัน) ส่วนที่เหลือ (ดูรายละเอียด/ลิงก์งาน/ดาวน์โหลด/จบทันที) ยุบเป็น
+   ปุ่ม "เพิ่มเติม" มุมขวาล่าง กดแล้วเด้ง bottom sheet (Modal ของระบบ)
+   ⚠️ จอเล็ก/ใหญ่แยกเป็นคนละ return ทั้งก้อน (ไม่ใช่ CSS max-lg:/lg: ผสมกันในต้นไม้เดียว)
+   เพราะ ChatComposer ทั้งสองแบบผูก ref เดียวกัน (chat.commentInputRef จาก useTaskChat) —
+   mount ซ้อนกันพร้อมกัน (ซ่อนด้วย CSS อย่างเดียว) จะแย่งกันเป็นเจ้าของ ref ผิดตัว
+   ----------------------------------------------------------------------------
+   - z-[70]: สูงกว่าแผงงาน (50) แต่ต่ำกว่า Modal (80) — กล่องตีกลับ/ยืนยัน/เพิ่มเติมจึงลอยทับได้
    - พื้นหลัง bg-black/95 ห้ามใส่ backdrop-blur (กติกาเดียวกับ media-lightbox:
      เบลอเต็มจอทำให้วิดีโอกระตุก)
    - mount ทีละตัวกับ TaskPanel เสมอ (useTaskChat ห้ามซ้อน 2 ตัวของงานเดียวกัน —
      realtime channel ชนกัน) — tasks-client เป็นคนคุม
    ========================================================================== */
+
+/** ใช้ตัดสินว่า mount ChatComposer ชุดจอเล็กหรือจอใหญ่ (ห้าม mount พร้อมกัน — ดูหมายเหตุบน) */
+const MOBILE_MEDIA_QUERY = "(max-width: 1023px)";
+
+function subscribeViewport(callback: () => void) {
+  const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
+  mql.addEventListener("change", callback);
+  // เผื่อเบราว์เซอร์/โหมด emulate บางตัวไม่ยิง change ตอน resize
+  window.addEventListener("resize", callback);
+  return () => {
+    mql.removeEventListener("change", callback);
+    window.removeEventListener("resize", callback);
+  };
+}
+const getIsMobile = () => window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+const getIsMobileServer = () => false;
+
+/** จอเล็ก (<lg) หรือไม่ — component นี้ mount เฉพาะฝั่ง client อยู่แล้ว (เปิดจากอีเวนต์ผู้ใช้) */
+function useIsMobileViewer() {
+  return useSyncExternalStore(subscribeViewport, getIsMobile, getIsMobileServer);
+}
 
 export function ReviewViewer({
   task,
@@ -68,6 +96,8 @@ export function ReviewViewer({
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((msg: string) => setError(msg), []);
   const chat = useTaskChat({ task, profiles, userId, me, onError: showError });
+  const isMobile = useIsMobileViewer();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const files = task.files ?? [];
   const count = files.length;
@@ -102,6 +132,12 @@ export function ReviewViewer({
           el.isContentEditable);
       if (e.key === "Escape") {
         if (suspendEsc) return;
+        // แผ่นเพิ่มเติมเปิดอยู่ — Esc ปิดแผ่นก่อน ไม่ปิดทั้ง viewer
+        if (moreOpen) {
+          e.stopPropagation();
+          setMoreOpen(false);
+          return;
+        }
         // ปล่อยให้ ChatComposer จัดการ Esc เอง (ปิดเมนู @mention) — ไม่แตะ viewer
         if (typing && mentionOpen) return;
         e.stopPropagation();
@@ -112,11 +148,11 @@ export function ReviewViewer({
         }
         onClose();
       } else if (e.key === "ArrowLeft") {
-        if (typing) return;
+        if (typing || moreOpen) return;
         e.stopPropagation();
         go(-1);
       } else if (e.key === "ArrowRight") {
-        if (typing) return;
+        if (typing || moreOpen) return;
         e.stopPropagation();
         go(1);
       }
@@ -129,7 +165,7 @@ export function ReviewViewer({
       window.removeEventListener("keydown", onKey, true);
       document.body.style.overflow = prevOverflow;
     };
-  }, [go, mentionOpen, onClose, suspendEsc]);
+  }, [go, mentionOpen, moreOpen, onClose, suspendEsc]);
 
   const [downloading, setDownloading] = useState(false);
   const downloadCurrent = async () => {
@@ -168,9 +204,252 @@ export function ReviewViewer({
   const briefStage = step <= 0;
   const isFinalStep =
     !briefStage && (!hasChain || step >= 2) && pendingOthers.length === 0;
+  const canBypass = canReview && !briefStage && !isFinalStep;
 
   const deliverableUrl = (task.deliverable_url ?? "").trim();
+  const hasMessages = (chat.comments?.length ?? 0) > 0;
 
+  const moreSheet = (
+    <Modal
+      open={moreOpen}
+      onClose={() => setMoreOpen(false)}
+      title="ตัวเลือกเพิ่มเติม"
+    >
+      <div className="space-y-4">
+        {error && (
+          <div className="flex items-start justify-between gap-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <span className="min-w-0 break-words">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="ปิดข้อความผิดพลาด"
+              className="shrink-0 cursor-pointer rounded p-0.5 text-rose-400 hover:text-rose-600"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <AssigneeAvatar assignee={task.assignee} size={8} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-stone-800">
+              {task.assignee ? profileName(task.assignee) : "ยังไม่ระบุ"}
+            </p>
+            <p className="text-xs text-stone-500">ผู้รับผิดชอบ</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              onOpenFull();
+            }}
+            className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 active:scale-[0.98]"
+          >
+            <PanelRightOpen size={17} className="shrink-0 text-stone-400" />
+            ดูรายละเอียดทั้งหมด
+          </button>
+
+          {deliverableUrl ? (
+            <a
+              href={deliverableUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 active:scale-[0.98]"
+            >
+              <ExternalLink size={17} className="shrink-0 text-stone-400" />
+              เปิดลิงก์งาน
+            </a>
+          ) : (
+            <span className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-dashed border-stone-200 px-4 text-sm text-stone-400">
+              <ExternalLink size={17} className="shrink-0" />
+              ยังไม่ใส่ลิงก์งาน
+            </span>
+          )}
+
+          {current && (
+            <button
+              type="button"
+              onClick={downloadCurrent}
+              disabled={downloading}
+              className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 active:scale-[0.98] disabled:cursor-default disabled:opacity-60"
+            >
+              <Download size={17} className="shrink-0 text-stone-400" />
+              {downloading ? "กำลังเตรียมไฟล์..." : "ดาวน์โหลดไฟล์นี้"}
+            </button>
+          )}
+
+          {canBypass && (
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                onApproveBypass(task);
+              }}
+              className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 active:scale-[0.98]"
+            >
+              <CheckCheck size={17} className="shrink-0" />
+              จบทันที (ไม่ต้องรอคนอื่น)
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+
+  /* ==========================================================================
+     จอเล็ก (<lg): วิดีโอ/กราฟิกเต็มจอ + แถบควบคุมลอยทับ
+     ========================================================================== */
+  if (isMobile) {
+    const approveLabel = briefStage
+      ? "ผ่าน → ตรวจจริง"
+      : pendingOthers.length > 0
+        ? "อนุมัติ (รอคนอื่น)"
+        : "อนุมัติ";
+    const approveHint = briefStage
+      ? "ผ่านแล้ว — ส่งงานเข้าสายตรวจจริงต่อ"
+      : pendingOthers.length > 0
+        ? "ทอดแรกต้องอนุมัติครบทุกคน — อนุมัติแล้วงานจะรอผู้ตรวจร่วมอีกคนก่อนไปต่อ"
+        : isFinalStep
+          ? "อนุมัติงานนี้"
+          : "อนุมัติแล้วงานจะถูกส่งต่อให้ผู้ตรวจลำดับ 2 ตรวจขั้นสุดท้าย";
+    const rejectLabel = briefStage ? "ขอให้แก้ก่อน" : "ตีกลับ";
+    const rejectHint = briefStage
+      ? "ส่งกลับให้ผู้รับงานแก้ก่อนเข้าสายตรวจจริง (ไม่นับเป็นข้อผิดพลาดใน KPI)"
+      : "ตีกลับให้ผู้รับผิดชอบแก้ไข";
+
+    return createPortal(
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`ตรวจงาน ${task.title}`}
+        // ห้ามใส่ backdrop-blur: เบลอเต็มจอทำให้วิดีโอกระตุก (บทเรียนเดียวกับ media-lightbox)
+        className="fixed inset-0 z-[70] bg-black/95 animate-fade-in pt-safe"
+      >
+        <div className="relative h-full w-full">
+          {/* ---------- วิดีโอ/กราฟิก เต็มจอ ---------- */}
+          <div className="absolute inset-0 z-0 flex items-center justify-center">
+            {count > 1 && (
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                aria-label="ไฟล์ก่อนหน้า"
+                className="absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-white/10 p-2.5 text-white transition-colors active:scale-90"
+              >
+                <ChevronLeft size={22} />
+              </button>
+            )}
+            {current ? (
+              <LightboxMedia key={current.file_path} item={current} />
+            ) : (
+              <p className="px-6 text-center text-sm text-white/60">
+                งานนี้ไม่มีไฟล์แนบ — ดูงานจากปุ่ม &quot;เพิ่มเติม&quot; มุมขวาล่าง
+              </p>
+            )}
+            {count > 1 && (
+              <button
+                type="button"
+                onClick={() => go(1)}
+                aria-label="ไฟล์ถัดไป"
+                className="absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-white/10 p-2.5 text-white transition-colors active:scale-90"
+              >
+                <ChevronRight size={22} />
+              </button>
+            )}
+          </div>
+
+          {/* ---------- แถบบนลอยทับ: ชื่องาน + ปิด ---------- */}
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/75 via-black/25 to-transparent px-4 pb-8 pt-3 text-white">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{task.title}</p>
+              {count > 1 && (
+                <p className="text-xs text-white/60">
+                  {Math.min(index, count - 1) + 1} / {count}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="ปิดหน้าตรวจงาน"
+              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 transition-colors active:scale-90"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* ---------- แถบล่างลอยทับ: ผลข้อความล่าสุด + อนุมัติ/ตีกลับ + ช่องแชท + เพิ่มเติม ---------- */}
+          <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-3 pb-safe-3 pt-14">
+            {hasMessages && (
+              <div className="max-h-28 overflow-y-auto overscroll-contain">
+                <ChatMessages chat={chat} />
+              </div>
+            )}
+
+            {error && (
+              <div className="flex items-start justify-between gap-2 rounded-xl bg-rose-600/90 px-3 py-2 text-xs text-white">
+                <span className="min-w-0 break-words">{error}</span>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  aria-label="ปิดข้อความผิดพลาด"
+                  className="shrink-0 cursor-pointer rounded p-0.5 text-white/80 hover:text-white"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {canReview && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onApprove(task)}
+                  aria-label={approveHint}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-emerald-400 bg-emerald-500 px-3 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-950/50 transition-all active:scale-95"
+                >
+                  <CheckCircle2 size={17} />
+                  {approveLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onReject(task)}
+                  aria-label={rejectHint}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-2xl bg-white px-3 py-3 text-sm font-semibold text-rose-600 shadow-lg shadow-black/50 transition-all active:scale-95"
+                >
+                  <Undo2 size={17} />
+                  {rejectLabel}
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <ChatComposer chat={chat} floating />
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(true)}
+                aria-label="ตัวเลือกเพิ่มเติม"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/95 text-stone-700 shadow-lg shadow-black/50 transition-all active:scale-90"
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {moreSheet}
+      </div>,
+      document.body
+    );
+  }
+
+  /* ==========================================================================
+     จอใหญ่ (≥lg): วิดีโอ + sidebar ตรวจงานข้างขวา (โครงเดิม)
+     ========================================================================== */
   return createPortal(
     <div
       role="dialog"
@@ -181,7 +460,7 @@ export function ReviewViewer({
       className="fixed inset-0 z-[70] flex flex-col bg-black/95 animate-fade-in pt-safe lg:flex-row"
     >
       {/* ---------- ฝั่งซ้าย: ตัวเล่นไฟล์ ---------- */}
-      <div className="flex min-h-0 flex-col max-lg:h-[45dvh] max-lg:shrink-0 lg:flex-1">
+      <div className="flex min-h-0 flex-col lg:flex-1">
         <div className="flex items-center gap-3 px-4 py-3 text-white">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{task.title}</p>
@@ -233,7 +512,7 @@ export function ReviewViewer({
         </div>
 
         {count > 1 && (
-          <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-4 py-2 max-lg:hidden">
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-4 py-2">
             {files.map((it, i) => (
               <button
                 key={`${it.file_path}-${i}`}
@@ -362,7 +641,7 @@ export function ReviewViewer({
                 <Undo2 size={14} />
                 {briefStage ? "ขอให้แก้ก่อน" : "ตีกลับ"}
               </button>
-              {!briefStage && !isFinalStep && (
+              {canBypass && (
                 <button
                   type="button"
                   onClick={() => onApproveBypass(task)}
