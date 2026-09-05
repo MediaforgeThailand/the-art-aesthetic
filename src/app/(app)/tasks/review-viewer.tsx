@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  MessageCircle,
   MoreHorizontal,
   PanelRightOpen,
   Undo2,
@@ -98,6 +99,7 @@ export function ReviewViewer({
   const chat = useTaskChat({ task, profiles, userId, me, onError: showError });
   const isMobile = useIsMobileViewer();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const files = task.files ?? [];
   const count = files.length;
@@ -132,14 +134,23 @@ export function ReviewViewer({
           el.isContentEditable);
       if (e.key === "Escape") {
         if (suspendEsc) return;
-        // แผ่นเพิ่มเติมเปิดอยู่ — Esc ปิดแผ่นก่อน ไม่ปิดทั้ง viewer
+        // ปล่อยให้ ChatComposer จัดการ Esc เอง (ปิดเมนู @mention) — ไม่แตะ viewer/ชีทแชท
+        if (typing && mentionOpen) return;
+        // แผ่นเพิ่มเติม/ชีทแชทเปิดอยู่ — Esc ปิดชั้นนั้นก่อน ไม่ปิดทั้ง viewer
         if (moreOpen) {
           e.stopPropagation();
           setMoreOpen(false);
           return;
         }
-        // ปล่อยให้ ChatComposer จัดการ Esc เอง (ปิดเมนู @mention) — ไม่แตะ viewer
-        if (typing && mentionOpen) return;
+        if (chatOpen) {
+          e.stopPropagation();
+          if (typing) {
+            el.blur();
+            return;
+          }
+          setChatOpen(false);
+          return;
+        }
         e.stopPropagation();
         // กำลังพิมพ์แชทอยู่ — Esc แรกแค่ออกจากช่องพิมพ์ ไม่ปิดทั้ง viewer
         if (typing) {
@@ -148,11 +159,11 @@ export function ReviewViewer({
         }
         onClose();
       } else if (e.key === "ArrowLeft") {
-        if (typing || moreOpen) return;
+        if (typing || moreOpen || chatOpen) return;
         e.stopPropagation();
         go(-1);
       } else if (e.key === "ArrowRight") {
-        if (typing || moreOpen) return;
+        if (typing || moreOpen || chatOpen) return;
         e.stopPropagation();
         go(1);
       }
@@ -165,7 +176,7 @@ export function ReviewViewer({
       window.removeEventListener("keydown", onKey, true);
       document.body.style.overflow = prevOverflow;
     };
-  }, [go, mentionOpen, moreOpen, onClose, suspendEsc]);
+  }, [go, mentionOpen, moreOpen, chatOpen, onClose, suspendEsc]);
 
   const [downloading, setDownloading] = useState(false);
   const downloadCurrent = async () => {
@@ -320,14 +331,16 @@ export function ReviewViewer({
       ? "ส่งกลับให้ผู้รับงานแก้ก่อนเข้าสายตรวจจริง (ไม่นับเป็นข้อผิดพลาดใน KPI)"
       : "ตีกลับให้ผู้รับผิดชอบแก้ไข";
 
-    return createPortal(
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`ตรวจงาน ${task.title}`}
-        // ห้ามใส่ backdrop-blur: เบลอเต็มจอทำให้วิดีโอกระตุก (บทเรียนเดียวกับ media-lightbox)
-        className="fixed inset-0 z-[70] bg-black/95 animate-fade-in pt-safe"
-      >
+    return (
+      <>
+        {createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`ตรวจงาน ${task.title}`}
+            // ห้ามใส่ backdrop-blur: เบลอเต็มจอทำให้วิดีโอกระตุก (บทเรียนเดียวกับ media-lightbox)
+            className="fixed inset-0 z-[70] bg-black/95 animate-fade-in pt-safe"
+          >
         <div className="relative h-full w-full">
           {/* ---------- วิดีโอ/กราฟิก เต็มจอ ---------- */}
           <div className="absolute inset-0 z-0 flex items-center justify-center">
@@ -380,14 +393,8 @@ export function ReviewViewer({
             </button>
           </div>
 
-          {/* ---------- แถบล่างลอยทับ: ผลข้อความล่าสุด + อนุมัติ/ตีกลับ + ช่องแชท + เพิ่มเติม ---------- */}
+          {/* ---------- แถบล่างลอยทับ: อนุมัติ/ตีกลับ + ปุ่มเปิดแชท + เพิ่มเติม ---------- */}
           <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-3 pb-safe-3 pt-14">
-            {hasMessages && (
-              <div className="max-h-28 overflow-y-auto overscroll-contain">
-                <ChatMessages chat={chat} />
-              </div>
-            )}
-
             {error && (
               <div className="flex items-start justify-between gap-2 rounded-xl bg-rose-600/90 px-3 py-2 text-xs text-white">
                 <span className="min-w-0 break-words">{error}</span>
@@ -406,7 +413,11 @@ export function ReviewViewer({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => onApprove(task)}
+                  onClick={() => {
+                    // อนุมัติแล้วปิดการ์ดนี้เลย — กลับไปหน้าเลือกตรวจงานอื่นต่อทันที
+                    onApprove(task);
+                    onClose();
+                  }}
                   aria-label={approveHint}
                   className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-emerald-400 bg-emerald-500 px-3 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-950/50 transition-all active:scale-95"
                 >
@@ -425,10 +436,21 @@ export function ReviewViewer({
               </div>
             )}
 
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <ChatComposer chat={chat} floating />
-              </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                aria-label="เปิดช่องแชท"
+                className="relative flex h-11 flex-1 cursor-pointer items-center gap-2 rounded-full bg-white/95 px-4 text-sm font-medium text-stone-600 shadow-lg shadow-black/50 transition-all active:scale-95"
+              >
+                <MessageCircle size={18} className="shrink-0 text-stone-400" />
+                แชท
+                {hasMessages && (
+                  <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-semibold text-white">
+                    {chat.comments?.length}
+                  </span>
+                )}
+              </button>
               <button
                 type="button"
                 onClick={() => setMoreOpen(true)}
@@ -441,9 +463,46 @@ export function ReviewViewer({
           </div>
         </div>
 
-        {moreSheet}
-      </div>,
-      document.body
+            {moreSheet}
+          </div>,
+          document.body
+        )}
+
+        {/* ---------- ชีทแชทลอยจากขอบล่าง — กด "แชท" เปิด, พิมพ์แล้วส่งในนี้ ---------- */}
+        {chatOpen &&
+          createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="แชทงาน"
+              className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 animate-fade-in"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setChatOpen(false);
+              }}
+            >
+              <div className="flex max-h-[85dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl animate-slide-in-up">
+                <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-4 py-3">
+                  <h2 className="text-base font-semibold text-stone-900">
+                    พูดคุย
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setChatOpen(false)}
+                    aria-label="ปิดช่องแชท"
+                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-600 active:scale-90"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  <ChatMessages chat={chat} />
+                </div>
+                <ChatComposer chat={chat} />
+              </div>
+            </div>,
+            document.body
+          )}
+      </>
     );
   }
 

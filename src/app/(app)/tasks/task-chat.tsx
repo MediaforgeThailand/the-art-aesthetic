@@ -459,15 +459,7 @@ export function ChatMessages({ chat }: { chat: TaskChat }) {
 
 /* ---------- ช่องพิมพ์แชท (แนบไฟล์/ลิงก์ + เมนูแท็กคน) ---------- */
 
-export function ChatComposer({
-  chat,
-  floating = false,
-}: {
-  chat: TaskChat;
-  /** ทรงพิลลอยเหนือวิดีโอเต็มจอ (หน้าตรวจงานบนมือถือ) แทนแถบเต็มความกว้างของแผงขาว —
-      ซ่อนแถวไอคอนแนบไฟล์/ลิงก์เพื่อให้กะทัดรัด (แนบไฟล์/ลิงก์ได้ผ่านแผงรายละเอียดเต็มแทน) */
-  floating?: boolean;
-}) {
+export function ChatComposer({ chat }: { chat: TaskChat }) {
   const {
     me,
     commentDraft,
@@ -493,13 +485,7 @@ export function ChatComposer({
     onError,
   } = chat;
   return (
-    <div
-      className={
-        floating
-          ? "relative rounded-2xl bg-white/95 px-3 py-2 shadow-lg shadow-black/40"
-          : "relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3"
-      }
-    >
+    <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3">
       {/* เมนูแท็กคน — โผล่เหนือช่องพิมพ์เมื่อพิมพ์ @ */}
       {mentionQuery !== null && mentionMatches.length > 0 && (
         <div className="absolute bottom-full left-4 right-4 z-30 mb-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl animate-scale-in">
@@ -532,7 +518,7 @@ export function ChatComposer({
           </div>
         </div>
       )}
-      {!floating && showLinkInput && (
+      {showLinkInput && (
         <div className="mb-2 flex items-center gap-1.5 pl-9">
           <Link2 size={14} className="shrink-0 text-stone-400" />
           <input
@@ -544,7 +530,7 @@ export function ChatComposer({
           />
         </div>
       )}
-      {!floating && attachFile && (
+      {attachFile && (
         <p className="mb-2 flex items-center gap-1.5 pl-9 text-xs text-stone-500">
           <Paperclip size={12} className="shrink-0" />
           <span className="min-w-0 truncate">{attachFile.name}</span>
@@ -560,7 +546,7 @@ export function ChatComposer({
         </p>
       )}
       <div className="flex items-start gap-2.5">
-        <AssigneeAvatar assignee={me} size={floating ? 6 : 7} />
+        <AssigneeAvatar assignee={me} size={7} />
         <textarea
           ref={commentInputRef}
           value={commentDraft}
@@ -620,7 +606,6 @@ export function ChatComposer({
           <Send size={16} />
         </button>
       </div>
-      {!floating && (
       <div className="mt-1.5 flex items-center gap-3 pl-9">
         <button
           type="button"
@@ -663,7 +648,6 @@ export function ChatComposer({
           }}
         />
       </div>
-      )}
     </div>
   );
 }
