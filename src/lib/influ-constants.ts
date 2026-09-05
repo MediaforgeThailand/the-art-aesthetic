@@ -260,9 +260,15 @@ export function sizeGroupFromFollowers(
 
 /* ---------- รอบงาน (0073): โปรไฟล์ 1 คน มีการ์ด/เคสได้หลายรอบ ---------- */
 
-/** ป้าย "รอบ N" ของเคส — รอบแรกไม่โชว์ (เคสส่วนใหญ่มีรอบเดียว ไม่ต้องรกจอ)
-    ใช้ทุกที่ที่ชื่อ influ อาจซ้ำกันข้ามรอบ: การ์ดบอร์ด / ตัวเลือกในฟอร์ม / หน้า cost-สัญญา */
-export function roundLabel(roundNo: number): string | null {
+/** ป้ายรอบของเคส — ใช้ทุกที่ที่ชื่อ influ อาจซ้ำกันข้ามรอบ:
+    การ์ดบอร์ด / ตัวเลือกในฟอร์ม / หน้า cost-สัญญา
+
+    - รู้จำนวนรอบทั้งหมด (`total`) และมีมากกว่า 1 → **"รอบ N/M" เสมอ รวมรอบแรก**
+      (บอร์ดต้องบอกให้ได้ว่าการ์ดใบนี้เป็นรอบไหนของทั้งหมดกี่รอบ — ไม่งั้นรอบแรก
+      ไม่มีป้ายเลยแล้วคนอ่านนึกว่าเป็นการ์ดเดียวของคนนี้)
+    - ไม่รู้จำนวนรอบ (ที่เรียกส่วนใหญ่) → คงกติกาเดิม: รอบแรกไม่โชว์ */
+export function roundLabel(roundNo: number, total?: number): string | null {
+  if (total !== undefined && total > 1) return `รอบ ${roundNo}/${total}`;
   return roundNo > 1 ? `รอบ ${roundNo}` : null;
 }
 
@@ -505,21 +511,23 @@ export const INFLU_ROLES: Record<
 
 export const INFLU_ROLE_ORDER: InfluRole[] = ["owner", "follower", "memo"];
 
-/** แปลงค่าใน `influ_assignees.scopes` (มีทั้งคีย์บทบาทใหม่และขอบเขตเก่าก่อน 0104)
-    เป็นชุดบทบาท — ทุกที่ที่อ่าน scopes ต้องผ่านตัวนี้ ห้ามเทียบค่าดิบ */
-export function normalizeRoles(scopes: InfluScope[]): InfluRole[] {
+/** แปลงค่าใน `influ_assignees.scopes` เป็นชุดบทบาท — ทุกที่ที่อ่าน scopes ต้องผ่านตัวนี้
+    ข้อมูลทั้งฐาน (รวมถังขยะ) ถูกแปลงเป็น owner/follower/memo แล้วที่ 0106 แต่ยังแปลง
+    ค่ายุคเก่า (contract/followup) ให้อยู่ กันแถวที่มาจาก SQL มือ/ข้อมูลนำเข้า
+    รับ `readonly string[]` เพราะค่านอกชุดต้องตกหล่นเงียบ ไม่ใช่พังทั้งหน้า */
+export function normalizeRoles(scopes: readonly string[]): InfluRole[] {
   const out = new Set<InfluRole>();
   for (const s of scopes) {
     if (s === "contract") out.add("owner");
     else if (s === "followup") out.add("follower");
-    else out.add(s);
+    else if (INFLU_ROLE_ORDER.includes(s as InfluRole)) out.add(s as InfluRole);
   }
   return INFLU_ROLE_ORDER.filter((r) => out.has(r));
 }
 
 /** บทบาทในชุดนี้มีคนคุมขอบเขตเหตุการณ์นั้นไหม — หัวใจของแจ้งเตือนระดับ "ต้องลงมือ" */
 export function rolesCoverScope(
-  scopes: InfluScope[],
+  scopes: readonly string[],
   scope: InfluEventScope | null | undefined
 ): boolean {
   if (!scope) return false;
@@ -536,7 +544,7 @@ export function scopeOfStage(stage: number): InfluEventScope | null {
 }
 
 /** ป้ายสั้นของชุดบทบาท — ว่าง = หัวหน้างาน/ผู้เกี่ยวข้อง (ไม่ได้ถือบทบาทไหน) */
-export function roleSummary(scopes: InfluScope[]): string {
+export function roleSummary(scopes: readonly string[]): string {
   const roles = normalizeRoles(scopes);
   if (roles.length === 0) return "ผู้เกี่ยวข้อง";
   if (roles.length === INFLU_ROLE_ORDER.length) return "ทุกบทบาท";

@@ -110,8 +110,11 @@ export default async function InfluencersPage({
         .eq("active", true)
         .or(`ends_on.is.null,ends_on.gte.${todayBkk}`)
         .order("name", { ascending: true }),
-      // บัญชีทั้งหมด — รูป/ชื่อของผู้รับผิดชอบบนการ์ด + ตัวเลือกตอนมอบหมายงาน
-      supabase.from("profiles").select("id, full_name, email, avatar_path, job_title"),
+      // ทุกบัญชี + สิทธิ์ — ต้องได้ครบเพื่อให้ "ชื่อ/รูป" ของผู้รับผิดชอบเดิมยังแสดงได้
+      // แม้คนนั้นถูกถอดสิทธิ์ไปแล้ว ส่วน "ตัวเลือก" ตอนมอบหมายกรองด้วยธง canInflu
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, avatar_path, job_title, role, permissions"),
       // โปรไฟล์ตัวบุคคล (0080) — ตัวเลือกตอน "สร้างนัดใหม่"
       supabase
         .from("influ_profiles")
@@ -168,6 +171,13 @@ export default async function InfluencersPage({
             name: p.full_name || p.email || "ไม่ทราบชื่อ",
             avatarPath: p.avatar_path ?? null,
             jobTitle: p.job_title ?? null,
+            // เข้าระบบ Influencer ได้ไหม — คนที่เข้าไม่ได้ยังแสดงชื่อ/รูปได้ (เผื่อเป็น
+            // ผู้รับผิดชอบเดิม) แต่ไม่โผล่ในตัวเลือกตอนมอบหมายงาน
+            canInflu:
+              p.role === "admin" ||
+              (p.permissions ?? []).some((x) =>
+                ["influ", "influ_hunter", "influ_view"].includes(x)
+              ),
           })) as InfluPerson[]
         }
         assignees={(assignees ?? []) as CaseAssigneeRow[]}

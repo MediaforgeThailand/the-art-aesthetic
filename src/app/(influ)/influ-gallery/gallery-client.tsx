@@ -422,7 +422,12 @@ export function InfluGalleryClient({
               key={p.key}
               person={p}
               today={today}
-              followupLeft={followupRemaining[p.display.id] ?? 0}
+              // งานติดตามที่ค้าง = รวมทุกรอบที่ยังไม่ปิดงาน — เปิดรอบใหม่แล้วงานค้าง
+              // ของรอบก่อนต้องไม่หายจากการ์ด (การ์ดนี้เป็นของ "คน" ไม่ใช่ของรอบล่าสุด)
+              followupLeft={p.rounds.reduce(
+                (n, r) => n + (r.completed ? 0 : (followupRemaining[r.id] ?? 0)),
+                0
+              )}
               // งานคอนเทนต์นับรวมทุกรอบ — เป็นผลงานของ "คน" ไม่ใช่ของรอบใดรอบหนึ่ง
               contentTasks={p.rounds.reduce(
                 (n, r) => n + (contentTaskCount[r.id] ?? 0),

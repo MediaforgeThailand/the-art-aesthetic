@@ -16,6 +16,7 @@ import { HashtagChips } from "@/components/hashtag-chips";
 import { InfluTagAvatar } from "@/components/influ-tag-avatar";
 import { Button, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
+import type { InfluLogActor } from "@/lib/influ-log";
 import {
   DEFAULT_PRODUCT_TEAM,
   INFLU_PRODUCT_TEAM_ORDER,
@@ -144,7 +145,7 @@ function InfluTab({ options }: { options: InfluTagOption[] }) {
       <div className="space-y-4">
         <p className="text-sm leading-6 text-stone-500">
           รายชื่อที่ติดแท็กได้ = influencer
-          ทุกเคสที่ยังเดินงานอยู่บนบอร์ดเคส (ไม่รวมข้อมูลเก่าและเคสที่ปฏิเสธ) —
+          ทุกเคสที่ยังเดินงานอยู่บนบอร์ดเคส (ไม่รวมข้อมูลเก่า เคสที่ปฏิเสธ และเคสที่ปิดงานแล้ว) —
           แฮชแท็กของแต่ละคนมาจากข้อมูลในระบบ Influ แก้ที่หน้าเคสของคนนั้น
         </p>
 
@@ -208,7 +209,7 @@ function InfluTab({ options }: { options: InfluTagOption[] }) {
             description={
               query !== ""
                 ? "ลองพิมพ์คำอื่น หรือกดตัวกรองทุกหัตถการ"
-                : "รายชื่อจะขึ้นเองเมื่อเคสเดินถึงขั้นสัญญาในระบบ Influencer"
+                : "รายชื่อจะขึ้นเองเมื่อมีการสร้างเคสในระบบ Influencer"
             }
           />
         ) : (
@@ -270,12 +271,15 @@ export function TagManagementClient({
   influOptions,
   categories,
   isAdmin,
+  actor,
 }: {
   doctors: DoctorRow[];
   influOptions: InfluTagOption[];
   categories: ContentCategoryRow[];
   /** ผู้ดูแลระบบเท่านั้นที่เพิ่ม/แก้/ลบทะเบียนหมอได้ (เกณฑ์เดียวกับหน้า /influ-doctors) */
   isAdmin: boolean;
+  /** ผู้ทำ — ทะเบียนหมอที่หน้านี้แก้ต้องเขียน log เหมือนกับ /influ-doctors */
+  actor: InfluLogActor;
 }) {
   const [tab, setTab] = useState<TabKey>("doctor");
   return (
@@ -314,6 +318,7 @@ export function TagManagementClient({
           doctors={doctors}
           canEdit={isAdmin}
           teamFilter="aesthetics"
+          actor={actor}
         />
       )}
       {tab === "influ" && <InfluTab options={influOptions} />}

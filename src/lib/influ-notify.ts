@@ -22,7 +22,11 @@
  */
 
 import type { Json } from "@/lib/database.types";
-import { type InfluEventScope, rolesCoverScope } from "@/lib/influ-constants";
+import {
+  type InfluEventScope,
+  normalizeRoles,
+  rolesCoverScope,
+} from "@/lib/influ-constants";
 import type { createClient } from "@/lib/supabase/client";
 import type { InfluNotiLevel, InfluScope } from "@/lib/types";
 
@@ -68,6 +72,7 @@ export const INFLU_NOTI_TYPES: Record<string, InfluNotiMeta> = {
   post_removed: { label: "ลบลิงก์ผลงาน", icon: "link", tone: "amber" },
   followup_task: { label: "เช็คลิสต์ผลลัพธ์", icon: "check", tone: "stone" },
   followup_overdue: { label: "งานตามเลยกำหนด", icon: "bell", tone: "amber" },
+  campaign_added: { label: "Sub Campaign ใหม่", icon: "megaphone", tone: "sky" },
   /* --- สถานะเคส --- */
   case_created: { label: "เคสใหม่", icon: "sparkles", tone: "emerald" },
   case_completed: { label: "ปิดงาน", icon: "check-circle", tone: "emerald" },
@@ -162,6 +167,14 @@ export function buildInfluNotifications(
   };
 
   for (const a of input.assignees) {
+    // **ผู้เกี่ยวข้อง (ไม่ถือบทบาทไหนเลย) = เงียบเสมอ** ไม่ว่าเหตุการณ์จะตั้ง baseLevel
+    // มาเป็นอะไร — นี่คือนิยามของบทบาทนี้ (ผู้ใช้ 2026-09-03: "ไม่ได้มีหน้าที่อะไร
+    // แต่ต้องได้รับแจ้งเตือนเป็น second primary") จุดเรียกจึงไม่ต้องจำกฎนี้เอง
+    // (ยกเว้น forceAction ซึ่งใส่ทีหลังโดยตั้งใจ เช่นคนที่เพิ่งถูกมอบหมายงาน)
+    if (normalizeRoles(a.scopes).length === 0) {
+      put(a.userId, "update");
+      continue;
+    }
     // ค่าใน scopes เป็น "บทบาท" (0104 — และค่าขอบเขตเก่าก่อนหน้านั้น) ห้ามเทียบดิบ:
     // ต้อง normalize เป็นบทบาทก่อนแล้วดูว่ามีบทบาทไหนคุมขอบเขตของเหตุการณ์นี้
     const owns = rolesCoverScope(a.scopes, input.scope);

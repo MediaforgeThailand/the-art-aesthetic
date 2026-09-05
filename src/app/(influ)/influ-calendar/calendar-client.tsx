@@ -1364,6 +1364,25 @@ export function CalendarClient({
       setActionError(`บันทึกสถานะไม่สำเร็จ: ${error.message}`);
       return;
     }
+    logInflu(supabase, actor, {
+      action: "status",
+      entity: "calendar_event",
+      entityId: target.id,
+      influencerId: target.influencer_id,
+      influencerName: nameOf(target.influencer) || null,
+      summary: `${next ? "ติ๊กเสร็จ" : "ยกเลิกติ๊กเสร็จ"}คิว "${target.title}" วันที่ ${formatDate(target.event_date)}`,
+    });
+    if (target.influencer_id) {
+      notifyInfluByCase(supabase, actor, {
+        influencerId: target.influencer_id,
+        influencerName: nameOf(target.influencer) || null,
+        type: "calendar_changed",
+        baseLevel: "update",
+        title: `${next ? "ติ๊กเสร็จ" : "ยกเลิกติ๊กเสร็จ"}คิว "${target.title}" ของ ${nameOf(target.influencer) || "เคส"}`,
+        body: formatDate(target.event_date),
+        href: "/influ-calendar",
+      });
+    }
     router.refresh();
   };
 

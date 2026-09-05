@@ -50,10 +50,12 @@ export default async function InfluCampaignsPage() {
         .select("*")
         .order("first_name", { ascending: true }),
       // นับเคสต่อแคมเปญ — ดึงเฉพาะคอลัมน์ที่ใช้ (เคสทั้งระบบยังหลักร้อย)
+      // กรอง archived ออก (ข้อมูลเก่านำเข้าจาก Excel ก่อนมีระบบแคมเปญ ไม่ควรถูกนับ)
       supabase
         .from("influencers")
         .select("id, campaign_id, person_id, completed, declined_at")
-        .not("campaign_id", "is", null),
+        .not("campaign_id", "is", null)
+        .eq("archived", false),
     ]);
 
   if (!canViewInflu(access)) return <AccessNotice />;

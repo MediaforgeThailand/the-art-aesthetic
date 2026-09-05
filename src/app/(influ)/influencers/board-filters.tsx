@@ -115,12 +115,18 @@ export const DEFAULT_BOARD_FILTERS: BoardFilters = {
  * ไม่งั้นป้ายตัวเลขบนปุ่มจะบอกว่ามีตัวกรองเปิดอยู่ แต่เปิดแผงมาแล้วไม่เจอว่าคืออันไหน
  */
 export function boardFilterCount(f: BoardFilters): number {
+  const d = DEFAULT_BOARD_FILTERS;
+  // เทียบกับ **ค่าโรงงาน** ไม่ใช่ "ค่าว่าง" — ไม่งั้นเปิดหน้ามาเฉยๆ ป้ายก็ขึ้น 2 ตลอด
+  // (owner: "mine" + ซ่อน "ปฏิเสธ" เป็นค่าตั้งต้นอยู่แล้ว) แล้วเลขนั้นก็ไม่มีความหมาย
+  const sameExcluded =
+    f.excluded.length === d.excluded.length &&
+    f.excluded.every((s) => d.excluded.includes(s));
   return (
-    (f.owner !== "all" ? 1 : 0) +
+    (f.owner !== d.owner ? 1 : 0) +
     (f.scopes.length ? 1 : 0) +
     (f.stage === "needbooking" || f.stage === "needbooking_approved" ? 1 : 0) +
-    (f.excluded.length ? 1 : 0) +
-    (f.campaign !== "all" ? 1 : 0)
+    (sameExcluded ? 0 : 1) +
+    (f.campaign !== d.campaign ? 1 : 0)
   );
 }
 
@@ -139,6 +145,8 @@ export function matchBoardFilters(
     meId: string | null;
     assigneesOf: (id: string) => CaseAssignee[];
     bookingAlertIds: Set<string>;
+    /** person_id ของคนที่ "ฉัน" รับผิดชอบอยู่สักรอบ — รอบอื่นของคนเดียวกันต้องเห็นด้วย */
+    myPersonIds?: ReadonlySet<string>;
   }
 ): boolean {
   const status = influStatusOf(i);
@@ -192,7 +200,15 @@ export function matchBoardFilters(
     const want = f.owner === "mine" ? ctx.meId : f.owner;
     if (!want) return false;
     const row = list.find((a) => a.userId === want);
-    if (!row) return false;
+    if (!row) {
+      // "เคสของฉัน" (ค่าโรงงาน) ต้องไม่ทำให้ของหาย 2 กรณี:
+      //  1) เคสที่ยังไม่มีผู้รับผิดชอบเลย — งานไม่มีเจ้าภาพต้องเห็นเพื่อไปรับ
+      //     (การ์ดมีชิปเส้นประ "ยังไม่มีผู้รับผิดชอบ" บอกอยู่แล้ว)
+      //  2) รอบอื่นของคนที่ฉันดูแลอยู่ — ไม่งั้นเห็นรอบเดียวแล้วนึกว่าคนนี้มีการ์ดใบเดียว
+      if (f.owner !== "mine" || f.scopes.length > 0) return false;
+      if (list.length > 0 && !ctx.myPersonIds?.has(i.person_id)) return false;
+      return campaignOk(i, f);
+    }
     // เลือกบทบาทด้วย = ดูเฉพาะเคสที่คนนั้นถือบทบาทนั้นจริง
     // (เทียบผ่าน normalizeRoles ทั้งสองฝั่ง — ข้อมูล/ค่าที่บันทึกไว้ก่อน 0104 ยังใช้ได้)
     if (f.scopes.length) {
@@ -211,13 +227,13 @@ export function matchBoardFilters(
       return false;
   }
 
-  if (f.campaign !== "all") {
-    if (f.campaign === "none") {
-      if (i.campaign_id !== null) return false;
-    } else if (i.campaign_id !== f.campaign) return false;
-  }
+  return campaignOk(i, f);
+}
 
-  return true;
+function campaignOk(i: InfluencerListRow, f: BoardFilters): boolean {
+  if (f.campaign === "all") return true;
+  if (f.campaign === "none") return i.campaign_id === null;
+  return i.campaign_id === f.campaign;
 }
 
 /** ชิปสรุปตัวกรองที่เปิดอยู่ (กดกากบาทปลดทีละอัน) */
@@ -251,7 +267,7 @@ export function boardFilterChips(
       key: "owner",
       label:
         f.owner === "mine"
-          ? "เคสของฉัน"
+          ? "เคสของฉัน + ยังไม่มีผู้รับผิดชอบ"
           : f.owner === "none"
             ? "ยังไม่มีผู้รับผิดชอบ"
             : `ผู้รับผิดชอบ: ${peopleById.get(f.owner)?.name ?? "ไม่ทราบชื่อ"}`,

@@ -45,6 +45,7 @@ import type {
   InfluScope,
   InfluTaskRow,
 } from "@/lib/types";
+import { AssigneeStack, type InfluPerson } from "../assignees";
 import type { CaseAssigneeRow } from "../influencers-client";
 import { normalizeUrl } from "../influ-links";
 import {
@@ -75,6 +76,8 @@ export type ProfileLite = {
   id: string;
   full_name: string | null;
   email: string;
+  /** รูปโปรไฟล์ — คอลัมน์ "ผู้รับผิดชอบ" โชว์กองรูปแบบเดียวกับการ์ดบอร์ด */
+  avatar_path: string | null;
 };
 
 /* คอลัมน์: Influencer / คลิปตามสัญญา / อายุสัญญา / ผลลัพธ์ / ผู้รับผิดชอบ
@@ -182,6 +185,20 @@ export function ContractsClient({
     return m;
   }, [profiles]);
 
+  /** บัญชีตาม uid — ที่มาของรูป/ชื่อในกองรูปผู้รับผิดชอบ (ชุดเดียวกับการ์ดบอร์ด) */
+  const personById = useMemo(() => {
+    const m = new Map<string, InfluPerson>();
+    for (const p of profiles) {
+      m.set(p.id, {
+        id: p.id,
+        name: p.full_name?.trim() || p.email,
+        avatarPath: p.avatar_path ?? null,
+        jobTitle: null,
+      });
+    }
+    return m;
+  }, [profiles]);
+
   const rows = useMemo(
     () =>
       buildTrackRows({
@@ -190,9 +207,18 @@ export function ContractsClient({
         tasks: tasksS.list,
         campaigns: campsS.list,
         ownerNames,
+        assigneesOf,
         today,
       }),
-    [influsS.list, linksS.list, tasksS.list, campsS.list, ownerNames, today]
+    [
+      influsS.list,
+      linksS.list,
+      tasksS.list,
+      campsS.list,
+      ownerNames,
+      assigneesOf,
+      today,
+    ]
   );
 
   /* ---- ค้นหา + ตัวกรอง ---- */
@@ -473,6 +499,11 @@ export function ContractsClient({
       influencerName: influName(influ),
       summary: `เพิ่ม Sub Campaign "${f.name}"`,
     });
+    notifyFollowup(influ, {
+      type: "campaign_added",
+      title: `เพิ่ม Sub Campaign "${f.name}" ให้ ${influName(influ)}`,
+      baseLevel: "update",
+    });
     router.refresh();
     return null;
   };
@@ -597,6 +628,7 @@ export function ContractsClient({
                       </div>
                       {groupRows.map((r) => (
                         <TrackRowLine
+                          personById={personById}
                           key={r.influ.id}
                           r={r}
                           today={today}
@@ -641,10 +673,13 @@ export function ContractsClient({
 function TrackRowLine({
   r,
   today,
+  personById,
   onOpen,
 }: {
   r: TrackRow;
   today: string;
+  /** บัญชีตาม uid — กองรูปผู้รับผิดชอบท้ายแถว */
+  personById: Map<string, InfluPerson>;
   onOpen: (mode: PanelMode) => void;
 }) {
   const i = r.influ;
@@ -751,9 +786,14 @@ function TrackRowLine({
           )}
         </span>
 
-        {/* ผู้รับผิดชอบ (ซ่อนบนจอเล็ก) */}
-        <span className="hidden truncate text-xs text-stone-500 sm:block">
-          {r.ownerName ?? "—"}
+        {/* ผู้รับผิดชอบ (ซ่อนบนจอเล็ก) — กองรูปชุดเดียวกับการ์ดบอร์ด
+            ไม่ใช่ชื่อผู้สร้างการ์ดอีกต่อไป (owner_id = ผู้สร้าง ตั้งแต่ 0099) */}
+        <span className="hidden items-center sm:flex">
+          <AssigneeStack
+            assignees={r.assignees}
+            peopleById={personById}
+            size={22}
+          />
         </span>
       </button>
 

@@ -32,6 +32,7 @@ export default async function InfluDoctorsPage() {
       <DoctorManagerPanel
         doctors={(doctors ?? []) as DoctorRow[]}
         canEdit={access.isAdmin}
+        actor={{ id: access.uid, name: access.name }}
       />
     </PageContainer>
   );

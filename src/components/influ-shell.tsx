@@ -15,6 +15,7 @@ import {
   Sparkles,
   Stethoscope,
   Trash2,
+  UsersRound,
   Wallet,
   X,
 } from "lucide-react";
@@ -167,6 +168,12 @@ export function InfluShell({
     { href: "/influ-gallery", label: "โปรไฟล์", icon: IdCard, show: canGallery },
     // ทะเบียนหมอ = งานผู้ดูแล (เดิมเป็นปุ่มบนหัวบอร์ดเคส — ย้ายมาเป็นหน้าของตัวเอง 2026-08-19)
     { href: "/influ-doctors", label: "จัดการหมอ", icon: Stethoscope, show: canManage },
+    {
+      href: "/influencer-management/profiles",
+      label: "โปรไฟล์",
+      icon: UsersRound,
+      show: canManage,
+    },
     { href: "/influencer-management/logs", label: "Log", icon: History, show: canManage },
     { href: "/influencer-management/trash", label: "ถังขยะ", icon: Trash2, show: canManage },
   ];
@@ -229,7 +236,7 @@ export function InfluShell({
         <div className="flex items-center gap-2 px-3 py-2 sm:px-4 lg:gap-3">
           {userId && (
             <span className="order-first shrink-0 lg:order-5">
-              <InfluNotificationBell userId={userId} />
+              <InfluNotificationBell userId={userId} canManage={canManage} />
             </span>
           )}
 

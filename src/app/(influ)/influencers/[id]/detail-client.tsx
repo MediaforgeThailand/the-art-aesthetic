@@ -75,6 +75,7 @@ import {
   INFLU_TIERS,
   INFLU_VOUCHER_UNIT,
   itemEffectiveCost,
+  memoStepOf,
   roleSummary,
   scopeOfStage,
   tierFromFollowers,
@@ -106,6 +107,7 @@ import type {
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../doctor-select";
 import { InfluLinksCard } from "../influ-links";
+import { NewCaseModal } from "../new-case-modal";
 import { ProfileFormModal } from "../profile-form";
 import {
   ProcedureItemsEditor,
@@ -535,48 +537,11 @@ function NameEditModal({
   const [firstName, setFirstName] = useState(influencer.first_name);
   const [lastName, setLastName] = useState(influencer.last_name ?? "");
   const [nickname, setNickname] = useState(influencer.nickname ?? "");
-  /** รหัส Influ ID — อ่านอย่างเดียว (ระบบออกให้); เคสเก่าที่ยังว่างกดออกรหัสได้จากปุ่มในโมดัล */
-  const [code, setCode] = useState(influencer.influ_code ?? "");
-  const [issuing, setIssuing] = useState(false);
+  /** รหัส Influ ID — อ่านอย่างเดียว: 0107 ทำให้เป็นรหัส "ประจำตัวบุคคล" ที่ระบบออกให้
+      ตอนสร้างโปรไฟล์ และ trigger sync ลงทุกรอบ (ไม่มีปุ่มออกรหัส/ช่องกรอกอีกแล้ว) */
+  const code = influencer.influ_code ?? "";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  /** ออกรหัสให้เคสที่ยังไม่มี — บันทึกทันที ไม่ต้องรอกดปุ่มบันทึกชื่อ */
-  const issueCode = async () => {
-    if (issuing || code) return;
-    setIssuing(true);
-    setErr(null);
-    const { data: newCode, error: rpcErr } = await supabase.rpc(
-      "next_influ_code"
-    );
-    if (rpcErr || !newCode) {
-      setIssuing(false);
-      setErr(`ออกรหัสไม่สำเร็จ: ${rpcErr?.message ?? "ไม่ทราบสาเหตุ"}`);
-      return;
-    }
-    const { error: upErr } = await supabase
-      .from("influencers")
-      .update({ influ_code: newCode })
-      .eq("id", influencer.id);
-    setIssuing(false);
-    if (upErr) {
-      setErr(
-        upErr.code === "23505"
-          ? `รหัส ${newCode} ชนกับเคสอื่น — กดออกรหัสอีกครั้ง`
-          : `บันทึกรหัสไม่สำเร็จ: ${upErr.message}`
-      );
-      return;
-    }
-    setCode(newCode);
-    log({
-      action: "update",
-      entityId: influencer.id,
-      influencerId: influencer.id,
-      influencerName: logNameOf(influencer),
-      summary: `ออกรหัส Influ ID ให้เคสนี้: ${newCode}`,
-    });
-    router.refresh();
-  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -634,7 +599,7 @@ function NameEditModal({
   };
 
   return (
-    <Modal open onClose={onClose} title="แก้ไขชื่อ / รหัส Influ ID">
+    <Modal open onClose={onClose} title="แก้ไขชื่อ Influencer">
       <form onSubmit={save} className="space-y-3">
         <div>
           <Label htmlFor="influ-first">ชื่อ *</Label>
@@ -662,8 +627,8 @@ function NameEditModal({
             placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
           />
         </div>
-        {/* รหัส Influ ID ระบบออกให้เอง (0093) — แก้มือไม่ได้แล้ว เพราะเป็นกุญแจของแฮชแท็ก
-            ที่ใช้ track ยอดจาก Meta; เคสเก่าที่ยังไม่มีรหัสกดออกให้ได้จากตรงนี้ */}
+        {/* รหัส Influ ID = รหัสประจำตัวบุคคล (0107) — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
+            ระบบออกให้ตอนสร้างโปรไฟล์ ไม่มีทางแก้/ออกใหม่จากหน้าเคส */}
         <div>
           <Label>รหัส Influ ID</Label>
           <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
@@ -671,21 +636,10 @@ function NameEditModal({
             <span className="font-mono text-sm font-semibold text-stone-700">
               {code || "ยังไม่มีรหัส"}
             </span>
-            {!code && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="ml-auto shrink-0 !py-1.5 text-xs"
-                loading={issuing}
-                onClick={() => void issueCode()}
-              >
-                ออกรหัสให้
-              </Button>
-            )}
+            <span className="ml-auto text-xs text-stone-500">
+              รหัสประจำตัว ใช้ร่วมทุกรอบ
+            </span>
           </div>
-          <p className="mt-1 text-[11px] text-stone-400">
-            ระบบออกให้อัตโนมัติและไม่ซ้ำกับเคสอื่น — ใช้เป็นแฮชแท็กประจำเคสในโพส
-          </p>
         </div>
         {err && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
@@ -726,6 +680,7 @@ function CaseInfoEditModal({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [serviceDate, setServiceDate] = useState(influencer.service_date ?? "");
   const [doctorName, setDoctorName] = useState(influencer.doctor_name ?? "");
   const [contactChannel, setContactChannel] = useState(
@@ -765,6 +720,12 @@ function CaseInfoEditModal({
       } · ${nextDoctor ?? "ยังไม่ระบุแพทย์"} · ช่องทาง ${
         nextChannel ?? "ยังไม่ระบุ"
       }`,
+    });
+    notify({
+      type: "case_updated",
+      scope: "contract",
+      title: `แก้ข้อมูลนัดของ ${logNameOf(influencer)}`,
+      body: `${nextDate ? formatDate(nextDate) : "ยังไม่กำหนดวัน"} · ${nextDoctor ?? "ยังไม่ระบุแพทย์"}`,
     });
     onClose();
     router.refresh();
@@ -858,6 +819,7 @@ export function InfluDetailClient({
   activityLog,
   today,
   canManage,
+  canManageSystem = false,
   initialStage = null,
 }: {
   influencer: InfluencerRow;
@@ -904,6 +866,8 @@ export function InfluDetailClient({
       ให้ดูอย่างเดียว — หน้านี้เปิดให้ทั้งสองสิทธิ์ตามที่ตั้งใจไว้ แต่การเดิน stage /
       อัปโหลดสัญญา-memo / เซนเอกสาร / ปิดงาน เป็นงานของ Influ Manager เท่านั้น */
   canManage: boolean;
+  /** ผู้ดูแลระบบ Influencer (สิทธิ์ influ) — ทำแทนขั้นที่ผูกบทบาทได้เสมอ */
+  canManageSystem?: boolean;
   /** ?view=<เลขขั้น> จากบอร์ดตอนกรอง stage — เปิดหน้ามาที่ขั้นนั้นเลยแทนภาพรวม
       (clamp ที่นี่เพราะฝั่ง client รู้ stage จริงของเคส; เกินที่เคสเดินถึง = ตกไปภาพรวม) */
   initialStage?: number | null;
@@ -1002,103 +966,14 @@ export function InfluDetailClient({
     router.refresh();
   };
 
-  /* ---- เปิดรอบใหม่: influ คนเดิมกลับมาทำอีกครั้ง = การ์ดใหม่ + memo/สัญญา/checklist ชุดใหม่ ----
-     สร้างแถว influencers ใหม่ person_id เดียวกัน เริ่มที่ขั้น Memo — คัดลอกเฉพาะข้อมูลตัวบุคคล
-     (ชื่อ/เบอร์/อาชีพ/ผู้ติดตาม/รูป) ส่วนข้อมูลเคส (โปรแกรม/วัน/แพทย์/ไฟล์) เริ่มว่างทั้งหมด
-     เปิดได้เฉพาะเมื่อรอบนี้จบแล้ว (จบงาน/ปฏิเสธ/ข้อมูลเก่า) — รอบที่ยังเดินอยู่ให้เดินต่อในการ์ดเดิม */
+  /* ---- เปิดรอบใหม่ = โมดัล "สร้างนัดใหม่" ตัวเดียวกับบอร์ด (audit 2026-09-03) ----
+     เดิมมีโค้ดสร้างรอบของตัวเองที่นี่ ผลจึงไม่เท่ากับการสร้างนัดจากบอร์ด: รอบที่เปิดจากปุ่มนี้
+     ไม่มีหัตถการ ไม่มีผู้รับผิดชอบ (หายจากบอร์ดของคนกดทันทีเพราะตัวกรอง "เคสของฉัน")
+     ⇒ ลบทิ้ง ใช้ NewCaseModal ที่เลือกโปรไฟล์ไว้ให้แล้วแทน — ทางเดียวในการเปิดเคสใหม่
+     เงื่อนไขเปิด: ผู้ดูแลแก้ได้ + รู้จักโปรไฟล์ของคนนี้ (ไม่บังคับว่ารอบเดิมต้องจบก่อน —
+     ผู้ใช้ยอมรับว่ามี 2 รอบพร้อมกันได้ โมดัลเตือนให้เองตอนเลือกโปรไฟล์ที่ยังมีเคสเปิดอยู่) */
   const [newRoundOpen, setNewRoundOpen] = useState(false);
-  const [newRoundErr, setNewRoundErr] = useState<string | null>(null);
-  const canStartNewRound =
-    canManage && (influencer.completed || influencer.declined_at !== null);
-  const startNewRound = async () => {
-    setNewRoundErr(null);
-    // เลขรอบถัดไปอ่านสดจาก DB — กันหน้าค้าง/สอง session เปิดพร้อมกันแล้วได้เลขซ้ำ
-    const { data: latest, error: latestErr } = await supabase
-      .from("influencers")
-      .select("round_no")
-      .eq("person_id", influencer.person_id)
-      .order("round_no", { ascending: false })
-      .limit(1);
-    if (latestErr) {
-      setNewRoundErr(`เปิดรอบใหม่ไม่สำเร็จ: ${latestErr.message}`);
-      return;
-    }
-    const nextNo = (latest?.[0]?.round_no ?? influencer.round_no) + 1;
-    const { data: created, error } = await supabase
-      .from("influencers")
-      .insert({
-        person_id: influencer.person_id,
-        round_no: nextNo,
-        first_name: influencer.first_name,
-        last_name: influencer.last_name,
-        nickname: influencer.nickname,
-        phone: influencer.phone,
-        occupation: influencer.occupation,
-        followers: influencer.followers,
-        follower_note: influencer.follower_note,
-        tier: influencer.tier,
-        // เริ่มที่ Memo เหมือน "สร้างนัดใหม่" (0080/0081) — ขั้นติดต่อ/รายละเอียดเป็นงานก่อน
-        // ตอบรับ อยู่บอร์ด Hunting แล้ว; โปรแกรมของรอบใหม่กลับไปเติมที่แท็บรายละเอียดเคสได้เสมอ
-        stage: INFLU_STAGE.memo,
-        // การ์ดรอบใหม่เป็นของคนที่กดเปิดรอบ (กติกา "ผู้รับผิดชอบ = ผู้สร้างการ์ด")
-        // — รหัส Influ ID ไม่คัดลอกมา เพราะ unique ต่อการ์ด ต้องออกรหัสของรอบนี้เอง
-        owner_id: userId,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (error || !created) {
-      setNewRoundErr(
-        `เปิดรอบใหม่ไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`
-      );
-      return;
-    }
-    // คัดลอกรูปเข้าโฟลเดอร์ของเคสใหม่ (best effort) — ห้ามชี้ path ของเคสเก่าข้ามการ์ด
-    // เพราะลบเคสเก่า = ไฟล์ใต้ influencers/{id}/ ถูกลบตาม รูปของรอบใหม่จะพังไปด้วย
-    const store = supabase.storage.from(STORAGE_BUCKET_DOCUMENTS);
-    const copyPhoto = async (path: string | null): Promise<string | null> => {
-      if (!path) return null;
-      const base = sanitizeFileName(path.split("/").pop() ?? "photo.jpg");
-      const dest = `influencers/${created.id}/${Date.now()}-${base}`;
-      const { error: cpErr } = await store.copy(path, dest);
-      return cpErr ? null : dest;
-    };
-    const [photo, channelPhoto] = await Promise.all([
-      copyPhoto(influencer.photo_path),
-      copyPhoto(influencer.channel_photo_path),
-    ]);
-    if (photo || channelPhoto) {
-      await supabase
-        .from("influencers")
-        .update({
-          ...(photo ? { photo_path: photo } : {}),
-          ...(channelPhoto ? { channel_photo_path: channelPhoto } : {}),
-        })
-        .eq("id", created.id);
-    }
-    logInflu(supabase, actor, {
-      action: "create",
-      entityId: created.id,
-      influencerId: created.id,
-      influencerName: logNameOf(influencer),
-      summary: `เปิดรอบใหม่ (รอบ ${nextNo}) ของ ${logNameOf(influencer)}`,
-      meta: { person_id: influencer.person_id, round_no: nextNo },
-    });
-    // รอบใหม่ = การ์ดใหม่ที่ยังไม่มีผู้รับผิดชอบ — บอกทีมของรอบเดิมให้รู้ว่ามีงานใหม่เข้ามา
-    notifyInflu(supabase, actor, {
-      influencerId: created.id,
-      influencerName: logNameOf(influencer),
-      assignees: notifyTargets,
-      baseLevel: "action",
-      type: "round_started",
-      title: `เปิดรอบที่ ${nextNo} ของ ${logNameOf(influencer)}`,
-      body: "การ์ดใหม่เริ่มที่ขั้น Memo — อย่าลืมกำหนดผู้รับผิดชอบของรอบนี้",
-      href: `/influencers/${created.id}`,
-      meta: { person_id: influencer.person_id, round_no: nextNo },
-    });
-    router.push(`/influencers/${created.id}`);
-    router.refresh();
-  };
+  const canStartNewRound = canManage && personProfile !== null;
 
   /* ---------- ผู้รับผิดชอบเคส (0095) ----------
      การ์ดบนบอร์ดแสดงคนกลุ่มนี้ (ไม่ใช่ผู้สร้างอีกต่อไป) และเป็นตัวตัดสินว่าใครได้แจ้งเตือน
@@ -1399,7 +1274,7 @@ export function InfluDetailClient({
           <button
             type="button"
             onClick={() => setNewRoundOpen(true)}
-            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            title="influ คนนี้กลับมาทำอีกรอบ — เปิดโมดัลสร้างนัดโดยเลือกโปรไฟล์คนนี้ไว้ให้แล้ว (รอบเดิมไม่ถูกแตะ)"
             className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
           >
             <Repeat size={14} />
@@ -1407,12 +1282,6 @@ export function InfluDetailClient({
           </button>
         )}
       </div>
-
-      {newRoundErr && (
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-          {newRoundErr}
-        </p>
-      )}
 
       {/* เริ่มนับสัญญาไปแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
           — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสไปโผล่หน้า Follow Up โดยไม่มีสัญญาแบบเงียบๆ */}
@@ -1517,6 +1386,7 @@ export function InfluDetailClient({
             userName={userName}
             readOnly={readOnly}
             fileEditable={canEdit}
+            canManageSystem={canManageSystem}
             userId={userId}
             assignees={assignedList}
             people={people}
@@ -1610,26 +1480,39 @@ export function InfluDetailClient({
         onClose={() => setRollbackOpen(false)}
       />
 
-      <ConfirmDialog
-        open={newRoundOpen}
-        title={`เปิดรอบใหม่ — รอบที่ ${influencer.round_no + 1}?`}
-        message={
-          <>
-            สร้างการ์ดใหม่ให้{" "}
-            <span className="font-medium text-stone-800">คุณ{fullName}</span>{" "}
-            บนบอร์ดเคสดำเนินงาน เริ่มที่ขั้น Memo —
-            ใช้เมื่อคนเดิมกลับมาทำอีกครั้ง ซึ่งต้องออก Memo ขออนุมัติ
-            และเซนสัญญาชุดใหม่ทั้งหมด (โปรแกรมของรอบใหม่กลับไปเติมได้ที่แท็บรายละเอียดเคส)
-            <br />
-            ข้อมูลตัวบุคคล (ชื่อ เบอร์ ยอดผู้ติดตาม รูป) ถูกคัดลอกไปให้ —
-            ส่วนโปรแกรม/วันนัด/เอกสารของรอบนี้ไม่ถูกแตะ และไม่ติดไปกับรอบใหม่
-          </>
-        }
-        confirmLabel="เปิดรอบใหม่"
-        confirmVariant="primary"
-        onConfirm={() => void startNewRound()}
-        onClose={() => setNewRoundOpen(false)}
-      />
+      {/* เปิดรอบใหม่ = โมดัลเดียวกับบอร์ด (เลือกโปรไฟล์คนนี้ไว้ให้แล้ว)
+          key = remount ทุกครั้งที่เปิด เพราะ NewCaseModal อ่าน initialProfile ตอน mount */}
+      {personProfile && (
+        <NewCaseModal
+          key={newRoundOpen ? "round-open" : "round-closed"}
+          open={newRoundOpen}
+          onClose={() => setNewRoundOpen(false)}
+          profiles={[personProfile]}
+          initialProfile={personProfile}
+          copyFrom={{
+            photo_path: influencer.photo_path,
+            channel_photo_path: influencer.channel_photo_path,
+          }}
+          openRoundsByPerson={
+            new Map([
+              [
+                influencer.person_id,
+                personRounds
+                  .filter((r) => !r.completed && r.declined_at === null)
+                  .map((r) => r.round_no),
+              ],
+            ])
+          }
+          services={services}
+          priceCatalog={priceCatalog}
+          promoCatalog={promoCatalog}
+          doctors={doctors}
+          campaigns={campaigns}
+          people={people}
+          me={{ id: userId, name: userName }}
+          actor={actor}
+        />
+      )}
     </div>
     </InfluLogProvider>
   );
@@ -1827,6 +1710,12 @@ function OverviewPanel({
     [influencer.first_name, influencer.last_name].filter(Boolean).join(" ") ||
     null;
   const tier = influencer.tier ? INFLU_TIERS[influencer.tier] : null;
+  // ขั้นย่อยของ Memo — มีความหมายเฉพาะตอนยังอยู่ stage นี้ (เช็ค stage ก่อนเรียกเสมอ
+  // ตามกติกาของ memoStepOf — เคสที่เลยไปแล้วค่าที่ได้ไม่มีความหมาย)
+  const memoSubStep =
+    influencer.stage === INFLU_STAGE.memo && !influencer.completed
+      ? memoStepOf(influencer)
+      : null;
   const followupLeft = followupTasks.filter((t) => !t.done).length;
   const followupTotal = followupTasks.length;
   const contractEnd =
@@ -1908,7 +1797,9 @@ function OverviewPanel({
                 followupTotal > 0) ||
               contentTasks.length > 0) && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {influencer.memo_submitted_at ? (
+                {/* ป้ายคู่นี้มีความหมายเฉพาะตอนยังอยู่ขั้น Memo — เคสที่เดินผ่านไปแล้ว
+                    StageTracker บอกอยู่แล้ว ปล่อยไว้จะเป็นสัญญาณค้างตลอดกาล (0111) */}
+                {memoSubStep !== null && influencer.memo_submitted_at ? (
                   <span
                     title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDateTime(
                       influencer.memo_submitted_at
@@ -1919,6 +1810,7 @@ function OverviewPanel({
                     </Badge>
                   </span>
                 ) : (
+                  memoSubStep !== null &&
                   influencer.docs_sent_at && (
                     <span
                       title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
@@ -2489,6 +2381,14 @@ function CaseDetailStage({
       setError(`บันทึกรูปไม่สำเร็จ: ${insErr.message}`);
       return;
     }
+    log({
+      action: "upload",
+      entity: "case_photo",
+      entityId: influencer.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `เพิ่มรูป${kind === "photo" ? "ตัว influencer" : "ช่องทาง"} ${uploaded.length} รูป`,
+    });
     // รูปแรกของทั้งชุด (ตาม position) = รูปหน้าปก — sync คอลัมน์เดิมให้ consumer อื่น
     // (การ์ดบอร์ด/sidebar/หัวเอกสารภาพรวม/copy รูปตอนเปิดรอบใหม่) ยังอ่านได้เหมือนเดิม
     // (update ต้อง literal key แยกสาขา — object key คำนวณชนกับ excess-property check ของ supabase-js)
@@ -2526,6 +2426,14 @@ function CaseDetailStage({
     } catch {
       // best effort — ไฟล์ค้างดีกว่าฟอร์มพัง
     }
+    log({
+      action: "delete",
+      entity: "case_photo",
+      entityId: photo.id,
+      influencerId: influencer.id,
+      influencerName: logNameOf(influencer),
+      summary: `ลบรูป${photo.kind === "photo" ? "ตัว influencer" : "ช่องทาง"} (${photo.file_name ?? "ไม่ทราบชื่อไฟล์"})`,
+    });
     // เหลือรูปแรกใหม่ (ถ้ามี) = รูปหน้าปกใหม่ ไม่เหลือเลย = ล้าง cover
     const remaining = (photo.kind === "photo" ? photos : channelPhotos).filter(
       (p) => p.id !== photo.id
@@ -3148,6 +3056,7 @@ function ServiceDayStage({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
+  const notify = useInfluNotify();
   const [editOpen, setEditOpen] = useState(false);
   const [newProcedure, setNewProcedure] = useState("");
   const [supervisor, setSupervisor] = useState("");
@@ -3203,6 +3112,12 @@ function ServiceDayStage({
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
       summary: `แก้หัตถการหน้างาน: "${change.old || "(ว่าง)"}" → "${change.next}" (หัวหน้างานลงนาม: ${change.signed_by || "ไม่ระบุ"})`,
+    });
+    notify({
+      type: "case_updated",
+      scope: "followup",
+      title: `แก้หัตถการหน้างานของ ${logNameOf(influencer)}`,
+      body: `"${change.old || "(ว่าง)"}" → "${change.next}"`,
     });
     setNewProcedure("");
     setSupervisor("");

@@ -11,6 +11,8 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { type InfluLogActor } from "@/lib/influ-log";
+import { notifyInfluByCase } from "@/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 
 export type TrashBackup = {
@@ -43,9 +45,12 @@ function isExpired(purgeAfter: string): boolean {
 export function TrashClient({
   backups,
   loadError,
+  actor,
 }: {
   backups: TrashBackup[];
   loadError: string | null;
+  /** ผู้ทำ — กู้คืนแล้วผู้รับผิดชอบเดิมของเคสต้องรู้ (เคสกลับมาอยู่บนโต๊ะพวกเขา) */
+  actor: InfluLogActor;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -79,8 +84,20 @@ export function TrashClient({
     setNotice(
       `กู้คืน "${b.label}" กลับเข้าระบบแล้ว — ไฟล์ที่อัปโหลดไว้เดิมไม่ได้กลับมาด้วย ต้องอัปโหลดใหม่`
     );
+    if (typeof data === "string") {
+      router.prefetch(`/influencers/${data}`);
+      // ผู้รับผิดชอบเดิมของเคส (ถ้ายังกู้ขึ้น — 0106) ต้องรู้ว่าเคสกลับมาอยู่บนโต๊ะแล้ว
+      notifyInfluByCase(supabase, actor, {
+        influencerId: data,
+        influencerName: b.label,
+        type: "case_reopened",
+        baseLevel: "action",
+        title: `เคส "${b.label}" ถูกกู้คืนจากถังขยะ`,
+        body: "ไฟล์ที่อัปโหลดไว้เดิมไม่ได้กลับมาด้วย ต้องอัปโหลดใหม่",
+        href: `/influencers/${data}`,
+      });
+    }
     router.refresh();
-    if (typeof data === "string") router.prefetch(`/influencers/${data}`);
   };
 
   const live = backups.filter((b) => b.restored_at === null && !isExpired(b.purge_after));

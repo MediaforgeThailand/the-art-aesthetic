@@ -515,10 +515,11 @@ export type InfluLogAction =
 /** บทบาทผู้รับผิดชอบในเคส (0095 → รื้อเป็นบทบาท 0104)
     owner = ผู้ดูแล (สร้างเคส ตามจนเซนสัญญา) · follower = ผู้ติดตาม (สัญญา → follow up)
     memo = ผู้ออก Memo (ทำขั้น 1.1, 1.2)
-    — `contract`/`followup` เป็นค่าเก่าก่อน 0104 ที่ยังอยู่ในแถวเดิม/ถังขยะ
-    อ่านผ่าน normalizeRoles() (influ-constants) เสมอ: contract→owner, followup→follower
+    — ค่าเก่าก่อน 0104 (`contract`/`followup`) ถูกแปลงเป็น owner/follower ทั้งฐาน
+    ที่ migration 0106 แล้ว (รวม payload ในถังขยะ) และ check ของ DB บีบเหลือ 3 ค่านี้ —
+    แต่โค้ดยังอ่านผ่าน normalizeRoles() (influ-constants) เสมอเพื่อกันข้อมูลที่มาจาก SQL มือ
     — array ว่าง = ผู้เกี่ยวข้อง/หัวหน้างาน (เห็นความเคลื่อนไหวแต่ไม่ใช่เจ้าของงาน) */
-export type InfluScope = "owner" | "follower" | "memo" | "contract" | "followup";
+export type InfluScope = "owner" | "follower" | "memo";
 
 /** ผู้รับผิดชอบเคส (0095) — 1 เคสมีได้หลายคน แต่ละคนถือขอบเขตของตัวเอง
     คนละเรื่องกับ `influencers.owner_id` ที่ยังเป็น "ผู้สร้างการ์ด" ตามเดิม */
@@ -554,6 +555,9 @@ export type InfluNotificationRow = {
   body: string | null;
   href: string | null;
   meta: Json;
+  /** เห็นแล้ว (เปิดแผงกระดิ่ง) — badge ดับที่นี่ (0109) */
+  seen_at: string | null;
+  /** อ่านแล้ว (กดเข้าไปดู) — คนละเรื่องกับ seen_at */
   read_at: string | null;
   created_at: string;
 };
@@ -675,6 +679,9 @@ export type InfluProductTeam =
     เคสทุกรอบของคนเดียวกันชี้มาที่นี่ผ่าน influencers.person_id (FK) */
 export type InfluProfileRow = {
   id: string;
+  /** รหัสประจำตัว INF-xxxxx (0107) — ต้นทางของ influencers.influ_code ทุกรอบของคนนี้
+      ระบบออกให้ตอน insert (trigger influ_profiles_set_code) ห้ามพิมพ์เอง */
+  influ_code: string;
   first_name: string;
   last_name: string | null;
   nickname: string | null;
@@ -1778,6 +1785,28 @@ export interface Database {
           p_auth: string;
           p_user_agent?: string | null;
         };
+        Returns: undefined;
+      };
+      /** สร้างเคส Influ ใหม่ทั้งก้อนใน transaction เดียว (0108) — เคส + หัตถการ +
+          ผู้รับผิดชอบ; เลขรอบคำนวณใน DB (ล็อกแถวโปรไฟล์) และรหัส Influ ID มาจาก trigger
+          payload: { person_id, stage?, campaign_id?, consult_only?, talent_fee?, case_value?,
+          service_date?, doctor_name?, contact_channel?, procedure_text?,
+          procedures: [{name, price, price_item_id, promo_package_id, product_team}],
+          assignees: [{user_id, scopes}] } */
+      influ_create_case: {
+        Args: { p: Json };
+        Returns: string;
+      };
+      /** รวมโปรไฟล์ซ้ำเป็นคนเดียวกัน (0111) — ย้ายเคส/ช่องทาง/รูป/แคมเปญจาก p_from
+          ไป p_into แล้วลบ p_from; รหัสที่รอด = เลขเก่ากว่า (กติกาผู้ใช้ 2026-09-03)
+          คืน id ของโปรไฟล์ที่รอด */
+      influ_merge_profiles: {
+        Args: { p_from: string; p_into: string };
+        Returns: string;
+      };
+      /** ลบโปรไฟล์ที่ยังไม่มีเคส (0111) — มีเคสอยู่ = raise ข้อความไทย */
+      influ_delete_profile: {
+        Args: { p_id: string };
         Returns: undefined;
       };
       /** ลบเคส Influ = สำรองลง influ_deleted_backups ก่อนเสมอ — คืน id ของสำเนา */

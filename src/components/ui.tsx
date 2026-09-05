@@ -153,6 +153,11 @@ export function Badge({
 
 /* ---------- Modal ---------- */
 
+/** โมดัลที่เปิดอยู่ทั้งหมด เรียงตามลำดับการเปิด (ตัวท้าย = ตัวบนสุด)
+    — Esc ต้องปิด "ตัวบนสุดตัวเดียว" ไม่ใช่ทุกตัวที่ฟัง keydown บน window อยู่
+    (บั๊กจริง: กด Esc ในโมดัลสร้างโปรไฟล์ที่ซ้อนอยู่ ปิดโมดัลสร้างนัดทั้งฟอร์มไปด้วย) */
+const modalStack: symbol[] = [];
+
 export function Modal({
   open,
   onClose,
@@ -180,10 +185,20 @@ export function Modal({
   // ทำให้ position:fixed ยึดกับกล่องนั้นแทนทั้งจอ (modal เลยดูแคบติดมุม)
   const mounted = useHydrated();
 
+  // id ประจำตัวของโมดัลนี้ (คงที่ตลอดอายุ component) — ใช้เทียบว่าเป็นตัวบนสุดไหม
+  const idRef = useRef<symbol | null>(null);
+  idRef.current ??= Symbol("modal");
+
   useEffect(() => {
     if (!open) return;
+    const id = idRef.current as symbol;
+    modalStack.push(id);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      // ปิดเฉพาะตัวบนสุด — โมดัลที่อยู่ข้างใต้ต้องคงฟอร์มที่กรอกไว้
+      if (e.key === "Escape" && modalStack[modalStack.length - 1] === id) {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
     };
     window.addEventListener("keydown", onKey);
     // โฟกัสเข้ากล่อง + ล็อค scroll พื้นหลัง แล้วคืนโฟกัสเดิมตอนปิด
@@ -193,6 +208,8 @@ export function Modal({
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
+      const at = modalStack.lastIndexOf(id);
+      if (at >= 0) modalStack.splice(at, 1);
       document.body.style.overflow = prevOverflow;
       prevFocus?.focus?.({ preventScroll: true });
     };

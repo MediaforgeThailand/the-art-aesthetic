@@ -10,6 +10,7 @@
  */
 
 import { todayISO } from "@/lib/format";
+import type { CaseAssignee } from "../assignees";
 import {
   activeFollowupTasks,
   contractEndDate,
@@ -130,7 +131,10 @@ export type TrackRow = {
 
   links: InfluPostLinkRow[];
   campaigns: InfluCampaignRow[];
+  /** ผู้สร้างการ์ด — เก็บไว้เป็นข้อมูล (คนละเรื่องกับ "ผู้รับผิดชอบ" ตั้งแต่ 0099) */
   ownerName: string | null;
+  /** ผู้รับผิดชอบของเคส (0099/0104) — ตัวจริงที่คอลัมน์และตัวกรอง "เคสของฉัน" ใช้ */
+  assignees: CaseAssignee[];
 };
 
 export function influName(i: {
@@ -159,6 +163,7 @@ export function buildTrackRows({
   tasks,
   campaigns,
   ownerNames,
+  assigneesOf,
   today = todayISO(),
 }: {
   /** เฉพาะเคสที่เริ่มนับสัญญาแล้ว (contract_start ไม่เป็น null) */
@@ -168,6 +173,8 @@ export function buildTrackRows({
   tasks: InfluTaskRow[];
   campaigns: InfluCampaignRow[];
   ownerNames: Map<string, string>;
+  /** ผู้รับผิดชอบต่อเคส — ไม่ส่ง = ถือว่ายังไม่มีใครรับผิดชอบ */
+  assigneesOf?: (id: string) => CaseAssignee[];
   today?: string;
 }): TrackRow[] {
   const linksBy = groupBy(links, (l) => l.influencer_id);
@@ -261,6 +268,7 @@ export function buildTrackRows({
         (i.owner_id && ownerNames.get(i.owner_id)) ||
         (i.created_by && ownerNames.get(i.created_by)) ||
         null,
+      assignees: assigneesOf?.(i.id) ?? [],
     };
   });
 }

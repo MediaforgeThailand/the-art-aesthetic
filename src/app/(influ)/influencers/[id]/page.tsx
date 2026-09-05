@@ -4,6 +4,7 @@ import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import {
   canEditInflu,
+  canManageInflu,
   canViewInflu,
   getAccess,
   hasPermission,
@@ -173,7 +174,10 @@ export default async function InfluencerDetailPage({
       .select("user_id, scopes")
       .eq("influencer_id", id),
     // บัญชีทั้งหมด — ตัวเลือกตอนมอบหมายงาน + รูป/ชื่อของผู้รับผิดชอบ
-    supabase.from("profiles").select("id, full_name, email, avatar_path, job_title"),
+    // ทุกบัญชี + สิทธิ์ (ตัวเลือกผู้รับผิดชอบกรองด้วยธง canInflu ฝั่ง client)
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_path, job_title, role, permissions"),
     // ประวัติการใช้งานล่าสุดของเคส — โชว์ท้าย sidebar โปรไฟล์ให้ทีมที่รับช่วงงานตามสถานะทัน
     supabase
       .from("influ_activity_log")
@@ -269,11 +273,20 @@ export default async function InfluencerDetailPage({
             name: p.full_name || p.email || "ไม่ทราบชื่อ",
             avatarPath: p.avatar_path ?? null,
             jobTitle: p.job_title ?? null,
+            // เข้าระบบ Influencer ได้ไหม — คนที่เข้าไม่ได้ยังแสดงชื่อ/รูปได้ (เผื่อเป็น
+            // ผู้รับผิดชอบเดิม) แต่ไม่โผล่ในตัวเลือกตอนมอบหมายงาน
+            canInflu:
+              p.role === "admin" ||
+              (p.permissions ?? []).some((x) =>
+                ["influ", "influ_hunter", "influ_view"].includes(x)
+              ),
           })) as InfluPerson[]
         }
         activityLog={(activityLog ?? []) as InfluActivityLogRow[]}
         today={todayBkk}
         canManage={canEditInflu(access)}
+        // ผู้ดูแล "ระบบ" Influencer — ทำแทนขั้นที่ผูกกับบทบาทได้ (กันเคสค้างตาย)
+        canManageSystem={canManageInflu(access)}
         initialStage={initialStage}
       />
     </PageContainer>

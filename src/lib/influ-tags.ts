@@ -17,6 +17,10 @@ type ProcedureLite = {
  * ตัวเลือกทั้งที่ทีมคอนเทนต์เริ่มทำงานได้ตั้งแต่ตอนนั้น — ผู้ใช้แจ้งว่า "มาไม่ครบ") ⇒
  *   - `archived = false` — ข้อมูลเก่าที่นำเข้าจาก Excel (146 เคส) ไม่ใช่ตัวเลือกผูกงาน
  *   - ไม่เอาเคสที่ปฏิเสธ (`declined_at`) — งานไม่เกิด ก็ไม่มีคอนเทนต์ให้แท็ก
+ *   - ไม่เอาเคสที่ปิดงานแล้ว (`completed`) — ให้ตรงกับคำว่า "ยังเดินงานอยู่"
+ *     (ตอนเพิ่มเกณฑ์นี้ 2026-09-03 ยังไม่มีเคสไหนปิดงาน ⇒ ตัวเลือกไม่หายสักแถว;
+ *      ถ้าวันหนึ่งทีมต้องแท็กคอนเทนต์ของเคสที่ปิดไปแล้ว ให้ถอด `.eq("completed", false)`
+ *      บรรทัดเดียว — งานที่แท็กไว้แล้วยังเก็บ influencer_id ไว้ครบไม่ว่ากรณีใด)
  * ทุกเคสมี `person_id` (FK → influ_profiles ตั้งแต่ 0080) จึงแปลว่า "มีโปรไฟล์แล้ว" อยู่ในตัว
  *
  * คืนของที่ใช้ทำแฮชแท็กมาให้ครบในก้อนเดียว (resolve เลขใบ ปว. จากชื่อหมอ + แท็กแคมเปญ)
@@ -32,6 +36,7 @@ export async function fetchInfluTagOptions(): Promise<InfluTagOption[]> {
         "id, first_name, last_name, nickname, round_no, influ_code, doctor_name, campaign_id, photo_path"
       )
       .eq("archived", false)
+      .eq("completed", false)
       .is("declined_at", null)
       .order("created_at", { ascending: false }),
     supabase

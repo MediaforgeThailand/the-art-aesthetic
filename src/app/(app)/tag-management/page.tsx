@@ -43,6 +43,7 @@ export default async function TagManagementPage() {
         isAdmin={access.isAdmin}
         influOptions={influOptions}
         categories={(categoriesResult.data ?? []) as ContentCategoryRow[]}
+        actor={{ id: access.uid, name: access.name }}
       />
     </PageContainer>
   );

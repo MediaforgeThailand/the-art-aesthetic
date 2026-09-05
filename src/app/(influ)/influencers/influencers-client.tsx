@@ -28,6 +28,7 @@ import {
   INFLU_STAGE_LAST,
   isLaterSection,
   memoApprovedNeedsBooking,
+  normalizeRoles,
   sizeGroupFromFollowers,
 } from "@/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
@@ -178,11 +179,16 @@ export function InfluencersClient({
     [assigneesByInflu]
   );
 
-  /** ลบได้ไหม — ผู้ดูแลลบได้ทุกเคส, Hunter ลบได้เฉพาะเคสที่ตัวเองรับผิดชอบ
-      (กติกาเดียวกับ canDeleteInflu ใน permissions.ts แต่คิดจาก me ที่ส่งลงมา) */
+  /** ลบได้ไหม — ผู้ดูแลระบบลบได้ทุกเคส, Hunter ลบได้เมื่อเป็น **ผู้สร้าง** หรือถือบทบาท
+      **ผู้ดูแล (owner)** ในเคสนั้น (กติกาเดียวกับ canDeleteInflu + RPC ใน 0106 —
+      เดิมดูแค่ owner_id ทำให้คนที่ถูกมอบให้ดูแลเคสต่อลบไม่ได้ แถม error บอกผิดเหตุ) */
   const mayDelete = (i: InfluencerListRow) =>
     me.canManage ||
-    (me.level === "hunter" && i.owner_id !== null && i.owner_id === me.id);
+    (me.level === "hunter" &&
+      ((i.owner_id !== null && i.owner_id === me.id) ||
+        assigneesOf(i.id).some(
+          (a) => a.userId === me.id && normalizeRoles(a.scopes).includes("owner")
+        )));
 
   // สำเนา state ฝั่งจอ — ลบ/ลากแล้วเห็นผลทันที (optimistic) แล้วค่อย sync กับ server
   const [items, setItems] = useSyncedState<InfluencerListRow[]>(influencers);
@@ -288,6 +294,43 @@ export function InfluencersClient({
     [items, bookedIds]
   );
 
+  /* ---- ชั้น "โปรไฟล์" ของบอร์ด (0073 + audit 2026-09-03) ----
+     บอร์ดเป็นการ์ดต่อ "รอบ" อยู่แล้ว แต่ไม่เคยบอกว่ารอบอื่นของคนเดียวกันอยู่ไหน
+     Map นี้คำนวณจาก items ที่โหลดมาแล้ว (ไม่ต้อง query เพิ่ม) */
+  const roundsByPerson = useMemo(() => {
+    const m = new Map<string, InfluencerListRow[]>();
+    for (const i of items) {
+      const arr = m.get(i.person_id);
+      if (arr) arr.push(i);
+      else m.set(i.person_id, [i]);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.round_no - b.round_no);
+    return m;
+  }, [items]);
+
+  /** รอบที่ยังเดินอยู่ต่อคน — โมดัลสร้างนัดเตือนก่อนเปิดรอบซ้อน (ไม่บล็อค) */
+  const openRoundsByPerson = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const i of items) {
+      if (i.completed || i.declined_at !== null) continue;
+      const arr = m.get(i.person_id);
+      if (arr) arr.push(i.round_no);
+      else m.set(i.person_id, [i.round_no]);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a - b);
+    return m;
+  }, [items]);
+
+  /** คนที่ฉันรับผิดชอบอยู่สักรอบ — ตัวกรอง "เคสของฉัน" ต้องโชว์รอบอื่นของคนเดียวกันด้วย */
+  const myPersonIds = useMemo(() => {
+    const out = new Set<string>();
+    if (!me.id) return out;
+    for (const i of items) {
+      if (assigneesOf(i.id).some((a) => a.userId === me.id)) out.add(i.person_id);
+    }
+    return out;
+  }, [items, assigneesOf, me.id]);
+
   const [search, setSearch] = useState("");
 
   /* ตัวกรองทั้งหมดอยู่ในปุ่มเดียว (ผู้ใช้ 2026-08-29) — ค่าโรงงานเริ่มที่ "เคสของฉัน"
@@ -333,7 +376,9 @@ export function InfluencersClient({
       (ลูกทุกตาราง cascade ตามไป แต่ payload ถูกเก็บครบก่อนลบ — กู้คืนได้ที่หน้าถังขยะ) */
   const handleDelete = async (target: InfluencerListRow) => {
     if (!mayDelete(target)) {
-      setActionError("บัญชีนี้ลบเคสของคนอื่นไม่ได้ — ให้ผู้ดูแลระบบเป็นคนลบ");
+      setActionError(
+        "ลบได้เฉพาะเคสที่ตัวเองสร้างหรือเป็นผู้ดูแล — เคสอื่นให้ผู้ดูแลระบบเป็นคนลบ"
+      );
       return;
     }
     setDeletingId(target.id);
@@ -353,11 +398,15 @@ export function InfluencersClient({
     }
     void cleanupStorage(target.id); // fire-and-forget หลังลบ record สำเร็จ
     // ลบเคสของคนอื่น = เรื่องใหญ่ ผู้รับผิดชอบทุกคนต้องรู้ (ไม่มี href — เคสไม่มีแล้ว)
+    // ใช้ forceAction กับ "คนที่ถือบทบาท" แทน baseLevel เหมารวม — ผู้เกี่ยวข้อง
+    // (scopes ว่าง) ต้องได้แบบเงียบเสมอตามนิยามของบทบาทนั้น
     notifyInflu(supabase, actor, {
       influencerId: null,
       influencerName: influName(target),
       assignees: targets,
-      baseLevel: "action",
+      forceAction: targets
+        .filter((t) => normalizeRoles(t.scopes).length > 0)
+        .map((t) => t.userId),
       type: "case_deleted",
       title: `เคส ${influName(target)} ถูกลบ`,
       body: "ข้อมูลถูกสำรองไว้ในถังขยะ 30 วัน — ให้ผู้ดูแลระบบกู้คืนได้",
@@ -449,7 +498,12 @@ export function InfluencersClient({
       influencerId: target.id,
       influencerName: influName(target),
       assignees: assigneesOf(target.id),
-      baseLevel: next ? "action" : "update",
+      // ปฏิเสธ = ทุกคนที่ถือบทบาทต้องรู้แบบเด่น (ผู้เกี่ยวข้องยังเงียบตามนิยาม)
+      forceAction: next
+        ? assigneesOf(target.id)
+            .filter((t) => normalizeRoles(t.scopes).length > 0)
+            .map((t) => t.userId)
+        : [],
       type: next ? "case_declined" : "case_declined_undo",
       title: next
         ? `${influName(target)} ถูกทำเครื่องหมายว่าปฏิเสธ`
@@ -506,6 +560,7 @@ export function InfluencersClient({
           meId: me.id,
           assigneesOf,
           bookingAlertIds,
+          myPersonIds,
         })
       )
         return false;
@@ -517,7 +572,7 @@ export function InfluencersClient({
         (i.procedure_text ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, search, filters, bookingAlertIds, assigneesOf, me.id]);
+  }, [items, search, filters, bookingAlertIds, assigneesOf, myPersonIds, me.id]);
 
   /* ---- modal "สร้างนัดใหม่" — เปิดเคสจากโปรไฟล์ที่มีอยู่ (flow 0080) ---- */
   const [caseOpen, setCaseOpen] = useState(false);
@@ -564,6 +619,19 @@ export function InfluencersClient({
     () => items.filter((i) => assigneesOf(i.id).length === 0).length,
     [items, assigneesOf]
   );
+  const hiddenCount = items.length - filtered.length;
+  /** ปลดทุกอย่างจริงๆ — ห้าม reset เป็นค่าโรงงาน เพราะค่าโรงงานเองก็ยังกรอง
+      (บทเรียนเดียวกับปุ่ม "แสดงทั้งหมด" ของ my-tasks) */
+  const showEverything = () => {
+    setSearch("");
+    filterApi.setFilters({
+      owner: "all",
+      scopes: [],
+      stage: "all",
+      excluded: [],
+      campaign: "all",
+    });
+  };
 
   return (
     <>
@@ -682,6 +750,26 @@ export function InfluencersClient({
         onClear={() => filterApi.setFilters(DEFAULT_BOARD_FILTERS)}
       />
 
+      {/* จำนวนที่ถูกซ่อน — ค่าโรงงานคือ "เคสของฉัน" + ซ่อนคนที่ปฏิเสธ ⇒ ถ้าไม่บอกตรงนี้
+          คนอ่านจะนึกว่าเคสหายจากระบบ (บั๊กจริง: แทนไทมี 2 รอบแต่เห็นการ์ดเดียว)
+          "แสดงทั้งหมด" ต้องล้างเป็นค่าที่ไม่กรองอะไรเลย ไม่ใช่กลับไปค่าโรงงานซึ่งก็ยังกรอง */}
+      {hiddenCount > 0 && (
+        <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 text-xs text-stone-500 animate-fade-in">
+          <span>
+            แสดง <span className="font-semibold text-stone-700">{filtered.length}</span> จาก{" "}
+            {items.length} เคส · ตัวกรองซ่อนอยู่{" "}
+            <span className="font-semibold text-amber-700">{hiddenCount}</span>
+          </span>
+          <button
+            type="button"
+            onClick={showEverything}
+            className="cursor-pointer rounded-full border border-stone-200 bg-white/80 px-2.5 py-1 font-medium text-stone-600 transition-colors hover:border-brand-300 hover:text-brand-700 max-sm:min-h-11 max-sm:px-3"
+          >
+            แสดงทั้งหมด
+          </button>
+        </div>
+      )}
+
       {actionError && (
         <div className="mb-4 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           {actionError}
@@ -718,19 +806,24 @@ export function InfluencersClient({
               title={
                 filters.stage === "needbooking_approved"
                   ? "ทุกเคสที่เอกสารผ่านแล้วมีคิวหมอในปฏิทินแล้ว"
-                  : "ทุกเคสที่ผ่าน Memo มีคิวหมอในปฏิทินแล้ว"
+                  : "ทุกเคสที่ Memo อนุมัติแล้วมีคิวหมอในปฏิทิน"
               }
               description={
                 filters.stage === "needbooking_approved"
                   ? "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่ออัพไฟล์ Memo ที่อนุมัติ (ผ่านขั้น 1.2) แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
-                  : "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อเดินถึงขั้น Memo แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
+                  : "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อ Memo อนุมัติแล้ว (ขั้นสัญญา) แต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
               }
             />
           ) : (
             <EmptyState
               icon={<Search size={40} strokeWidth={1.5} />}
-              title="ไม่พบรายชื่อที่ตรงกับตัวกรอง"
-              description="ค่าเริ่มต้นคือ “เคสของฉัน” และซ่อนเคสที่ปฏิเสธ — เปิดปุ่มตัวกรองแล้วเลือก “ทุกคน” เพื่อดูของทั้งทีม"
+              title="ตัวกรองซ่อนเคสไว้ทั้งหมด — ข้อมูลยังอยู่ครบ"
+              description={`มีเคสในระบบ ${items.length} เคส แต่ตัวกรองที่เปิดอยู่ (ค่าเริ่มต้นคือ “เคสของฉัน” และซ่อนเคสที่ปฏิเสธ) ซ่อนไว้หมด`}
+              action={
+                <Button variant="secondary" onClick={showEverything}>
+                  แสดงทั้งหมด
+                </Button>
+              }
             />
           )}
         </Card>
@@ -743,6 +836,7 @@ export function InfluencersClient({
           bookingAlertIds={bookingAlertIds}
           assigneesByInflu={assigneesByInflu}
           peopleById={peopleById}
+          roundsByPerson={roundsByPerson}
           today={today}
           deletingId={deletingId}
           canEdit={me.canEdit}
@@ -788,6 +882,7 @@ export function InfluencersClient({
         people={people}
         me={{ id: me.id, name: me.name }}
         actor={actor}
+        openRoundsByPerson={openRoundsByPerson}
         onServiceCreated={(sv) => setExtraServices((prev) => [...prev, sv])}
       />
 
