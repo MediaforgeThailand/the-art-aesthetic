@@ -1598,6 +1598,7 @@ export function InfluDetailClient({
             peopleById={peopleById}
             busyUserId={assigneeBusy}
             onAssigneeChange={(c) => void applyAssigneeChange(c)}
+            procedureItems={procedureItems}
           />
         )}
         {view === INFLU_STAGE.contractService && (
@@ -2719,7 +2720,6 @@ function CaseDetailStage({
                 unit={voucherUnit}
                 onChange={setVoucherCount}
                 disabled={readOnly}
-                itemsTotal={itemsTotal}
               />
             </div>
           </div>
@@ -2742,8 +2742,20 @@ function CaseDetailStage({
               <div className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 text-sm font-semibold text-stone-800">
                 {caseTotal > 0 ? formatCurrency(caseTotal) : "—"}
               </div>
-              <p className="mt-1 text-[11px] text-stone-400">
-                คำนวณให้เอง = วงเงิน voucher + ค่าตัว (ไม่รวมราคาสินค้า)
+              {/* ผู้ใช้ 2026-09-03: แสดงจำนวน voucher ที่กรอกไว้ตรงนี้ (ไม่ใช่ในตัวช่องกรอกเอง)
+                  พ่วงเตือนถ้าวงเงินเปิดน้อยกว่ามูลค่าสินค้าที่เลือกไว้ */}
+              <p className="mt-1 text-[11px] text-stone-500">
+                {voucherLabelOf({
+                  voucher_count: voucherCount,
+                  voucher_unit: voucherUnit,
+                }) ?? "ยังไม่เปิดวงเงิน voucher"}
+                {Number(talentFee) > 0 &&
+                  ` + ค่าตัว ${formatCurrency(Number(talentFee))}`}
+                {voucherCredit > 0 && itemsTotal > voucherCredit && (
+                  <span className="ml-1 font-medium text-amber-700">
+                    (น้อยกว่ามูลค่าสินค้าที่เลือกไว้ {formatCurrency(itemsTotal)})
+                  </span>
+                )}
               </p>
             </div>
             <div>

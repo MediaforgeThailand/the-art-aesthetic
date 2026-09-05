@@ -31,6 +31,7 @@ import {
   INFLU_VOUCHER_UNIT,
   procedureSummaryText,
   voucherCreditOf,
+  voucherLabelOf,
 } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
@@ -564,6 +565,13 @@ export function NewCaseModal({
               />
             </div>
           </div>
+          {/* วงเงิน voucher (0106) — เปิดตั้งแต่สร้างนัดได้เลย หรือเว้นไว้เติมทีหลัง */}
+          <VoucherPicker
+            count={voucherCount}
+            unit={INFLU_VOUCHER_UNIT}
+            onChange={setVoucherCount}
+            disabled={saving}
+          />
           <div>
             <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
             <Input
@@ -580,29 +588,33 @@ export function NewCaseModal({
             {(() => {
               // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert (วงเงิน + ค่าตัว)
               const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
-              const total =
-                voucherCreditOf({
-                  voucher_count: voucherCount,
-                  voucher_unit: INFLU_VOUCHER_UNIT,
-                }) + fee;
+              const credit = voucherCreditOf({
+                voucher_count: voucherCount,
+                voucher_unit: INFLU_VOUCHER_UNIT,
+              });
+              const total = credit + fee;
+              // ผู้ใช้ 2026-09-03: เตือนถ้าวงเงินที่เปิดน้อยกว่ามูลค่าสินค้าที่เลือกไว้
+              const itemsTotal = procedures.reduce(
+                (sum, p) => sum + (Number(p.price) || 0),
+                0
+              );
               return total > 0 ? (
                 <p className="mt-1.5 text-xs font-medium text-brand-700">
-                  มูลค่าเคสรวม {formatCurrency(total)} (วงเงิน voucher + ค่าตัว)
+                  มูลค่าเคสรวม {formatCurrency(total)} (
+                  {voucherLabelOf({
+                    voucher_count: voucherCount,
+                    voucher_unit: INFLU_VOUCHER_UNIT,
+                  }) ?? "ยังไม่เปิดวงเงิน voucher"}
+                  {fee > 0 && ` + ค่าตัว ${formatCurrency(fee)}`})
+                  {credit > 0 && itemsTotal > credit && (
+                    <span className="ml-1 font-normal text-amber-700">
+                      (น้อยกว่ามูลค่าสินค้าที่เลือกไว้ {formatCurrency(itemsTotal)})
+                    </span>
+                  )}
                 </p>
               ) : null;
             })()}
           </div>
-          {/* วงเงิน voucher (0106) — เปิดตั้งแต่สร้างนัดได้เลย หรือเว้นไว้เติมทีหลัง */}
-          <VoucherPicker
-            count={voucherCount}
-            unit={INFLU_VOUCHER_UNIT}
-            onChange={setVoucherCount}
-            disabled={saving}
-            itemsTotal={procedures.reduce(
-              (sum, p) => sum + (Number(p.price) || 0),
-              0
-            )}
-          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>

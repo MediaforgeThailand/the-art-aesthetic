@@ -48,7 +48,11 @@ import {
   voucherLabelOf,
 } from "@/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluencerRow, InfluSignatureRow } from "@/lib/types";
+import type {
+  InfluencerRow,
+  InfluProcedureItemRow,
+  InfluSignatureRow,
+} from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import {
   type AssigneeChange,
@@ -196,6 +200,10 @@ export function MemoStage({
   peopleById: Map<string, InfluPerson>;
   onAssigneeChange: (change: AssigneeChange) => void;
   busyUserId: string | null;
+  /** โปรแกรม/หัตถการของเคส (0106) — ใช้เช็คว่ามีรายการไหนติ๊ก "แบรนด์ support" ไว้บ้าง
+      จะได้ใส่หมายเหตุกำกับใน Memo (มูลค่าที่ขออนุมัติเป็นวงเงิน voucher ไม่รวมราคาสินค้า
+      อยู่แล้ว แต่ผู้อนุมัติควรรู้ว่ารายการไหนของแถมจากแบรนด์) */
+  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported">[];
 }) {
   // โหมดแบบฟอร์มดิจิทัล (MemoFormStage) เก็บโค้ดไว้แต่ยังไม่เปิดใช้ — Coming soon
   const [mode] = useState<"copy" | "form">("copy");
@@ -373,6 +381,7 @@ function MemoCopyStage({
   peopleById,
   onAssigneeChange,
   busyUserId,
+  procedureItems,
 }: {
   influencer: InfluencerRow;
   signatures: InfluSignatureRow[];
@@ -386,6 +395,7 @@ function MemoCopyStage({
   peopleById: Map<string, InfluPerson>;
   onAssigneeChange: (change: AssigneeChange) => void;
   busyUserId: string | null;
+  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported">[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -504,6 +514,16 @@ function MemoCopyStage({
   const subjectText = `ขออนุมัติเคสทางการตลาด ${nameWithNick}`;
   /** "Voucher 10,000 × 5 = 50,000 บาท" — null = ยังไม่เปิดวงเงิน (บรรทัดนี้หายไปจาก Memo) */
   const voucherText = voucherLabelOf(influencer);
+  /** รายการที่ติ๊ก "แบรนด์ support" ไว้ (0106, ผู้ใช้ 2026-09-03) — มูลค่าที่ขออนุมัติ
+      เป็นวงเงิน voucher ไม่รวมราคาสินค้าอยู่แล้ว แต่ผู้อนุมัติควรรู้ว่ารายการไหน
+      เป็นของที่แบรนด์ส่งมาให้ ไม่ใช่ของที่บริษัทออกค่าใช้จ่ายเอง */
+  const supportedItems = procedureItems.filter((i) => i.is_supported);
+  const supportNote =
+    supportedItems.length > 0
+      ? `แบรนด์ support ${supportedItems.length} รายการ (ไม่คิดต้นทุน) — ${supportedItems
+          .map((i) => i.name)
+          .join(", ")}`
+      : null;
   const tierText = influencer.tier
     ? `${INFLU_TIERS[influencer.tier].label} (${INFLU_TIERS[influencer.tier].range})`
     : "-";
@@ -516,6 +536,7 @@ function MemoCopyStage({
       influencer.procedure_text ||
       (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")
     }`,
+    ...(supportNote ? [`หมายเหตุ : ${supportNote}`] : []),
     /* มูลค่าในเอกสารมาจาก **วงเงิน voucher + ค่าตัว** เท่านั้น (ผู้ใช้ 2026-09-03)
        — ราคาของสินค้าที่กดเลือกห้ามโผล่ในเอกสารที่ส่งขออนุมัติ (ยังดูได้ในระบบที่
        แท็บรายละเอียดเคส/หน้าต้นทุน) */
