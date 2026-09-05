@@ -13,7 +13,13 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { Modal } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
@@ -118,6 +124,35 @@ export function ReviewViewer({
     },
     [count]
   );
+
+  // ปาดนิ้วซ้าย-ขวาบนตัวเล่น (จอเล็ก) เปลี่ยนไฟล์ — เก็บจุดเริ่มไว้ใน ref กันรีเรนเดอร์ทุกจุดสัมผัส
+  const touchStartXRef = useRef<number | null>(null);
+  const onMediaTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  }, []);
+  const onMediaTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      const startX = touchStartXRef.current;
+      touchStartXRef.current = null;
+      if (startX === null || count <= 1) return;
+      const endX = e.changedTouches[0]?.clientX ?? startX;
+      const delta = endX - startX;
+      const SWIPE_THRESHOLD = 40;
+      if (delta > SWIPE_THRESHOLD) go(-1);
+      else if (delta < -SWIPE_THRESHOLD) go(1);
+    },
+    [count, go]
+  );
+
+  // แถบ thumbnail จอเล็ก — เลื่อนตามให้รูปที่เลือกอยู่เห็นเสมอ (สลับด้วยปาดนิ้ว/ลูกศร)
+  const thumbRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    thumbRowRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-thumb-index="${Math.min(index, count - 1)}"]`
+      )
+      ?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [index, count]);
 
   // เมนู @mention ของช่องแชทเปิดอยู่หรือเปล่า — listener นี้เป็น capture phase
   // ถ้า stopPropagation ตอนเมนูเปิด Esc ของ ChatComposer (ตัวที่ปิดเมนู) จะไม่มีวันทำงาน
@@ -342,8 +377,12 @@ export function ReviewViewer({
             className="fixed inset-0 z-[70] bg-black/95 animate-fade-in pt-safe"
           >
         <div className="relative h-full w-full">
-          {/* ---------- วิดีโอ/กราฟิก เต็มจอ ---------- */}
-          <div className="absolute inset-0 z-0 flex items-center justify-center">
+          {/* ---------- วิดีโอ/กราฟิก เต็มจอ — ปาดซ้าย/ขวาเปลี่ยนไฟล์ได้ ---------- */}
+          <div
+            className="absolute inset-0 z-0 flex items-center justify-center"
+            onTouchStart={onMediaTouchStart}
+            onTouchEnd={onMediaTouchEnd}
+          >
             {count > 1 && (
               <button
                 type="button"
@@ -373,24 +412,50 @@ export function ReviewViewer({
             )}
           </div>
 
-          {/* ---------- แถบบนลอยทับ: ชื่องาน + ปิด ---------- */}
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/75 via-black/25 to-transparent px-4 pb-8 pt-3 text-white">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{task.title}</p>
-              {count > 1 && (
-                <p className="text-xs text-white/60">
-                  {Math.min(index, count - 1) + 1} / {count}
-                </p>
-              )}
+          {/* ---------- แถบบนลอยทับ: ชื่องาน + ปิด + thumbnail (มีหลายไฟล์) ---------- */}
+          <div className="absolute inset-x-0 top-0 z-10 flex flex-col gap-2 bg-gradient-to-b from-black/75 via-black/30 to-transparent px-4 pb-6 pt-3 text-white">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{task.title}</p>
+                {count > 1 && (
+                  <p className="text-xs text-white/60">
+                    {Math.min(index, count - 1) + 1} / {count} ไฟล์
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="ปิดหน้าตรวจงาน"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 transition-colors active:scale-90"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="ปิดหน้าตรวจงาน"
-              className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 transition-colors active:scale-90"
-            >
-              <X size={20} />
-            </button>
+            {/* งานนี้มีหลายไฟล์ — โชว์ thumbnail ให้เห็นชัดว่ามีหลายรูป/คลิป กดข้ามหรือปาดที่วิดีโอก็ได้ */}
+            {count > 1 && (
+              <div
+                ref={thumbRowRef}
+                className="flex items-center gap-2 overflow-x-auto pb-0.5"
+              >
+                {files.map((it, i) => (
+                  <button
+                    key={`${it.file_path}-${i}`}
+                    type="button"
+                    data-thumb-index={i}
+                    onClick={() => setIndex(i)}
+                    aria-label={`ไฟล์ที่ ${i + 1}`}
+                    className={`h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 transition-all ${
+                      i === Math.min(index, count - 1)
+                        ? "border-white opacity-100"
+                        : "border-white/25 opacity-60"
+                    }`}
+                  >
+                    <ThumbPreview item={it} />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ---------- แถบล่างลอยทับ: อนุมัติ/ตีกลับ + ปุ่มเปิดแชท + เพิ่มเติม ---------- */}
