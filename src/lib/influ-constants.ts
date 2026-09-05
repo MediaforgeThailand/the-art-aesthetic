@@ -414,6 +414,43 @@ export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
   },
 ];
 
+/* ---------- เคสที่ยังไม่ได้ลงคิวหมอ (คิว "เข้ารับบริการ" ในปฏิทิน) ----------
+   คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
+   influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
+   ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
+   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
+   helper อยู่ที่นี่ (ไม่ใช่ใน influ-board.tsx) เพราะใช้ทั้งบอร์ดเคส ปฏิทิน และกระดิ่ง —
+   ปฏิทินไม่ควรลาก dnd-kit ของบอร์ดติดมาแค่เพื่อฟังก์ชันเดียว */
+
+/** ฟิลด์ขั้นต่ำที่ใช้ตัดสิน — รับได้ทั้งแถวเต็ม (InfluencerListRow) และแถวย่อ (ปฏิทิน/กระดิ่ง) */
+export type BookingCheckCase = {
+  id: string;
+  stage: number;
+  completed: boolean;
+  declined_at: string | null;
+};
+
+/** "รอลงคิวหมอ" — เคสที่ยังเดินอยู่ในขั้น Memo–สัญญา และยังไม่มีคิว service ในปฏิทิน
+    (ครอบทุกขั้นย่อยของ Memo ด้วย — เคสที่ Memo ยังไม่ผ่านก็นับ เพราะทีมมักคุยวันกันไว้ก่อน) */
+export const needsDoctorBooking = (
+  i: BookingCheckCase,
+  bookedIds: ReadonlySet<string>
+): boolean =>
+  i.stage >= INFLU_STAGE.memo &&
+  i.stage <= INFLU_STAGE.contractService &&
+  !i.completed &&
+  i.declined_at === null &&
+  !bookedIds.has(i.id);
+
+/** "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" — subset ของ needsDoctorBooking ที่ **ผ่านขั้น 1.2 แล้ว**
+    (อัพไฟล์ Memo ที่อนุมัติ = เลื่อนเข้าขั้นสัญญาอัตโนมัติ จึงเช็คที่เลข stage ได้เลย)
+    ผู้ใช้ 2026-09-02: ปุ่มแจ้งเตือนท้ายแผงขวาของปฏิทิน + ตัวกรองบนบอร์ดเคสใช้เกณฑ์นี้ */
+export const memoApprovedNeedsBooking = (
+  i: BookingCheckCase,
+  bookedIds: ReadonlySet<string>
+): boolean =>
+  needsDoctorBooking(i, bookedIds) && i.stage >= INFLU_STAGE.contractService;
+
 /* ---------- บทบาทผู้รับผิดชอบของเคส (0095 → รื้อเป็นบทบาทที่ 0104) ----------
    ผู้ใช้ 2026-09-01: "ปรับ design ใหม่เป็น check list เช่น 1.ผู้ดูแล คือคนหลักที่เป็นคน
    สร้างแต่ติดตามเคสนี้จนถึงเซนสัญญา 2.ผู้ติดตาม จะเป็นคนทำสัญญาไปจนถึงการ follow up
@@ -1115,6 +1152,62 @@ export const FOLLOWUP_TEMPLATE: {
       "สรุปผลแคมเปญคุณ{ชื่อเล่น}: ยอดรวม, ลูกค้าที่เข้ามาจากโค้ด/ลิงก์, ความคุ้มค่า และเสนอว่าควรต่อสัญญา/ชวนร่วม campaign ถัดไปหรือไม่",
   },
 ];
+
+/* ---------- เปิดวงเงินด้วย voucher (migration 0106, ผู้ใช้ 2026-09-03) ----------
+   "หลังจากนี้จะเป็นรูปแบบการเปิดวงเงินแต่จะไม่ใช่จำนวนเงินเลย ... เพิ่มจำนวน voucher ราคา 10k
+    ซึ่งมี item ในระบบใหญ่อยู่แล้ว และให้คนกรอกกดเลือกว่าเปิดวงเงินเท่าไหร่ เช่น 50k
+    ก็จะเป็น voucher 10k * 5 แต่ก็จะยังมีให้กดเลือกสินค้าเหมือนเดิม แต่ราคารวมที่แสดงนั้น
+    จะไม่ได้รวมจากราคาสินค้าแล้ว"
+
+   โมเดล: เคสถือ **จำนวนใบ** (voucher_count) กับ **ราคาต่อใบ ณ ตอนเปิด** (voucher_unit)
+   วงเงิน = count × unit — ไม่ใช่ตัวเลขเงินที่พิมพ์อิสระ เพราะปลายทางต้องออกเป็น voucher
+   จริงในระบบ POS ซึ่งมีเป็นใบละ 10,000 อยู่แล้ว
+
+   ⚠️ **ห้ามคำนวณวงเงินของเคสด้วย INFLU_VOUCHER_UNIT** — ให้อ่าน voucher_unit ของแถวเสมอ
+   (ค่าคงที่นี้ใช้เฉพาะตอน "เปิดวงเงินใหม่"); ถ้าวันหนึ่งราคาต่อใบเปลี่ยน เคสเก่าต้องยัง
+   อ่านได้ว่าเปิดวงเงินไว้เท่าไหร่จริง — บทเรียนเดียวกับที่ 0104 เปลี่ยนความหมาย
+   docs_sent_at แล้วข้อมูลเก่าถูกอ่านด้วยกติกาใหม่ */
+
+/** ราคาต่อ voucher 1 ใบ (บาท) — ค่าตั้งต้นของวงเงินที่ "เปิดใหม่" เท่านั้น */
+export const INFLU_VOUCHER_UNIT = 10000;
+
+/** วงเงินที่กดเลือกได้เร็วๆ (จำนวนใบ) — 1/2/3/5/10 ใบ = 10k/20k/30k/50k/100k
+    กรอกจำนวนใบเองก็ได้ ลิสต์นี้แค่ทางลัดของยอดที่ใช้บ่อย */
+export const INFLU_VOUCHER_PRESETS = [1, 2, 3, 5, 10];
+
+/** วงเงินของเคส (บาท) = จำนวนใบ × ราคาต่อใบของแถวนั้น — 0 = ยังไม่เปิดวงเงิน */
+export function voucherCreditOf(i: {
+  voucher_count: number;
+  voucher_unit: number;
+}): number {
+  const count = Number(i.voucher_count) || 0;
+  const unit = Number(i.voucher_unit) || 0;
+  return count > 0 && unit > 0 ? count * unit : 0;
+}
+
+/** มูลค่าเคสรวมที่ใช้ทุกที่ (การ์ด/ภาพรวม/Memo) = วงเงิน voucher + ค่าตัว
+    **ราคาสินค้าที่เลือกไม่เข้าสมการ** (ผู้ใช้ 2026-09-03) — null = ยังไม่มีมูลค่าอะไรเลย
+    เก็บผลลง influencers.case_value ตอนบันทึก เพื่อให้ query/หน้าอื่นอ่านค่าเดียวกันได้ */
+export function caseValueOf(i: {
+  voucher_count: number;
+  voucher_unit: number;
+  talent_fee: number | null;
+}): number | null {
+  const total = voucherCreditOf(i) + (Number(i.talent_fee) || 0);
+  return total > 0 ? total : null;
+}
+
+/** ป้ายอธิบายวงเงินแบบสั้น เช่น "Voucher 10,000 × 5 = 50,000 บาท" (0 ใบ = null)
+    ใช้ทั้งบนฟอร์มกรอกข้อมูลและในข้อความ Memo ที่ทีมคัดลอกไปลงเอกสารจริง */
+export function voucherLabelOf(i: {
+  voucher_count: number;
+  voucher_unit: number;
+}): string | null {
+  const credit = voucherCreditOf(i);
+  if (credit <= 0) return null;
+  const n = (v: number) => v.toLocaleString("en-US");
+  return `Voucher ${n(Number(i.voucher_unit))} × ${i.voucher_count} = ${n(credit)} บาท`;
+}
 
 /* ---------- Influencer Cost: ต้นทุนค่าบริการรายโปรแกรม (/influ-cost) ---------- */
 

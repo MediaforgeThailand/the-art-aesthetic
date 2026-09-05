@@ -17,10 +17,17 @@
 //   · แสดงเฉพาะ "คิวที่ลงในปฏิทินจริง" — การซ้อน influencers.service_date แบบอ่านอย่างเดียว
 //     (ชิป/แถว "จากเคส") ถูกถอดออกทั้งหมด
 //   · แถวคิวโชว์แค่ เวลา · ชื่อคนที่มา · แพทย์ (ชื่อหัตถการไปดูในโมดัลรายละเอียด)
-//   · เตือนเคสที่ "มาทำแล้วแต่เอกสารยังไม่เซน" — ดู unsignedContract
+//   · เตือนเคสที่ "มาทำแล้วแต่เอกสารยังไม่เซน" — ดู unsignedContract (เหลือเฉพาะในโมดัล)
+//
+// ปรับตามผู้ใช้ 2026-09-02 ("ระบบเราใช้กันหลายทีม"):
+//   · ตัวกรองมี "หัตถการ / ทีม product" — จากหัตถการของเคสที่ผูกกับคิว แต่ละทีมดูเฉพาะคิวของตัวเอง
+//     (ตัวกรอง "วันรับบริการจากเคส" ที่ค้างอยู่ทั้งที่ไม่มีผลแล้วตั้งแต่ 2026-08-29 ถูกถอดออก)
+//   · แบนเนอร์ "ถึงวันแล้วแต่ยังไม่มีไฟล์สัญญา" ถูกถอดออกจากหน้านี้ (ย้ายไปกระดิ่ง) — แทนที่ด้วย
+//     ปุ่มแจ้งเตือน "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" ท้ายแผงขวา กดแล้วพาไปบอร์ดเคสพร้อมตั้งตัวกรองให้
 
 import {
   AlertTriangle,
+  CalendarClock,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -39,6 +46,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FilterChip,
   FilterSection,
+  FilterSummary,
+  type FilterSummaryChip,
   InfluFilterButton,
   useInfluFilters,
 } from "@/components/influ-filter-panel";
@@ -56,6 +65,9 @@ import {
   calendarTimeLabel,
   INFLU_CALENDAR_KIND_ORDER,
   INFLU_CALENDAR_KINDS,
+  INFLU_PRODUCT_TEAM_ORDER,
+  INFLU_PRODUCT_TEAMS,
+  memoApprovedNeedsBooking,
   shortTime,
 } from "@/lib/influ-constants";
 import { logInflu } from "@/lib/influ-log";
@@ -66,24 +78,40 @@ import type {
   InfluCalendarEventRow,
   InfluCalendarKind,
   InfluencerRow,
+  InfluProductTeam,
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../influencers/doctor-select";
+import { CALENDAR_EVENT_SELECT } from "./calendar-query";
 
 /* ---------- types ที่หน้า server ส่งลงมา ---------- */
 
-/** คิวบนปฏิทิน + ชื่อ influencer ที่ join มา (คิวเก่าอาจผูกกับคนที่ถูก archive แล้ว)
-    `contract_file_path` มาด้วยเพื่อเตือนเคสที่มาทำแล้วแต่ยังไม่เซนสัญญา (unsignedContract) */
+/** คิวบนปฏิทิน + ข้อมูลเคสที่ join มา (คิวเก่าอาจผูกกับคนที่ถูก archive แล้ว)
+    `contract_file_path` = เตือนเคสที่มาทำแล้วแต่ยังไม่เซนสัญญา (unsignedContract ในโมดัล)
+    `procedures` = หัตถการของเคส (ชื่อ + ทีม product) สำหรับตัวกรอง "หัตถการ / ทีม" + ช่องค้นหา */
 export type CalendarEvent = InfluCalendarEventRow & {
-  influencer: Pick<
-    InfluencerRow,
-    "id" | "first_name" | "last_name" | "nickname" | "contract_file_path"
-  > | null;
+  influencer:
+    | (Pick<
+        InfluencerRow,
+        "id" | "first_name" | "last_name" | "nickname" | "contract_file_path"
+      > & {
+        procedures: { name: string; product_team: InfluProductTeam }[];
+      })
+    | null;
 };
 
-/** influencer สำหรับตัวเลือกในฟอร์มเพิ่ม/แก้คิว (doctor_name ใช้เติมแพทย์ให้อัตโนมัติ) */
+/** influencer สำหรับตัวเลือกในฟอร์มเพิ่ม/แก้คิว (doctor_name ใช้เติมแพทย์ให้อัตโนมัติ)
+    stage/completed/declined_at ใช้นับ "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" (memoApprovedNeedsBooking) */
 export type CalendarInflu = Pick<
   InfluencerRow,
-  "id" | "first_name" | "last_name" | "nickname" | "round_no" | "doctor_name"
+  | "id"
+  | "first_name"
+  | "last_name"
+  | "nickname"
+  | "round_no"
+  | "doctor_name"
+  | "stage"
+  | "completed"
+  | "declined_at"
 >;
 
 /* ---------- helper ระดับโมดูล ---------- */
@@ -132,9 +160,23 @@ const dateOf = (iso: string): Date => {
 /** ดัชนีคอลัมน์แบบจันทร์ = 0 … อาทิตย์ = 6 */
 const mondayIndex = (iso: string) => (dateOf(iso).getDay() + 6) % 7;
 
-/** join ชื่อ influ มาด้วยทุกครั้งที่ insert/update — state ฝั่งจอต้องมีชื่อไว้แสดงบนชิป */
-const EVENT_SELECT =
-  "*, influencer:influencers(id, first_name, last_name, nickname, contract_file_path)";
+/** join ข้อมูลเคสมาด้วยทุกครั้งที่ insert/update — state ฝั่งจอต้องมีชื่อ/หัตถการไว้แสดง+กรอง
+    (string อยู่ที่ calendar-query.ts เพราะ page.tsx ฝั่ง server ใช้ตัวเดียวกัน) */
+const EVENT_SELECT = CALENDAR_EVENT_SELECT;
+
+/** คีย์ตัวกรอง "หัตถการ / ทีม" — ทีม product ของหัตถการในเคส หรือ "none" = คิวทั่วไป/เคสยังไม่ระบุหัตถการ */
+type CalendarTeamKey = InfluProductTeam | "none";
+
+/** ทีม product ทั้งหมดที่คิวนี้เกี่ยวข้อง (เคสหนึ่งมีหลายหัตถการต่างทีมได้ — โผล่ทุกทีมที่ติด) */
+const teamsOf = (e: CalendarEvent): CalendarTeamKey[] => {
+  const procs = e.influencer?.procedures ?? [];
+  if (procs.length === 0) return ["none"];
+  return [...new Set(procs.map((p) => p.product_team))];
+};
+
+/** ชื่อหัตถการของเคสที่ผูกกับคิว — ใส่ใน haystack ของช่องค้นหา (พิมพ์ "จมูก" แล้วเจอคิวของเคสนั้น) */
+const procedureNamesOf = (e: CalendarEvent): string =>
+  (e.influencer?.procedures ?? []).map((p) => p.name).join(" ");
 
 const nameOf = (
   i: Pick<InfluencerRow, "first_name" | "last_name" | "nickname"> | null
@@ -274,28 +316,74 @@ const formOf = (e: CalendarEvent): FormState => ({
    ใช้ร่วม 2 ที่: แถว inline ใต้ toolbar (จอ ≥sm) และ bottom sheet บนมือถือ —
    แยกเป็น component ระดับโมดูล กัน logic ตัวกรองแตกเป็นสองสำเนา */
 
-/** ตัวกรองของปฏิทิน — เก็บ hiddenKinds เป็น array (ต้อง JSON.stringify ลง localStorage) */
+/** ตัวกรองของปฏิทิน — เก็บเป็น array (ต้อง JSON.stringify ลง localStorage)
+    ค่าที่บันทึกไว้ก่อน 2026-09-02 อาจมีคีย์ `showServiceDates` ค้างอยู่ — ไม่มีผลอะไร
+    (useInfluFilters เติมค่าโรงงานให้คีย์ที่ขาด ส่วนคีย์เกินถูกเมิน) */
 export type CalendarFilters = {
   hiddenKinds: InfluCalendarKind[];
   /** ชื่อแพทย์ ("" = ทุกคน) */
   doctor: string;
+  /** ทีม product ของหัตถการในเคสที่ผูกกับคิว (ว่าง = ทุกทีม) — ระบบใช้หลายทีม
+      แต่ละทีมเลือกดูเฉพาะคิวของตัวเอง (ผู้ใช้ 2026-09-02) */
+  teams: CalendarTeamKey[];
 };
 
 export const DEFAULT_CALENDAR_FILTERS: CalendarFilters = {
   hiddenKinds: [],
   doctor: "",
+  teams: [],
 };
+
+/** ชิปสรุปตัวกรองที่เปิดอยู่ — โชว์ใต้แถบเครื่องมือเสมอ ปลดทีละอันได้ (กติกาทุกหน้าในระบบ) */
+function calendarFilterChips(
+  f: CalendarFilters
+): FilterSummaryChip<CalendarFilters>[] {
+  const out: FilterSummaryChip<CalendarFilters>[] = [];
+  if (f.hiddenKinds.length) {
+    out.push({
+      key: "kinds",
+      label: `ซ่อน: ${f.hiddenKinds
+        .map((k) => INFLU_CALENDAR_KINDS[k].short)
+        .join(", ")}`,
+      next: { ...f, hiddenKinds: [] },
+    });
+  }
+  if (f.teams.length) {
+    out.push({
+      key: "teams",
+      label: `หัตถการ: ${f.teams
+        .map((t) => (t === "none" ? "ไม่ระบุ" : INFLU_PRODUCT_TEAMS[t].label))
+        .join(", ")}`,
+      next: { ...f, teams: [] },
+    });
+  }
+  if (f.doctor) {
+    out.push({
+      key: "doctor",
+      label: `แพทย์: ${f.doctor}`,
+      next: { ...f, doctor: "" },
+    });
+  }
+  return out;
+}
 
 /** ตัวกรองของปฏิทิน — เนื้อในแผงลอย (shell ใช้ InfluFilterButton ของกลาง) */
 function CalendarFilterSections({
   hiddenKinds,
   onToggleKind,
+  teams,
+  teamCounts,
+  onToggleTeam,
   doctorOptions,
   doctorFilter,
   onDoctorFilter,
 }: {
   hiddenKinds: Set<InfluCalendarKind>;
   onToggleKind: (kind: InfluCalendarKind) => void;
+  teams: CalendarTeamKey[];
+  /** จำนวนคิวต่อทีม (นับจากคิวทั้งหมด ไม่ผูกตัวกรอง — เทียบยอดข้ามทีมได้เสมอ) */
+  teamCounts: Map<CalendarTeamKey, number>;
+  onToggleTeam: (team: CalendarTeamKey) => void;
   doctorOptions: string[];
   doctorFilter: string;
   onDoctorFilter: (name: string) => void;
@@ -316,6 +404,37 @@ function CalendarFilterSections({
               </FilterChip>
             );
           })}
+        </div>
+      </FilterSection>
+
+      {/* ระบบใช้หลายทีม — ทีมที่คิวเกี่ยวข้องอ่านจากหัตถการของเคส (influ_procedure_items.product_team)
+          เลือกได้หลายทีม · ไม่เลือก = ทุกทีม */}
+      <FilterSection
+        title="หัตถการ / ทีม product"
+        hint="ดูจากหัตถการของเคสที่ผูกกับคิว — ไม่เลือก = ทุกทีม · “ไม่ระบุ” = คิวทั่วไป หรือเคสที่ยังไม่ระบุหัตถการ"
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {INFLU_PRODUCT_TEAM_ORDER.map((t) => (
+            <FilterChip
+              key={t}
+              active={teams.includes(t)}
+              onClick={() => onToggleTeam(t)}
+            >
+              {INFLU_PRODUCT_TEAMS[t].label}
+              <span className="tabular-nums text-stone-400">
+                {teamCounts.get(t) ?? 0}
+              </span>
+            </FilterChip>
+          ))}
+          <FilterChip
+            active={teams.includes("none")}
+            onClick={() => onToggleTeam("none")}
+          >
+            ไม่ระบุ / คิวทั่วไป
+            <span className="tabular-nums text-stone-400">
+              {teamCounts.get("none") ?? 0}
+            </span>
+          </FilterChip>
         </div>
       </FilterSection>
 
@@ -402,7 +521,6 @@ function DayCard({
         ) : (
           events.map((ev) => {
             const label = nameOf(ev.influencer) || ev.title;
-            const warn = unsignedContract(ev, today);
             return (
               // แถวคิว = 2 ปุ่มเรียงกัน (ห้ามซ้อน button ใน button) — ปุ่มหลักเปิดรายละเอียด
               // ปุ่มขวาติ๊กเสร็จ/ยังไม่เสร็จได้จากลิสต์เลย
@@ -441,19 +559,12 @@ function DayCard({
                         {label}
                       </span>
                     </span>
-                    {(ev.doctor_name || warn) && (
+                    {ev.doctor_name && (
                       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {ev.doctor_name && (
-                          <DoctorNameChip
-                            name={ev.doctor_name}
-                            doctors={doctors}
-                          />
-                        )}
-                        {warn && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
-                            <AlertTriangle size={11} /> ยังไม่เซนสัญญา
-                          </span>
-                        )}
+                        <DoctorNameChip
+                          name={ev.doctor_name}
+                          doctors={doctors}
+                        />
                       </span>
                     )}
                   </span>
@@ -884,6 +995,53 @@ function EventFormModal({
   );
 }
 
+/* ---------- ปุ่มแจ้งเตือน "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" (ท้ายแผงขวา) ----------
+   ผู้ใช้ 2026-09-02: แบนเนอร์ "ถึงวันแล้วแต่ยังไม่มีไฟล์สัญญา" ไม่จำเป็นต้องอยู่หน้านี้ —
+   ให้เป็นปุ่มแจ้งเตือนท้ายแผงขวาแทน กดแล้วพาไปบอร์ดเคสพร้อมตั้งตัวกรองให้อัตโนมัติ
+   (deep link `?filter=needbooking_approved` → boardSeedFromParam ในบอร์ด)
+   เกณฑ์ = memoApprovedNeedsBooking: ผ่านขั้น 1.2 (อัพไฟล์ Memo ที่อนุมัติ) แล้วแต่ยังไม่มีคิว
+   "เข้ารับบริการ" ในปฏิทิน — ตัวเลขตรงกับชิปตัวกรอง "เอกสารผ่านแล้ว ยังไม่ลงคิว" บนบอร์ด */
+function PendingBookingNotice({ cases }: { cases: CalendarInflu[] }) {
+  const n = cases.length;
+  if (n === 0) {
+    return (
+      <p className="mt-auto flex items-center gap-1.5 rounded-2xl border border-stone-200/80 bg-white/60 px-3.5 py-2.5 text-xs text-stone-500">
+        <Check size={13} className="shrink-0 text-emerald-500" />
+        เคสที่เอกสารผ่านแล้วลงคิวครบทุกเคส
+      </p>
+    );
+  }
+  const names = cases
+    .slice(0, 3)
+    .map((c) => nickOf(c) || nameOf(c))
+    .join(" · ");
+  return (
+    <Link
+      href="/influencers?filter=needbooking_approved"
+      className="mt-auto flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-amber-900 shadow-sm transition-colors hover:bg-amber-100 active:scale-[0.99] max-sm:min-h-14"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-200/80 text-amber-800">
+        <CalendarClock size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold">
+          เอกสารผ่านแล้วแต่ยังไม่ลงคิว
+          <span className="rounded-full bg-amber-600 px-2 py-0.5 text-xs font-bold tabular-nums text-white">
+            {n} เคส
+          </span>
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-amber-800/80">
+          {names}
+          {n > 3 ? ` +${n - 3}` : ""}
+        </span>
+        <span className="mt-1 flex items-center gap-0.5 text-[11px] font-medium text-amber-700">
+          ดูในเคสดำเนินงาน <ChevronRight size={12} />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
 /* ---------- หน้าหลัก ---------- */
 
 export function CalendarClient({
@@ -929,7 +1087,7 @@ export function CalendarClient({
     userId: userId,
     factory: DEFAULT_CALENDAR_FILTERS,
   });
-  const { doctor: doctorFilter } = filterApi.filters;
+  const { doctor: doctorFilter, teams: teamFilter } = filterApi.filters;
   const hiddenKinds = useMemo<Set<InfluCalendarKind>>(
     () => new Set(filterApi.filters.hiddenKinds),
     [filterApi.filters.hiddenKinds]
@@ -946,22 +1104,34 @@ export function CalendarClient({
     return [...set].sort((a, b) => a.localeCompare(b, "th"));
   }, [doctors, events, influencers]);
 
-  /* ---- กรองคิวตามคำค้น + ประเภท + แพทย์ ---- */
+  /* ---- กรองคิวตามคำค้น + ประเภท + ทีม/หัตถการ + แพทย์ ---- */
   const visibleEvents = useMemo(() => {
     const q = search.trim().toLowerCase();
     return events.filter((e) => {
       if (hiddenKinds.has(e.kind)) return false;
       if (doctorFilter && e.doctor_name !== doctorFilter) return false;
+      // เลือกทีมแล้ว = โชว์เฉพาะคิวที่เคสมีหัตถการของทีมนั้น (เคสหลายหัตถการต่างทีม = ผ่านทุกทีมที่ติด)
+      if (teamFilter.length && !teamsOf(e).some((t) => teamFilter.includes(t)))
+        return false;
       if (q === "") return true;
       return (
         e.title.toLowerCase().includes(q) ||
         nameOf(e.influencer).toLowerCase().includes(q) ||
+        procedureNamesOf(e).toLowerCase().includes(q) ||
         (e.doctor_name ?? "").toLowerCase().includes(q) ||
         (e.location ?? "").toLowerCase().includes(q) ||
         (e.note ?? "").toLowerCase().includes(q)
       );
     });
-  }, [events, search, hiddenKinds, doctorFilter]);
+  }, [events, search, hiddenKinds, doctorFilter, teamFilter]);
+
+  /** จำนวนคิวต่อทีม — นับจากคิวทั้งหมด (ไม่ผูกตัวกรอง) ให้เทียบยอดข้ามทีมในแผงได้เสมอ */
+  const teamCounts = useMemo(() => {
+    const m = new Map<CalendarTeamKey, number>();
+    for (const e of events)
+      for (const t of teamsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    return m;
+  }, [events]);
 
   /** คิวของแต่ละวัน เรียงตามเวลา — ปฏิทินแสดงเฉพาะคิวที่ถูกลงในปฏิทินจริง
       (การซ้อน influencers.service_date แบบอ่านอย่างเดียวถูกถอดออก 2026-08-29) */
@@ -978,15 +1148,17 @@ export function CalendarClient({
 
   const eventsOf = (iso: string) => eventsByDate.get(iso) ?? [];
 
-  /** คิวที่ "มาทำแล้วแต่ยังไม่เซนสัญญา" — คิดจากคิวทั้งหมด ไม่ผูกตัวกรอง
+  /** เคสที่ "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" — ปุ่มแจ้งเตือนท้ายแผงขวา
+      คิดจากคิวทั้งหมด (state `events` — ลงคิวเพิ่มแล้วตัวเลขลดทันที) ไม่ผูกตัวกรอง/ค้นหา
       (สัญญาณเตือนต้องเห็นครบเสมอ กติกาเดียวกับป้าย "รอลงคิวหมอ" บนบอร์ดเคส) */
-  const unsignedQueues = useMemo(
-    () =>
+  const pendingBooking = useMemo(() => {
+    const booked = new Set(
       events
-        .filter((e) => unsignedContract(e, today))
-        .sort((a, b) => b.event_date.localeCompare(a.event_date)),
-    [events, today]
-  );
+        .filter((e) => e.kind === "service" && e.influencer_id !== null)
+        .map((e) => e.influencer_id as string)
+    );
+    return influencers.filter((i) => memoApprovedNeedsBooking(i, booked));
+  }, [events, influencers]);
 
   const monthMode = view === "month";
   const cells = useMemo(() => monthCells(selected), [selected]);
@@ -1031,6 +1203,13 @@ export function CalendarClient({
       hiddenKinds: hiddenKinds.has(kind)
         ? filterApi.filters.hiddenKinds.filter((k: InfluCalendarKind) => k !== kind)
         : [...filterApi.filters.hiddenKinds, kind],
+    });
+
+  const toggleTeam = (team: CalendarTeamKey) =>
+    filterApi.patch({
+      teams: teamFilter.includes(team)
+        ? teamFilter.filter((t) => t !== team)
+        : [...teamFilter, team],
     });
 
   /* ---- บันทึกคิว (เพิ่ม/แก้) ---- */
@@ -1207,10 +1386,12 @@ export function CalendarClient({
     router.refresh();
   };
 
-  /** จำนวนกลุ่มตัวกรองที่เปิดอยู่ — เลขบนปุ่ม "ตัวกรอง" */
-  const filterCount =
-    (hiddenKinds.size > 0 ? 1 : 0) +
-    (doctorFilter !== "" ? 1 : 0);
+  /** ชิปสรุปตัวกรองที่เปิดอยู่ (ใต้แถบเครื่องมือ) — จำนวนชิป = เลขบนปุ่ม "ตัวกรอง" */
+  const filterChips = useMemo(
+    () => calendarFilterChips(filterApi.filters),
+    [filterApi.filters]
+  );
+  const filterCount = filterChips.length;
 
   const detailEvent = detail
     ? (events.find((e) => e.id === detail) ?? null)
@@ -1230,36 +1411,9 @@ export function CalendarClient({
           {actionError}
         </div>
       )}
-      {/* เตือนเคสที่มาทำแล้วแต่เอกสารยังไม่เซน — เกิดนานๆ ครั้ง จึงไม่ค่อยโผล่
-          กดชิปแล้วเด้งไปที่คิวนั้นเลย (เลือกวัน + เปิดโมดัลรายละเอียด) */}
-      {unsignedQueues.length > 0 && (
-        <div className="mb-2.5 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 animate-fade-in">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
-            <AlertTriangle size={15} className="shrink-0" />
-            มีคิวรับบริการที่ถึงวันแล้วแต่เคสยังไม่มีไฟล์สัญญาที่เซน{" "}
-            {unsignedQueues.length} คิว
-          </p>
-          {/* จำกัดความสูง — จอ ≥lg หน้านี้ห้ามมี scroll แนวตั้ง (แบนเนอร์โตไม่ได้) */}
-          <div className="mt-1.5 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
-            {unsignedQueues.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => {
-                  setSelected(e.event_date);
-                  setDetail(e.id);
-                }}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 max-sm:min-h-10"
-              >
-                {nameOf(e.influencer) || e.title}
-                <span className="text-amber-600 tabular-nums">
-                  {formatDate(e.event_date)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* แบนเนอร์ "มาทำแล้วแต่ยังไม่มีไฟล์สัญญา" ถูกถอดออกจากหน้านี้ (ผู้ใช้ 2026-09-02) —
+          สัญญาณนั้นอยู่ในกระดิ่ง (influ-notification-bell) + กล่องในโมดัลรายละเอียดคิว
+          ห้ามเพิ่มแบนเนอร์เตือนบนหน้ากลับมา (กติกาทั้งระบบตั้งแต่ 0095) */}
       {!canEdit && (
         <div className="mb-3 shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-600">
           บัญชีนี้เป็นระดับ &ldquo;Viewer&rdquo; — เปิดดูคิวได้ทั้งหมด แต่เพิ่ม/แก้/ลบคิวไม่ได้
@@ -1310,6 +1464,9 @@ export function CalendarClient({
           <CalendarFilterSections
             hiddenKinds={hiddenKinds}
             onToggleKind={toggleKind}
+            teams={teamFilter}
+            teamCounts={teamCounts}
+            onToggleTeam={toggleTeam}
             doctorOptions={doctorOptions}
             doctorFilter={doctorFilter}
             onDoctorFilter={(doctor) => filterApi.patch({ doctor })}
@@ -1324,6 +1481,16 @@ export function CalendarClient({
             <span className="max-sm:sr-only">เพิ่มคิว</span>
           </Button>
         )}
+      </div>
+
+      {/* ชิปสรุป — ตัวกรองที่ซ่อนอยู่ในแผงต้องเห็นได้เสมอว่ากำลังกรองอะไร (ไม่งั้นคนคิดว่าคิวหาย)
+          หน้าจอ ≥lg ห้ามมี scroll แนวตั้ง — แถวนี้ shrink-0 แล้วปฏิทินหดให้เอง */}
+      <div className="shrink-0 [&>div]:mb-2.5">
+        <FilterSummary
+          chips={filterChips}
+          onChange={filterApi.setFilters}
+          onClear={() => filterApi.setFilters(DEFAULT_CALENDAR_FILTERS)}
+        />
       </div>
 
       {/* ---- ปฏิทิน (ซ้าย) + การ์ดคิวรายวัน (ขวา บนจอ ≥lg / ใต้ปฏิทินบนจอเล็ก) ----
@@ -1482,13 +1649,6 @@ export function CalendarClient({
                           <span className="min-w-0 flex-1 truncate">
                             {nickOf(ev.influencer) || ev.title}
                           </span>
-                          {/* เตือนเคสที่มาทำแล้วแต่ยังไม่มีไฟล์สัญญา */}
-                          {unsignedContract(ev, today) && (
-                            <AlertTriangle
-                              size={10}
-                              className="shrink-0 text-amber-600"
-                            />
-                          )}
                         </span>
                       ))}
                       {hidden > 0 && (
@@ -1507,7 +1667,8 @@ export function CalendarClient({
         {/* ---------------- การ์ดคิวของ "วันที่เลือก" ----------------
             ผู้ใช้ 2026-08-29: ให้เหลือการ์ดของวันที่เลือกใบเดียว (เดิมมี "คิวถัดไป" อีก 4 ใบ
             และโหมดสัปดาห์กาง 7 ใบ) — อยากดูวันอื่นให้กดวันบนปฏิทิน ทั้ง 2 โหมดจึงใช้ก้อนนี้ร่วมกัน */}
-        <section className="mt-4 space-y-2.5 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:pr-0.5">
+        {/* flex-col ให้ปุ่มแจ้งเตือนท้ายแผง (mt-auto) ดันไปชิดล่างสุดเมื่อคอลัมน์ยังมีที่เหลือ */}
+        <section className="mt-4 flex flex-col gap-2.5 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:pr-0.5">
           <div className="flex flex-wrap items-baseline gap-x-2 px-1">
             <h3 className="text-sm font-semibold tracking-wide text-brand-700">
               {selected === today ? "วันนี้" : "วันที่เลือก"}
@@ -1541,6 +1702,9 @@ export function CalendarClient({
             onToggleDone={(e) => void toggleDone(e)}
             onAdd={() => openForm()}
           />
+
+          {/* ล่างสุดของแผงขวา — ปุ่มแจ้งเตือนเคสที่เอกสารผ่านแล้วแต่ยังไม่ลงคิว (ผู้ใช้ 2026-09-02) */}
+          <PendingBookingNotice cases={pendingBooking} />
         </section>
       </div>
 

@@ -453,11 +453,6 @@ export function ChatMessages({ chat }: { chat: TaskChat }) {
           mentionNames={mentionNames}
         />
       ))}
-      {comments !== null && comments.length === 0 && (
-        <p className="py-2 text-center text-xs text-stone-400">
-          ยังไม่มีข้อความ — เริ่มคุยเรื่องงานนี้ได้เลย
-        </p>
-      )}
     </div>
   );
 }
@@ -556,7 +551,6 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           ref={commentInputRef}
           value={commentDraft}
           rows={commentDraft.includes("\n") ? 3 : 1}
-          placeholder="พิมพ์ข้อความ... (@ แท็กคน, Enter ส่ง)"
           aria-label="พิมพ์ข้อความ"
           onChange={(e) => {
             setCommentDraft(e.target.value);

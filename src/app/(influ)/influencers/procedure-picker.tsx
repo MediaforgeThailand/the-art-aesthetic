@@ -13,8 +13,8 @@
  * พิมพ์ชื่อใหม่ = ลงทะเบียนเข้าเมนูของทีมนั้นทันที (ค้นเจอครั้งหน้า) แม้จะยังไม่กดสร้างเคสก็ตาม
  */
 
-import { Plus, Search, Stethoscope, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Stethoscope, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import {
   DEFAULT_PRODUCT_TEAM,
@@ -25,9 +25,9 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { InfluProductTeam, InfluServiceRow } from "@/lib/types";
 import {
-  buildServiceOptions,
   type PriceCatalogEntry,
   type PromoCatalogEntry,
+  ProcedureDropdown,
   registerService,
   TeamPicker,
 } from "./procedure-items-editor";
@@ -64,30 +64,15 @@ export function ProcedurePicker({
   disabled?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
   const [team, setTeam] = useState<InfluProductTeam>(DEFAULT_PRODUCT_TEAM);
-  // รายการที่เพิ่งลงทะเบียนใหม่ใน session นี้ — โผล่ในช่องค้นหาทันทีไม่ต้องรอ refresh
+  // รายการที่เพิ่งลงทะเบียนใหม่ใน session นี้ — โผล่ใน dropdown ทันทีไม่ต้องรอ refresh
   const [extraServices, setExtraServices] = useState<InfluServiceRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const options = useMemo(
-    () => buildServiceOptions(catalog, promos, [...services, ...extraServices], team),
-    [catalog, promos, services, extraServices, team]
+  const allServices = useMemo(
+    () => [...services, ...extraServices],
+    [services, extraServices]
   );
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options.slice(0, 30);
-    // ค้นทั้งชื่อจริงและคำเรียกปากเปล่า (search_aliases) — "botox korea" ต้องเจอ Hutox
-    return options
-      .filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.aliases ?? "").toLowerCase().includes(q)
-      )
-      .slice(0, 30);
-  }, [options, query]);
 
   const add = (
     name: string,
@@ -100,13 +85,8 @@ export function ProcedurePicker({
       priceItemId || promoPackageId ? 60 : PROCEDURE_NAME_MAX
     );
     if (!clean) return;
-    if (picked.some((p) => p.name === clean && p.team === team)) {
-      setQuery("");
-      return;
-    }
+    if (picked.some((p) => p.name === clean && p.team === team)) return;
     onChange([...picked, { name: clean, priceItemId, promoPackageId, price, team }]);
-    setQuery("");
-    inputRef.current?.focus();
   };
 
   /** พิมพ์ชื่อใหม่ = ลงทะเบียนเข้าเมนูของทีมนี้ก่อน (ค้นเจอครั้งหน้า) แล้วค่อยหยิบเข้าลิสต์ */
@@ -120,9 +100,7 @@ export function ProcedurePicker({
       return;
     }
     if (service) {
-      const known = [...services, ...extraServices].some(
-        (sv) => sv.id === service.id
-      );
+      const known = allServices.some((sv) => sv.id === service.id);
       if (!known) {
         setExtraServices((prev) => [...prev, service]);
         onServiceCreated?.(service);
@@ -174,118 +152,28 @@ export function ProcedurePicker({
         </ul>
       )}
 
-      {/* เลือก product team ก่อน — ช่องค้นหาด้านล่างแสดงเฉพาะเมนูของทีมนี้ */}
+      {/* เลือก product team ก่อน — dropdown ด้านล่างแสดงเฉพาะเมนูของทีมนี้
+          ผู้ใช้ 2026-09-03: เปลี่ยนจากช่องพิมพ์ค้นหาที่เปิดค้างเป็นปุ่ม dropdown ปิดโดยปริยาย */}
       <div className="mb-2">
-        <TeamPicker
-          team={team}
-          disabled={disabled}
-          onChange={(t) => {
-            setTeam(t);
-            setQuery("");
-          }}
-        />
+        <TeamPicker team={team} disabled={disabled} onChange={setTeam} />
       </div>
 
-      <div className="relative">
-        <Search
-          size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
-        />
-        <input
-          ref={inputRef}
-          type="text"
-          disabled={disabled}
-          value={query}
-          placeholder={
-            team === "aesthetics"
-              ? "ค้นหาหัตถการจาก Price List หรือพิมพ์ชื่อเอง..."
-              : `ค้นหา/เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
-          }
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          // ปิดลิสต์ตอน blur ต้องหน่วง ไม่งั้นแตะเลือกไม่ทัน (ดูกติกา onPointerDown ข้างล่าง)
-          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            const first = filtered[0];
-            const q = query.trim();
-            if (!q) return;
-            // ตรงกับตัวเลือกแรกพอดี = หยิบตัวนั้น (ได้ราคาอ้างอิงมาด้วย)
-            if (first && first.name.toLowerCase() === q.toLowerCase()) {
-              add(first.name, first.priceItemId, first.refPrice ?? 0, first.promoPackageId);
-            } else {
-              void addNewToTeam(q);
-            }
-          }}
-          className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-500 transition-colors focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-stone-50 sm:text-sm"
-        />
-        {open && !disabled && (
-          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
-            {filtered.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                // ต้องเป็น onPointerDown ไม่ใช่ onMouseDown — บนจอสัมผัส mousedown เป็นอีเวนต์
-                // จำลองที่มาหลัง blur ลิสต์ถูกปิดไปก่อน = แตะเลือกไม่ติด
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  add(c.name, c.priceItemId, c.refPrice ?? 0, c.promoPackageId);
-                }}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-brand-50"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-stone-800">
-                    {c.name}
-                  </span>
-                  {c.aliases && (
-                    <span className="block truncate text-[11px] text-stone-500">
-                      {c.aliases}
-                    </span>
-                  )}
-                </span>
-                {c.refPrice !== null && (
-                  <span className="shrink-0 text-right text-xs tabular-nums text-stone-400">
-                    {c.fullPrice !== null && (
-                      <span className="mr-1 text-stone-300 line-through">
-                        {formatCurrency(c.fullPrice)}
-                      </span>
-                    )}
-                    {c.refPrice !== null ? formatCurrency(c.refPrice) : ""}
-                    {c.promoPackageId !== null && (
-                      <span className="ml-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] font-medium text-pink-600">
-                        โปร
-                      </span>
-                    )}
-                  </span>
-                )}
-              </button>
-            ))}
-            {query.trim() !== "" && (
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  void addNewToTeam(query);
-                }}
-                className="flex w-full cursor-pointer items-center gap-2 border-t border-stone-100 px-3 py-2.5 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50"
-              >
-                <Plus size={14} />
-                เพิ่ม &quot;{query.trim()}&quot; เข้าเมนูทีม{" "}
-                {INFLU_PRODUCT_TEAMS[team].label}
-              </button>
-            )}
-            {filtered.length === 0 && query.trim() === "" && (
-              <p className="px-3 py-2.5 text-sm text-stone-400">
-                ยังไม่มีเมนูของทีมนี้ — พิมพ์ชื่อหัตถการแล้วกด Enter เพื่อเพิ่ม
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+      <ProcedureDropdown
+        team={team}
+        catalog={catalog}
+        promos={promos}
+        services={allServices}
+        onAdd={(name, priceItemId, refPrice, promoPackageId) =>
+          add(name, priceItemId, refPrice, promoPackageId)
+        }
+        onAddNew={(name) => void addNewToTeam(name)}
+        disabled={disabled}
+        placeholder={
+          team === "aesthetics"
+            ? "+ เพิ่มหัตถการจาก Price List..."
+            : `+ เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
+        }
+      />
       {err && (
         <p className="mt-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 animate-fade-in">
           {err}

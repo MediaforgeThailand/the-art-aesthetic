@@ -25,10 +25,14 @@ import { useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import {
+  caseValueOf,
   INFLU_STAGE,
+  INFLU_VOUCHER_UNIT,
   normalizeRoles,
   procedureSummaryText,
   roleSummary,
+  voucherCreditOf,
+  voucherLabelOf,
 } from "@/lib/influ-constants";
 import { type InfluLogActor, logInflu } from "@/lib/influ-log";
 import { notifyInflu } from "@/lib/influ-notify";
@@ -54,6 +58,7 @@ import type {
 } from "./procedure-items-editor";
 import { ProcedurePicker, type PickedProcedure } from "./procedure-picker";
 import { ProfileFormModal, profileName } from "./profile-form";
+import { VoucherPicker } from "./voucher-picker";
 
 /** หัวข้อมีเลขของฟอร์ม — ทำให้ 4 ส่วนของโมดัลอ่านเป็นลำดับ ไม่ใช่ช่องกรอกยาวติดกัน
     (ผู้ใช้ 2026-09-03: "ทำให้ setting ใหญ่กว่านี้ ดูง่ายครบครันกว่านี้") */
@@ -147,6 +152,8 @@ export function NewCaseModal({
   const [consultOnly, setConsultOnly] = useState(false);
   /** ค่าตัว (บาท) — เคสที่ influ คิดเงิน ต้องขึ้นเป็นบรรทัดหนึ่งใน Memo ให้ผู้อนุมัติเห็น */
   const [talentFee, setTalentFee] = useState("");
+  /** จำนวน voucher ที่เปิดวงเงินให้เคสใหม่ (0106) — 0 = ยังไม่เปิด (เติมทีหลังที่แท็บรายละเอียดเคสได้) */
+  const [voucherCount, setVoucherCount] = useState(0);
   const [serviceDate, setServiceDate] = useState("");
   const [doctorName, setDoctorName] = useState("");
   /** ช่องทางคุยงานของรอบนี้ (ส่วนใหญ่คือชื่อกลุ่มไลน์) — ต่อเคส ไม่ใช่ช่องทางของตัวบุคคล */
@@ -238,10 +245,12 @@ export function NewCaseModal({
       setErr("ค่าตัวต้องเป็นตัวเลขไม่ติดลบ");
       return;
     }
-    // มูลค่าเคสคำนวณให้เอง = Σ ราคาหัตถการที่เลือก + ค่าตัว (กติกาผู้ใช้ 2026-08-27)
-    // ยังไม่มีอะไรตีมูลค่าได้ (รอปรึกษา/ราคา 0 ทั้งหมด) = null ไม่ใช่ 0
-    const caseValue =
-      procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + (feeNum ?? 0);
+    // มูลค่าเคส = วงเงิน voucher + ค่าตัว (0106) — ราคาหัตถการที่เลือกไม่เข้าสมการแล้ว
+    const caseValue = caseValueOf({
+      voucher_count: voucherCount,
+      voucher_unit: INFLU_VOUCHER_UNIT,
+      talent_fee: feeNum,
+    });
     setSaving(true);
     setErr(null);
 
@@ -257,7 +266,12 @@ export function NewCaseModal({
         // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
         consult_only: consultOnly && procedures.length === 0,
         talent_fee: feeNum,
-        case_value: caseValue > 0 ? caseValue : null,
+        voucher_count: voucherCount,
+        // ราคาต่อใบ ณ ตอนเปิด — snapshot ลงแถว ไม่อ่านค่าคงที่สดตอนแสดงผล
+        voucher_unit: INFLU_VOUCHER_UNIT,
+        case_value: caseValue,
+        // สร้างจากฟอร์มนี้ = ข้อมูลครบพร้อมทำ Memo ทันที (ไม่มีคิว "รอทำ Memo" ให้ติ๊กเองแล้ว)
+        memo_ready_at: new Date().toISOString(),
         service_date: serviceDate || null,
         doctor_name: doctorName.trim() || null,
         contact_channel: contactChannel.trim() || null,
@@ -535,32 +549,87 @@ export function NewCaseModal({
           </div>
           </FormSection>
 
-          {/* ---- 3. นัดหมาย ---- */}
-          <FormSection n={3} title="นัดหมาย (ไม่บังคับ — เคาะทีหลังได้)">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>
-              <Input
-                id="nc-date"
-                type="date"
-                disabled={saving}
-                value={serviceDate}
-                onChange={(e) => setServiceDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>
-              <DoctorSelect
-                id="nc-doctor"
-                doctors={doctors}
-                value={doctorName}
-                onChange={setDoctorName}
-                disabled={saving}
-              />
-            </div>
-          </div>
+          {/* ---- 3. วงเงิน + ค่าตัว ----
+              วงเงิน voucher เป็นตัวตั้งมูลค่าเคสตั้งแต่ 0106 (case_value = วงเงิน + ค่าตัว)
+              จึงให้เป็นส่วนของตัวเอง ไม่ซ่อนไว้ใน "ตัวเลือกเพิ่มเติม" — เว้นเป็น 0
+              แล้วมาเปิดทีหลังที่หน้าเคสก็ได้ */}
+          <FormSection n={3} title="วงเงิน voucher และค่าตัว">
+            <VoucherPicker
+              count={voucherCount}
+              unit={INFLU_VOUCHER_UNIT}
+              onChange={setVoucherCount}
+              disabled={saving}
+            />
             <div className="mt-3">
-            <div>
+              <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
+              <Input
+                id="nc-fee"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                disabled={saving}
+                value={talentFee}
+                onChange={(e) => setTalentFee(e.target.value)}
+                placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
+              />
+              {(() => {
+                // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert (วงเงิน + ค่าตัว)
+                const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
+                const credit = voucherCreditOf({
+                  voucher_count: voucherCount,
+                  voucher_unit: INFLU_VOUCHER_UNIT,
+                });
+                const total = credit + fee;
+                // ผู้ใช้ 2026-09-03: เตือนถ้าวงเงินที่เปิดน้อยกว่ามูลค่าสินค้าที่เลือกไว้
+                const itemsTotal = procedures.reduce(
+                  (sum, p) => sum + (Number(p.price) || 0),
+                  0
+                );
+                return total > 0 ? (
+                  <p className="mt-1.5 text-xs font-medium text-brand-700">
+                    มูลค่าเคสรวม {formatCurrency(total)} (
+                    {voucherLabelOf({
+                      voucher_count: voucherCount,
+                      voucher_unit: INFLU_VOUCHER_UNIT,
+                    }) ?? "ยังไม่เปิดวงเงิน voucher"}
+                    {fee > 0 && ` + ค่าตัว ${formatCurrency(fee)}`})
+                    {credit > 0 && itemsTotal > credit && (
+                      <span className="ml-1 font-normal text-amber-700">
+                        (น้อยกว่ามูลค่าสินค้าที่เลือกไว้ {formatCurrency(itemsTotal)})
+                      </span>
+                    )}
+                  </p>
+                ) : null;
+              })()}
+            </div>
+          </FormSection>
+
+          {/* ---- 4. นัดหมาย ---- */}
+          <FormSection n={4} title="นัดหมาย (ไม่บังคับ — เคาะทีหลังได้)">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="nc-date">วันเข้าทำหัตถการ</Label>
+                <Input
+                  id="nc-date"
+                  type="date"
+                  disabled={saving}
+                  value={serviceDate}
+                  onChange={(e) => setServiceDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="nc-doctor">แพทย์ที่รับเคส</Label>
+                <DoctorSelect
+                  id="nc-doctor"
+                  doctors={doctors}
+                  value={doctorName}
+                  onChange={setDoctorName}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+            <div className="mt-3">
               <Label htmlFor="nc-campaign">แคมเปญ</Label>
               <Select
                 id="nc-campaign"
@@ -576,14 +645,13 @@ export function NewCaseModal({
                 ))}
               </Select>
             </div>
-            </div>
           </FormSection>
 
-          {/* ---- 4. ผู้รับผิดชอบเคส ----
+          {/* ---- 5. ผู้รับผิดชอบเคส ----
               ผู้ใช้ 2026-09-03: "เลือกผู้รับผิดชอบต้องมีให้เลือกทุกส่วน
               ผู้ดูแล > ผู้ติดตาม > ผู้ออก Memo" — ใช้เช็คลิสต์ตัวเดียวกับหน้าเคส
               (เขียนจริงพร้อมเคสใน RPC เดียว ไม่ใช่ insert ตามหลังแบบเดิมที่หลุดได้เงียบๆ) */}
-          <FormSection n={4} title="ผู้รับผิดชอบเคส">
+          <FormSection n={5} title="ผู้รับผิดชอบเคส">
             {!hasOwner && (
               <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-800">
                 ยังไม่มี &ldquo;ผู้ดูแล&rdquo; ของเคสนี้ —
@@ -603,35 +671,9 @@ export function NewCaseModal({
           {/* ---- ตัวเลือกเพิ่มเติม (พับไว้ — ทีมกรอกไม่ถึง 1 ใน 10 เคส) ---- */}
           <details className="rounded-xl border border-stone-200 bg-white/70 p-3 sm:p-4">
             <summary className="cursor-pointer text-sm font-semibold text-stone-700 marker:text-stone-400">
-              ตัวเลือกเพิ่มเติม (ค่าตัว · ช่องทางคุยงาน)
+              ตัวเลือกเพิ่มเติม (ช่องทางคุยงาน)
             </summary>
-            <div className="mt-3 space-y-4">
-          <div>
-            <Label htmlFor="nc-fee">ค่าตัว (บาท)</Label>
-            <Input
-              id="nc-fee"
-              type="number"
-              min={0}
-              step="any"
-              inputMode="decimal"
-              disabled={saving}
-              value={talentFee}
-              onChange={(e) => setTalentFee(e.target.value)}
-              placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
-            />
-            {(() => {
-              // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert
-              const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
-              const total =
-                procedures.reduce((s, p) => s + (Number(p.price) || 0), 0) + fee;
-              return total > 0 ? (
-                <p className="mt-1.5 text-xs font-medium text-brand-700">
-                  มูลค่าเคสรวม {formatCurrency(total)} (หัตถการที่เลือก + ค่าตัว)
-                </p>
-              ) : null;
-            })()}
-          </div>
-            <div>
+            <div className="mt-3">
               <Label htmlFor="nc-contact">ช่องทางการติดต่อ</Label>
               <Input
                 id="nc-contact"
@@ -640,7 +682,6 @@ export function NewCaseModal({
                 onChange={(e) => setContactChannel(e.target.value)}
                 placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
               />
-            </div>
             </div>
           </details>
 

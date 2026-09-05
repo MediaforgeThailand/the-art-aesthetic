@@ -125,24 +125,9 @@ export type InfluStatusKey = "accepted" | "done" | "declined";
 export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
   i.declined_at !== null ? "declined" : i.completed ? "done" : "accepted";
 
-/* ---------- เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ ----------
-   คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
-   influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
-   ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
-   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
-
-   **เริ่มเตือนเมื่อ Memo อนุมัติแล้วเท่านั้น (stage 2)** — เดิมเริ่มตั้งแต่ขั้น Memo (1.0)
-   ทำให้เคสเกือบทั้งบอร์ดติดป้าย "รอลงคิวหมอ" ทั้งที่ยังไม่ผ่านอนุมัติ จะลงคิวไม่ได้อยู่แล้ว
-   (audit 2026-09-03: 27 จาก 29 เคสที่เปิดอยู่ติดป้ายนี้ = สัญญาณที่ไม่มีความหมาย)
-   ตัดที่ขั้น "สัญญา + รับบริการ" เพราะเลยขั้นนั้น = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
-export const needsDoctorBooking = (
-  i: InfluencerListRow,
-  bookedIds: ReadonlySet<string>
-): boolean =>
-  i.stage === INFLU_STAGE.contractService &&
-  !i.completed &&
-  i.declined_at === null &&
-  !bookedIds.has(i.id);
+/* เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ — helper ย้ายไป influ-constants.ts (2026-09-02)
+   เพราะปฏิทิน/กระดิ่งใช้เกณฑ์เดียวกัน (ไม่ควรลาก dnd-kit ของบอร์ดติดไปด้วย); re-export ให้ path เดิม */
+export { needsDoctorBooking } from "@/lib/influ-constants";
 
 /** ป้าย "ยังไม่ได้ลงคิวหมอ" — text เด่นพอประมาณ ไม่เรืองแสง (ผู้ใช้ 2026-08-19:
     "ทำให้เด่นน้อยกว่านี้ ไม่ต้องมี glow แค่ text เด่นประมาณนึงพอ" — glow เดิมแย่งสายตา
@@ -671,12 +656,16 @@ export function InfluCardContent({
       ? "border border-emerald-200/80 bg-emerald-50/60"
       : "border border-stone-200 bg-white/90";
 
-  /** ขั้นย่อยของ Memo (1.0/1.1/1.2, 0104) — โชว์เฉพาะตอนยังอยู่ขั้น Memo จริง
-      (docs_sent_at ไม่เคยถูกล้างแม้เคสเดินผ่านไปแล้ว เดิมชิปนี้จึงค้างขึ้นตลอดกาล
-      ทับกับ StageTracker แถวล่างที่บอกว่าผ่านขั้น Memo ไปแล้ว — audit 2026-09-03) */
-  const memoSubStep =
-    i.stage === INFLU_STAGE.memo && !i.completed ? memoStepOf(i) : null;
-  const memoSent = memoSubStep === "1.1" || memoSubStep === "1.2";
+  /* ขั้นย่อยของ Memo (0104) — docs_sent_at = "ส่งเรื่องขอ Memo" (ขั้น 1 → 1.1)
+     ส่วน memo_submitted_at = "ทำเอกสารส่งขออนุมัติแล้ว" (ขั้น 1.1 → 1.2)
+     ⚠️ ห้ามเขียนป้ายของสองช่องนี้เป็นข้อความเดียวกัน — ก่อนแก้ 2026-09-03 ป้ายบนการ์ด
+     อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว" (ความหมายเก่าก่อน 0104) ทีมจึงเห็นเคส
+     ที่เพิ่งยื่นเรื่องเป็น "ส่ง Memo ไปขออนุมัติแล้ว" ทั้งกอง */
+  // มีไฟล์ Memo ที่อนุมัติแล้ว = จบขั้นนี้ไปแล้ว ชิปความคืบหน้าของขั้น Memo ไม่ต้องโชว์อีก
+  // (เส้น tracker ด้านล่างการ์ดบอกอยู่แล้วว่าเลยไปขั้นไหน — ชิปมีไว้กันทีมส่งซ้ำระหว่างยังทำอยู่)
+  const inMemoStage = i.memo_file_path === null;
+  const memoRequested = inMemoStage && i.docs_sent_at !== null;
+  const memoSubmitted = inMemoStage && i.memo_submitted_at !== null;
   /** เคส "รอปรึกษา" ที่ยังไม่ได้เติมหัตถการ — บอกว่าทำไมการ์ดนี้ยังไม่มีโปรแกรม */
   const consultPending =
     i.consult_only && !i.completed && (i.procedure_text ?? "") === "";
@@ -685,7 +674,8 @@ export function InfluCardContent({
   const hasChips =
     needsBooking ||
     consultPending ||
-    memoSent ||
+    memoRequested ||
+    memoSubmitted ||
     (!i.completed && nextDueDays !== null) ||
     showFollowedChip ||
     i.contract_start !== null ||
@@ -805,21 +795,24 @@ export function InfluCardContent({
               </Badge>
             </span>
           )}
-          {memoSubStep === "1.1" && (
+          {memoSubmitted ? (
             <span
-              title={`ยืนยันส่งเรื่องขอ Memo แล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))} — รอผู้ออก Memo ทำเอกสาร`}
+              title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDate(thaiDateISO(i.memo_submitted_at!))}`}
             >
-              <Badge className={CHIP_WARN}>
-                <Check size={11} strokeWidth={3} /> รอทำเอกสาร Memo
-              </Badge>
-            </span>
-          )}
-          {memoSubStep === "1.2" && (
-            <span title="ทำเอกสาร Memo ส่งขออนุมัติแล้ว — รออัพไฟล์ที่อนุมัติแล้วเข้าระบบ">
               <Badge className={CHIP_DONE}>
-                <Check size={11} strokeWidth={3} /> Memo ยื่นแล้ว · รออนุมัติ
+                <Check size={11} strokeWidth={3} /> ส่ง Memo ขออนุมัติแล้ว
               </Badge>
             </span>
+          ) : (
+            memoRequested && (
+              <span
+                title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDate(thaiDateISO(i.docs_sent_at!))} — รอผู้ออก Memo ทำเอกสาร`}
+              >
+                <Badge className={CHIP_QUIET}>
+                  <Check size={11} strokeWidth={3} /> ส่งเรื่องขอ Memo แล้ว
+                </Badge>
+              </span>
+            )
           )}
           {!i.completed && nextDueDays !== null && (
             <FollowupCountdownChip
