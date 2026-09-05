@@ -1790,6 +1790,18 @@ export interface Database {
         Args: { p: Json };
         Returns: string;
       };
+      /** รวมโปรไฟล์ซ้ำเป็นคนเดียวกัน (0111) — ย้ายเคส/ช่องทาง/รูป/แคมเปญจาก p_from
+          ไป p_into แล้วลบ p_from; รหัสที่รอด = เลขเก่ากว่า (กติกาผู้ใช้ 2026-09-03)
+          คืน id ของโปรไฟล์ที่รอด */
+      influ_merge_profiles: {
+        Args: { p_from: string; p_into: string };
+        Returns: string;
+      };
+      /** ลบโปรไฟล์ที่ยังไม่มีเคส (0111) — มีเคสอยู่ = raise ข้อความไทย */
+      influ_delete_profile: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
       /** ลบเคส Influ = สำรองลง influ_deleted_backups ก่อนเสมอ — คืน id ของสำเนา */
       influ_delete_with_backup: {
         Args: { p_id: string };
