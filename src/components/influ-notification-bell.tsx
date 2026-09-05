@@ -125,8 +125,16 @@ type AlertCase = {
   contract_start: string | null;
   contract_months: number;
   memo_file_path: string | null;
+  /** ไฟล์สัญญาที่เซน — null + มีคิว service ถึงวันแล้ว = "มาทำแล้วแต่ยังไม่มีไฟล์สัญญา" */
+  contract_file_path: string | null;
   post_quotas: unknown;
   followup_mode: "standard" | "custom";
+};
+
+/** คิว "เข้ารับบริการ" ในปฏิทินของเคสที่ฉันรับผิดชอบ (แค่ที่ต้องใช้ตัดสินงานค้าง) */
+type BookedQueue = {
+  influencer_id: string;
+  event_date: string;
 };
 
 type AlertTask = {
@@ -150,7 +158,8 @@ function caseLabel(c: AlertCase): string {
 function buildLiveAlerts(
   cases: AlertCase[],
   tasks: AlertTask[],
-  bookedIds: Set<string>,
+  /** คิว service ในปฏิทินของเคสเหล่านี้ — ใช้ทั้ง "ยังไม่ลงคิว" และ "มาทำแล้วแต่ยังไม่เซนสัญญา" */
+  booked: BookedQueue[],
   scopesByCase: Map<string, InfluScope[]>,
   /** รายชื่อบอร์ด Hunting ของฉันที่เลยวันนัดตามแล้ว */
   huntOverdue: { name: string }[],
@@ -160,6 +169,7 @@ function buildLiveAlerts(
   const active = cases.filter(
     (c) => !c.archived && !c.completed && c.declined_at === null
   );
+  const bookedIds = new Set(booked.map((b) => b.influencer_id));
   // เทียบผ่านบทบาท (normalizeRoles) — แถวเก่าเก็บ scope ดิบ contract/followup
   // ส่วนแถวใหม่เก็บบทบาท owner/follower/memo ต้องอ่านออกทั้งสองแบบ
   const has = (id: string, s: InfluEventScope) =>
@@ -195,8 +205,34 @@ function buildLiveAlerts(
       tone: "amber",
       title: `รอลงคิวหมอ ${needBooking.length} เคส`,
       body: needBooking.map(caseLabel).slice(0, 4).join(" · "),
-      href: "/influencers",
+      // deep link = บอร์ดเปิดมาพร้อมตัวกรอง "รอลงคิวหมอ" ให้เลย (boardSeedFromParam)
+      href: "/influencers?filter=needbooking",
       mine: needBooking.some((c) => has(c.id, "contract")),
+    });
+  }
+
+  /* 2b) มาทำแล้วแต่ยังไม่มีไฟล์สัญญา — คิว service ถึงวัน (วันนี้/เลยมาแล้ว) แต่เคสยังไม่มี
+        contract_file_path (เกณฑ์เดียวกับ unsignedContract ในโมดัลคิว) — เดิมเป็นแบนเนอร์บน
+        หน้าปฏิทิน ถูกถอดตามคำสั่งผู้ใช้ 2026-09-02 และย้ายมาเป็น alert ในกระดิ่งตามกติกาของระบบ
+        คิวในอนาคตยังไม่ผิดปกติ (มักเซนกันวันเข้ารับบริการ) จึงไม่นับ */
+  const unsigned = active.filter(
+    (c) =>
+      !c.contract_file_path &&
+      booked.some((b) => b.influencer_id === c.id && b.event_date <= today)
+  );
+  if (unsigned.length > 0) {
+    out.push({
+      key: "unsigned",
+      icon: FileSignature,
+      tone: "amber",
+      title: `มาทำแล้วแต่ยังไม่มีไฟล์สัญญา ${unsigned.length} เคส`,
+      body: unsigned.map(caseLabel).slice(0, 4).join(" · "),
+      // เคสเดียว = เปิดหน้าเคสไปอัพไฟล์สัญญาได้เลย, หลายเคสไปบอร์ดที่ขั้นสัญญา
+      href:
+        unsigned.length === 1
+          ? `/influencers/${unsigned[0].id}`
+          : "/influencers",
+      mine: unsigned.some((c) => has(c.id, "contract")),
     });
   }
 
@@ -406,9 +442,7 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
       if (!alive) return;
       if (!mine || mine.length === 0) {
         // ไม่มีเคสที่รับผิดชอบ แต่ยังอาจมีรายชื่อ Hunting ค้างอยู่
-        setAlerts(
-          buildLiveAlerts([], [], new Set(), new Map(), huntOverdue, today)
-        );
+        setAlerts(buildLiveAlerts([], [], [], new Map(), huntOverdue, today));
         return;
       }
       const ids = mine.map((a) => a.influencer_id);
@@ -420,7 +454,7 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
           supabase
             .from("influencers")
             .select(
-              "id, first_name, last_name, nickname, stage, completed, declined_at, archived, contract_start, contract_months, memo_file_path, post_quotas, followup_mode"
+              "id, first_name, last_name, nickname, stage, completed, declined_at, archived, contract_start, contract_months, memo_file_path, contract_file_path, post_quotas, followup_mode"
             )
             .in("id", ids),
           supabase
@@ -429,7 +463,7 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
             .in("influencer_id", ids),
           supabase
             .from("influ_calendar_events")
-            .select("influencer_id")
+            .select("influencer_id, event_date")
             .eq("kind", "service")
             .in("influencer_id", ids),
         ]);
@@ -438,10 +472,8 @@ export function InfluNotificationBell({ userId }: { userId: string }) {
         buildLiveAlerts(
           (cases ?? []) as unknown as AlertCase[],
           (tasks ?? []) as AlertTask[],
-          new Set(
-            (booked ?? [])
-              .map((b) => b.influencer_id)
-              .filter((id): id is string => id !== null)
+          (booked ?? []).filter(
+            (b): b is BookedQueue => b.influencer_id !== null
           ),
           scopesByCase,
           huntOverdue,

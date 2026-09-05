@@ -39,7 +39,13 @@ export const metadata: Metadata = {
 const INFLU_LIST_COLUMNS =
   "id, person_id, round_no, first_name, last_name, nickname, phone, occupation, followers, follower_note, tier, procedure_text, case_value, voucher_count, voucher_unit, consult_only, talent_fee, service_date, doctor_name, contact_channel, photo_path, channel_photo_path, memo_file_path, memo_file_name, memo_uploaded_at, memo_ready_at, docs_sent_at, memo_submitted_at, contract_file_path, contract_file_name, contract_uploaded_at, maker_name, stage, completed, contract_start, contract_months, note, followup_mode, package_note, size_group, board_position, archived, declined_at, influ_code, campaign_id, owner_id, created_by, created_at, updated_at";
 
-export default async function InfluencersPage() {
+export default async function InfluencersPage({
+  searchParams,
+}: {
+  /** `?filter=needbooking_approved` ฯลฯ — deep link จากปุ่มแจ้งเตือนบนปฏิทิน/กระดิ่ง
+      (ค่าที่รับได้ดู boardSeedFromParam ใน board-filters.tsx) */
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const supabase = await createClient();
 
   // วันนี้ตามเวลาไทย — ใช้กรองโปรที่หมดเขตแล้วออกจากตัวเลือกหัตถการ
@@ -47,6 +53,7 @@ export default async function InfluencersPage() {
 
   // getAccess ยิงขนานกับ query หลัก (RLS กันข้อมูลอยู่แล้ว — ทิ้งผลถ้าไม่มีสิทธิ์)
   const [
+    { filter: filterParam },
     access,
     { data: influencers, error },
     { data: tasks },
@@ -62,6 +69,7 @@ export default async function InfluencersPage() {
     { data: procedureItems },
     { data: assignees },
   ] = await Promise.all([
+      searchParams,
       getAccess(),
       supabase
         .from("influencers")
@@ -163,6 +171,7 @@ export default async function InfluencersPage() {
           })) as InfluPerson[]
         }
         assignees={(assignees ?? []) as CaseAssigneeRow[]}
+        initialFilter={filterParam ?? null}
         me={{
           id: access.uid,
           name: me?.full_name || me?.email || "",

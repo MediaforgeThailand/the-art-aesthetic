@@ -4,6 +4,7 @@ import { canEditInflu, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
 import { CalendarClient, type CalendarEvent, type CalendarInflu } from "./calendar-client";
+import { CALENDAR_EVENT_SELECT } from "./calendar-query";
 
 export const metadata: Metadata = {
   title: "Influ Calendar",
@@ -18,20 +19,20 @@ export default async function InfluCalendarPage() {
       getAccess(),
       // ดึงคิวทั้งหมด แล้วแบ่งเดือนฝั่ง client (ปฏิทินเดินเดือนไปมาได้โดยไม่ต้องโหลดใหม่)
       // — ตารางนี้โตช้ามาก (หลักร้อยแถว/ปี); ถ้าวันหนึ่งใหญ่เกินค่อยเปลี่ยนเป็นดึงเป็นช่วงเดือน
-      // ชื่อ influ join มาด้วย เพราะคิวเก่าอาจผูกกับคนที่ถูก archive แล้ว (ไม่อยู่ในลิสต์ตัวเลือก)
-      // `contract_file_path` join มาเพื่อเตือนเคสที่ "มาทำแล้วแต่ยังไม่เซนสัญญา" (ดู
-      // unsignedContract ใน calendar-client) — ไม่ได้เอามาแสดงเป็นข้อมูลบนหน้า
+      // embed ที่ join มา (ชื่อ influ / ไฟล์สัญญา / หัตถการ+ทีม) อธิบายไว้ที่ calendar-query.ts
       supabase
         .from("influ_calendar_events")
-        .select(
-          "*, influencer:influencers(id, first_name, last_name, nickname, contract_file_path)"
-        )
+        .select(CALENDAR_EVENT_SELECT)
         .order("event_date", { ascending: true }),
       // ตัวเลือก influencer ของฟอร์มเพิ่ม/แก้คิว (doctor_name ใช้เติมแพทย์ให้อัตโนมัติ
       // ตอนเลือกคน + เป็นตัวเลือกในตัวกรองแพทย์)
+      // stage/completed/declined_at ใช้นับ "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" (ปุ่มแจ้งเตือน
+      // ท้ายแผงขวา — เกณฑ์ memoApprovedNeedsBooking เดียวกับตัวกรองบนบอร์ดเคส)
       supabase
         .from("influencers")
-        .select("id, first_name, last_name, nickname, round_no, doctor_name")
+        .select(
+          "id, first_name, last_name, nickname, round_no, doctor_name, stage, completed, declined_at"
+        )
         .eq("archived", false)
         .order("first_name", { ascending: true }),
       // ทะเบียนแพทย์ — ตัวเลือก "แพทย์ที่รับเคส" ในฟอร์มคิว + รูปโปรไฟล์ในแผงข้าง

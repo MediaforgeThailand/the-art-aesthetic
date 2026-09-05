@@ -408,6 +408,43 @@ export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
   },
 ];
 
+/* ---------- เคสที่ยังไม่ได้ลงคิวหมอ (คิว "เข้ารับบริการ" ในปฏิทิน) ----------
+   คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
+   influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
+   ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
+   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
+   helper อยู่ที่นี่ (ไม่ใช่ใน influ-board.tsx) เพราะใช้ทั้งบอร์ดเคส ปฏิทิน และกระดิ่ง —
+   ปฏิทินไม่ควรลาก dnd-kit ของบอร์ดติดมาแค่เพื่อฟังก์ชันเดียว */
+
+/** ฟิลด์ขั้นต่ำที่ใช้ตัดสิน — รับได้ทั้งแถวเต็ม (InfluencerListRow) และแถวย่อ (ปฏิทิน/กระดิ่ง) */
+export type BookingCheckCase = {
+  id: string;
+  stage: number;
+  completed: boolean;
+  declined_at: string | null;
+};
+
+/** "รอลงคิวหมอ" — เคสที่ยังเดินอยู่ในขั้น Memo–สัญญา และยังไม่มีคิว service ในปฏิทิน
+    (ครอบทุกขั้นย่อยของ Memo ด้วย — เคสที่ Memo ยังไม่ผ่านก็นับ เพราะทีมมักคุยวันกันไว้ก่อน) */
+export const needsDoctorBooking = (
+  i: BookingCheckCase,
+  bookedIds: ReadonlySet<string>
+): boolean =>
+  i.stage >= INFLU_STAGE.memo &&
+  i.stage <= INFLU_STAGE.contractService &&
+  !i.completed &&
+  i.declined_at === null &&
+  !bookedIds.has(i.id);
+
+/** "เอกสารผ่านแล้วแต่ยังไม่ลงคิว" — subset ของ needsDoctorBooking ที่ **ผ่านขั้น 1.2 แล้ว**
+    (อัพไฟล์ Memo ที่อนุมัติ = เลื่อนเข้าขั้นสัญญาอัตโนมัติ จึงเช็คที่เลข stage ได้เลย)
+    ผู้ใช้ 2026-09-02: ปุ่มแจ้งเตือนท้ายแผงขวาของปฏิทิน + ตัวกรองบนบอร์ดเคสใช้เกณฑ์นี้ */
+export const memoApprovedNeedsBooking = (
+  i: BookingCheckCase,
+  bookedIds: ReadonlySet<string>
+): boolean =>
+  needsDoctorBooking(i, bookedIds) && i.stage >= INFLU_STAGE.contractService;
+
 /* ---------- บทบาทผู้รับผิดชอบของเคส (0095 → รื้อเป็นบทบาทที่ 0104) ----------
    ผู้ใช้ 2026-09-01: "ปรับ design ใหม่เป็น check list เช่น 1.ผู้ดูแล คือคนหลักที่เป็นคน
    สร้างแต่ติดตามเคสนี้จนถึงเซนสัญญา 2.ผู้ติดตาม จะเป็นคนทำสัญญาไปจนถึงการ follow up

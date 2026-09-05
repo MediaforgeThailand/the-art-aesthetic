@@ -45,14 +45,41 @@ import {
 /* ---------- ชนิดข้อมูล ---------- */
 
 /** ขั้นที่กำลังเจาะดู — number = เลข stage, "all" = ทุกขั้น,
-    "memowait" = คิว "Case รอส่ง memo" (ขั้นย่อย 1.0 — ปุ่มบนแถบเครื่องมือ, 0104) */
+    "memowait" = คิว "Case รอส่ง memo" (ขั้นย่อย 1.0 — ปุ่มบนแถบเครื่องมือ, 0104),
+    "needbooking" = รอลงคิวหมอทุกขั้น · "needbooking_approved" = ผ่านขั้น 1.2 (เอกสารผ่าน)
+    แล้วแต่ยังไม่ลงคิว (ผู้ใช้ 2026-09-02 — ปลายทางของปุ่มแจ้งเตือนบนปฏิทิน) */
 export type BoardStageFilter =
   | number
   | "all"
   | "done"
   | "declined"
   | "needbooking"
+  | "needbooking_approved"
   | "memowait";
+
+/** ค่า `?filter=` ที่ deep link เข้าบอร์ดได้ (ปุ่มแจ้งเตือนบนปฏิทิน / กระดิ่ง) */
+const BOARD_DEEP_LINK_FILTERS = [
+  "needbooking",
+  "needbooking_approved",
+  "memowait",
+  "declined",
+  "done",
+] as const;
+
+/**
+ * แปลง `?filter=` ของ deep link เป็นตัวกรองตั้งต้นของ "รอบนี้" (ส่งเข้า useInfluFilters เป็น seed)
+ * — ตั้ง owner เป็น "ทุกคน" ด้วย เพราะตัวเลขบนปุ่มที่พามานับทั้งทีม ถ้าปล่อยค่าเริ่มต้น
+ * "เคสของฉัน" ไว้ กดมาแล้วจะเห็นไม่ครบเท่าตัวเลขบนปุ่ม (ค่าที่บันทึกไว้ไม่ถูกแตะ)
+ * ค่าที่ไม่รู้จัก = ไม่ seed (เปิดบอร์ดตามค่าเริ่มต้นปกติ)
+ */
+export function boardSeedFromParam(
+  param: string | null
+): Partial<BoardFilters> | null {
+  if (!param) return null;
+  if (!(BOARD_DEEP_LINK_FILTERS as readonly string[]).includes(param))
+    return null;
+  return { stage: param as BoardStageFilter, owner: "all" };
+}
 
 export type BoardFilters = {
   /** "all" | "mine" | "none" (ยังไม่มีผู้รับผิดชอบ) | uid */
@@ -91,7 +118,7 @@ export function boardFilterCount(f: BoardFilters): number {
   return (
     (f.owner !== "all" ? 1 : 0) +
     (f.scopes.length ? 1 : 0) +
-    (f.stage === "needbooking" ? 1 : 0) +
+    (f.stage === "needbooking" || f.stage === "needbooking_approved" ? 1 : 0) +
     (f.excluded.length ? 1 : 0) +
     (f.campaign !== "all" ? 1 : 0)
   );
@@ -116,14 +143,21 @@ export function matchBoardFilters(
 ): boolean {
   const status = influStatusOf(i);
 
-  /* คิวเตือน 2 อัน ("รอลงคิวหมอ" / "Case รอส่ง memo") **ข้ามตัวกรองอื่นทั้งหมด**
-     — ยกเว้น, ผู้รับผิดชอบ, บทบาท, แคมเปญ — แล้ว return true ทันที
-     เพราะป้ายจำนวนบนปุ่มนับจากทุกเคสในทีม (ดู memoWaitCount / bookingAlertIds ใน
-     influencers-client) ⚠️ ก่อนแก้ 2026-09-03 ตัวกรอง owner ยังทำงานต่อ ค่าโรงงานคือ
-     "เคสของฉัน" ⇒ กดปุ่มที่ขึ้นเลข 17 แล้วได้บอร์ดว่าง พร้อมข้อความว่า "ทุกเคสกดยืนยันแล้ว"
-     ซึ่งไม่จริง — สัญญาณเตือนต้องเห็นครบเสมอ ห้ามให้ตัวกรองอื่นมาตัดทิ้ง */
+  /* คิวเตือน 3 อัน ("รอลงคิวหมอ" / "เอกสารผ่านแล้ว ยังไม่ลงคิว" / "Case รอส่ง memo")
+     **ข้ามตัวกรองอื่นทั้งหมด** — ยกเว้น, ผู้รับผิดชอบ, บทบาท, แคมเปญ — แล้ว return
+     ทันที เพราะป้ายจำนวนบนปุ่ม/กระดิ่ง/ปฏิทินนับจากทุกเคสในทีม (ดู memoWaitCount /
+     bookingAlertIds ใน influencers-client) ⚠️ ก่อนแก้ 2026-09-03 ตัวกรอง owner ยัง
+     ทำงานต่อ ค่าโรงงานคือ "เคสของฉัน" ⇒ กดปุ่มที่ขึ้นเลข 17 แล้วได้บอร์ดว่าง พร้อม
+     ข้อความว่า "ทุกเคสกดยืนยันแล้ว" ซึ่งไม่จริง — สัญญาณเตือนต้องเห็นครบเสมอ
+     ห้ามให้ตัวกรองอื่นมาตัดทิ้ง (ครอบ needbooking_approved ด้วยเหตุผลเดียวกัน) */
   if (f.stage === "needbooking") {
     return ctx.bookingAlertIds.has(i.id);
+  }
+  if (f.stage === "needbooking_approved") {
+    // "เอกสารผ่านแล้ว ยังไม่ลงคิว" = รอลงคิว + ผ่านขั้น 1.2 มาแล้ว (memoApprovedNeedsBooking)
+    return (
+      ctx.bookingAlertIds.has(i.id) && i.stage >= INFLU_STAGE.contractService
+    );
   }
   if (f.stage === "memowait") {
     // "Case รอส่ง memo" = ขั้นย่อย 1.0 — ยังไม่กดยืนยันส่งเรื่อง Memo (0104)
@@ -200,10 +234,13 @@ export function boardFilterChips(
     // ปุ่ม "Case รอส่ง memo" บนแถบเครื่องมือโชว์สถานะ active ของตัวเองอยู่แล้ว
     return out;
   }
-  if (f.stage === "needbooking") {
+  if (f.stage === "needbooking" || f.stage === "needbooking_approved") {
     out.push({
       key: "stage",
-      label: "รอลงคิวหมอ",
+      label:
+        f.stage === "needbooking"
+          ? "รอลงคิวหมอ · ทุกขั้น"
+          : "เอกสารผ่านแล้ว ยังไม่ลงคิว",
       next: { ...f, stage: "all" },
     });
     return out;
@@ -231,6 +268,7 @@ export function boardFilterChips(
     });
   }
   // ขั้นที่เลือกไม่ต้องมีชิปสรุป — เส้น tracker บนแถบบอกอยู่แล้วว่าเจาะขั้นไหนอยู่
+  // (needbooking/needbooking_approved มีชิปสรุปของตัวเองแล้วที่ return out ด้านบน)
   if (f.excluded.length) {
     out.push({
       key: "excluded",
@@ -390,6 +428,7 @@ export function BoardFilterSections({
   campaigns,
   statusCount,
   bookingCount,
+  approvedBookingCount,
   unassignedCount,
 }: {
   filters: BoardFilters;
@@ -398,7 +437,10 @@ export function BoardFilterSections({
   meId: string | null;
   campaigns: InfluCampaignDefRow[];
   statusCount: (s: InfluStatusKey) => number;
+  /** รอลงคิวหมอทุกขั้น (needsDoctorBooking) */
   bookingCount: number;
+  /** ผ่านขั้น 1.2 แล้วแต่ยังไม่ลงคิว (memoApprovedNeedsBooking) — subset ของ bookingCount */
+  approvedBookingCount: number;
   unassignedCount: number;
 }) {
   const set = (part: Partial<BoardFilters>) =>
@@ -411,33 +453,53 @@ export function BoardFilterSections({
     <>
       <FilterSection
         title="งานค้าง"
-        hint="เคสที่ผ่าน Memo แล้วแต่ยังไม่มีคิวในปฏิทิน · เคสที่ยังไม่มีเจ้าของ"
+        hint="“ทุกขั้น” = ยังไม่มีคิว “เข้ารับบริการ” ในปฏิทิน ไม่ว่าจะอยู่ขั้นไหน · “เอกสารผ่านแล้ว” = ผ่านขั้น 1.2 (อัพไฟล์ Memo ที่อนุมัติ) มาแล้วแต่ยังไม่ลงคิว · เคสที่ยังไม่มีเจ้าของ"
       >
-        <FilterChip
-          active={filters.stage === "needbooking"}
-          onClick={() =>
-            set({ stage: filters.stage === "needbooking" ? "all" : "needbooking" })
-          }
-        >
-          รอลงคิวหมอ
-          <span className="tabular-nums text-stone-400">{bookingCount}</span>
-        </FilterChip>
-        <FilterChip
-          active={filters.owner === "none"}
-          onClick={() =>
-            set({ owner: filters.owner === "none" ? "all" : "none" })
-          }
-          title="เคสที่ยังไม่มีใครถูกตั้งเป็นผู้รับผิดชอบ — จะไม่ขึ้นเตือนในกระดิ่งของใครเลย"
-        >
-          ยังไม่มีผู้รับผิดชอบ
-          <span
-            className={`tabular-nums ${
-              unassignedCount > 0 ? "text-amber-600" : "text-stone-400"
-            }`}
+        <div className="flex flex-wrap gap-1.5">
+          <FilterChip
+            active={filters.stage === "needbooking"}
+            onClick={() =>
+              set({
+                stage: filters.stage === "needbooking" ? "all" : "needbooking",
+              })
+            }
           >
-            {unassignedCount}
-          </span>
-        </FilterChip>
+            รอลงคิวหมอ · ทุกขั้น
+            <span className="tabular-nums text-stone-400">{bookingCount}</span>
+          </FilterChip>
+          <FilterChip
+            active={filters.stage === "needbooking_approved"}
+            onClick={() =>
+              set({
+                stage:
+                  filters.stage === "needbooking_approved"
+                    ? "all"
+                    : "needbooking_approved",
+              })
+            }
+          >
+            เอกสารผ่านแล้ว ยังไม่ลงคิว
+            <span className="tabular-nums text-stone-400">
+              {approvedBookingCount}
+            </span>
+          </FilterChip>
+          <FilterChip
+            active={filters.owner === "none"}
+            onClick={() =>
+              set({ owner: filters.owner === "none" ? "all" : "none" })
+            }
+            title="เคสที่ยังไม่มีใครถูกตั้งเป็นผู้รับผิดชอบ — จะไม่ขึ้นเตือนในกระดิ่งของใครเลย"
+          >
+            ยังไม่มีผู้รับผิดชอบ
+            <span
+              className={`tabular-nums ${
+                unassignedCount > 0 ? "text-amber-600" : "text-stone-400"
+              }`}
+            >
+              {unassignedCount}
+            </span>
+          </FilterChip>
+        </div>
       </FilterSection>
 
       <FilterSection

@@ -217,8 +217,10 @@ function ProfileSidebar({
   const [openLogId, setOpenLogId] = useState<string | null>(null);
   const openLog = activityLog.find((l) => l.id === openLogId) ?? null;
   const openLogMeta = openLog ? influLogActionMeta(openLog.action) : null;
+  // ไม่มี Card ห่อตัวเองแล้ว (2026-09-03) — parent (<aside>) เป็นคนให้พื้นหลัง glass/มุมโค้ง
+  // เพราะต้องยืดเต็มความสูงแถวให้กลืนกับคอลัมน์เนื้อหาขวา ส่วนกล่องนี้แค่เป็น sticky scroller
   return (
-    <Card className="p-0">
+    <>
       {/* ตัวตน: รูป + ชื่อ + สถานะปัจจุบัน */}
       <div className="flex items-start gap-3 p-4">
         <SidebarPhoto path={influencer.photo_path} name={fullName} />
@@ -407,7 +409,7 @@ function ProfileSidebar({
           </div>
         )}
       </Modal>
-    </Card>
+    </>
   );
 }
 
@@ -1239,13 +1241,13 @@ export function InfluDetailClient({
     router.refresh();
   };
 
-  // สรุป: follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  // follow-up ที่เหลือ (checklist ขั้นตามงานที่ยังไม่ทำ) — นับเฉพาะข้อของโหมดที่ใช้อยู่
+  // ตัวเลข/badge สรุปย้ายไปอยู่ในหัวเอกสาร "ภาพรวม" ทั้งหมดแล้ว (OverviewPanel คำนวณเอง
+  // จาก prop นี้) — ที่นี่เหลือแค่ส่งรายการดิบต่อไปให้
   const activeTasks = useMemo(
     () => activeFollowupTasks(influencer.followup_mode, tasks),
     [influencer.followup_mode, tasks]
   );
-  const followupLeft = activeTasks.filter((t) => !t.done).length;
-  const followupTotal = activeTasks.length;
 
   return (
     // ทุกจุดที่แก้ข้อมูลในหน้านี้เรียก useInfluLog() เอง — ไม่ต้องส่ง actor เป็น prop ทีละชั้น
@@ -1259,9 +1261,14 @@ export function InfluDetailClient({
       }}
     >
     <div>
-      {/* header */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 animate-fade-in-up">
-        {/* จอเล็ก: แถวแรกกระชับ [กลับ][ชื่อ][ปุ่มแก้ชื่อ] แล้วดัน Badge ที่เหลือลงบรรทัดถัดไป
+      {/* header + แท็บนำทาง รวมเป็นแถวเดียวกัน (ผู้ใช้ 2026-09-03: เดิมแยกเป็น 2 แถวมีช่องว่าง
+          คั่นทำให้ดูเป็นคนละส่วน) — อยู่เต็มความกว้างหน้า เหนือ 2 คอลัมน์ ไม่ถูกบีบด้วย sidebar
+          จึงมีที่พอให้ชื่อ+แท็บอยู่แถวเดียวกันบนจอเดสก์ท็อป (จอแคบ flex-wrap ตกบรรทัดเอง)
+          ข้อมูลระบุตัวตน/สถานะ (Influ ID, Tier, สถานะงาน, ส่ง Memo แล้ว, รอปรึกษา, เช็คลิสต์,
+          จำนวนคอนเทนต์) ย้ายไปรวมไว้ที่หัวเอกสาร "ภาพรวม" จุดเดียวแทน กันซ้ำซ้อนกับตรงนี้ —
+          แถวนี้เหลือแค่สิ่งที่ต้องกดได้จากทุกที่ (นำทาง/ผู้รับผิดชอบ/เปิดรอบใหม่) */}
+      <div className="mb-5 flex flex-wrap items-center gap-2 animate-fade-in-up">
+        {/* จอเล็ก: แถวแรกกระชับ [กลับ][ชื่อ][ปุ่มแก้ชื่อ] แล้วดันแท็บลงบรรทัดถัดไป
             (w-full ในแถบ flex-wrap) — ที่ ≥sm ใช้ display:contents ให้ลูกกลับไปเป็น flex item
             ของแถบเดิมตรงๆ หน้าตาเดสก์ท็อปจึงไม่เปลี่ยนเลย */}
         <div className="flex min-w-0 items-center gap-2 max-sm:w-full sm:contents">
@@ -1292,136 +1299,14 @@ export function InfluDetailClient({
             )}
           </h1>
         </div>
-        {influencer.influ_code && (
-          <span
-            title="รหัส Influ ID"
-            className="rounded-md border border-stone-200 bg-white/70 px-2 py-0.5 font-mono text-xs text-stone-500"
-          >
-            {influencer.influ_code}
-          </span>
-        )}
         {/* ผู้รับผิดชอบ = รูปโปรไฟล์ (0095) — ชื่อผู้สร้างย้ายไปอยู่ในการ์ด "ผู้รับผิดชอบ" ข้างล่าง */}
         <AssigneeStack
           assignees={assignedList}
           peopleById={peopleById}
           size={24}
         />
-        {/* Badge ที่ซ้ำกับหัวเอกสารใน "ภาพรวม" (tier / จบงานแล้ว / รอปรึกษา / จำนวนคอนเทนต์ /
-            รอบที่ N) ถูกซ่อนที่ <sm — จอเล็กมีที่จำกัด ให้เหลือแต่ของที่หาที่อื่นไม่ได้ */}
-        {influencer.tier && (
-          <Badge
-            className={`${INFLU_TIERS[influencer.tier].badge} max-sm:hidden`}
-          >
-            {INFLU_TIERS[influencer.tier].label}
-          </Badge>
-        )}
-        {influencer.completed && (
-          <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 max-sm:hidden">
-            <CheckCircle2 size={12} /> จบงานแล้ว
-          </Badge>
-        )}
-{/* ความคืบหน้าขั้น Memo — โชว์บนหัวจะได้เห็นจากทุกขั้น ไม่ต้องกดกลับไปดู
-            ⚠️ สองช่องนี้คนละเหตุการณ์ (0104) ห้ามยุบเป็นป้ายเดียว:
-              docs_sent_at      = ผู้ดูแลยื่นเรื่องขอ Memo (ขั้น 1 → 1.1)
-              memo_submitted_at = ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้ว (ขั้น 1.1 → 1.2)
-            ก่อนแก้ 2026-09-03 ป้ายนี้อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว"
-            (คำของความหมายเก่าก่อน 0104) ทำให้เคสที่เพิ่งยื่นเรื่องดูเหมือนส่งขออนุมัติไปแล้ว */}
-        {influencer.memo_submitted_at ? (
-          <span
-            title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDateTime(
-              influencer.memo_submitted_at
-            )}`}
-          >
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={12} /> ส่ง Memo ขออนุมัติแล้ว
-            </Badge>
-          </span>
-        ) : (
-          influencer.docs_sent_at && (
-            <span
-              title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
-                influencer.docs_sent_at
-              )} — รอผู้ออก Memo ทำเอกสาร`}
-            >
-              <Badge className="border border-stone-200 bg-stone-50 text-stone-600">
-                <CheckCircle2 size={12} /> ส่งเรื่องขอ Memo แล้ว
-              </Badge>
-            </span>
-          )
-        )}
-        {/* รอปรึกษา = เปิดเคสไว้ก่อนโดยยังไม่ระบุหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคส) */}
-        {influencer.consult_only && !influencer.procedure_text && (
-          <Badge className="border border-amber-200 bg-amber-50 text-amber-700 max-sm:hidden">
-            <MessageCircleQuestion size={12} /> รอปรึกษา
-          </Badge>
-        )}
-        {/* เช็คลิสต์ผลลัพธ์ที่เหลือ — เคสที่เริ่มนับสัญญาแล้ว (การตามงานจริงอยู่หน้า Follow Up) */}
-        {influencer.contract_start !== null &&
-          !influencer.completed &&
-          followupTotal > 0 && (
-            <Link href="/influencers/contracts" title="ไปหน้า Follow Up">
-              {followupLeft > 0 ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-                  <ListChecks size={12} /> เช็คลิสต์เหลือ {followupLeft}/
-                  {followupTotal} ข้อ
-                </Badge>
-              ) : (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                  <CheckCircle2 size={12} /> เช็คลิสต์ครบทุกข้อ
-                </Badge>
-              )}
-            </Link>
-          )}
-        {/* จำนวนงานคอนเทนต์ที่ผูกกับคนนี้ */}
-        {contentTasks.length > 0 && (
-          <Badge className="border border-brand-200 bg-brand-50 text-brand-700 max-sm:hidden">
-            <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
-          </Badge>
-        )}
-        {/* คนนี้มีหลายรอบ — บอกว่าการ์ดนี้คือรอบที่เท่าไหร่ (สลับรอบได้ที่แถบใต้หัวข้อ)
-            ซ่อนที่ <sm เพราะแถบสลับรอบข้างล่างไฮไลต์รอบปัจจุบันอยู่แล้ว */}
-        {personRounds.length > 1 && (
-          <Badge className="border border-stone-200 bg-stone-50 text-stone-500 max-sm:hidden">
-            <Repeat size={12} /> รอบที่ {influencer.round_no}
-          </Badge>
-        )}
-        {/* เปิดรอบใหม่ — influ คนเดิมกลับมาทำอีกครั้ง ต้องออก Memo ใหม่ + การ์ดใหม่ */}
-        {canStartNewRound && (
-          <button
-            type="button"
-            onClick={() => setNewRoundOpen(true)}
-            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
-          >
-            <Repeat size={14} />
-            เปิดรอบใหม่
-          </button>
-        )}
-      </div>
-
-      {newRoundErr && (
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-          {newRoundErr}
-        </p>
-      )}
-
-      {/* 2 คอลัมน์บนจอ ≥lg: sidebar โปรไฟล์ซ้าย (sticky ติดตามตอนเลื่อน) + เนื้อหางานขวา
-          จอเล็ก sidebar ตกไปต่อท้าย (order-last) — งานที่ต้องลงมือทำยังอยู่บนสุด
-          wrapper อยู่นอก key={view} โดยตั้งใจ ให้ sidebar คงอยู่ตอนสลับแท็บ ไม่ re-mount */}
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <aside className="order-last w-full shrink-0 lg:order-first lg:sticky lg:top-0 lg:max-h-[calc(100dvh-2rem)] lg:w-80 lg:overflow-y-auto">
-          <ProfileSidebar
-            influencer={influencer}
-            fullName={fullName}
-            assignees={assignedList}
-            peopleById={peopleById}
-            activityLog={activityLog}
-            today={today}
-          />
-        </aside>
-        <div className="min-w-0 flex-1">
-      {/* stepper — มีปุ่ม "ภาพรวม" นำหน้า */}
-      <div className="mb-6 flex flex-wrap gap-2 animate-fade-in-up">
+        <span className="mx-1 hidden h-6 w-px shrink-0 bg-stone-200 sm:block" />
+        {/* แท็บนำทาง — ภาพรวม / รายละเอียดเคส / ขั้นตอนงาน */}
         <button
           type="button"
           onClick={() => setView("overview")}
@@ -1509,7 +1394,25 @@ export function InfluDetailClient({
             ย้อน Stage {influencer.stage} → {influencer.stage - 1}
           </button>
         )}
+        {/* เปิดรอบใหม่ — influ คนเดิมกลับมาทำอีกครั้ง ต้องออก Memo ใหม่ + การ์ดใหม่ */}
+        {canStartNewRound && (
+          <button
+            type="button"
+            onClick={() => setNewRoundOpen(true)}
+            title="influ คนนี้กลับมาทำอีกรอบ — สร้างการ์ดใหม่บนบอร์ด เริ่มที่ขั้น Memo เพื่อออก Memo/สัญญาชุดใหม่ (รอบเดิมไม่ถูกแตะ)"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-700 transition-all hover:border-brand-300 hover:bg-brand-50 active:scale-[0.97] max-sm:min-h-11"
+          >
+            <Repeat size={14} />
+            เปิดรอบใหม่
+          </button>
+        )}
       </div>
+
+      {newRoundErr && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
+          {newRoundErr}
+        </p>
+      )}
 
       {/* เริ่มนับสัญญาไปแล้วแต่ไม่มีไฟล์สัญญาในระบบ (ถูกลบเพราะอัพผิดฉบับ / เคสเก่าที่ข้ามมา)
           — เตือนให้ชัดพร้อมทางแก้ ไม่งั้นเคสไปโผล่หน้า Follow Up โดยไม่มีสัญญาแบบเงียบๆ */}
@@ -1538,6 +1441,28 @@ export function InfluDetailClient({
         </p>
       )}
 
+      {/* 2 คอลัมน์บนจอ ≥lg: sidebar โปรไฟล์ซ้าย (sticky ติดตามตอนเลื่อน) + เนื้อหางานขวา
+          จอเล็ก sidebar ตกไปต่อท้าย (order-last) — งานที่ต้องลงมือทำยังอยู่บนสุด
+          wrapper อยู่นอก key={view} โดยตั้งใจ ให้ sidebar คงอยู่ตอนสลับแท็บ ไม่ re-mount */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+        {/* aside ยืดเต็มความสูงแถว (lg:items-stretch ของ parent) ให้พื้นหลัง glass กลืนกับ
+            คอลัมน์เนื้อหาขวา ไม่เห็นเป็นกล่องสั้นๆ ลอยเหนือช่องว่างเปล่าด้านล่าง (ผู้ใช้ 2026-09-03)
+            — ตัวเนื้อหาจริง (ProfileSidebar) อยู่ใน div sticky ชั้นในซึ่งลอยติดขอบบนระหว่างเลื่อน
+            หน้า ไม่ใช่ตัว aside เอง (ห้ามรวมเป็นชั้นเดียว — max-h ของกล่องที่ถูกยืดจะไปตัด
+            "รางเลื่อน" ของ sticky ให้สั้นแค่ 1 จอ แล้วหลุดสติกกี้เร็วเกินไป) */}
+        <aside className="glass order-last w-full shrink-0 rounded-xl shadow-[0_8px_28px_rgba(94,58,49,0.08)] transition-shadow duration-300 hover:shadow-[0_12px_36px_rgba(94,58,49,0.14)] lg:order-first lg:w-80">
+          <div className="lg:sticky lg:top-0 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
+            <ProfileSidebar
+              influencer={influencer}
+              fullName={fullName}
+              assignees={assignedList}
+              peopleById={peopleById}
+              activityLog={activityLog}
+              today={today}
+            />
+          </div>
+        </aside>
+        <div className="min-w-0 flex-1">
       <div className="animate-fade-in" key={String(view)}>
         {view === "overview" && (
           <OverviewPanel
@@ -1805,9 +1730,7 @@ function HashtagBlock({ tags }: { tags: CaseHashtag[] }) {
       )}
 
       <p className="text-[11px] leading-5 text-stone-400">
-        แท็กชุดนี้เป็นข้อบังคับของทุกโพส — ระบบใช้จับคู่กับข้อมูลจาก Meta
-        เพื่อดูว่ายอดมาจากใคร/แคมเปญไหน
-        (เครื่องหมาย &quot;-&quot; ถูกตัดออกจากแท็กเพราะ IG/FB ตัดคำตรงนั้น)
+        แท็กชุดนี้เป็นข้อบังคับของทุกโพส
       </p>
     </div>
   );
@@ -1948,6 +1871,14 @@ function OverviewPanel({
                 {influencer.nickname || fullName || "—"}
               </h2>
               {tier && <Badge className={tier.badge}>{tier.label}</Badge>}
+              {influencer.influ_code && (
+                <span
+                  title="รหัส Influ ID"
+                  className="rounded-md border border-stone-200 bg-white/70 px-2 py-0.5 font-mono text-xs text-stone-500"
+                >
+                  {influencer.influ_code}
+                </span>
+              )}
             </div>
             {influencer.nickname && fullName && (
               <p className="text-sm text-stone-500">{fullName}</p>
@@ -1963,6 +1894,71 @@ function OverviewPanel({
                 <> · อัปเดตล่าสุด {formatDateTime(influencer.updated_at)}</>
               )}
             </p>
+            {/* สถานะเสริม — ย้ายมารวมจากหัวหน้าเคส (ผู้ใช้ 2026-09-03: กันซ้ำซ้อนกับด้านบน
+                ให้ "ภาพรวม" เป็นที่เดียวที่บอกสถานะพวกนี้)
+                ⚠️ docs_sent_at / memo_submitted_at คนละเหตุการณ์ (0104) ห้ามยุบเป็นป้ายเดียว:
+                  docs_sent_at      = ผู้ดูแลยื่นเรื่องขอ Memo (ขั้น 1 → 1.1)
+                  memo_submitted_at = ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้ว (ขั้น 1.1 → 1.2)
+                ก่อนแก้ 2026-09-03 ป้ายนี้อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว"
+                (คำของความหมายเก่าก่อน 0104) ทำให้เคสที่เพิ่งยื่นเรื่องดูเหมือนส่งขออนุมัติไปแล้ว */}
+            {(influencer.docs_sent_at ||
+              (influencer.consult_only && !influencer.procedure_text) ||
+              (influencer.contract_start !== null &&
+                !influencer.completed &&
+                followupTotal > 0) ||
+              contentTasks.length > 0) && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {influencer.memo_submitted_at ? (
+                  <span
+                    title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDateTime(
+                      influencer.memo_submitted_at
+                    )}`}
+                  >
+                    <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                      <CheckCircle2 size={12} /> ส่ง Memo ขออนุมัติแล้ว
+                    </Badge>
+                  </span>
+                ) : (
+                  influencer.docs_sent_at && (
+                    <span
+                      title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
+                        influencer.docs_sent_at
+                      )} — รอผู้ออก Memo ทำเอกสาร`}
+                    >
+                      <Badge className="border border-stone-200 bg-stone-50 text-stone-600">
+                        <CheckCircle2 size={12} /> ส่งเรื่องขอ Memo แล้ว
+                      </Badge>
+                    </span>
+                  )
+                )}
+                {influencer.consult_only && !influencer.procedure_text && (
+                  <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                    <MessageCircleQuestion size={12} /> รอปรึกษา
+                  </Badge>
+                )}
+                {influencer.contract_start !== null &&
+                  !influencer.completed &&
+                  followupTotal > 0 && (
+                    <Link href="/influencers/contracts" title="ไปหน้า Follow Up">
+                      {followupLeft > 0 ? (
+                        <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                          <ListChecks size={12} /> เช็คลิสต์เหลือ {followupLeft}/
+                          {followupTotal} ข้อ
+                        </Badge>
+                      ) : (
+                        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                          <CheckCircle2 size={12} /> เช็คลิสต์ครบทุกข้อ
+                        </Badge>
+                      )}
+                    </Link>
+                  )}
+                {contentTasks.length > 0 && (
+                  <Badge className="border border-brand-200 bg-brand-50 text-brand-700">
+                    <ClipboardList size={12} /> คอนเทนต์ {contentTasks.length} งาน
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

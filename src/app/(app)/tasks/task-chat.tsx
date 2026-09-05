@@ -453,18 +453,21 @@ export function ChatMessages({ chat }: { chat: TaskChat }) {
           mentionNames={mentionNames}
         />
       ))}
-      {comments !== null && comments.length === 0 && (
-        <p className="py-2 text-center text-xs text-stone-400">
-          ยังไม่มีข้อความ — เริ่มคุยเรื่องงานนี้ได้เลย
-        </p>
-      )}
     </div>
   );
 }
 
 /* ---------- ช่องพิมพ์แชท (แนบไฟล์/ลิงก์ + เมนูแท็กคน) ---------- */
 
-export function ChatComposer({ chat }: { chat: TaskChat }) {
+export function ChatComposer({
+  chat,
+  floating = false,
+}: {
+  chat: TaskChat;
+  /** ทรงพิลลอยเหนือวิดีโอเต็มจอ (หน้าตรวจงานบนมือถือ) แทนแถบเต็มความกว้างของแผงขาว —
+      ซ่อนแถวไอคอนแนบไฟล์/ลิงก์เพื่อให้กะทัดรัด (แนบไฟล์/ลิงก์ได้ผ่านแผงรายละเอียดเต็มแทน) */
+  floating?: boolean;
+}) {
   const {
     me,
     commentDraft,
@@ -490,7 +493,13 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
     onError,
   } = chat;
   return (
-    <div className="relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3">
+    <div
+      className={
+        floating
+          ? "relative rounded-2xl bg-white/95 px-3 py-2 shadow-lg shadow-black/40"
+          : "relative border-t border-stone-100 bg-white/70 px-4 py-3 pb-safe-3 lg:pb-3"
+      }
+    >
       {/* เมนูแท็กคน — โผล่เหนือช่องพิมพ์เมื่อพิมพ์ @ */}
       {mentionQuery !== null && mentionMatches.length > 0 && (
         <div className="absolute bottom-full left-4 right-4 z-30 mb-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl animate-scale-in">
@@ -523,7 +532,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           </div>
         </div>
       )}
-      {showLinkInput && (
+      {!floating && showLinkInput && (
         <div className="mb-2 flex items-center gap-1.5 pl-9">
           <Link2 size={14} className="shrink-0 text-stone-400" />
           <input
@@ -535,7 +544,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           />
         </div>
       )}
-      {attachFile && (
+      {!floating && attachFile && (
         <p className="mb-2 flex items-center gap-1.5 pl-9 text-xs text-stone-500">
           <Paperclip size={12} className="shrink-0" />
           <span className="min-w-0 truncate">{attachFile.name}</span>
@@ -551,12 +560,11 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
         </p>
       )}
       <div className="flex items-start gap-2.5">
-        <AssigneeAvatar assignee={me} size={7} />
+        <AssigneeAvatar assignee={me} size={floating ? 6 : 7} />
         <textarea
           ref={commentInputRef}
           value={commentDraft}
           rows={commentDraft.includes("\n") ? 3 : 1}
-          placeholder="พิมพ์ข้อความ... (@ แท็กคน, Enter ส่ง)"
           aria-label="พิมพ์ข้อความ"
           onChange={(e) => {
             setCommentDraft(e.target.value);
@@ -612,6 +620,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           <Send size={16} />
         </button>
       </div>
+      {!floating && (
       <div className="mt-1.5 flex items-center gap-3 pl-9">
         <button
           type="button"
@@ -654,6 +663,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           }}
         />
       </div>
+      )}
     </div>
   );
 }

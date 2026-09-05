@@ -118,21 +118,9 @@ export type InfluStatusKey = "accepted" | "done" | "declined";
 export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
   i.declined_at !== null ? "declined" : i.completed ? "done" : "accepted";
 
-/* ---------- เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ ----------
-   คิวหมอลง 2 ฝั่ง (กติกาจากผู้ใช้ 2026-08-03): ฝั่งระบบโรงพยาบาลลงคิวก่อน = ยืนยันว่า
-   influ เข้ามาจริง แล้ว influ manager ถึงมาลงคิวในปฏิทินฝั่งนี้เพื่อดูภาพรวมตาราง
-   ⇒ "มีคิว kind=service ในปฏิทิน" คือหลักฐานว่านัดหมอเรียบร้อย
-   ⇒ influencers.service_date (เคาะไว้ตั้งแต่ขั้นรายละเอียดเคส) เป็นแค่วันที่คุยกันไว้ ยังไม่นับว่านัดแล้ว
-   ตัดที่ขั้น "สัญญา + รับบริการ" เพราะขึ้นขั้นตามงาน = ผ่านวันรับบริการมาแล้ว ไม่มีอะไรต้องตามนัด */
-export const needsDoctorBooking = (
-  i: InfluencerListRow,
-  bookedIds: ReadonlySet<string>
-): boolean =>
-  i.stage >= INFLU_STAGE.memo &&
-  i.stage <= INFLU_STAGE.contractService &&
-  !i.completed &&
-  i.declined_at === null &&
-  !bookedIds.has(i.id);
+/* เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ — helper ย้ายไป influ-constants.ts (2026-09-02)
+   เพราะปฏิทิน/กระดิ่งใช้เกณฑ์เดียวกัน (ไม่ควรลาก dnd-kit ของบอร์ดติดไปด้วย); re-export ให้ path เดิม */
+export { needsDoctorBooking } from "@/lib/influ-constants";
 
 /** ป้าย "ยังไม่ได้ลงคิวหมอ" — text เด่นพอประมาณ ไม่เรืองแสง (ผู้ใช้ 2026-08-19:
     "ทำให้เด่นน้อยกว่านี้ ไม่ต้องมี glow แค่ text เด่นประมาณนึงพอ" — glow เดิมแย่งสายตา
