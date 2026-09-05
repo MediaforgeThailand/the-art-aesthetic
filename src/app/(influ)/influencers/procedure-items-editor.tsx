@@ -11,9 +11,11 @@
  * ใช้ทั้งในแท็บรายละเอียดเคส (หน้าเดินงาน) — ส่วนหน้า /influ-cost ใช้เฉพาะ SupportToggle + CostPriceInput
  */
 
-import { Gift, Plus, Search, X } from "lucide-react";
+import { ChevronDown, Gift, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import {
   DEFAULT_PRODUCT_TEAM,
   INFLU_PRODUCT_TEAM_ORDER,
@@ -208,6 +210,220 @@ export function TeamPicker({
   );
 }
 
+/* ---------- Dropdown เลือกหัตถการ/โปรแกรม (ผู้ใช้ 2026-09-03: "ui เลือกหัตให้เป็น dropdown") ----------
+   ปุ่มปิดโดยปริยาย (ไม่ใช่ช่องพิมพ์ที่เปิดค้างเหมือนเดิม) กดแล้วเปิดแผงลอยแบบเดียวกับ
+   DoctorSelect (ปุ่ม + portal + useAnchoredMenu) — ต่างจาก DoctorSelect ตรงที่หน้านี้เพิ่มได้
+   หลายรายการ เลือกแล้ว**ไม่ปิดแผงอัตโนมัติ** เพื่อให้ทีมเพิ่มติดกันหลายรายการได้เร็ว
+   เหมือนพฤติกรรมเดิม — ปิดด้วยคลิกนอกแผง/Esc เท่านั้น (useAnchoredMenu จัดการให้)
+   ใช้ร่วมทั้ง ProcedureItemsEditor (แท็บรายละเอียดเคส) และ ProcedurePicker (สร้างนัดใหม่) */
+
+const dropdownPlace = (btn: HTMLElement) =>
+  menuBox(btn, { width: 360, maxHeight: 380 });
+
+export function ProcedureDropdown({
+  team,
+  catalog,
+  promos,
+  services,
+  onAdd,
+  onAddNew,
+  disabled = false,
+  placeholder = "+ เพิ่มหัตถการ/โปรแกรม",
+}: {
+  team: InfluProductTeam;
+  catalog: PriceCatalogEntry[];
+  promos: PromoCatalogEntry[];
+  services: InfluServiceRow[];
+  /** เลือกรายการจากเมนู — ราคาอ้างอิงมาด้วย (ห้ามกรอกเอง) */
+  onAdd: (
+    name: string,
+    priceItemId: string | null,
+    refPrice: number,
+    promoPackageId: string | null
+  ) => void;
+  /** พิมพ์ชื่อใหม่ที่ไม่มีในเมนู — ลงทะเบียนเข้าเมนูทีมนี้แล้วค่อยหยิบเข้าลิสต์ */
+  onAddNew: (name: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuBox | null>(null);
+  const [query, setQuery] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useAnchoredMenu({
+    open,
+    anchorRef: btnRef,
+    menuRef,
+    onClose: () => setOpen(false),
+    onReposition: (b) => setPos(dropdownPlace(b)),
+  });
+
+  const options = useMemo(
+    () => buildServiceOptions(catalog, promos, services, team),
+    [catalog, promos, services, team]
+  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 40);
+    // ค้นทั้งชื่อจริงและคำเรียกปากเปล่า (search_aliases) — "botox korea" ต้องเจอ Hutox
+    return options
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.aliases ?? "").toLowerCase().includes(q)
+      )
+      .slice(0, 40);
+  }, [options, query]);
+
+  const toggle = () => {
+    if (disabled) return;
+    if (!open && btnRef.current) {
+      setPos(dropdownPlace(btnRef.current));
+      setQuery("");
+    }
+    setOpen((o) => !o);
+  };
+
+  const pick = (c: ServiceOption) => {
+    onAdd(c.name, c.priceItemId, c.refPrice ?? 0, c.promoPackageId);
+    setQuery("");
+    searchRef.current?.focus();
+  };
+
+  const addNew = () => {
+    const q = query.trim();
+    if (!q) return;
+    onAddNew(q);
+    setQuery("");
+    searchRef.current?.focus();
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        disabled={disabled}
+        onClick={toggle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 text-left text-sm text-stone-500 transition-colors duration-200 hover:border-brand-300 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400 sm:h-[38px]"
+      >
+        <Search size={15} className="shrink-0 text-stone-400" />
+        <span className="min-w-0 flex-1 truncate">{placeholder}</span>
+        <ChevronDown size={15} className="shrink-0 text-stone-400" />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={{
+              left: pos.x,
+              top: pos.y,
+              width: pos.width,
+              maxHeight: pos.height,
+            }}
+            // ใช้ในโมดัลสร้างนัดใหม่ (z-[80]) ด้วย — เมนูลอยที่เปิดจากในโมดัลต้องเป็น z-[90]
+            className="fixed z-[90] flex flex-col overflow-hidden rounded-xl border border-white/70 bg-white/95 shadow-xl backdrop-blur-xl animate-scale-in"
+          >
+            <div className="p-1.5 pb-0">
+              <input
+                ref={searchRef}
+                autoFocus={
+                  typeof window !== "undefined" &&
+                  window.matchMedia("(pointer: fine)").matches
+                }
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const q = query.trim();
+                    if (!q) return;
+                    const first = filtered[0];
+                    if (first && first.name.toLowerCase() === q.toLowerCase())
+                      pick(first);
+                    else addNew();
+                  } else if (e.key === "Escape") {
+                    setOpen(false);
+                  }
+                }}
+                placeholder={
+                  team === "aesthetics"
+                    ? "พิมพ์ค้นหาจาก Price List หรือชื่อใหม่..."
+                    : "พิมพ์ค้นหาหรือชื่อใหม่..."
+                }
+                maxLength={PROCEDURE_NAME_MAX}
+                className="w-full rounded-md border border-stone-200 bg-white px-2 py-2 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-1.5">
+              {filtered.length > 0 ? (
+                filtered.map((c) => {
+                  const q = query.trim().toLowerCase();
+                  const aliasHit =
+                    q !== "" && !!c.aliases && !c.name.toLowerCase().includes(q);
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => pick(c)}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50"
+                      title={c.name}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{c.name}</span>
+                        {aliasHit && (
+                          <span className="block truncate text-[10px] text-stone-400">
+                            ({c.aliases})
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-brand-600">
+                        {c.fullPrice !== null && (
+                          <span className="mr-1 font-normal text-stone-300 line-through">
+                            {formatCurrency(c.fullPrice)}
+                          </span>
+                        )}
+                        {c.refPrice !== null ? formatCurrency(c.refPrice) : "฿0"}
+                        {c.promoPackageId !== null && (
+                          <span className="ml-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] font-medium text-pink-600">
+                            โปร
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-2 py-2.5 text-xs text-stone-400">
+                  ไม่พบในเมนู — พิมพ์ชื่อแล้วกด Enter เพื่อเพิ่มใหม่
+                </p>
+              )}
+            </div>
+            {query.trim() !== "" && (
+              <button
+                type="button"
+                onClick={addNew}
+                className="flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 bg-white px-3 py-3 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
+              >
+                <Plus size={14} />
+                เพิ่ม &quot;{shortenProgramName(query, PROCEDURE_NAME_MAX)}
+                &quot; เป็นหัตถการใหม่
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 /* ---------- ชิ้นส่วนย่อยที่หน้า /influ-cost ใช้ร่วม ---------- */
 
 /** ปุ่มติ๊ก "แบรนด์ support ของ" — เปิดแล้วต้นทุนรายการนี้นับเป็น 0 */
@@ -322,32 +538,12 @@ export function ProcedureItemsEditor({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // ทีมที่กำลังเลือกหัตถการอยู่ — ช่องค้นหาแสดงเฉพาะเมนูของทีมนี้ (0080)
+  // ทีมที่กำลังเลือกหัตถการอยู่ — dropdown แสดงเฉพาะเมนูของทีมนี้ (0080)
   const [team, setTeam] = useState<InfluProductTeam>(DEFAULT_PRODUCT_TEAM);
-  // สำเนาทะเบียนในเครื่อง — รายการที่เพิ่งพิมพ์เพิ่มต้องโผล่ในช่องค้นหาทันทีไม่ต้องรอ refresh
+  // สำเนาทะเบียนในเครื่อง — รายการที่เพิ่งพิมพ์เพิ่มต้องโผล่ใน dropdown ทันทีไม่ต้องรอ refresh
   const [svcList, setSvcList] = useState<InfluServiceRow[]>(services);
-
-  const options = useMemo(
-    () => buildServiceOptions(catalog, promos, svcList, team),
-    [catalog, promos, svcList, team]
-  );
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options.slice(0, 40);
-    // ค้นทั้งชื่อจริงและคำเรียกปากเปล่า (search_aliases) — เช่น "botox korea" ต้องเจอ Hutox
-    return options
-      .filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.aliases ?? "").toLowerCase().includes(q)
-      )
-      .slice(0, 40);
-  }, [options, query]);
 
   /** sync ข้อความสรุปกลับ procedure_text — ให้ Memo/บอร์ด/ปฏิทินเห็นรูปแบบเดิม (best effort)
       แล้ว refresh ให้หน้าภาพรวม/Memo ในหน้าเดียวกันเห็นค่าล่าสุด (state ในฟอร์มนี้ไม่โดนทับ) */
@@ -399,8 +595,6 @@ export function ProcedureItemsEditor({
     const next = [...items, data as InfluProcedureItemRow];
     setItems(next);
     syncText(next);
-    setQuery("");
-    inputRef.current?.focus();
   };
 
   /** พิมพ์ชื่อใหม่ที่ไม่มีในเมนู = เพิ่มเข้าเมนูของทีมนี้ด้วย (ครั้งหน้าพิมพ์ค้นหาเจอเลย
@@ -601,128 +795,28 @@ export function ProcedureItemsEditor({
         </p>
       )}
 
-      {/* ช่องเพิ่มรายการ — เลือก product team ก่อน แล้วพิมพ์ค้นหาเมนูของทีมนั้น (0080) */}
+      {/* ช่องเพิ่มรายการ — เลือก product team ก่อน แล้วเปิด dropdown เมนูของทีมนั้น (0080)
+          ผู้ใช้ 2026-09-03: เปลี่ยนจากช่องพิมพ์ค้นหาที่เปิดค้างเป็นปุ่ม dropdown ปิดโดยปริยาย
+          + คำอธิบายยาวใต้ช่องเดิมถูกถอดออก (ที่ต้องรู้จริงๆ อยู่ใน placeholder ของปุ่มแทน) */}
       {!readOnly && (
-        <div className="mt-2.5">
-          <div className="mb-2">
-            <TeamPicker
-              team={team}
-              onChange={(t) => {
-                setTeam(t);
-                setQuery("");
-              }}
-            />
-          </div>
-        <div className="relative">
-          <div className="flex items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 py-2 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 max-sm:min-h-11">
-            <Search size={15} className="shrink-0 text-stone-400" />
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setOpen(true);
-              }}
-              onFocus={() => setOpen(true)}
-              onBlur={() => setOpen(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (query.trim()) void addNewToTeam(query);
-                } else if (e.key === "Escape") {
-                  setOpen(false);
-                }
-              }}
-              placeholder={
-                team === "aesthetics"
-                  ? "พิมพ์ชื่อโปรแกรม เช่น Ultraformer III 300 shot..."
-                  : `ค้นหา/เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
-              }
-              maxLength={PROCEDURE_NAME_MAX}
-              className="w-full bg-transparent text-base text-stone-900 outline-none placeholder:text-stone-500 sm:text-sm"
-            />
-          </div>
-          {open && (
-            <div
-              // กัน blur ของ input ก่อนตัวเลือกจะทำงาน — ต้องดักที่ pointerdown ไม่ใช่ mousedown
-              // เพราะบนจอสัมผัส mousedown เป็นอีเวนต์จำลองที่มาหลัง blur ไปแล้ว
-              // (ลิสต์ถูก unmount ก่อน = แตะเลือกโปรแกรมไม่ติดบนมือถือ)
-              onPointerDown={(e) => e.preventDefault()}
-              className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-stone-200 bg-white shadow-xl animate-fade-in"
-            >
-              {filtered.length > 0 ? (
-                <>
-                  <p className="sticky top-0 border-b border-stone-100 bg-stone-50/95 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    {team === "aesthetics"
-                      ? "เมนูทีม Aesthetics (Price List + ที่ทีมเพิ่มเอง)"
-                      : `เมนูทีม ${INFLU_PRODUCT_TEAMS[team].label} (ที่ทีมเพิ่มกันเอง)`}
-                  </p>
-                  {filtered.map((c) => {
-                    const q = query.trim().toLowerCase();
-                    // เจอเพราะคำเรียกปากเปล่า (ไม่ใช่ชื่อจริง) — โชว์ alias ให้รู้ว่าทำไมขึ้นมา
-                    const aliasHit =
-                      q !== "" && !!c.aliases && !c.name.toLowerCase().includes(q);
-                    return (
-                      <button
-                        key={c.key}
-                        type="button"
-                        onPointerDown={() =>
-                          void addItem(c.name, c.priceItemId, c.refPrice, c.promoPackageId)
-                        }
-                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left text-sm text-stone-700 transition-colors hover:bg-brand-50 sm:py-2"
-                        title={c.name}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate">{c.name}</span>
-                          {aliasHit && (
-                            <span className="block truncate text-[10px] text-stone-400">
-                              ({c.aliases})
-                            </span>
-                          )}
-                        </span>
-                        <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-brand-600">
-                          {c.fullPrice !== null && (
-                            <span className="mr-1 font-normal text-stone-300 line-through">
-                              {formatCurrency(c.fullPrice)}
-                            </span>
-                          )}
-                          {c.refPrice !== null ? formatCurrency(c.refPrice) : "฿0"}
-                          {c.promoPackageId !== null && (
-                            <span className="ml-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] font-medium text-pink-600">
-                              โปร
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </>
-              ) : (
-                <p className="px-3 py-2.5 text-xs text-stone-400">
-                  ไม่พบในเมนูของทีมนี้ — กดปุ่มด้านล่างเพื่อเพิ่มเป็นหัตถการใหม่
-                </p>
-              )}
-              {query.trim() !== "" && (
-                <button
-                  type="button"
-                  onPointerDown={() => void addNewToTeam(query)}
-                  className="sticky bottom-0 flex w-full cursor-pointer items-center gap-1.5 border-t border-stone-100 bg-white px-3 py-3 text-left text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
-                >
-                  <Plus size={14} />
-                  เพิ่ม &quot;{shortenProgramName(query, PROCEDURE_NAME_MAX)}
-                  &quot; เข้าเมนูทีม {INFLU_PRODUCT_TEAMS[team].label}
-                </button>
-              )}
-            </div>
-          )}
-          <p className="mt-1 text-[11px] text-stone-400">
-            {team === "aesthetics"
-              ? "เลือกจาก Price List = ราคาอ้างอิงตามเมนูอัตโนมัติ แก้เองไม่ได้"
-              : `เมนูของทีม ${INFLU_PRODUCT_TEAMS[team].label} มาจากที่ทีมเพิ่มกันเอง`}{" "}
-            · พิมพ์ชื่อใหม่แล้วกด Enter = เพิ่มเข้าเมนูของทีมนี้ให้ค้นเจอครั้งหน้า
-            (ติ๊ก Support เมื่อแบรนด์ส่งของมาให้ = ไม่คิดต้นทุน)
-          </p>
-        </div>
+        <div className="mt-2.5 space-y-2">
+          <TeamPicker team={team} onChange={setTeam} />
+          <ProcedureDropdown
+            team={team}
+            catalog={catalog}
+            promos={promos}
+            services={svcList}
+            onAdd={(name, priceItemId, refPrice, promoPackageId) =>
+              void addItem(name, priceItemId, refPrice, promoPackageId)
+            }
+            onAddNew={(name) => void addNewToTeam(name)}
+            disabled={adding}
+            placeholder={
+              team === "aesthetics"
+                ? "+ เพิ่มหัตถการจาก Price List..."
+                : `+ เพิ่มหัตถการของทีม ${INFLU_PRODUCT_TEAMS[team].label}...`
+            }
+          />
         </div>
       )}
 

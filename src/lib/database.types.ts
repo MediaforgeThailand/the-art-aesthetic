@@ -417,7 +417,14 @@ export type InfluencerRow = {
   tier: InfluTier | null;
   procedure_text: string | null;
   procedure_history: ProcedureChange[];
+  /** มูลค่าเคสรวม = วงเงิน voucher + ค่าตัว (0106) — **ไม่รวมราคาสินค้าที่เลือกแล้ว**
+      คำนวณให้เองตอนบันทึก ผ่าน caseValueOf() ห้ามกรอกมือ */
   case_value: number | null;
+  /** จำนวน voucher ที่เปิดวงเงินให้เคสนี้ (0106) — 0 = ยังไม่เปิดวงเงิน */
+  voucher_count: number;
+  /** ราคาต่อ voucher 1 ใบ ณ ตอนเปิดวงเงิน (บาท) — snapshot ต่อเคส ไม่ใช่ค่าคงที่ที่อ่านสด
+      (ค่าคงที่ INFLU_VOUCHER_UNIT ใช้เฉพาะตอน "เปิดวงเงินใหม่") */
+  voucher_unit: number;
   /** true = เคส "รอปรึกษา" — เปิดเคส/ทำ Memo ได้โดยยังไม่ระบุหัตถการ (ปกติบังคับต้องมี) */
   consult_only: boolean;
   /** ค่าตัวที่ต้องจ่ายให้ influencer (บาท) — null = เคสแลกหัตถการไม่มีค่าตัว */

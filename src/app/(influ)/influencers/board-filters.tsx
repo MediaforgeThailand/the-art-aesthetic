@@ -143,26 +143,32 @@ export function matchBoardFilters(
 ): boolean {
   const status = influStatusOf(i);
 
+  /* คิวเตือน 3 อัน ("รอลงคิวหมอ" / "เอกสารผ่านแล้ว ยังไม่ลงคิว" / "Case รอส่ง memo")
+     **ข้ามตัวกรองอื่นทั้งหมด** — ยกเว้น, ผู้รับผิดชอบ, บทบาท, แคมเปญ — แล้ว return
+     ทันที เพราะป้ายจำนวนบนปุ่ม/กระดิ่ง/ปฏิทินนับจากทุกเคสในทีม (ดู memoWaitCount /
+     bookingAlertIds ใน influencers-client) ⚠️ ก่อนแก้ 2026-09-03 ตัวกรอง owner ยัง
+     ทำงานต่อ ค่าโรงงานคือ "เคสของฉัน" ⇒ กดปุ่มที่ขึ้นเลข 17 แล้วได้บอร์ดว่าง พร้อม
+     ข้อความว่า "ทุกเคสกดยืนยันแล้ว" ซึ่งไม่จริง — สัญญาณเตือนต้องเห็นครบเสมอ
+     ห้ามให้ตัวกรองอื่นมาตัดทิ้ง (ครอบ needbooking_approved ด้วยเหตุผลเดียวกัน) */
   if (f.stage === "needbooking") {
-    if (!ctx.bookingAlertIds.has(i.id)) return false;
-  } else if (f.stage === "needbooking_approved") {
+    return ctx.bookingAlertIds.has(i.id);
+  }
+  if (f.stage === "needbooking_approved") {
     // "เอกสารผ่านแล้ว ยังไม่ลงคิว" = รอลงคิว + ผ่านขั้น 1.2 มาแล้ว (memoApprovedNeedsBooking)
-    if (
-      !ctx.bookingAlertIds.has(i.id) ||
-      i.stage < INFLU_STAGE.contractService
-    )
-      return false;
-  } else if (f.stage === "memowait") {
+    return (
+      ctx.bookingAlertIds.has(i.id) && i.stage >= INFLU_STAGE.contractService
+    );
+  }
+  if (f.stage === "memowait") {
     // "Case รอส่ง memo" = ขั้นย่อย 1.0 — ยังไม่กดยืนยันส่งเรื่อง Memo (0104)
-    // เป็นคิวเตือนแบบเดียวกับ "รอลงคิวหมอ" — ข้ามตัวกรอง "ยกเว้น" เพื่อเห็นครบเสมอ
-    if (
-      i.stage !== INFLU_STAGE.memo ||
-      i.docs_sent_at !== null ||
-      i.completed ||
-      status === "declined"
-    )
-      return false;
-  } else if (f.stage === "declined") {
+    return (
+      i.stage === INFLU_STAGE.memo &&
+      i.docs_sent_at === null &&
+      !i.completed &&
+      status !== "declined"
+    );
+  }
+  if (f.stage === "declined") {
     if (status !== "declined") return false;
   } else {
     const picked: InfluStatusKey | null =
@@ -221,6 +227,25 @@ export function boardFilterChips(
   campaigns: InfluCampaignDefRow[]
 ): FilterSummaryChip<BoardFilters>[] {
   const out: FilterSummaryChip<BoardFilters>[] = [];
+
+  /* คิวเตือนข้ามตัวกรองอื่นทั้งหมด (ดู matchBoardFilters) ⇒ ห้ามโชว์ชิปของตัวกรอง
+     ที่ตอนนี้ไม่มีผล ไม่งั้นบอร์ดโชว์เคสทั้งทีมอยู่แต่ชิปยังเขียนว่า "เคสของฉัน" */
+  if (f.stage === "memowait") {
+    // ปุ่ม "Case รอส่ง memo" บนแถบเครื่องมือโชว์สถานะ active ของตัวเองอยู่แล้ว
+    return out;
+  }
+  if (f.stage === "needbooking" || f.stage === "needbooking_approved") {
+    out.push({
+      key: "stage",
+      label:
+        f.stage === "needbooking"
+          ? "รอลงคิวหมอ · ทุกขั้น"
+          : "เอกสารผ่านแล้ว ยังไม่ลงคิว",
+      next: { ...f, stage: "all" },
+    });
+    return out;
+  }
+
   if (f.owner !== "all") {
     out.push({
       key: "owner",
@@ -243,16 +268,7 @@ export function boardFilterChips(
     });
   }
   // ขั้นที่เลือกไม่ต้องมีชิปสรุป — เส้น tracker บนแถบบอกอยู่แล้วว่าเจาะขั้นไหนอยู่
-  if (f.stage === "needbooking" || f.stage === "needbooking_approved") {
-    out.push({
-      key: "stage",
-      label:
-        f.stage === "needbooking"
-          ? "รอลงคิวหมอ · ทุกขั้น"
-          : "เอกสารผ่านแล้ว ยังไม่ลงคิว",
-      next: { ...f, stage: "all" },
-    });
-  }
+  // (needbooking/needbooking_approved มีชิปสรุปของตัวเองแล้วที่ return out ด้านบน)
   if (f.excluded.length) {
     out.push({
       key: "excluded",
@@ -436,8 +452,8 @@ export function BoardFilterSections({
   return (
     <>
       <FilterSection
-        title="ลงคิวหมอ"
-        hint="“ทุกขั้น” = ยังไม่มีคิว “เข้ารับบริการ” ในปฏิทิน ไม่ว่าจะอยู่ขั้นไหน · “เอกสารผ่านแล้ว” = ผ่านขั้น 1.2 (อัพไฟล์ Memo ที่อนุมัติ) มาแล้วแต่ยังไม่ลงคิว"
+        title="งานค้าง"
+        hint="“ทุกขั้น” = ยังไม่มีคิว “เข้ารับบริการ” ในปฏิทิน ไม่ว่าจะอยู่ขั้นไหน · “เอกสารผ่านแล้ว” = ผ่านขั้น 1.2 (อัพไฟล์ Memo ที่อนุมัติ) มาแล้วแต่ยังไม่ลงคิว · เคสที่ยังไม่มีเจ้าของ"
       >
         <div className="flex flex-wrap gap-1.5">
           <FilterChip
@@ -465,6 +481,22 @@ export function BoardFilterSections({
             เอกสารผ่านแล้ว ยังไม่ลงคิว
             <span className="tabular-nums text-stone-400">
               {approvedBookingCount}
+            </span>
+          </FilterChip>
+          <FilterChip
+            active={filters.owner === "none"}
+            onClick={() =>
+              set({ owner: filters.owner === "none" ? "all" : "none" })
+            }
+            title="เคสที่ยังไม่มีใครถูกตั้งเป็นผู้รับผิดชอบ — จะไม่ขึ้นเตือนในกระดิ่งของใครเลย"
+          >
+            ยังไม่มีผู้รับผิดชอบ
+            <span
+              className={`tabular-nums ${
+                unassignedCount > 0 ? "text-amber-600" : "text-stone-400"
+              }`}
+            >
+              {unassignedCount}
             </span>
           </FilterChip>
         </div>

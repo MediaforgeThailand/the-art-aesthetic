@@ -66,16 +66,20 @@ import {
   calendarTimeLabel,
   type CaseHashtag,
   caseHashtags,
+  caseValueOf,
   contractEndDate,
   hashtagText,
   INFLU_STAGE,
   INFLU_STAGE_LAST,
   INFLU_STAGES,
   INFLU_TIERS,
+  INFLU_VOUCHER_UNIT,
   itemEffectiveCost,
   roleSummary,
   scopeOfStage,
   tierFromFollowers,
+  voucherCreditOf,
+  voucherLabelOf,
 } from "@/lib/influ-constants";
 import { influLogActionMeta, logInflu } from "@/lib/influ-log";
 import { notifyInflu } from "@/lib/influ-notify";
@@ -108,6 +112,7 @@ import {
   type PriceCatalogEntry,
   type PromoCatalogEntry,
 } from "../procedure-items-editor";
+import { VoucherPicker } from "../voucher-picker";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
 
@@ -1518,6 +1523,7 @@ export function InfluDetailClient({
             peopleById={peopleById}
             busyUserId={assigneeBusy}
             onAssigneeChange={(c) => void applyAssigneeChange(c)}
+            procedureItems={procedureItems}
           />
         )}
         {view === INFLU_STAGE.contractService && (
@@ -1889,7 +1895,12 @@ function OverviewPanel({
               )}
             </p>
             {/* สถานะเสริม — ย้ายมารวมจากหัวหน้าเคส (ผู้ใช้ 2026-09-03: กันซ้ำซ้อนกับด้านบน
-                ให้ "ภาพรวม" เป็นที่เดียวที่บอกสถานะพวกนี้) */}
+                ให้ "ภาพรวม" เป็นที่เดียวที่บอกสถานะพวกนี้)
+                ⚠️ docs_sent_at / memo_submitted_at คนละเหตุการณ์ (0104) ห้ามยุบเป็นป้ายเดียว:
+                  docs_sent_at      = ผู้ดูแลยื่นเรื่องขอ Memo (ขั้น 1 → 1.1)
+                  memo_submitted_at = ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้ว (ขั้น 1.1 → 1.2)
+                ก่อนแก้ 2026-09-03 ป้ายนี้อ่าน docs_sent_at แต่เขียนว่า "ส่ง Memo แล้ว"
+                (คำของความหมายเก่าก่อน 0104) ทำให้เคสที่เพิ่งยื่นเรื่องดูเหมือนส่งขออนุมัติไปแล้ว */}
             {(influencer.docs_sent_at ||
               (influencer.consult_only && !influencer.procedure_text) ||
               (influencer.contract_start !== null &&
@@ -1897,16 +1908,28 @@ function OverviewPanel({
                 followupTotal > 0) ||
               contentTasks.length > 0) && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {influencer.docs_sent_at && (
+                {influencer.memo_submitted_at ? (
                   <span
-                    title={`ส่ง Memo ขออนุมัติแล้วเมื่อ ${formatDateTime(
-                      influencer.docs_sent_at
+                    title={`ผู้ออก Memo ทำเอกสารส่งขออนุมัติแล้วเมื่อ ${formatDateTime(
+                      influencer.memo_submitted_at
                     )}`}
                   >
                     <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                      <CheckCircle2 size={12} /> ส่ง Memo แล้ว
+                      <CheckCircle2 size={12} /> ส่ง Memo ขออนุมัติแล้ว
                     </Badge>
                   </span>
+                ) : (
+                  influencer.docs_sent_at && (
+                    <span
+                      title={`ยื่นเรื่องขอ Memo แล้วเมื่อ ${formatDateTime(
+                        influencer.docs_sent_at
+                      )} — รอผู้ออก Memo ทำเอกสาร`}
+                    >
+                      <Badge className="border border-stone-200 bg-stone-50 text-stone-600">
+                        <CheckCircle2 size={12} /> ส่งเรื่องขอ Memo แล้ว
+                      </Badge>
+                    </span>
+                  )
                 )}
                 {influencer.consult_only && !influencer.procedure_text && (
                   <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
@@ -2090,7 +2113,11 @@ function OverviewPanel({
               }
             />
             <Field
-              label="มูลค่าเคส"
+              label="วงเงิน (Voucher)"
+              value={voucherLabelOf(influencer)}
+            />
+            <Field
+              label="มูลค่าเคสรวม"
               value={
                 influencer.case_value != null
                   ? formatCurrency(influencer.case_value)
@@ -2400,6 +2427,13 @@ function CaseDetailStage({
   const [talentFee, setTalentFee] = useState(
     influencer.talent_fee != null ? String(influencer.talent_fee) : ""
   );
+  /* วงเงิน voucher (0106) — เก็บเป็น "จำนวนใบ" ราคาต่อใบอ่านจากแถว (voucher_unit)
+     เคสที่ยังไม่เคยเปิดวงเงินใช้ค่าคงที่ปัจจุบันเป็นราคาตั้งต้น */
+  const [voucherCount, setVoucherCount] = useState(influencer.voucher_count);
+  const voucherUnit =
+    Number(influencer.voucher_unit) > 0
+      ? Number(influencer.voucher_unit)
+      : INFLU_VOUCHER_UNIT;
   const [followers, setFollowers] = useState(
     influencer.followers != null ? String(influencer.followers) : ""
   );
@@ -2521,9 +2555,14 @@ function CaseDetailStage({
   const followersNum = Number(followers.replace(/[^0-9]/g, "")) || 0;
   const tier = followersNum > 0 ? tierFromFollowers(followersNum) : null;
 
-  // มูลค่าเคส (case_value) คำนวณให้เอง = Σ ราคาโปรแกรมที่เลือก + ค่าตัว — ไม่มีช่องกรอกมือแล้ว
+  /* มูลค่าเคส (case_value) = วงเงิน voucher + ค่าตัว — **ราคาสินค้าไม่เข้าสมการแล้ว** (0106)
+     itemsTotal ยังคำนวณไว้เพื่อโชว์ประกอบตอนเคาะวงเงิน และเป็นต้นทุนของ /influ-cost เหมือนเดิม */
   const itemsTotal = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
-  const caseTotal = itemsTotal + (Number(talentFee) || 0);
+  const voucherCredit = voucherCreditOf({
+    voucher_count: voucherCount,
+    voucher_unit: voucherUnit,
+  });
+  const caseTotal = voucherCredit + (Number(talentFee) || 0);
 
   // ตัวเลือกแคมเปญ = ที่ยังเปิดใช้งาน + ของเดิมที่เคสนี้ผูกไว้ (ถึงจะปิดไปแล้วก็ต้องยังเห็น
   // ไม่งั้นกดบันทึกครั้งถัดไปแคมเปญจะหลุดหายไปเงียบๆ)
@@ -2567,9 +2606,14 @@ function CaseDetailStage({
         doctor_name: doctorName.trim() || null,
         contact_channel: contactChannel.trim() || null,
         campaign_id: campaignId || null,
-        // มูลค่าเคสคำนวณจากรายการ + ค่าตัวที่ validate แล้ว (ไม่มีอะไรมีมูลค่า = null ไม่ใช่ 0)
-        case_value:
-          itemsTotal + (feeNum ?? 0) > 0 ? itemsTotal + (feeNum ?? 0) : null,
+        // มูลค่าเคส = วงเงิน voucher + ค่าตัว (0106) — ราคาสินค้าไม่นับ
+        voucher_count: voucherCount,
+        voucher_unit: voucherUnit,
+        case_value: caseValueOf({
+          voucher_count: voucherCount,
+          voucher_unit: voucherUnit,
+          talent_fee: feeNum,
+        }),
         // มีรายการหัตถการแล้ว = ไม่ใช่เคสรอปรึกษาอีกต่อไป (ธงค้างไว้จะทำให้การ์ดขึ้นชิปผิด)
         consult_only: items.length > 0 ? false : consultOnly,
         talent_fee: feeNum,
@@ -2588,7 +2632,9 @@ function CaseDetailStage({
       entityId: influencer.id,
       influencerId: influencer.id,
       influencerName: logNameOf(influencer),
-      summary: `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)})`,
+      summary: `แก้รายละเอียดเคส (${items.length} โปรแกรม · ผู้ติดตาม ${formatNumber(followersNum)}${
+        voucherCredit > 0 ? ` · วงเงิน ${formatCurrency(voucherCredit)}` : ""
+      })`,
     });
     // ข้อมูลเคสเปลี่ยนกระทบทุกขั้น (Memo/สัญญา/ต้นทุน) — ส่งแบบ "อัพเดท" ถึงทุกคน
     notify({
@@ -2663,6 +2709,15 @@ function CaseDetailStage({
               services={services}
               readOnly={readOnly}
             />
+            {/* วงเงิน voucher (0106) — อยู่ต่อจากรายการสินค้าเพราะเคาะวงเงินหลังรู้ว่าจะให้อะไรบ้าง */}
+            <div className="mt-2.5">
+              <VoucherPicker
+                count={voucherCount}
+                unit={voucherUnit}
+                onChange={setVoucherCount}
+                disabled={readOnly}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -2683,8 +2738,20 @@ function CaseDetailStage({
               <div className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 text-sm font-semibold text-stone-800">
                 {caseTotal > 0 ? formatCurrency(caseTotal) : "—"}
               </div>
-              <p className="mt-1 text-[11px] text-stone-400">
-                คำนวณให้เอง = โปรแกรมที่เลือก + ค่าตัว
+              {/* ผู้ใช้ 2026-09-03: แสดงจำนวน voucher ที่กรอกไว้ตรงนี้ (ไม่ใช่ในตัวช่องกรอกเอง)
+                  พ่วงเตือนถ้าวงเงินเปิดน้อยกว่ามูลค่าสินค้าที่เลือกไว้ */}
+              <p className="mt-1 text-[11px] text-stone-500">
+                {voucherLabelOf({
+                  voucher_count: voucherCount,
+                  voucher_unit: voucherUnit,
+                }) ?? "ยังไม่เปิดวงเงิน voucher"}
+                {Number(talentFee) > 0 &&
+                  ` + ค่าตัว ${formatCurrency(Number(talentFee))}`}
+                {voucherCredit > 0 && itemsTotal > voucherCredit && (
+                  <span className="ml-1 font-medium text-amber-700">
+                    (น้อยกว่ามูลค่าสินค้าที่เลือกไว้ {formatCurrency(itemsTotal)})
+                  </span>
+                )}
               </p>
             </div>
             <div>
