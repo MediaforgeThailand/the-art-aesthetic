@@ -46,8 +46,8 @@ import {
   INFLU_CONTACT_QUICK,
   INFLU_PROSPECT_STATUS_ORDER,
   INFLU_PROSPECT_STATUSES,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluProspectChannel,

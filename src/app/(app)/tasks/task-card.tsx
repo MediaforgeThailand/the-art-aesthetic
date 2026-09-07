@@ -326,7 +326,7 @@ export function waitDurationLabel(sinceIso: string | null): string | null {
 
 /** วงกลมบอกสถานะการตรวจงาน (read-only) — none = ว่าง, รอตรวจ = นาฬิกาเหลือง, ผ่าน = ติ๊กเขียว
     งานที่ตรวจ 2 ทอด (มีผู้ตรวจลำดับ 2) บอกทอดใน tooltip */
-export function ReviewStatusDot({
+function ReviewStatusDot({
   status,
   size = 18,
   reviewStep,

@@ -26,7 +26,7 @@ import {
   formatNumber,
   todayISO,
 } from "@/lib/format";
-import { MEMO_COMPANY } from "@/lib/influ-constants";
+import { COMPANY_INFO } from "@/lib/constants";
 import type { PriceGroup, PromoPackageWithItems } from "@/lib/types";
 
 type Pkg = PromoPackageWithItems;
@@ -702,7 +702,7 @@ export function PriceListClient({
       <footer className="mx-auto mt-10 max-w-6xl px-4 text-center text-[11px] leading-5 text-stone-500">
         <p>*เงื่อนไขเป็นไปตามที่คลินิกกำหนด ราคาอาจเปลี่ยนแปลงตามช่วงโปรโมชัน</p>
         <p className="mt-1">
-          {MEMO_COMPANY.name} · {MEMO_COMPANY.address} · {MEMO_COMPANY.phone}
+          {COMPANY_INFO.name} · {COMPANY_INFO.address} · {COMPANY_INFO.phone}
         </p>
       </footer>
 
@@ -1183,7 +1183,7 @@ function DetailModal({
           </div>
 
           <p className="mt-5 text-[11px] text-stone-400">
-            *เงื่อนไขเป็นไปตามที่คลินิกกำหนด สอบถามเพิ่มเติม {MEMO_COMPANY.phone}
+            *เงื่อนไขเป็นไปตามที่คลินิกกำหนด สอบถามเพิ่มเติม {COMPANY_INFO.phone}
           </p>
         </div>
 

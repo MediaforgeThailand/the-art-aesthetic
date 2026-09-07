@@ -29,7 +29,7 @@ import {
    ========================================================================== */
 
 /** ไฟล์ที่ใช้เป็นรูปหน้าปก = ไฟล์รูป/วิดีโอที่อัพก่อนสุด (เกณฑ์เดียวกับ CardMediaPreview) */
-export function coverFileOf(files: TaskFileRow[]): TaskFileRow | null {
+function coverFileOf(files: TaskFileRow[]): TaskFileRow | null {
   const media = files.filter(
     (f) => isImagePath(f.file_path) || isVideoPath(f.file_path)
   );

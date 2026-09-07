@@ -29,10 +29,10 @@ import {
 
 /* ---------- ชนิดข้อมูล ---------- */
 
-export type KpiRange = "mtd" | "month" | "7d" | "14d" | "30d" | "custom";
-export type KpiPosted = "all" | "posted" | "unposted";
+type KpiRange = "mtd" | "month" | "7d" | "14d" | "30d" | "custom";
+type KpiPosted = "all" | "posted" | "unposted";
 /** "none" = ยังไม่ระบุ (ใช้ทั้งฟอร์แมตและหมวด) */
-export type KpiFormatKey = ContentFormat | "none";
+type KpiFormatKey = ContentFormat | "none";
 
 export type KpiFilters = {
   range: KpiRange;
@@ -62,7 +62,7 @@ export const DEFAULT_KPI_FILTERS: KpiFilters = {
   categories: [],
 };
 
-export const KPI_RANGE_ORDER: KpiRange[] = [
+const KPI_RANGE_ORDER: KpiRange[] = [
   "mtd",
   "month",
   "7d",
@@ -86,18 +86,18 @@ const POSTED_LABEL: Record<KpiPosted, string> = {
   unposted: "ยังไม่โพส",
 };
 
-export const KPI_POSTED_ORDER: KpiPosted[] = ["all", "posted", "unposted"];
+const KPI_POSTED_ORDER: KpiPosted[] = ["all", "posted", "unposted"];
 
 /* ---------- ช่วงวัน ---------- */
 
 /** ข้อมูลของเดือนที่กำลังดู — มาจาก `computeKpiMonth` */
-export type KpiRangeCtx = {
+type KpiRangeCtx = {
   daysInMonth: number;
   elapsedDays: number;
 };
 
 /** ช่วงวันที่ตัวกรองแปลออกมาแล้ว (วันที่ของเดือน 1-based, รวมปลายทั้งสองข้าง) */
-export type KpiDayRange = { from: number; to: number };
+type KpiDayRange = { from: number; to: number };
 
 /**
  * แปลง preset เป็นช่วงวันจริงของเดือนที่ดูอยู่
@@ -128,11 +128,6 @@ export function resolveKpiRange(f: KpiFilters, ctx: KpiRangeCtx): KpiDayRange {
     default:
       return { from: 1, to: clamp(last) };
   }
-}
-
-/** ช่วงนี้กินทั้งเดือนหรือเปล่า — ใช้ตัดสินว่าจะหรี่ช่องปฏิทินนอกช่วงไหม */
-export function isFullMonthRange(r: KpiDayRange, daysInMonth: number): boolean {
-  return r.from <= 1 && r.to >= daysInMonth;
 }
 
 /* ---------- ตัวตัดสิน ---------- */
@@ -169,7 +164,7 @@ export function matchKpiEvent(
 }
 
 /** จำนวน "กลุ่ม" ที่ไม่ใช่ค่าเริ่มต้น — เลขบนปุ่มตัวกรอง */
-export function kpiFilterCount(f: KpiFilters): number {
+function kpiFilterCount(f: KpiFilters): number {
   let n = 0;
   if (f.range !== DEFAULT_KPI_FILTERS.range) n += 1;
   if (f.posted !== "all") n += 1;
@@ -181,7 +176,7 @@ export function kpiFilterCount(f: KpiFilters): number {
 
 /* ---------- ชิปสรุป ---------- */
 
-export type KpiFilterChip = { key: string; label: string; next: KpiFilters };
+type KpiFilterChip = { key: string; label: string; next: KpiFilters };
 
 /**
  * ชิปของตัวกรองที่เปิดอยู่ — **ต้องโชว์ข้างปุ่มเสมอ กดกากบาทปลดทีละอันได้**

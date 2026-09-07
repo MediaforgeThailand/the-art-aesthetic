@@ -62,7 +62,7 @@ export const INFLU_LOG_ACTION_ORDER: InfluLogAction[] = [
 ];
 
 /** ป้ายของ action ที่ไม่รู้จัก (DB เป็น text อิสระ — ของเก่า/ของใหม่ที่ยังไม่ได้ประกาศ) */
-export const INFLU_LOG_FALLBACK = {
+const INFLU_LOG_FALLBACK = {
   label: "อื่นๆ",
   chip: "border border-stone-200 bg-stone-50 text-stone-500",
 };

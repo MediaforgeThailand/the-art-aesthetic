@@ -23,7 +23,6 @@ import type {
   InfluProfileRow,
   InfluScope,
   InfluServiceRow,
-  InfluSignatureRow,
   InfluTaskRow,
   ProfileRow,
   TaskWithAssignee,
@@ -69,7 +68,6 @@ export default async function InfluencerDetailPage({
   const [
     access,
     { data: influencerRaw },
-    { data: signatures },
     { data: tasks },
     { data: contentTasks },
     { data: procedureItems },
@@ -94,7 +92,6 @@ export default async function InfluencerDetailPage({
       )
       .eq("id", id)
       .single(),
-    supabase.from("influ_signatures").select("*").eq("influencer_id", id),
     supabase
       .from("influ_tasks")
       .select("*")
@@ -234,7 +231,6 @@ export default async function InfluencerDetailPage({
           influencer.owner?.full_name || influencer.owner?.email || null
         }
         personRounds={(personRounds ?? []) as InfluRoundLite[]}
-        signatures={(signatures ?? []) as InfluSignatureRow[]}
         tasks={(tasks ?? []) as InfluTaskRow[]}
         contentTasks={(contentTasks ?? []) as unknown as TaskWithAssignee[]}
         procedureItems={

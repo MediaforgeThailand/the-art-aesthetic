@@ -25,9 +25,9 @@ import {
   PROCEDURE_NAME_MAX,
   procedureSummaryText,
   shortenProgramName,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import { formatCurrency } from "@/lib/format";
-import { useInfluLog, useInfluNotify } from "@/components/influ-log-provider";
+import { useInfluLog, useInfluNotify } from "@/influ/components/influ-log-provider";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluProcedureItemRow,
@@ -47,7 +47,7 @@ export type PriceCatalogEntry = {
 
 /** ราคาอ้างอิงของโปรแกรมใน Price List — ราคาปกติก่อน ไม่มีค่อยใช้ราคาโปรแรก
     (ราคาเก็บเป็น text เช่น "39,000" / "18,900 / กล่อง" — ตัดหน่วยท้ายทิ้ง; คืน null = ไม่รู้ราคา) */
-export function catalogPriceOf(entry: PriceCatalogEntry): number | null {
+function catalogPriceOf(entry: PriceCatalogEntry): number | null {
   const raw = entry.price_normal?.trim() || entry.promos?.[0]?.price || "";
   const n = Number(String(raw).split("/")[0].replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -68,7 +68,7 @@ export type PromoCatalogEntry = {
    ทีมอื่น    = influ_services ของทีมนั้นล้วน (ยังไม่มีเมนูกลาง) */
 
 /** ตัวเลือก 1 รายการในช่องค้นหา — มาจาก Price List / โปรหน้า price-list / ทะเบียนที่ทีมเพิ่มเอง */
-export type ServiceOption = {
+type ServiceOption = {
   key: string;
   name: string;
   team: InfluProductTeam;
@@ -84,7 +84,7 @@ export type ServiceOption = {
 
 /** รวมเมนูของทีมที่เลือก — price_items + โปร promo_packages เฉพาะทีม aesthetics
     + influ_services ของทีมนั้น */
-export function buildServiceOptions(
+function buildServiceOptions(
   catalog: PriceCatalogEntry[],
   promos: PromoCatalogEntry[],
   services: InfluServiceRow[],

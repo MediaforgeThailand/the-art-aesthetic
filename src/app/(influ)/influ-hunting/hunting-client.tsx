@@ -40,7 +40,7 @@ import {
   FilterSummary,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Button, ConfirmDialog, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
@@ -49,8 +49,8 @@ import {
   INFLU_PROSPECT_STATUS_ORDER,
   INFLU_PROSPECT_STATUSES,
   tierFromFollowers,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,

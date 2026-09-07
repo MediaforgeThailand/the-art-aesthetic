@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { getAccess, hasPermission } from "@/lib/access";
-import { fetchInfluTagOptions } from "@/lib/influ-tags";
+import { fetchInfluTagOptions } from "@/influ/public/influ-tags";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AnalysisLinkRow,

@@ -76,7 +76,7 @@ function readSaved(key: string): string | null {
   }
 }
 
-export type InfluFilterApi<T> = {
+type InfluFilterApi<T> = {
   filters: T;
   setFilters: (next: T | ((cur: T) => T)) => void;
   /** แก้บางฟิลด์ — น้ำตาลกว่าการเขียน `setFilters({ ...filters, ... })` ทุกที่ */
@@ -654,24 +654,3 @@ export function InfluFilterButton<T>({
   );
 }
 
-/** ช่องค้นหาหน้าตามาตรฐานของระบบ — คู่กับปุ่มตัวกรอง (rounded-full เหมือนกัน) */
-export function FilterSearchInput({
-  value,
-  onChange,
-  placeholder = "ค้นหา",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <input
-      type="search"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      aria-label={placeholder}
-      className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
-    />
-  );
-}

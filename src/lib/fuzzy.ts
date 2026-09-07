@@ -25,7 +25,7 @@ const SEPARATORS = /[^\p{L}\p{N}]+/gu;
  * ปรับข้อความให้เทียบกันได้ — ตัวพิมพ์เล็ก, รวมรูป Unicode, ซ่อม `เเ` → `แ`,
  * ตัดอักขระล่องหนและตัวคั่นทิ้ง (ยังเก็บวรรณยุกต์ไว้ = การเทียบชั้นแรก)
  */
-export function normalizeSearch(raw: string): string {
+function normalizeSearch(raw: string): string {
   return raw
     .normalize("NFC")
     .toLowerCase()
@@ -35,7 +35,7 @@ export function normalizeSearch(raw: string): string {
 }
 
 /** ผ่อนปรนอีกชั้น — ตัดวรรณยุกต์/สระบน-ล่างออก ให้ `ปลื้้ม` เท่ากับ `ปลม` */
-export function foldSearch(raw: string): string {
+function foldSearch(raw: string): string {
   return normalizeSearch(raw).replace(THAI_MARKS, "");
 }
 
@@ -149,7 +149,7 @@ function scoreOne(norm: string, folded: string, q: string, qFolded: string): num
 }
 
 /** คะแนนความใกล้เคียงของข้อความหนึ่งกับคำค้น (0 = ไม่ตรง, 1 = ตรงเป๊ะ) */
-export function fuzzyScore(text: string, query: string): number {
+function fuzzyScore(text: string, query: string): number {
   const q = normalizeSearch(query);
   if (q === "") return 1;
 
@@ -171,7 +171,7 @@ export function fuzzyScore(text: string, query: string): number {
 const STRONG_MATCH = 0.8;
 const WEAK_MATCH = 0.6;
 
-export type FuzzyOptions = {
+type FuzzyOptions = {
   /** จำนวนผลลัพธ์สูงสุด (ไม่ใส่ = ไม่จำกัด) */
   limit?: number;
   /** คะแนนขั้นต่ำที่ถือว่า "ใกล้เคียงพอ" */

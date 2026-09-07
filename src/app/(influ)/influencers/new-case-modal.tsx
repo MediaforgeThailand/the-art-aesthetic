@@ -36,9 +36,9 @@ import {
   tierFromFollowers,
   voucherCreditOf,
   voucherLabelOf,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
-import { notifyInflu } from "@/lib/influ-notify";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
+import { notifyInflu } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/database.types";
 import type {

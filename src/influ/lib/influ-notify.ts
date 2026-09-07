@@ -26,7 +26,7 @@ import {
   type InfluEventScope,
   normalizeRoles,
   rolesCoverScope,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { createClient } from "@/lib/supabase/client";
 import type { InfluNotiLevel, InfluScope } from "@/lib/types";
 
@@ -39,7 +39,7 @@ export type InfluNotiTone = "brand" | "emerald" | "amber" | "rose" | "sky" | "st
 
 /** `icon` เป็น **คีย์** ไม่ใช่ component เพราะไฟล์นี้เป็น .ts เก็บ JSX ไม่ได้
     (แผนที่คีย์ → ไอคอนอยู่ใน influ-notification-bell.tsx) */
-export type InfluNotiMeta = {
+type InfluNotiMeta = {
   label: string;
   icon: string;
   tone: InfluNotiTone;
@@ -89,7 +89,7 @@ export const INFLU_NOTI_TYPES: Record<string, InfluNotiMeta> = {
 };
 
 /** ป้ายกลางของชนิดที่ยังไม่ได้ประกาศ (แถวเก่า/ชนิดใหม่จากอีก session) */
-export const INFLU_NOTI_FALLBACK: InfluNotiMeta = {
+const INFLU_NOTI_FALLBACK: InfluNotiMeta = {
   label: "อัพเดท",
   icon: "bell",
   tone: "stone",
@@ -104,7 +104,7 @@ export function influNotiMeta(type: string): InfluNotiMeta {
 /** ผู้รับผิดชอบ 1 คนของเคส (ย่อ) — ที่มาของการตัดสินระดับความสำคัญ */
 export type InfluNotifyTarget = { userId: string; scopes: InfluScope[] };
 
-export type InfluNotifyActor = { id: string | null; name: string | null };
+type InfluNotifyActor = { id: string | null; name: string | null };
 
 export type InfluNotifyInput = {
   influencerId: string | null;
@@ -148,7 +148,7 @@ export function notifyInflu(
 }
 
 /** แถวที่จะ insert — แยกออกมาเพื่อให้ทดสอบ/ตรวจ logic ได้โดยไม่ต้องแตะ DB */
-export function buildInfluNotifications(
+function buildInfluNotifications(
   actor: InfluNotifyActor,
   input: InfluNotifyInput
 ) {
@@ -210,7 +210,7 @@ export function buildInfluNotifications(
  * อ่านผู้รับผิดชอบของเคสจาก DB — ใช้ในหน้าที่ไม่ได้โหลด assignees มาเป็น prop
  * (เช่นปฏิทินคิว / หน้า Follow Up ที่แก้เคสได้แต่ไม่ได้แสดงผู้รับผิดชอบ)
  */
-export async function fetchInfluAssignees(
+async function fetchInfluAssignees(
   supabase: SupabaseClient,
   influencerId: string
 ): Promise<InfluNotifyTarget[]> {

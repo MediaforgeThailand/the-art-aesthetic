@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { canManageDoctors, getAccess, hasPermission } from "@/lib/access";
-import { fetchInfluTagOptions } from "@/lib/influ-tags";
+import { fetchInfluTagOptions } from "@/influ/public/influ-tags";
 import { createClient } from "@/lib/supabase/server";
 import type { ContentCategoryRow, DoctorRow } from "@/lib/types";
 import { TagManagementClient } from "./tag-management-client";

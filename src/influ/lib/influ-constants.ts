@@ -1,4 +1,5 @@
-import { todayISO } from "./format";
+import { COMPANY_INFO } from "@/lib/constants";
+import { todayISO } from "@/lib/format";
 import type {
   InfluCalendarKind,
   InfluFollowupMode,
@@ -11,7 +12,7 @@ import type {
   InfluencerLite,
   InfluTagOption,
   InfluTier,
-} from "./types";
+} from "@/lib/types";
 
 /* ---------- Tier ตามยอดผู้ติดตาม (ตามแบบฟอร์มขออนุมัติเคส) ---------- */
 
@@ -448,7 +449,7 @@ export const INFLU_STAGES: { step: number; title: string; short: string }[] = [
    ปฏิทินไม่ควรลาก dnd-kit ของบอร์ดติดมาแค่เพื่อฟังก์ชันเดียว */
 
 /** ฟิลด์ขั้นต่ำที่ใช้ตัดสิน — รับได้ทั้งแถวเต็ม (InfluencerListRow) และแถวย่อ (ปฏิทิน/กระดิ่ง) */
-export type BookingCheckCase = {
+type BookingCheckCase = {
   id: string;
   stage: number;
   completed: boolean;
@@ -637,7 +638,7 @@ export function memoMakerIds(
 
 /* ---------- ผู้เซน memo (preset ตามแบบฟอร์มจริง — ผู้จัดทำเป็นคนใหม่ทุกครั้ง) ---------- */
 
-export type MemoRole =
+type MemoRole =
   | "maker"
   | "checker1"
   | "checker2"
@@ -678,10 +679,7 @@ export const MEMO_SIGNERS: {
 ];
 
 export const MEMO_COMPANY = {
-  name: "บริษัท อาทออฟเซอร์เจอร์รี่ จำกัด (สำนักงานใหญ่)",
-  address:
-    "เลขที่ 287 ถนนวิภาวดีรังสิต แขวงสนามบิน ดอนเมือง กรุงเทพมหานคร 10210",
-  phone: "โทร. 02-6664666",
+  ...COMPANY_INFO,
   formTitle: "แบบฟอร์มขออนุมัติเคสทางการตลาด",
   to: "รองประธานเจ้าหน้าที่บริหาร (ธุรกิจ)",
   attachments:
@@ -1051,11 +1049,6 @@ export const INFLU_CHECKLIST: {
   },
 ];
 
-/** ลำดับหมวดของ checklist — ใช้จัดกลุ่มบนหน้าจอ */
-export const INFLU_CHECKLIST_SECTIONS: string[] = [
-  ...new Set(INFLU_CHECKLIST.map((c) => c.section)),
-];
-
 /* ---------- ขั้นตามงาน: โหมด checklist (มาตรฐาน / แพ็คเกจเฉพาะ) ---------- */
 
 export const INFLU_FOLLOWUP_MODES: Record<
@@ -1072,11 +1065,6 @@ export const INFLU_FOLLOWUP_MODES: Record<
   },
 };
 
-export const INFLU_FOLLOWUP_MODE_ORDER: InfluFollowupMode[] = [
-  "standard",
-  "custom",
-];
-
 /** ข้อ checklist ที่ "ใช้งานอยู่" ตามโหมดของเคส — ข้อของอีกโหมดถูกซ่อนไว้ (ไม่ถูกลบ สลับกลับมาเห็นได้)
     ทุกที่ที่นับ follow-up ต้องกรองด้วยตัวนี้ ไม่งั้นเลขจะรวมข้อของโหมดที่ซ่อนอยู่ด้วย */
 export function activeFollowupTasks<T extends { is_custom: boolean }>(
@@ -1085,98 +1073,6 @@ export function activeFollowupTasks<T extends { is_custom: boolean }>(
 ): T[] {
   return tasks.filter((t) => t.is_custom === (mode === "custom"));
 }
-
-/* ---------- (เทมเพลตเดิม 10 step — เลิกใช้แล้ว เก็บไว้อ้างอิงข้อมูลเก่าใน DB) ----------
-   งานที่ generate ด้วยเทมเพลตนี้ก่อน 2026-07-05 ยังแสดงผลได้ปกติ (section = null) */
-
-export const FOLLOWUP_TEMPLATE: {
-  step: number;
-  title: string;
-  offsetDays: number;
-  channel: string;
-  script: string;
-}[] = [
-  {
-    step: 1,
-    title: "ขอบคุณหลังรับบริการ + ขอรูป Before",
-    offsetDays: 1,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "สวัสดีค่ะคุณ{ชื่อเล่น} ขอบคุณที่ไว้วางใจ The ART นะคะ 💕 ทีมขออนุญาตติดตามผลหลังทำหัตถการ และรบกวนขอรูป Before ที่ถ่ายไว้เพื่อใช้ประกอบคอนเทนต์ค่ะ",
-  },
-  {
-    step: 2,
-    title: "ติดตามอาการหลังทำ (Day 3)",
-    offsetDays: 3,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "สอบถามอาการหลังทำหัตถการค่ะคุณ{ชื่อเล่น} บวม/ช้ำลดลงไหมคะ ถ้ามีข้อสงสัยทักได้เลยนะคะ ทีมแพทย์พร้อมดูแลค่ะ 🙏",
-  },
-  {
-    step: 3,
-    title: "นัดวันถ่ายคอนเทนต์ / ขอคิวโพส",
-    offsetDays: 7,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "คุณ{ชื่อเล่น}คะ ผลเริ่มเข้าที่แล้ว 🎉 ทีมขอนัดคิวถ่ายคอนเทนต์/รีวิว และขอทราบคิวโพสคลิปคร่าวๆ ได้ไหมคะ",
-  },
-  {
-    step: 4,
-    title: "ขอดู Draft คลิป/คอนเทนต์",
-    offsetDays: 10,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "รบกวนขอดู draft คลิปก่อนโพสนะคะคุณ{ชื่อเล่น} เพื่อเช็คการแท็ก @theart และข้อความตามสัญญาค่ะ ขอบคุณค่ะ 🙏",
-  },
-  {
-    step: 5,
-    title: "ยืนยันวันโพสคลิปหลัก",
-    offsetDays: 14,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "ยืนยันคิวโพสคลิปหลักของคุณ{ชื่อเล่น}นะคะ ทีมจะช่วย boost และแชร์ต่อทุกช่องทางค่ะ 🚀",
-  },
-  {
-    step: 6,
-    title: "เก็บลิงก์คลิป + ยอด engagement รอบแรก",
-    offsetDays: 17,
-    channel: "ภายในทีม (บันทึกในระบบ)",
-    script:
-      "เก็บลิงก์คลิปของคุณ{ชื่อเล่น} + ยอดวิว/ไลก์/คอมเมนต์ ณ 72 ชม.แรก ลงรายงานการตลาดค่ะ",
-  },
-  {
-    step: 7,
-    title: "ตามโพส IG Story / TikTok ครั้งที่ 2",
-    offsetDays: 30,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "คุณ{ชื่อเล่น}คะ ตามสัญญามีคอนเทนต์รอบที่ 2 นะคะ สะดวกลง Story/คลิปสั้นช่วงไหนดีคะ เดี๋ยวทีมเตรียมข้อมูลให้ค่ะ 😊",
-  },
-  {
-    step: 8,
-    title: "อัพเดทผลลัพธ์หัตถการ (Day 45)",
-    offsetDays: 45,
-    channel: "LINE กลุ่ม: The ART x {ชื่อเล่น}",
-    script:
-      "ผ่านมา 1 เดือนครึ่งแล้ว ผลลัพธ์ของคุณ{ชื่อเล่น}เป็นยังไงบ้างคะ รบกวนขอรูป After ล่าสุดเพื่อทำคอนเทนต์ Before/After ค่ะ ✨",
-  },
-  {
-    step: 9,
-    title: "เก็บสถิติ engagement รวบยอด",
-    offsetDays: 60,
-    channel: "ภายในทีม (บันทึกในระบบ)",
-    script:
-      "รวบรวมยอด engagement ทุกโพสของคุณ{ชื่อเล่น} สรุปเป็นรายงาน ROI ส่งหัวหน้างานค่ะ",
-  },
-  {
-    step: 10,
-    title: "สรุปผลแคมเปญ + ประเมินต่อสัญญา",
-    offsetDays: 90,
-    channel: "ประชุมทีมการตลาด",
-    script:
-      "สรุปผลแคมเปญคุณ{ชื่อเล่น}: ยอดรวม, ลูกค้าที่เข้ามาจากโค้ด/ลิงก์, ความคุ้มค่า และเสนอว่าควรต่อสัญญา/ชวนร่วม campaign ถัดไปหรือไม่",
-  },
-];
 
 /* ---------- เปิดวงเงินด้วย voucher (migration 0106, ผู้ใช้ 2026-09-03) ----------
    "หลังจากนี้จะเป็นรูปแบบการเปิดวงเงินแต่จะไม่ใช่จำนวนเงินเลย ... เพิ่มจำนวน voucher ราคา 10k
@@ -1195,10 +1091,6 @@ export const FOLLOWUP_TEMPLATE: {
 
 /** ราคาต่อ voucher 1 ใบ (บาท) — ค่าตั้งต้นของวงเงินที่ "เปิดใหม่" เท่านั้น */
 export const INFLU_VOUCHER_UNIT = 10000;
-
-/** วงเงินที่กดเลือกได้เร็วๆ (จำนวนใบ) — 1/2/3/5/10 ใบ = 10k/20k/30k/50k/100k
-    กรอกจำนวนใบเองก็ได้ ลิสต์นี้แค่ทางลัดของยอดที่ใช้บ่อย */
-export const INFLU_VOUCHER_PRESETS = [1, 2, 3, 5, 10];
 
 /** วงเงินของเคส (บาท) = จำนวนใบ × ราคาต่อใบของแถวนั้น — 0 = ยังไม่เปิดวงเงิน */
 export function voucherCreditOf(i: {
@@ -1340,9 +1232,9 @@ export function hashtagSafe(raw: string): string {
 }
 
 /** คำนำหน้าแท็กของหมอ — เปลี่ยนที่นี่ที่เดียวถ้าทีมอยากได้รูปแบบอื่น */
-export const DOCTOR_TAG_PREFIX = "DR";
+const DOCTOR_TAG_PREFIX = "DR";
 
-export type CaseHashtagKey =
+type CaseHashtagKey =
   | "influ"
   | "doctor"
   | "campaign"
@@ -1363,7 +1255,7 @@ export type CaseHashtag = {
   missingHint?: string;
 };
 
-export type CaseHashtagInput = {
+type CaseHashtagInput = {
   influCode: string | null;
   /** เลขใบ ปว. ของหมอที่รับเคส — หาจากทะเบียนหมอด้วยชื่อ (doctors.name ↔ influencers.doctor_name) */
   doctorLicense?: string | null;
@@ -1550,7 +1442,7 @@ export const DOCTOR_TITLES = ["นพ.", "พญ.", ""] as const;
      (หน้า Follow Up มีกติกาเดียวกันอยู่แล้ว — สถานะเคสคิดจากเป้าโพสอย่างเดียว) */
 
 /** ขึ้นต้นหมวดของ checklist มาตรฐานที่เป็น "งานรอง" — ตอนนี้มีแค่หมวด 4 รูปติดตามผล */
-export const CHECKLIST_SECTION_PHOTO = "4.";
+const CHECKLIST_SECTION_PHOTO = "4.";
 
 /** หมวดนี้คืองานรอง (ไม่เร่ง / ไม่ส่งเสียงเตือน) หรือไม่ */
 export function isLaterSection(section: string | null): boolean {

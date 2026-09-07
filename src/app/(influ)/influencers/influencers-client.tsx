@@ -15,12 +15,12 @@ import {
   FilterSummary,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Button, Card, ConfirmDialog, EmptyState } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
-import { logInflu } from "@/lib/influ-log";
-import { notifyInflu } from "@/lib/influ-notify";
+import { logInflu } from "@/influ/lib/influ-log";
+import { notifyInflu } from "@/influ/lib/influ-notify";
 import {
   type CaseHashtag,
   caseHashtags,
@@ -30,7 +30,7 @@ import {
   memoApprovedNeedsBooking,
   normalizeRoles,
   sizeGroupFromFollowers,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { InfluLevel } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -89,7 +89,7 @@ export type CaseAssigneeRow = {
 };
 
 /** ผู้ใช้ปัจจุบัน + ระดับสิทธิ์ในระบบ Influencer (คำนวณฝั่ง server ส่งลงมา) */
-export type InfluMe = {
+type InfluMe = {
   id: string | null;
   name: string;
   level: InfluLevel;

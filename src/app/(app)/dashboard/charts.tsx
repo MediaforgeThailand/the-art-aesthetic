@@ -1,21 +1,10 @@
 "use client";
 
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { formatCurrency, formatMonthKey, formatNumber } from "@/lib/format";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { formatCurrency } from "@/lib/format";
 
 /** โทนสี rose gold/copper ตาม CI ของ The ART Aesthetic */
-export const CHART_COLORS = [
+const CHART_COLORS = [
   "#a96a58",
   "#cd9a86",
   "#ddb9aa",
@@ -25,10 +14,7 @@ export const CHART_COLORS = [
   "#73463a",
 ];
 
-export type MonthlyPoint = { month: string; total: number };
-export type NamedValue = { name: string; value: number };
-
-const AXIS_TICK = { fontSize: 12, fill: "#78716c" };
+type NamedValue = { name: string; value: number };
 
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: 12,
@@ -36,59 +22,6 @@ const TOOLTIP_STYLE: React.CSSProperties = {
   boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
   fontSize: 12,
 };
-
-/** ย่อจำนวนเงินบนแกน เช่น 1.2M / 350K */
-function compactBaht(value: number): string {
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000) {
-    return `${formatNumber(Math.round((value / 1_000_000) * 10) / 10)}M`;
-  }
-  if (abs >= 1_000) {
-    return `${formatNumber(Math.round(value / 1_000))}K`;
-  }
-  return formatNumber(value);
-}
-
-/* ---------- กราฟยอดขายรายเดือน ---------- */
-
-export function MonthlySalesChart({ data }: { data: MonthlyPoint[] }) {
-  return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
-          <XAxis
-            dataKey="month"
-            tickFormatter={(value) => formatMonthKey(String(value))}
-            tick={AXIS_TICK}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tickFormatter={(value) => compactBaht(Number(value))}
-            tick={AXIS_TICK}
-            axisLine={false}
-            tickLine={false}
-            width={56}
-          />
-          <Tooltip
-            cursor={{ fill: "#faf6f3" }}
-            contentStyle={TOOLTIP_STYLE}
-            formatter={(value) => formatCurrency(Number(value))}
-            labelFormatter={(label) => formatMonthKey(String(label))}
-          />
-          <Bar
-            dataKey="total"
-            name="ยอดขาย"
-            fill="#a96a58"
-            radius={[6, 6, 0, 0]}
-            maxBarSize={48}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
 
 /* ---------- กราฟสัดส่วนตามหมวดหมู่ (donut + legend เปอร์เซ็นต์) ---------- */
 
@@ -152,51 +85,3 @@ export function CategoryDonutChart({ data }: { data: NamedValue[] }) {
   );
 }
 
-/* ---------- กราฟเทียบยอดขายรายสาขา (แนวนอน) ---------- */
-
-export function BranchBarChart({ data }: { data: NamedValue[] }) {
-  return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#e7e5e4"
-            horizontal={false}
-          />
-          <XAxis
-            type="number"
-            tickFormatter={(value) => compactBaht(Number(value))}
-            tick={AXIS_TICK}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={96}
-            tick={{ fontSize: 12, fill: "#57534e" }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            cursor={{ fill: "#faf6f3" }}
-            contentStyle={TOOLTIP_STYLE}
-            formatter={(value) => formatCurrency(Number(value))}
-          />
-          <Bar
-            dataKey="value"
-            name="ยอดขาย"
-            fill="#cd9a86"
-            radius={[0, 6, 6, 0]}
-            maxBarSize={24}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}

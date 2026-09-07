@@ -16,9 +16,9 @@ export const metadata: Metadata = {
  *
  * ⚠️ การ์ด "โปรโมชันที่อนุมัติ" (ตาราง `price_promotions` โทนชมพู) ถูกถอดออกจากหน้านี้
  * เมื่อ 2026-08-29 เพื่อเร่ง v1.0 ตามคำสั่งผู้ใช้ — ตารางไม่เคยมีข้อมูลสักแถว (0 rows)
- * และงานจริงย้ายไปอยู่ที่ promo_packages หมดแล้ว **ข้อมูล/ตาราง/โค้ดยังอยู่ครบ**
- * (`pricing-client.tsx` + type `PricePromotionRow`) เอากลับมาได้ด้วยการ import
- * PricingClient แล้ว query price_promotions เหมือนเดิม
+ * และงานจริงย้ายไปอยู่ที่ promo_packages หมดแล้ว — โค้ดของการ์ดนั้น (`pricing-client.tsx`)
+ * ถูกลบออกตอนเก็บกวาดโค้ด 2026-09-08 (ดูได้จาก git history) ตาราง `price_promotions`
+ * ยังอยู่ใน DB
  */
 export default async function PricingPage() {
   const supabase = await createClient();

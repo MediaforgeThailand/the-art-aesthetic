@@ -308,15 +308,7 @@ export function ConfirmDialog({
   );
 }
 
-/* ---------- Spinner / EmptyState ---------- */
-
-export function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <div className={`flex items-center justify-center py-12 ${className}`}>
-      <Loader2 size={24} className="animate-spin text-brand-500" />
-    </div>
-  );
-}
+/* ---------- EmptyState ---------- */
 
 export function EmptyState({
   icon,

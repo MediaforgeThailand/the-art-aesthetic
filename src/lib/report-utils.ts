@@ -55,16 +55,16 @@ function toISODate(d: Date): string {
    ยอดขายจริงเป็นรายบรรทัดใบเสร็จหลายหมื่นแถว — หน้ารายงาน aggregate ใน SQL
    แล้วส่งเฉพาะผลสรุปมา ("บิล" = จำนวนใบเสร็จ distinct ไม่ใช่จำนวนบรรทัด) */
 
-export interface NamedTotal {
+interface NamedTotal {
   name: string;
   total: number;
 }
 
-export interface ItemTotal extends NamedTotal {
+interface ItemTotal extends NamedTotal {
   lines: number;
 }
 
-export interface PersonTotal extends NamedTotal {
+interface PersonTotal extends NamedTotal {
   bills: number;
   lines: number;
 }

@@ -33,7 +33,7 @@ import {
   FilterSummary,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import {
   Badge,
   Button,
@@ -49,8 +49,8 @@ import {
   campaignTagError,
   INFLU_TIERS,
   normalizeCampaignTag,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluCampaignDefRow,

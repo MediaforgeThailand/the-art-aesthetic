@@ -30,7 +30,7 @@ import {
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
-export const HEATMAP_RANGES: { key: number; label: string }[] = [
+const HEATMAP_RANGES: { key: number; label: string }[] = [
   { key: 3, label: "3 เดือน" },
   { key: 6, label: "6 เดือน" },
   { key: 12, label: "12 เดือน" },

@@ -63,7 +63,7 @@ import {
   memoStepOf,
   roundLabel,
   sizeGroupFromFollowers,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { InfluencerRow, InfluSizeGroup, InfluTaskRow } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import {
@@ -103,7 +103,7 @@ export type InfluStats = {
 
 /** วันที่ตามปฏิทินไทยของ timestamptz (YYYY-MM-DD) —
     กัน done_at ช่วง 00:00-07:00 น. ที่ .slice(0,10) แบบ UTC จะเพี้ยนไปเป็นวันก่อนหน้า */
-export const thaiDateISO = (timestamp: string): string =>
+const thaiDateISO = (timestamp: string): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(
     new Date(timestamp)
   );
@@ -114,7 +114,7 @@ const dayDiff = (dateISO: string, today: string) =>
   );
 
 /** กลุ่มขนาดที่การ์ดอยู่จริง — override ที่ลากไว้ชนะ, ไม่มีก็จัดอัตโนมัติจาก followers */
-export const effectiveSizeGroup = (i: InfluencerListRow): InfluSizeGroup =>
+const effectiveSizeGroup = (i: InfluencerListRow): InfluSizeGroup =>
   i.size_group ?? sizeGroupFromFollowers(i.followers);
 
 /** สถานะรวมของ influencer หนึ่งคน — ใช้กับตัวกรอง "ยกเว้น" และโทนการ์ด
@@ -127,13 +127,13 @@ export const influStatusOf = (i: InfluencerListRow): InfluStatusKey =>
 
 /* เคสที่ถึง Memo แล้วแต่ยังไม่ได้ลงคิวหมอ — helper ย้ายไป influ-constants.ts (2026-09-02)
    เพราะปฏิทิน/กระดิ่งใช้เกณฑ์เดียวกัน (ไม่ควรลาก dnd-kit ของบอร์ดติดไปด้วย); re-export ให้ path เดิม */
-export { needsDoctorBooking } from "@/lib/influ-constants";
+export { needsDoctorBooking } from "@/influ/lib/influ-constants";
 
 /** ป้าย "ยังไม่ได้ลงคิวหมอ" — text เด่นพอประมาณ ไม่เรืองแสง (ผู้ใช้ 2026-08-19:
     "ทำให้เด่นน้อยกว่านี้ ไม่ต้องมี glow แค่ text เด่นประมาณนึงพอ" — glow เดิมแย่งสายตา
     จาก StageTracker ที่ทำให้เด่นขึ้นแทน; ปุ่มกรอง "รอลงคิวหมอ" บนแถบเครื่องมือยังเรืองแสงอยู่)
     มีวันที่คุยไว้แล้ว (service_date) = รอลงคิวอย่างเดียว · ไม่มีเลย = ยังไม่ได้เคาะวันกับ influ */
-export function NoDoctorBookingBadge({
+function NoDoctorBookingBadge({
   serviceDate,
 }: {
   serviceDate: string | null;
@@ -590,7 +590,7 @@ function RoundsChip({
   );
 }
 
-export function InfluCardContent({
+function InfluCardContent({
   influ: i,
   stats,
   today,

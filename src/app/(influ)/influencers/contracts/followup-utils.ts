@@ -16,7 +16,7 @@ import {
   contractEndDate,
   INFLU_POST_PLATFORM_ORDER,
   postLinkPlatform,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type {
   InfluCampaignRow,
   InfluencerRow,
@@ -288,7 +288,7 @@ function groupBy<T>(list: T[], key: (item: T) => string): Map<string, T[]> {
 /* heatmap ปฏิทิน — 1 ช่อง = 1 วันที่เริ่มนับสัญญา                      */
 /* ------------------------------------------------------------------ */
 
-export type DayCell = {
+type DayCell = {
   /** yyyy-mm-dd */
   date: string;
   rows: TrackRow[];
@@ -352,7 +352,7 @@ export function cellsByDate(rows: TrackRow[]): Map<string, DayCell> {
 
 /* ---------- ปฏิทินย่อรายเดือน (สัปดาห์เริ่มวันจันทร์ เหมือนปฏิทินคิว) ---------- */
 
-export type MonthGrid = {
+type MonthGrid = {
   /** yyyy-mm */
   key: string;
   year: number;
@@ -364,7 +364,7 @@ export type MonthGrid = {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-export function isoDate(year: number, month: number, day: number): string {
+function isoDate(year: number, month: number, day: number): string {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 

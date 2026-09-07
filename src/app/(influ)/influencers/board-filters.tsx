@@ -24,7 +24,7 @@ import {
   FilterChip,
   FilterSection,
   type FilterSummaryChip,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import {
   INFLU_ROLE_ORDER,
@@ -32,7 +32,7 @@ import {
   INFLU_STAGE,
   INFLU_STAGES,
   normalizeRoles,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { InfluCampaignDefRow, InfluScope } from "@/lib/types";
 import type { CaseAssignee } from "./assignees";
 import {
@@ -48,7 +48,7 @@ import {
     "memowait" = คิว "Case รอส่ง memo" (ขั้นย่อย 1.0 — ปุ่มบนแถบเครื่องมือ, 0104),
     "needbooking" = รอลงคิวหมอทุกขั้น · "needbooking_approved" = ผ่านขั้น 1.2 (เอกสารผ่าน)
     แล้วแต่ยังไม่ลงคิว (ผู้ใช้ 2026-09-02 — ปลายทางของปุ่มแจ้งเตือนบนปฏิทิน) */
-export type BoardStageFilter =
+type BoardStageFilter =
   | number
   | "all"
   | "done"

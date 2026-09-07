@@ -50,7 +50,7 @@ import {
   type FilterSummaryChip,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import {
   Badge,
   Button,
@@ -69,9 +69,9 @@ import {
   INFLU_PRODUCT_TEAMS,
   memoApprovedNeedsBooking,
   shortTime,
-} from "@/lib/influ-constants";
-import { logInflu } from "@/lib/influ-log";
-import { notifyInfluByCase } from "@/lib/influ-notify";
+} from "@/influ/lib/influ-constants";
+import { logInflu } from "@/influ/lib/influ-log";
+import { notifyInfluByCase } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   DoctorRow,
@@ -319,7 +319,7 @@ const formOf = (e: CalendarEvent): FormState => ({
 /** ตัวกรองของปฏิทิน — เก็บเป็น array (ต้อง JSON.stringify ลง localStorage)
     ค่าที่บันทึกไว้ก่อน 2026-09-02 อาจมีคีย์ `showServiceDates` ค้างอยู่ — ไม่มีผลอะไร
     (useInfluFilters เติมค่าโรงงานให้คีย์ที่ขาด ส่วนคีย์เกินถูกเมิน) */
-export type CalendarFilters = {
+type CalendarFilters = {
   hiddenKinds: InfluCalendarKind[];
   /** ชื่อแพทย์ ("" = ทุกคน) */
   doctor: string;
@@ -328,7 +328,7 @@ export type CalendarFilters = {
   teams: CalendarTeamKey[];
 };
 
-export const DEFAULT_CALENDAR_FILTERS: CalendarFilters = {
+const DEFAULT_CALENDAR_FILTERS: CalendarFilters = {
   hiddenKinds: [],
   doctor: "",
   teams: [],

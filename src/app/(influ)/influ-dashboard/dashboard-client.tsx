@@ -48,7 +48,7 @@ import {
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   itemEffectiveCost,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import { AXIS_TICK, compactBaht, TEAM_COLORS, TOOLTIP_STYLE } from "@/lib/report-utils";
 import type {
   InfluFollowupMode,

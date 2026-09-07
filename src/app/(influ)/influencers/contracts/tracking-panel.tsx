@@ -55,7 +55,7 @@ import {
   postLinkPlatform,
   postPlatformLabel,
   roundLabel,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type {
   InfluencerRow,
   InfluPostKind,
@@ -166,7 +166,7 @@ function SectionTitle({
 }
 
 /** แจ้งเตือนที่แผงขอให้หน้าแม่ส่งหลังบันทึกสำเร็จ (หน้าแม่รู้ว่าใครรับผิดชอบเคสไหน) */
-export type PanelNoti = {
+type PanelNoti = {
   type: string;
   title: string;
   body?: string | null;

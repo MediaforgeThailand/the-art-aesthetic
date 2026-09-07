@@ -19,14 +19,7 @@ export const TASK_PRIORITY: Record<
   urgent: { label: "ด่วน", badge: "bg-rose-100 text-rose-700" },
 };
 
-export const TASK_PRIORITY_ORDER: TaskPriority[] = [
-  "low",
-  "medium",
-  "high",
-  "urgent",
-];
-
-export const TASK_CATEGORIES = [
+const TASK_CATEGORIES = [
   "ทั่วไป",
   "การตลาด",
   "ลูกค้า/บริการ",
@@ -44,8 +37,6 @@ export const BRIEF_CONTENT_TYPES = [
   { key: "graphic", label: "Graphic" },
   { key: "video", label: "Video" },
 ] as const;
-
-export type BriefContentType = (typeof BRIEF_CONTENT_TYPES)[number]["key"];
 
 /** label ของชนิดงาน Brief จาก key (null ถ้าไม่ระบุ/ไม่รู้จัก) */
 export function briefContentTypeLabel(key: string | null): string | null {
@@ -189,7 +180,7 @@ export const LIST_STATUS_ORDER: ListStatus[] = [
  *  DB ไม่มี check constraint (เพิ่มสีใหม่ได้โดยไม่ต้อง migrate) — สีที่ไม่รู้จัก fallback เป็น brand
  *  cell = ช่องสีทึบเต็มเซลล์ในตาราง (ใช้กับตัวเลือกที่เพิ่มเอง ให้หน้าตาเท่ากับสถานะในตัว)
  *  row  = พื้นแถวอ่อนของงานที่ใช้ความสำคัญที่เพิ่มเอง (คู่กับ LIST_PRIORITY.row) */
-export type ListColorMeta = {
+type ListColorMeta = {
   label: string;
   chip: string;
   dot: string;
@@ -263,16 +254,6 @@ export const LIST_TAG_COLOR_ORDER = Object.keys(LIST_TAG_COLORS);
 export function listTagColor(key: string): ListColorMeta {
   return LIST_TAG_COLORS[key] ?? LIST_TAG_COLORS.brand;
 }
-
-export const SALES_CATEGORIES = [
-  "Botox",
-  "Filler",
-  "Laser",
-  "Skin Treatment",
-  "Surgery",
-  "Products",
-  "อื่นๆ",
-] as const;
 
 /* ---------- Price List: กลุ่มหัตถการ ---------- */
 
@@ -415,15 +396,15 @@ export const FILE_LINK_CATEGORIES = [
   "อื่นๆ",
 ] as const;
 
-export const PAYMENT_METHODS = [
-  "เงินสด",
-  "โอนเงิน",
-  "บัตรเครดิต",
-  "ผ่อนชำระ",
-  "อื่นๆ",
-] as const;
-
 export const STORAGE_BUCKET_DOCUMENTS = "documents";
+
+/** ข้อมูลบริษัท (ชื่อ/ที่อยู่/โทร) — ใช้ทั้งท้ายหน้า Price List สาธารณะ และหัวเอกสาร Memo ของระบบ Influencer */
+export const COMPANY_INFO = {
+  name: "บริษัท อาทออฟเซอร์เจอร์รี่ จำกัด (สำนักงานใหญ่)",
+  address:
+    "เลขที่ 287 ถนนวิภาวดีรังสิต แขวงสนามบิน ดอนเมือง กรุงเทพมหานคร 10210",
+  phone: "โทร. 02-6664666",
+} as const;
 
 /* ---------- ตีกลับงาน (migration 0063 + 'brief' ที่ 0097) ----------
    ทุกแบบดึงงานกลับเป็น "กำลังทำ" เหมือนกัน ต่างกันที่ "นับเป็นข้อผิดพลาดไหม"
@@ -479,7 +460,7 @@ export const DEFAULT_REVISION_KIND: RevisionKind = "mistake";
    loud = เรื่องที่ต้องลงมือทำต่อ (ป้ายเรืองแสงด้วย animate-glow-pulse ตามสีตัวเอง)
    loud = false = เรื่องที่แค่ "เราเกี่ยวข้องอยู่ด้วย" — ป้ายเงียบๆ ไม่แย่งสายตา
    กติกาผู้ใช้ 2026-08-29: อย่าให้ทุกอย่างเด่นเท่ากัน ไม่งั้นเท่ากับไม่มีอะไรเด่น */
-export type NotificationBadgeKey =
+type NotificationBadgeKey =
   | "review_request"
   | "rejected_mistake"
   | "rejected_addition"

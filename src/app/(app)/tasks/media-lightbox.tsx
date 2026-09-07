@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { isImagePath, isVideoPath } from "./task-card";
 
-export type LightboxItem = { file_path: string; file_name: string | null };
+type LightboxItem = { file_path: string; file_name: string | null };
 
 /**
  * Lightbox เต็มจอสำหรับดูรูป/วิดีโอ/ไฟล์ที่แนบในงาน — เปิดใหญ่ในหน้า ไม่ต้องเด้งไปแท็บ Supabase

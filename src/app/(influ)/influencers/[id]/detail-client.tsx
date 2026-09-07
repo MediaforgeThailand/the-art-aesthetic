@@ -31,8 +31,8 @@ import {
   InfluLogProvider,
   useInfluLog,
   useInfluNotify,
-} from "@/components/influ-log-provider";
-import { SignaturePad } from "@/components/signature-pad";
+} from "@/influ/components/influ-log-provider";
+import { SignaturePad } from "@/influ/components/signature-pad";
 import {
   AssigneeEditor,
   AssigneeStack,
@@ -82,9 +82,9 @@ import {
   tierFromFollowers,
   voucherCreditOf,
   voucherLabelOf,
-} from "@/lib/influ-constants";
-import { influLogActionMeta, logInflu } from "@/lib/influ-log";
-import { notifyInflu } from "@/lib/influ-notify";
+} from "@/influ/lib/influ-constants";
+import { influLogActionMeta, logInflu } from "@/influ/lib/influ-log";
+import { notifyInflu } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import { tooLargeSummary } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";
@@ -100,7 +100,6 @@ import type {
   InfluProfileChannelRow,
   InfluProfileRow,
   InfluServiceRow,
-  InfluSignatureRow,
   InfluTaskRow,
   ProcedureChange,
   TaskWithAssignee,
@@ -769,7 +768,6 @@ function CaseInfoEditModal({
 export function InfluDetailClient({
   influencer,
   personRounds,
-  signatures,
   tasks,
   contentTasks,
   procedureItems,
@@ -796,7 +794,6 @@ export function InfluDetailClient({
   influencer: InfluencerRow;
   /** รอบงานทั้งหมดของคนเดียวกัน (person_id เดียวกัน รวมเคสนี้ + เคสเก่า archived) เรียงรอบแรก→ล่าสุด */
   personRounds: InfluRoundLite[];
-  signatures: InfluSignatureRow[];
   tasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   /** รายการโปรแกรม + ต้นทุน (Influencer Cost) ของเคสนี้ */
@@ -1351,7 +1348,6 @@ export function InfluDetailClient({
           // เป็นเอกสารของเคส ไม่ใช่สถานะงาน; ส่วนปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม
           <MemoStage
             influencer={influencer}
-            signatures={signatures}
             userName={userName}
             readOnly={readOnly}
             fileEditable={canEdit}
@@ -1371,7 +1367,6 @@ export function InfluDetailClient({
           <div className="space-y-6">
             <ContractStage
               influencer={influencer}
-              signatures={signatures}
               readOnly={readOnly}
               // ไฟล์สัญญาแก้/ลบได้จนกว่าเคสจะปิดงาน แม้ stage นี้ผ่านไปแล้ว
               // (กติกาเดียวกับไฟล์ Memo) — ปุ่มเดิน stage ยังล็อกด้วย readOnly ตามเดิม

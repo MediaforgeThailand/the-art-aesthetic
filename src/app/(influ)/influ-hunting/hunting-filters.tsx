@@ -23,7 +23,7 @@ import {
   FilterChip,
   FilterSection,
   StarChips,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import {
   INFLU_CHANNEL_PLATFORMS,
@@ -34,7 +34,7 @@ import {
   INFLU_TIER_ORDER,
   INFLU_TIERS,
   tierFromFollowers,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type {
   InfluProspectRow,
   InfluProspectStatus,
@@ -44,8 +44,8 @@ import { followupOverdue } from "./prospect-panel";
 
 /* ---------- ชนิดข้อมูล + ค่าเริ่มต้น ---------- */
 
-export type HuntCreatedRange = "all" | "7d" | "30d" | "90d" | "custom";
-export type HuntFollowupFilter = "all" | "overdue" | "scheduled" | "none";
+type HuntCreatedRange = "all" | "7d" | "30d" | "90d" | "custom";
+type HuntFollowupFilter = "all" | "overdue" | "scheduled" | "none";
 
 export type HuntFilters = {
   /** ว่าง = 4 สถานะที่ยังเดินอยู่ (ปฏิเสธซ่อน) */

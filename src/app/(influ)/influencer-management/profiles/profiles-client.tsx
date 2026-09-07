@@ -24,7 +24,7 @@ import {
 } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import type { InfluLogActor } from "@/lib/influ-log";
+import type { InfluLogActor } from "@/influ/lib/influ-log";
 import type { InfluProfileRow } from "@/lib/types";
 
 /** เคส (ย่อ) — ใช้แค่นับรอบต่อโปรไฟล์และบอกว่าเป็นข้อมูลเก่าหรือเปล่า */

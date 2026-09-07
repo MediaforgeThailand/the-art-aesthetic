@@ -9,13 +9,13 @@ import {
   FilterSummary,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Badge, Card, EmptyState } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import {
   INFLU_LOG_ACTION_ORDER,
   influLogActionMeta,
-} from "@/lib/influ-log";
+} from "@/influ/lib/influ-log";
 import type { InfluActivityLogRow } from "@/lib/types";
 
 /**

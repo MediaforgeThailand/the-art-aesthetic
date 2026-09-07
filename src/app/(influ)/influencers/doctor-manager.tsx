@@ -27,8 +27,8 @@ import {
   DOCTOR_TITLES,
   INFLU_PRODUCT_TEAMS,
   INFLU_PRODUCT_TEAM_ORDER,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import type { DoctorRow, InfluProductTeam } from "@/lib/types";
 import { DoctorAvatar } from "./doctor-select";

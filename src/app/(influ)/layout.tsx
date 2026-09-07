@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { InfluShell } from "@/components/influ-shell";
+import { InfluShell } from "@/influ/components/influ-shell";
 import { SetupNotice } from "@/components/setup-notice";
 import {
   canManageInflu,

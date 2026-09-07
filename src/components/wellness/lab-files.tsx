@@ -14,7 +14,7 @@ import { useSignedUrl } from "@/lib/use-signed-url";
 import { newLabFilePath } from "@/lib/wellness-constants";
 
 /** ไฟล์ผลแลบเท่าที่ต้องใช้เปิดดู — หน้าปฏิทิน/คิวแพทย์ select มาไม่ครบทุกคอลัมน์ */
-export type LabFileLite = Pick<
+type LabFileLite = Pick<
   WellnessLabFileRow,
   "id" | "file_path" | "file_name" | "created_at"
 >;

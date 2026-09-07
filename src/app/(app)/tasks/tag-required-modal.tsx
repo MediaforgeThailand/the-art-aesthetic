@@ -2,8 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Check, Search, Sparkles, Stethoscope, X } from "lucide-react";
-import { DoctorAvatar } from "@/app/(influ)/influencers/doctor-select";
-import { InfluTagAvatar } from "@/components/influ-tag-avatar";
+import { DoctorAvatar } from "@/influ/public/doctor";
+import { InfluTagAvatar } from "@/influ/public/influ-tag-avatar";
 import { Button, Modal } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
 import {
@@ -11,7 +11,7 @@ import {
   influLabel,
   influTagHashtags,
   missingHashtagCount,
-} from "@/lib/influ-constants";
+} from "@/influ/public/constants";
 import type { DoctorLite, InfluTagOption } from "@/lib/types";
 
 /* กล่องบังคับติดแท็กก่อนส่งตรวจ (0100)

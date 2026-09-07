@@ -1,6 +1,6 @@
 // ฝั่ง server เท่านั้น — ใช้ createClient ของ server ที่ดึง next/headers (import จาก client จะพัง)
-import { createClient } from "./supabase/server";
-import type { InfluProductTeam, InfluTagOption } from "./types";
+import { createClient } from "@/lib/supabase/server";
+import type { InfluProductTeam, InfluTagOption } from "@/lib/types";
 
 /** หัตถการของเคส (ย่อ) — ใช้หา product team + รหัสโปรของแต่ละเคส */
 type ProcedureLite = {

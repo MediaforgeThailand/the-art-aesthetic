@@ -52,7 +52,7 @@ const PRIORITY_RANK: Record<TaskPriority, number> = {
 /** ตัวเลือกที่เพิ่มเองแยกตามชนิด เรียงตามลำดับในเมนูแล้ว */
 export type ListOptions = Record<ListOptionKind, ListOptionRow[]>;
 
-export const EMPTY_OPTIONS: ListOptions = { status: [], priority: [] };
+const EMPTY_OPTIONS: ListOptions = { status: [], priority: [] };
 
 /** แยกตัวเลือกตามชนิด + เรียงตาม position (ชนกันให้อันเก่ากว่าขึ้นก่อน เหมือน sortListGroups) */
 export function splitOptions(rows: ListOptionRow[]): ListOptions {
@@ -112,7 +112,7 @@ export type OptionUi = {
 };
 
 /** ตัวเลือกที่ผู้ใช้เพิ่มเอง → รูปแบบเดียวกับตัวเลือกในตัว (สีมาจากชุด LIST_TAG_COLORS) */
-export function optionView(o: ListOptionRow): OptionView {
+function optionView(o: ListOptionRow): OptionView {
   const c = listTagColor(o.color);
   return {
     key: o.id,
@@ -203,7 +203,7 @@ function priorityRank(t: MyTask, custom: ListOptionRow[]): number {
   return PRIORITY_RANK[t.priority];
 }
 
-export type DueInfo = {
+type DueInfo = {
   /** จำนวนวันจากวันนี้ (ลบ = เลยกำหนด) */
   days: number;
   label: string;

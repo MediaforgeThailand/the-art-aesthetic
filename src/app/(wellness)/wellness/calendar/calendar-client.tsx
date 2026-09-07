@@ -50,12 +50,12 @@ import {
   wellnessCustomerName,
 } from "@/lib/wellness-constants";
 
-export type CalendarLabFile = Pick<
+type CalendarLabFile = Pick<
   WellnessLabFileRow,
   "id" | "file_path" | "file_name" | "created_at"
 >;
 
-export type CalendarCustomer = Pick<
+type CalendarCustomer = Pick<
   WellnessCustomerRow,
   | "id"
   | "first_name"

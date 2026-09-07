@@ -433,7 +433,7 @@ export function useTaskChat({
   };
 }
 
-export type TaskChat = ReturnType<typeof useTaskChat>;
+type TaskChat = ReturnType<typeof useTaskChat>;
 
 /* ---------- ลิสต์ฟองแชท (ล่าสุดอยู่บนสุด) ---------- */
 

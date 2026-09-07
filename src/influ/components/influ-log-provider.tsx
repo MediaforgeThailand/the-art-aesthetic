@@ -18,12 +18,12 @@
  */
 
 import { createContext, useCallback, useContext, useMemo } from "react";
-import { logInflu, type InfluLogActor, type InfluLogEntry } from "@/lib/influ-log";
+import { logInflu, type InfluLogActor, type InfluLogEntry } from "@/influ/lib/influ-log";
 import {
   notifyInflu,
   type InfluNotifyInput,
   type InfluNotifyTarget,
-} from "@/lib/influ-notify";
+} from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 
 const ActorContext = createContext<InfluLogActor>({ id: null, name: null });
@@ -71,7 +71,7 @@ export function useInfluLog() {
 }
 
 /** สิ่งที่จุดเรียกต้องบอก — ที่เหลือ (เคส/ผู้รับ/ผู้ทำ) provider เติมให้ */
-export type InfluNotifyEvent = Omit<
+type InfluNotifyEvent = Omit<
   InfluNotifyInput,
   "assignees" | "influencerId" | "influencerName"
 >;

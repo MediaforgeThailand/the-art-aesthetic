@@ -9,7 +9,7 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 
 /** ตำแหน่งงานที่เลือกได้ในโปรไฟล์ */
-export const JOB_TITLES = ["Graphic/Editor", "Content", "Marketer"] as const;
+const JOB_TITLES = ["Graphic/Editor", "Content", "Marketer"] as const;
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");

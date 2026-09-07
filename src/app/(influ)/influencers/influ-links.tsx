@@ -2,18 +2,13 @@
 
 /**
  * ลิงก์ไฟล์ Source ของ influencer (Google Drive ฯลฯ — ตาราง influ_links)
- * — `InfluLinksCard`: การ์ดจัดการลิงก์ในหน้า detail (เพิ่ม/ลบ + กดเปิดแท็บใหม่)
- *   แก้ได้เสมอแม้เคสปิดงานแล้ว — เป็นคลังไฟล์อ้างอิง ไม่ใช่สถานะงาน
  * — `SourceLinkQuickButton`: ปุ่มจิ๋วบนการ์ดบอร์ด/แกลเลอรี เปิดลิงก์แรกได้ทันที
  *   (การ์ดพวกนั้นคลิกแล้วนำทางไปหน้าอื่น — ปุ่มนี้ stopPropagation + window.open เอง)
+ * — `normalizeUrl`: เติม https:// + ตรวจ URL ก่อนบันทึก (หน้า Follow Up ใช้กับลิงก์โพสด้วย)
+ * (การ์ดจัดการลิงก์ในหน้าเคส `InfluLinksCard` ถูกถอดออกเมื่อ 2026-09-07 และลบโค้ดตอนเก็บกวาด 2026-09-08)
  */
 
-import { ExternalLink, FolderOpen, Plus, X } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Button, Card, Input } from "@/components/ui";
-import { useInfluLog } from "@/components/influ-log-provider";
-import { createClient } from "@/lib/supabase/client";
+import { FolderOpen } from "lucide-react";
 import type { InfluLinkRow } from "@/lib/types";
 
 /** คอลัมน์ที่หน้า list ใช้ (บอร์ด/แกลเลอรี ไม่ต้องดึงครบทุกคอลัมน์) */
@@ -23,7 +18,7 @@ export type InfluLinkLite = Pick<
 >;
 
 /** ป้ายของลิงก์ — ไม่ตั้งชื่อ = ใช้ hostname (เช่น drive.google.com) */
-export function linkLabel(l: Pick<InfluLinkLite, "title" | "url">): string {
+function linkLabel(l: Pick<InfluLinkLite, "title" | "url">): string {
   const t = l.title?.trim();
   if (t) return t;
   try {
@@ -102,188 +97,3 @@ export function SourceLinkQuickButton({
   );
 }
 
-/* ---------- การ์ดจัดการลิงก์ (หน้า detail — แท็บภาพรวม) ---------- */
-
-export function InfluLinksCard({
-  influencerId,
-  initialLinks,
-  readOnly = false,
-  bare = false,
-}: {
-  influencerId: string;
-  initialLinks: InfluLinkRow[];
-  /** true = เปิดลิงก์ได้อย่างเดียว (สิทธิ์ team ที่เข้ามาดูจากแกลเลอรี) */
-  readOnly?: boolean;
-  /** true = ตัดกรอบ Card + หัวข้อของตัวเองออก (ฝังใน section ของเอกสารภาพรวมที่มีหัวข้ออยู่แล้ว) */
-  bare?: boolean;
-}) {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  // ทุก mutation ของระบบ Influ ต้องเขียน log (กติกา 0074) — ไฟล์นี้เคยหลุดทั้งไฟล์
-  const log = useInfluLog();
-  const [links, setLinks] = useState<InfluLinkRow[]>(initialLinks);
-  const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const add = async () => {
-    if (busy) return;
-    setErr(null);
-    const clean = normalizeUrl(url);
-    if (!clean) {
-      setErr("ลิงก์ไม่ถูกต้อง — วางลิงก์เต็มจาก Google Drive (ขึ้นต้น https://)");
-      return;
-    }
-    setBusy(true);
-    const { data, error } = await supabase
-      .from("influ_links")
-      .insert({
-        influencer_id: influencerId,
-        title: title.trim() || null,
-        url: clean,
-        position: Math.max(0, ...links.map((l) => l.position)) + 1,
-      })
-      .select("*")
-      .single();
-    setBusy(false);
-    if (error || !data) {
-      setErr(`เพิ่มลิงก์ไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
-      return;
-    }
-    setLinks((prev) => [...prev, data as InfluLinkRow]);
-    log({
-      action: "update",
-      entity: "link",
-      entityId: data.id,
-      influencerId,
-      summary: `เพิ่มลิงก์ไฟล์ Source: ${title.trim() || clean}`,
-    });
-    setTitle("");
-    setUrl("");
-    router.refresh();
-  };
-
-  const remove = (id: string) => {
-    setErr(null);
-    const prevLinks = links;
-    setLinks((prev) => prev.filter((l) => l.id !== id)); // optimistic
-    void supabase
-      .from("influ_links")
-      .delete()
-      .eq("id", id)
-      .then(({ error }) => {
-        if (error) {
-          // คืนลิงก์กลับมา — ไม่งั้นจอบอกว่าลบแล้วทั้งที่ยังอยู่ใน DB (หายไปจนกว่าจะรีเฟรช)
-          setLinks(prevLinks);
-          setErr(`ลบลิงก์ไม่สำเร็จ: ${error.message}`);
-        } else {
-          const gone = prevLinks.find((l) => l.id === id);
-          log({
-            action: "update",
-            entity: "link",
-            entityId: id,
-            influencerId,
-            summary: `ลบลิงก์ไฟล์ Source: ${gone?.title || gone?.url || "ไม่ทราบ"}`,
-          });
-          router.refresh();
-        }
-      });
-  };
-
-  const body = (
-    <>
-      {links.length === 0 ? (
-        <p className="mb-3 rounded-xl border border-dashed border-stone-300 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
-          ยังไม่มีลิงก์
-        </p>
-      ) : (
-        <ul className="mb-3 space-y-1.5">
-          {links.map((l) => (
-            <li key={l.id} className="flex items-center gap-1.5">
-              <a
-                href={l.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={l.url}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-sm text-stone-700 transition-colors hover:border-brand-300 hover:bg-brand-50/60 hover:text-brand-800"
-              >
-                <FolderOpen size={15} className="shrink-0 text-brand-500" />
-                <span className="min-w-0 flex-1 truncate">{linkLabel(l)}</span>
-                <ExternalLink size={13} className="shrink-0 text-stone-300" />
-              </a>
-              {!readOnly && (
-                <button
-                  type="button"
-                  title="ลบลิงก์นี้"
-                  aria-label={`ลบลิงก์ ${linkLabel(l)}`}
-                  onClick={() => remove(l.id)}
-                  className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-stone-300 transition-colors hover:bg-rose-50 hover:text-rose-500 active:scale-90 sm:h-8 sm:w-8"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* ฟอร์มเพิ่มลิงก์ — เปิดตลอดแม้เคสปิดงานแล้ว (คลังไฟล์อ้างอิง ไม่ใช่สถานะงาน) */}
-      <div
-        className={`flex flex-wrap items-center gap-2 ${readOnly ? "hidden" : ""}`}
-      >
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="ชื่อกำกับ เช่น รูป Before/After (ไม่บังคับ)"
-          className="w-full sm:w-56"
-          maxLength={80}
-        />
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void add();
-            }
-          }}
-          placeholder="วางลิงก์ Google Drive..."
-          className="min-w-0 flex-1"
-        />
-        <Button
-          variant="secondary"
-          loading={busy}
-          disabled={url.trim() === ""}
-          onClick={() => void add()}
-        >
-          <Plus size={15} />
-          เพิ่ม
-        </Button>
-      </div>
-
-      {err && (
-        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
-          {err}
-        </p>
-      )}
-    </>
-  );
-
-  if (bare) return <div>{body}</div>;
-
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <FolderOpen size={16} className="text-brand-600" />
-        <h3 className="text-sm font-semibold text-stone-900">
-          ไฟล์ Source (Google Drive)
-        </h3>
-        {links.length > 0 && (
-          <span className="text-xs text-stone-400">{links.length} ลิงก์</span>
-        )}
-      </div>
-      {body}
-    </Card>
-  );
-}

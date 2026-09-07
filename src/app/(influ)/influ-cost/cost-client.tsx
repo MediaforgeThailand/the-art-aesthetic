@@ -41,7 +41,7 @@ import {
   InfluFilterButton,
   useInfluFilters,
   type FilterSummaryChip,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Badge, Card, EmptyState, Select } from "@/components/ui";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import {
@@ -51,7 +51,7 @@ import {
   costUsageOf,
   itemEffectiveCost,
   roundLabel,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluProcedureItemRow } from "@/lib/types";
 import {
@@ -60,7 +60,7 @@ import {
 } from "../influencers/procedure-items-editor";
 
 /** ข้อมูลเคสที่ join มากับรายการต้นทุน */
-export type CostInflu = {
+type CostInflu = {
   id: string;
   first_name: string;
   last_name: string | null;
@@ -175,7 +175,7 @@ function SummaryTile({
    ผู้ใช้ 2026-08-29: ทุกหน้าเหลือ "ปุ่มตัวกรองปุ่มเดียว" ที่กดแล้วแผงลอยขึ้นมา
    (ของเดิมกระจายเป็น dropdown inline + bottom sheet คนละชุด) */
 
-export type CostFilters = {
+type CostFilters = {
   /** "all" | "mine" | uid — ผู้รับผิดชอบเคส (influ_assignees) */
   owner: string;
   usage: "all" | CostUsage;
@@ -188,7 +188,7 @@ export type CostFilters = {
 };
 
 /** ค่าโรงงาน — เริ่มที่ "เคสของฉัน" ตามกติกาทุกหน้า */
-export const DEFAULT_COST_FILTERS: CostFilters = {
+const DEFAULT_COST_FILTERS: CostFilters = {
   owner: "mine",
   usage: "all",
   support: "all",

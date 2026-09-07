@@ -22,7 +22,7 @@ import {
    ========================================================================== */
 
 /** รอนานเกิน 2 วันไหม — เน้นงานที่ค้างนานให้สะดุดตา (helper นอก component เลี่ยงกฎ purity) */
-export function isLongWait(sinceIso: string | null): boolean {
+function isLongWait(sinceIso: string | null): boolean {
   if (!sinceIso) return false;
   return Date.now() - Date.parse(sinceIso) > 2 * 24 * 3_600_000;
 }

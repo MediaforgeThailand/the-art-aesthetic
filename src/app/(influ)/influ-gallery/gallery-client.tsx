@@ -19,7 +19,7 @@ import {
   InfluFilterButton,
   useInfluFilters,
   type FilterSummaryChip,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { Badge, Card, EmptyState, Select } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
@@ -27,7 +27,7 @@ import {
   INFLU_STAGES,
   INFLU_TIER_ORDER,
   INFLU_TIERS,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { InfluTier } from "@/lib/types";
 import {
   type InfluLinkLite,
@@ -73,7 +73,7 @@ function monthsDaysBetween(fromISO: string, toISO: string): string {
 type ContractFilter = "all" | "active" | "expired";
 
 /** ตัวกรองของหน้าโปรไฟล์ — ปุ่มเดียว กดแล้วแผงลอย (กติกาทุกหน้าในระบบ) */
-export type GalleryFilters = {
+type GalleryFilters = {
   /** "all" | "mine" | uid — ผู้รับผิดชอบ (match ได้จากรอบไหนของคนนั้นก็ได้) */
   owner: string;
   contract: ContractFilter;
@@ -83,7 +83,7 @@ export type GalleryFilters = {
 };
 
 /** ค่าโรงงาน — เริ่มที่ "ของฉัน" ตามกติกาทุกหน้า (ผู้ใช้ 2026-08-29) */
-export const DEFAULT_GALLERY_FILTERS: GalleryFilters = {
+const DEFAULT_GALLERY_FILTERS: GalleryFilters = {
   owner: "mine",
   contract: "all",
   tiers: [],

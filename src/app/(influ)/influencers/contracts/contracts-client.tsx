@@ -22,7 +22,7 @@ import {
   FilterSummary,
   InfluFilterButton,
   useInfluFilters,
-} from "@/components/influ-filter-panel";
+} from "@/influ/components/influ-filter-panel";
 import { EmptyState } from "@/components/ui";
 import { formatDate, formatNumber, todayISO } from "@/lib/format";
 import {
@@ -32,9 +32,9 @@ import {
   INFLU_TIERS,
   postPlatformLabel,
   roundLabel,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
-import { notifyInflu, type InfluNotifyTarget } from "@/lib/influ-notify";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
+import { notifyInflu, type InfluNotifyTarget } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type {
   InfluCampaignRow,

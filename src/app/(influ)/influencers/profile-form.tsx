@@ -21,8 +21,8 @@ import {
   hashtagSafe,
   INFLU_CHANNEL_PLATFORMS,
   tierFromFollowers,
-} from "@/lib/influ-constants";
-import { type InfluLogActor, logInflu } from "@/lib/influ-log";
+} from "@/influ/lib/influ-constants";
+import { type InfluLogActor, logInflu } from "@/influ/lib/influ-log";
 import { createClient } from "@/lib/supabase/client";
 import { tooLargeSummary } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";

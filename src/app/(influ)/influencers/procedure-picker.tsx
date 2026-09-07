@@ -21,7 +21,7 @@ import {
   INFLU_PRODUCT_TEAMS,
   PROCEDURE_NAME_MAX,
   shortenProgramName,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluProductTeam, InfluServiceRow } from "@/lib/types";
 import {

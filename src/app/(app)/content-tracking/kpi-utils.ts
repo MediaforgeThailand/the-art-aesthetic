@@ -95,7 +95,7 @@ export function monthLabel(year: number, month: number): string {
 }
 
 /** ขอบเขตเดือนตามเวลาไทย เป็น epoch ms — [start, end) */
-export function monthBounds(year: number, month: number) {
+function monthBounds(year: number, month: number) {
   const start = Date.parse(`${year}-${pad2(month)}-01T00:00:00+07:00`);
   const nextY = month === 12 ? year + 1 : year;
   const nextM = month === 12 ? 1 : month + 1;
@@ -158,7 +158,7 @@ function workRawOf(t: TrackedTask): string | null {
 }
 
 /** เวลาที่งานชิ้นนี้ "ส่งงาน" (epoch ms) — ฐานเวลาเดียวของทั้งระบบ KPI */
-export function workTimeOf(t: TrackedTask): number | null {
+function workTimeOf(t: TrackedTask): number | null {
   const raw = workRawOf(t);
   if (raw === null) return null;
   const ms = Date.parse(raw);
@@ -299,7 +299,7 @@ function realReviewMsOf(child: TrackedTask): number | null {
  * จัดกลุ่มการ์ด creative ตามใบ Brief ต้นทาง — ฐาน 'brief' ต้องมองการ์ดลูกเพื่อรู้ว่า
  * งานถูกส่งตรวจต่อแล้วหรือยัง (computeKpiMonth สร้างครั้งเดียวแล้วส่งเข้า kpiEventsOf)
  */
-export function indexBriefChildren(
+function indexBriefChildren(
   tasks: TrackedTask[]
 ): Map<string, TrackedTask[]> {
   const map = new Map<string, TrackedTask[]>();
@@ -374,7 +374,7 @@ export function kpiFormatOf(
 }
 
 /** event นี้เข้าเงื่อนไขกติกา KPI แถวนี้ไหม — null ในกติกา = ไม่จำกัด */
-export function ruleMatchesEvent(e: KpiEvent, r: ContentKpiRow): boolean {
+function ruleMatchesEvent(e: KpiEvent, r: ContentKpiRow): boolean {
   if (r.basis !== e.basis) return false;
   if (r.format !== null && kpiFormatOf(e.t, e.basis) !== r.format) return false;
   if (r.category_id !== null && e.t.content_category_id !== r.category_id)
@@ -383,7 +383,7 @@ export function ruleMatchesEvent(e: KpiEvent, r: ContentKpiRow): boolean {
 }
 
 /** ฐานที่คนคนนี้ถูกวัดผล — ไม่มีกติกาเลย = ใช้ 'work' (พฤติกรรมเดิมของระบบ) */
-export function basesOf(rules: ContentKpiRow[] | undefined): Set<ContentKpiBasis> {
+function basesOf(rules: ContentKpiRow[] | undefined): Set<ContentKpiBasis> {
   if (!rules || rules.length === 0) return new Set<ContentKpiBasis>(["work"]);
   return new Set(rules.map((r) => r.basis));
 }
@@ -394,7 +394,7 @@ export function basesOf(rules: ContentKpiRow[] | undefined): Set<ContentKpiBasis
  * จำนวนวันที่งานค้างคิวโพส — นับจาก "วันที่อนุมัติครบ" ถึงวันนี้ (เวลาไทย, นับเป็นวันเต็ม)
  * เทียบเป็น "วันตามปฏิทิน" ทั้งสองฝั่ง จึงไม่แกว่งตามเวลาที่เปิดหน้า และไม่แตะ Date.now()
  */
-export function pendingDays(
+function pendingDays(
   approvedAt: string | null,
   today: { year: number; month: number; day: number }
 ): number {
@@ -407,7 +407,7 @@ export function pendingDays(
   return Math.max(0, Math.round((now - from) / 86400000));
 }
 
-export type PostBacklogItem = { t: TrackedTask; days: number };
+type PostBacklogItem = { t: TrackedTask; days: number };
 
 /** สถิติคิวโพสของคนหนึ่ง (เจ้าของคิว = `postOwnerIdOf`) */
 export type PostStat = {
@@ -566,12 +566,12 @@ export function expectedByNow(
 }
 
 /** เป้าทั้งเดือนของกติกา — 'day' (0087) = target × จำนวนวันของเดือนนั้น, 'month' = ค่าตรงๆ */
-export function monthTargetOf(rule: ContentKpiRow, daysInMonth: number) {
+function monthTargetOf(rule: ContentKpiRow, daysInMonth: number) {
   return rule.period === "day" ? rule.target * daysInMonth : rule.target;
 }
 
 /** เป้าถึงวันนี้ของกติกา — 'day' นับเต็มวัน (target × วันที่ผ่านไป), 'month' ใช้สูตร prorate */
-export function expectedOf(
+function expectedOf(
   rule: ContentKpiRow,
   elapsedDays: number,
   daysInMonth: number
@@ -592,7 +592,7 @@ function basisList(rules: ContentKpiRow[]): ContentKpiBasis[] {
  * ในแต่ละฐาน — กติกาทุกฟอร์แมต·ทุกหมวดถ้ามี (ร่มคลุมทั้งฐาน) ไม่งั้นรวมกติกาที่ระบุ
  * ฟอร์แมตแต่ไม่เจาะหมวด; ไม่มีทั้งคู่ค่อยรวมทุกกติกาของฐานนั้น
  */
-export function overallRulesOf(rules: ContentKpiRow[]): ContentKpiRow[] {
+function overallRulesOf(rules: ContentKpiRow[]): ContentKpiRow[] {
   const out: ContentKpiRow[] = [];
   for (const basis of basisList(rules)) {
     const inBasis = rules.filter((r) => r.basis === basis);
@@ -623,7 +623,7 @@ function umbrellaRules(rules: ContentKpiRow[]): ContentKpiRow[] {
 }
 
 /** เป้าของฟอร์แมตหนึ่ง — รวมทุกฐาน โดยในแต่ละฐานใช้แถว "ทุกหมวด" เป็นร่ม */
-export function formatTargetOf(
+function formatTargetOf(
   rules: ContentKpiRow[],
   format: ContentFormat,
   daysInMonth: number
@@ -635,7 +635,7 @@ export function formatTargetOf(
 }
 
 /** เป้าถึงวันนี้ของฟอร์แมตหนึ่ง — logic เดียวกับ formatTargetOf */
-export function formatExpectedOf(
+function formatExpectedOf(
   rules: ContentKpiRow[],
   format: ContentFormat,
   elapsedDays: number,
@@ -695,7 +695,7 @@ export function addToPieceAgg(agg: PieceAgg, t: TrackedTask) {
 
 /* ---------- สถิติรายคน ---------- */
 
-export type RuleStat = {
+type RuleStat = {
   rule: ContentKpiRow;
   /** เป้าทั้งเดือน (กติกา 'day' ถูกคูณจำนวนวันแล้ว) — JSX ต้องใช้ตัวนี้ ไม่ใช่ rule.target */
   target: number;
@@ -708,7 +708,7 @@ export type RuleStat = {
 
 export type PersonStatus = "behind" | "ontrack" | "done";
 
-export const STATUS_RANK: Record<PersonStatus, number> = {
+const STATUS_RANK: Record<PersonStatus, number> = {
   behind: 0,
   ontrack: 1,
   done: 2,
@@ -764,7 +764,7 @@ export type PersonStat = {
 };
 
 /** ยอดรวมทั้งทีมของเดือนที่เลือก — หน้าภาพรวมใช้เป็นบรรทัด "KPI รวม" */
-export type TeamTotals = {
+type TeamTotals = {
   /** งานที่ส่งตรวจในเดือนนี้ทั้งทีม (ฐาน 'work' ล้วน) */
   submitted: number;
   /** ผลงานที่นับ KPI ทั้งทีม (รวมทุกฐานตามที่แต่ละคนถูกตั้งไว้) */
@@ -794,9 +794,9 @@ export type TeamTotals = {
 };
 
 /** งาน 1 ชิ้นพร้อมเวลาส่ง + วันในเดือน (0-based) — ใช้ในตัววิเคราะห์ที่นับเฉพาะการส่งงาน */
-export type TaskAt = { t: TrackedTask; ms: number; dayIndex: number };
+type TaskAt = { t: TrackedTask; ms: number; dayIndex: number };
 
-export type KpiMonth = {
+type KpiMonth = {
   year: number;
   month: number;
   daysInMonth: number;

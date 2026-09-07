@@ -49,7 +49,7 @@ export const MEDIA_KINDS: Record<
 export const MEDIA_KIND_ORDER: MediaKind[] = ["image", "video", "other"];
 
 /** ที่มาของไฟล์ — บอกผู้ใช้ว่าไฟล์นี้ถูกแนบไว้ตรงไหนของงาน */
-export type MediaSource = "task" | "subtask" | "comment";
+type MediaSource = "task" | "subtask" | "comment";
 
 export const MEDIA_SOURCES: Record<MediaSource, string> = {
   task: "ไฟล์งาน",

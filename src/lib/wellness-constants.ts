@@ -102,7 +102,7 @@ export function formatTimeShort(time: string): string {
 }
 
 /** เวลาสิ้นสุดคิว — "10:00" + 2 ชม. → "12:00" (คิวไม่มีทางข้ามเที่ยงคืน: เริ่มไม่เกิน 3 ชม.ก่อนหมดวันตามการใช้งานจริงของคลินิก) */
-export function apptEndTime(startTime: string, durationHours: number): string {
+function apptEndTime(startTime: string, durationHours: number): string {
   const m = /^(\d{1,2}):(\d{2})/.exec(startTime);
   if (!m) return startTime;
   const end = (Number(m[1]) + durationHours) % 24;
@@ -116,7 +116,7 @@ export function apptRangeLabel(startTime: string, durationHours: number): string
 
 /** ข้อความไทยเมื่อคิวชนกัน — exclusion constraint ใน DB คืน error code 23P01
     (ใช้ทั้งหน้าการ์ดลูกค้าและปฏิทิน — ที่ไหน insert/ย้ายคิวเป็น scheduled ต้องดักโค้ดนี้) */
-export const WELLNESS_OVERLAP_MESSAGE =
+const WELLNESS_OVERLAP_MESSAGE =
   "ช่วงเวลานี้ชนกับคิวที่มีอยู่ — เลือกเวลาอื่นหรือเช็คปฏิทินคิวแพทย์ก่อน";
 
 /** แพทย์ Wellness เข้าเฉพาะ อังคาร/เสาร์ (กติกาผู้ใช้ — แต่ปฏิทินเปิดลงคิวได้ทุกวัน
@@ -176,7 +176,7 @@ export const CALENDAR_APPT_SELECT =
    ห้ามเอาปุ่มของอีกบทบาทไปแปะรวมในหน้าเดียวกันอีก
    ============================================================ */
 
-export type WellnessRole = "bc" | "lab" | "admin" | "doctor";
+type WellnessRole = "bc" | "lab" | "admin" | "doctor";
 
 /** บทบาทที่ "ติ๊กไว้จริง" ของบัญชีนั้น — ไม่ใช่สิทธิ์ที่ได้มาเพราะเป็น admin
     (canWellnessBc/Lab ใน permissions.ts คืน true ให้ admin ด้วย ซึ่งใช้คุมปุ่ม
@@ -194,7 +194,7 @@ export function wellnessRoleFlags(
   };
 }
 
-export type WellnessWorkspaceId =
+type WellnessWorkspaceId =
   | "register"
   | "lab"
   | "contact"

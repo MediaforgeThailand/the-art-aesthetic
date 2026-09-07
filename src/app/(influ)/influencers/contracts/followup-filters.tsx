@@ -13,13 +13,13 @@
  * - ไม่จำค่าใน localStorage — เปิดหน้ามาต้องเห็นทุกเคสที่ยังอยู่ในสัญญา
  */
 
-import { FilterChip, FilterSection } from "@/components/influ-filter-panel";
+import { FilterChip, FilterSection } from "@/influ/components/influ-filter-panel";
 import { Select } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import {
   INFLU_POST_PLATFORM_ORDER,
   INFLU_POST_PLATFORMS,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import type { InfluPostPlatform } from "@/lib/types";
 import {
   TRACK_STATUS_ORDER,
@@ -30,8 +30,8 @@ import {
 
 /* ---------- ชนิดข้อมูล + ค่าเริ่มต้น ---------- */
 
-export type StartRange = "all" | "30d" | "90d" | "180d" | "custom";
-export type ContractLife = "all" | "ending" | "expired" | "active";
+type StartRange = "all" | "30d" | "90d" | "180d" | "custom";
+type ContractLife = "all" | "ending" | "expired" | "active";
 
 export type FollowFilters = {
   /** ว่าง = ทุกสถานะ */

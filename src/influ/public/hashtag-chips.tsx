@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui";
-import { hashtagText, type CaseHashtag } from "@/lib/influ-constants";
+import { hashtagText, type CaseHashtag } from "@/influ/lib/influ-constants";
 
 /**
  * ชิปแฮชแท็กบังคับ + ปุ่มคัดลอก + รายการที่ยังขาด

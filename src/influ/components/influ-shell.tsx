@@ -23,7 +23,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/logo";
-import { InfluNotificationBell } from "@/components/influ-notification-bell";
+import { InfluNotificationBell } from "@/influ/components/influ-notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
 import { createClient } from "@/lib/supabase/client";
 import { useSignedUrl } from "@/lib/use-signed-url";

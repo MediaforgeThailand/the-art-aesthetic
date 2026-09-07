@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 export type PushState = "unsupported" | "default" | "granted" | "denied";
 
 /** เบราว์เซอร์นี้รองรับ Web Push ไหม (iOS < 16.4 / โหมดส่วนตัวบางตัวไม่รองรับ) */
-export function pushSupported(): boolean {
+function pushSupported(): boolean {
   return (
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&

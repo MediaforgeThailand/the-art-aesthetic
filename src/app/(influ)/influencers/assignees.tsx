@@ -37,7 +37,7 @@ import {
   normalizeRoles,
   roleSummary,
   type InfluRole,
-} from "@/lib/influ-constants";
+} from "@/influ/lib/influ-constants";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import type { InfluScope } from "@/lib/types";
 
@@ -94,7 +94,7 @@ export function PersonAvatar({
 }
 
 /** ป้ายบทบาทเล็กๆ */
-export function RoleChip({ role }: { role: InfluRole }) {
+function RoleChip({ role }: { role: InfluRole }) {
   const m = INFLU_ROLES[role];
   return (
     <span

@@ -11,8 +11,8 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
-import { type InfluLogActor } from "@/lib/influ-log";
-import { notifyInfluByCase } from "@/lib/influ-notify";
+import { type InfluLogActor } from "@/influ/lib/influ-log";
+import { notifyInfluByCase } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 
 export type TrashBackup = {

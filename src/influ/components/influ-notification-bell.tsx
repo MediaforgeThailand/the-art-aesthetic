@@ -57,8 +57,8 @@ import {
   isLaterSection,
   rolesCoverScope,
   type InfluEventScope,
-} from "@/lib/influ-constants";
-import { influNotiMeta, type InfluNotiTone } from "@/lib/influ-notify";
+} from "@/influ/lib/influ-constants";
+import { influNotiMeta, type InfluNotiTone } from "@/influ/lib/influ-notify";
 import { createClient } from "@/lib/supabase/client";
 import type { InfluNotificationRow, InfluScope } from "@/lib/types";
 
