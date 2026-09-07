@@ -51,7 +51,6 @@ import {
   Label,
   Select,
   Modal,
-  Textarea,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
@@ -76,6 +75,7 @@ import {
   INFLU_VOUCHER_UNIT,
   itemEffectiveCost,
   memoStepOf,
+  procedureSummaryText,
   roleSummary,
   scopeOfStage,
   tierFromFollowers,
@@ -114,6 +114,7 @@ import {
   type PriceCatalogEntry,
   type PromoCatalogEntry,
 } from "../procedure-items-editor";
+import { ProcedurePicker, type PickedProcedure } from "../procedure-picker";
 import { VoucherPicker } from "../voucher-picker";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { ContractStage, MemoStage } from "./docs-stages";
@@ -1386,6 +1387,10 @@ export function InfluDetailClient({
               bookings={serviceBookings}
               doctors={doctors}
               userId={userId}
+              procedureItems={procedureItems}
+              catalog={priceCatalog}
+              promos={promoCatalog}
+              services={services}
               // ลงคิวเข้าปฏิทินได้ตราบที่เคสยังไม่ปิดงาน (เป็นข้อมูลเคส ไม่ใช่การเดิน stage)
               canBook={canEdit}
             />
@@ -2989,6 +2994,10 @@ function ServiceDayStage({
   doctors,
   userId,
   canBook,
+  procedureItems,
+  catalog,
+  promos,
+  services,
 }: {
   influencer: InfluencerRow;
   readOnly: boolean;
@@ -2998,13 +3007,21 @@ function ServiceDayStage({
   userId: string | null;
   /** ลงคิวได้ไหม (เคสยังไม่ปิดงาน + สิทธิ์แก้ไข) — แยกจาก readOnly ที่ล็อกการเดิน stage */
   canBook: boolean;
+  /** หัตถการที่วางแผนไว้ — ใช้ตั้งต้นตอนเปิดโมดัลแก้หน้างาน (ปกติแก้แค่รายการเดียว) */
+  procedureItems: ProcedureItemWithPromo[];
+  catalog: PriceCatalogEntry[];
+  promos: PromoCatalogEntry[];
+  services: InfluServiceRow[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const log = useInfluLog();
   const notify = useInfluNotify();
   const [editOpen, setEditOpen] = useState(false);
-  const [newProcedure, setNewProcedure] = useState("");
+  /* หัตถการหน้างานเลือกจากเมนูเดียวกับตอนสร้างเคส (ผู้ใช้ 2026-09-07: ให้เป็น dropdown
+     ทุกที่ที่เลือกหัตถการ) — เก็บใน memory แล้วประกอบเป็น procedure_text ตอนบันทึก
+     เหมือนเดิม ไม่แตะ influ_procedure_items ที่เป็นต้นทุนของ /influ-cost */
+  const [picked, setPicked] = useState<PickedProcedure[]>([]);
   const [supervisor, setSupervisor] = useState("");
   const [padOpen, setPadOpen] = useState(false);
   const [savingChange, setSavingChange] = useState(false);
@@ -3031,9 +3048,12 @@ function ServiceDayStage({
       .single();
     const freshHistory =
       (fresh?.procedure_history as ProcedureChange[] | null) ?? history;
+    const nextText = procedureSummaryText(
+      picked.map((p) => ({ name: p.name }))
+    );
     const change: ProcedureChange = {
       old: fresh?.procedure_text ?? influencer.procedure_text ?? "",
-      next: newProcedure.trim(),
+      next: nextText,
       signed_by: supervisor.trim(),
       signature_data: signatureData,
       changed_at: new Date().toISOString(),
@@ -3041,7 +3061,7 @@ function ServiceDayStage({
     const { error: e } = await supabase
       .from("influencers")
       .update({
-        procedure_text: newProcedure.trim(),
+        procedure_text: nextText,
         procedure_history: [...freshHistory, change],
       })
       .eq("id", influencer.id);
@@ -3065,7 +3085,7 @@ function ServiceDayStage({
       title: `แก้หัตถการหน้างานของ ${logNameOf(influencer)}`,
       body: `"${change.old || "(ว่าง)"}" → "${change.next}"`,
     });
-    setNewProcedure("");
+    setPicked([]);
     setSupervisor("");
     router.refresh();
   };
@@ -3140,6 +3160,16 @@ function ServiceDayStage({
               variant="secondary"
               onClick={() => {
                 setError(null);
+                // ตั้งต้นด้วยรายการที่วางแผนไว้ — หน้างานมักแก้แค่รายการเดียว
+                setPicked(
+                  procedureItems.map((it) => ({
+                    name: it.name,
+                    priceItemId: it.price_item_id,
+                    promoPackageId: it.promo_package_id,
+                    price: Number(it.price) || 0,
+                    team: it.product_team,
+                  }))
+                );
                 setEditOpen(true);
               }}
             >
@@ -3189,13 +3219,14 @@ function ServiceDayStage({
             </p>
           </div>
           <div>
-            <Label htmlFor="np">หัตถการใหม่ *</Label>
-            <Textarea
-              id="np"
-              rows={2}
-              value={newProcedure}
-              onChange={(e) => setNewProcedure(e.target.value)}
-              placeholder="เช่น Ultraformer III 300 shot"
+            <Label>หัตถการที่ทำจริง *</Label>
+            <ProcedurePicker
+              picked={picked}
+              onChange={setPicked}
+              catalog={catalog}
+              promos={promos}
+              services={services}
+              disabled={savingChange}
             />
           </div>
           <div>
@@ -3218,7 +3249,7 @@ function ServiceDayStage({
               ยกเลิก
             </Button>
             <Button
-              disabled={newProcedure.trim() === "" || supervisor.trim() === ""}
+              disabled={picked.length === 0 || supervisor.trim() === ""}
               onClick={() => setPadOpen(true)}
             >
               <PenLine size={15} />
