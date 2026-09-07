@@ -13,7 +13,6 @@
  */
 
 import {
-  CalendarPlus,
   Hash,
   Search,
   UserRound,
@@ -22,15 +21,19 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Button, Input, Label, Modal, Select } from "@/components/ui";
+import { Button, Input, Label, Modal, Select, Textarea } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import {
   caseValueOf,
+  INFLU_BUDGET_CAPS,
   INFLU_STAGE,
+  INFLU_TIERS,
   INFLU_VOUCHER_UNIT,
   normalizeRoles,
+  overBudgetCap,
   procedureSummaryText,
   roleSummary,
+  tierFromFollowers,
   voucherCreditOf,
   voucherLabelOf,
 } from "@/lib/influ-constants";
@@ -148,8 +151,8 @@ export function NewCaseModal({
   /** แคมเปญของเคส (ไม่บังคับ) — "" = ไม่อยู่ในแคมเปญไหน */
   const [campaignId, setCampaignId] = useState("");
   const [procedures, setProcedures] = useState<PickedProcedure[]>([]);
-  /** รอปรึกษา = ยังไม่รู้ว่าจะทำอะไร ต้องให้แพทย์ดูก่อน — ทางออกเดียวที่เปิดเคสได้โดยไม่มีหัตถการ */
-  const [consultOnly, setConsultOnly] = useState(false);
+  /** หมายเหตุประกอบเมื่อมูลค่าเคสเกินเพดานงบของ Tier (0114) — บังคับกรอกตอนเกิน */
+  const [budgetNote, setBudgetNote] = useState("");
   /** ค่าตัว (บาท) — เคสที่ influ คิดเงิน ต้องขึ้นเป็นบรรทัดหนึ่งใน Memo ให้ผู้อนุมัติเห็น */
   const [talentFee, setTalentFee] = useState("");
   /** จำนวน voucher ที่เปิดวงเงินให้เคสใหม่ (0106) — 0 = ยังไม่เปิด (เติมทีหลังที่แท็บรายละเอียดเคสได้) */
@@ -171,7 +174,8 @@ export function NewCaseModal({
     setProfileQuery("");
     setCampaignId("");
     setProcedures([]);
-    setConsultOnly(false);
+    setBudgetNote("");
+    setVoucherCount(0);
     setTalentFee("");
     setServiceDate("");
     setDoctorName("");
@@ -234,10 +238,10 @@ export function NewCaseModal({
       setErr("เลือกโปรไฟล์ Influencer ก่อน — ถ้ายังไม่มีให้กด 'สร้างโปรไฟล์ใหม่'");
       return;
     }
-    if (procedures.length === 0 && !consultOnly) {
-      setErr(
-        "เลือกหัตถการที่จะเข้ารับอย่างน้อย 1 รายการ — ถ้ายังไม่รู้ว่าจะทำอะไร ให้ติ๊ก 'รอปรึกษา'"
-      );
+    // ของบังคับคือ "วงเงิน voucher" ไม่ใช่หัตถการ (ผู้ใช้ 2026-09-07:
+    // บางเคสยังไม่ได้เลือกหัตถการมา แต่ voucher ต้องเปิดแล้ว)
+    if (voucherCount < 1) {
+      setErr("เปิดวงเงิน voucher อย่างน้อย 1 ใบก่อนสร้างเคส");
       return;
     }
     const feeNum = talentFee.trim() === "" ? null : Number(talentFee);
@@ -251,6 +255,18 @@ export function NewCaseModal({
       voucher_unit: INFLU_VOUCHER_UNIT,
       talent_fee: feeNum,
     });
+    // เกินเพดานงบของ Tier = ต้องมีหมายเหตุประกอบใน Memo (ตารางเพดานทางการ 2026-09-07)
+    const selTier =
+      selected.tier ??
+      (selected.followers != null ? tierFromFollowers(selected.followers) : null);
+    if (overBudgetCap(selTier, caseValue) && budgetNote.trim() === "") {
+      setErr(
+        `มูลค่าเคส ${formatCurrency(caseValue ?? 0)} เกินเพดาน Tier ${
+          selTier ? INFLU_TIERS[selTier].label : ""
+        } (${formatCurrency(selTier ? INFLU_BUDGET_CAPS[selTier].cap : 0)}) — กรอกหมายเหตุประกอบการขออนุมัติก่อน`
+      );
+      return;
+    }
     setSaving(true);
     setErr(null);
 
@@ -262,9 +278,9 @@ export function NewCaseModal({
         person_id: selected.id,
         stage: INFLU_STAGE.memo,
         campaign_id: campaignId || null,
-        // รอปรึกษา = ทำ Memo ได้ทั้งที่ยังไม่มีหัตถการ (เอาติ๊กออกได้ที่แท็บรายละเอียดเคสเมื่อเคาะแล้ว)
-        // ติ๊กไว้แต่ดันเลือกหัตถการมาด้วย = ไม่ใช่เคสรอปรึกษาแล้ว ธงต้องไม่ค้าง
-        consult_only: consultOnly && procedures.length === 0,
+        // 0114: ธง "รอปรึกษา" ตั้งอัตโนมัติ — ไม่มีหัตถการ = ยังไม่ระบุ (ของบังคับคือ voucher)
+        consult_only: procedures.length === 0,
+        budget_note: budgetNote.trim() || null,
         talent_fee: feeNum,
         voucher_count: voucherCount,
         // ราคาต่อใบ ณ ตอนเปิด — snapshot ลงแถว ไม่อ่านค่าคงที่สดตอนแสดงผล
@@ -331,7 +347,7 @@ export function NewCaseModal({
       meta: {
         person_id: selected.id,
         procedures: procedures.length,
-        consult_only: consultOnly,
+        consult_only: procedures.length === 0,
         talent_fee: feeNum,
         influ_code: selected.influ_code,
         campaign: selectedCampaign?.tag ?? null,
@@ -391,15 +407,6 @@ export function NewCaseModal({
         wide
       >
         <form onSubmit={(e) => void submit(e)} className="space-y-4">
-          <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs leading-5 text-brand-700">
-            <CalendarPlus size={14} className="mt-0.5 shrink-0" />
-            <span>
-              เลือกโปรไฟล์ที่ตกลงร่วมงานแล้ว + หัตถการที่จะเข้ารับ —
-              เคสจะเริ่มที่ขั้น <span className="font-semibold">Memo ขออนุมัติ</span>{" "}
-              ทันที (กรอกครบ 4 ส่วนด้านล่างแล้วกดสร้าง)
-            </span>
-          </p>
-
           {/* ---- 1. โปรไฟล์ Influencer ---- */}
           <FormSection n={1} title="โปรไฟล์ Influencer">
           <div>
@@ -516,22 +523,9 @@ export function NewCaseModal({
           {/* ---- 2. หัตถการที่จะเข้ารับ ---- */}
           <FormSection n={2} title="หัตถการที่จะเข้ารับ">
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label className="!mb-0">
-                หัตถการที่รับ {consultOnly ? "" : "*"}
-              </Label>
-              {/* ทางออกเดียวที่เปิดเคสได้โดยไม่มีหัตถการ — ติ๊กแล้วเขียน Memo ไปปรึกษาก่อน */}
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800">
-                <input
-                  type="checkbox"
-                  checked={consultOnly}
-                  disabled={saving}
-                  onChange={(e) => setConsultOnly(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer accent-[#a96a58]"
-                />
-                รอปรึกษา (ยังไม่ระบุหัตถการ)
-              </label>
-            </div>
+            {/* 0114: หัตถการไม่บังคับแล้ว (ของบังคับคือ voucher ในส่วน 3) —
+                ไม่เลือก = เคส "รอปรึกษา" อัตโนมัติ ไม่มี checkbox ให้ติ๊กอีก */}
+            <Label className="!mb-0">เลือก Product Team</Label>
             <div className="mt-1.5">
               <ProcedurePicker
                 picked={procedures}
@@ -600,6 +594,49 @@ export function NewCaseModal({
                 ) : null;
               })()}
             </div>
+            {(() => {
+              // เพดานงบของ Tier (ตารางทางการ 2026-09-07) — เกินเมื่อไหร่บังคับหมายเหตุ
+              const fee = talentFee.trim() === "" ? 0 : Number(talentFee) || 0;
+              const total =
+                voucherCreditOf({
+                  voucher_count: voucherCount,
+                  voucher_unit: INFLU_VOUCHER_UNIT,
+                }) + fee;
+              const t =
+                selected?.tier ??
+                (selected?.followers != null
+                  ? tierFromFollowers(selected.followers)
+                  : null);
+              if (!t) return null;
+              const { cap, approvers } = INFLU_BUDGET_CAPS[t];
+              const over = total > cap;
+              return (
+                <div className="mt-3">
+                  <p
+                    className={`text-xs font-medium ${over ? "text-amber-700" : "text-stone-600"}`}
+                  >
+                    เพดานงบ Tier {INFLU_TIERS[t].label} : {formatCurrency(cap)}
+                    {over &&
+                      ` — เกินอยู่ ${formatCurrency(total - cap)} · ผู้อนุมัติ ${approvers}`}
+                  </p>
+                  {(over || budgetNote.trim() !== "") && (
+                    <div className="mt-2">
+                      <Label htmlFor="nc-budget-note">
+                        หมายเหตุประกอบการขออนุมัติ {over ? "*" : ""}
+                      </Label>
+                      <Textarea
+                        id="nc-budget-note"
+                        rows={2}
+                        disabled={saving}
+                        value={budgetNote}
+                        onChange={(e) => setBudgetNote(e.target.value)}
+                        placeholder="เช่น บุคคลที่มีกระแสสังคม / ดารา-นักแสดง / พันธมิตรทางธุรกิจ"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </FormSection>
 
           {/* ---- 4. นัดหมาย ---- */}
@@ -703,7 +740,7 @@ export function NewCaseModal({
             <Button
               type="submit"
               loading={saving}
-              disabled={!selected || (procedures.length === 0 && !consultOnly)}
+              disabled={!selected || voucherCount < 1}
             >
               สร้างนัดและเปิดหน้าเดินงาน
             </Button>

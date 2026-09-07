@@ -726,18 +726,23 @@ export function ProcedureItemsEditor({
 
   return (
     <div>
-      {/* รายการที่เพิ่มแล้ว */}
+      {/* เลือก product team ก่อน — หัตถการที่เพิ่มแล้วเป็น bullet ใต้ช่องนี้
+          (ผู้ใช้ 2026-09-07: "เลือก product team > ข้างใต้เป็น bullet point") */}
+      {!readOnly && <TeamPicker team={team} onChange={setTeam} />}
+
       {items.length > 0 && (
-        <ul className="space-y-1.5">
+        <ul className="mt-2 space-y-0.5">
           {items.map((item) => (
             <li
               key={item.id}
-              className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-3 py-2 transition-colors ${
-                item.is_supported
-                  ? "border-pink-200 bg-pink-50/60"
-                  : "border-stone-200 bg-white/70"
-              }`}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-stone-100 py-1.5 pl-1 last:border-b-0"
             >
+              {/* จุด bullet — ชมพู = รายการที่แบรนด์ support */}
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  item.is_supported ? "bg-pink-400" : "bg-brand-400"
+                }`}
+              />
               {item.product_team !== "aesthetics" && (
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${INFLU_PRODUCT_TEAMS[item.product_team].chip}`}
@@ -833,8 +838,7 @@ export function ProcedureItemsEditor({
           ผู้ใช้ 2026-09-03: เปลี่ยนจากช่องพิมพ์ค้นหาที่เปิดค้างเป็นปุ่ม dropdown ปิดโดยปริยาย
           + คำอธิบายยาวใต้ช่องเดิมถูกถอดออก (ที่ต้องรู้จริงๆ อยู่ใน placeholder ของปุ่มแทน) */}
       {!readOnly && (
-        <div className="mt-2.5 space-y-2">
-          <TeamPicker team={team} onChange={setTeam} />
+        <div className="mt-2">
           <ProcedureDropdown
             team={team}
             catalog={catalog}

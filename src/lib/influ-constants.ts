@@ -31,17 +31,17 @@ export const INFLU_TIERS: Record<
   },
   mid: {
     label: "Mid-Tier",
-    range: "100,000 - 300,000",
+    range: "100,001 - 300,000",
     badge: "bg-violet-100 text-violet-700",
   },
   macro: {
     label: "Macro",
-    range: "300,000 - 1,000,000",
+    range: "300,001 - 500,000",
     badge: "bg-amber-100 text-amber-700",
   },
   celebrity: {
     label: "Celebrity",
-    range: "1,000,000 ขึ้นไป",
+    range: "500,001 ขึ้นไป",
     badge: "bg-pink-100 text-pink-700",
   },
 };
@@ -54,13 +54,38 @@ export const INFLU_TIER_ORDER: InfluTier[] = [
   "celebrity",
 ];
 
-/** คำนวณ Tier อัตโนมัติจากยอดผู้ติดตาม */
+/** คำนวณ Tier อัตโนมัติจากยอดผู้ติดตาม — ขอบเขตตามตารางงบทางการของบริษัท
+    (ผู้ใช้ส่งตาราง 2026-09-07: Celebrity เริ่มที่ 500,001 ไม่ใช่ 1 ล้านแบบเดิม) */
 export function tierFromFollowers(followers: number): InfluTier {
-  if (followers >= 1_000_000) return "celebrity";
-  if (followers >= 300_000) return "macro";
-  if (followers >= 100_000) return "mid";
-  if (followers >= 50_000) return "micro";
+  if (followers > 500_000) return "celebrity";
+  if (followers > 300_000) return "macro";
+  if (followers > 100_000) return "mid";
+  if (followers > 50_000) return "micro";
   return "nano";
+}
+
+/* ---------- เพดานงบต่อ Tier (ตารางทางการของบริษัท — ผู้ใช้ส่งภาพ 2026-09-07) ----------
+   มูลค่าเคส (วงเงิน voucher + ค่าตัว) เกินเพดานของ Tier = ต้องเขียน "หมายเหตุ"
+   ประกอบในเอกสาร Memo (influencers.budget_note, migration 0114) เพราะเป็นเงื่อนไข
+   ที่ผู้อนุมัติชุดพิเศษใช้พิจารณา — และจะถูกส่งต่อเข้า API ระบบ E-document ในอนาคต */
+export const INFLU_BUDGET_CAPS: Record<
+  InfluTier,
+  { cap: number; approvers: string }
+> = {
+  nano: { cap: 50_000, approvers: "Assist VCEO + VCEO" },
+  micro: { cap: 150_000, approvers: "Assist VCEO + VCEO" },
+  mid: { cap: 300_000, approvers: "Assist VCEO + VCEO" },
+  macro: { cap: 500_000, approvers: "Assist VCEO + VCEO" },
+  celebrity: { cap: 1_500_000, approvers: "Assist VCEO + VCEO + CEO" },
+};
+
+/** มูลค่าเคสเกินเพดานของ Tier ไหม — tier ไม่รู้ (ยังไม่กรอก followers) = ไม่เตือน */
+export function overBudgetCap(
+  tier: InfluTier | null,
+  caseValue: number | null
+): boolean {
+  if (!tier || caseValue == null) return false;
+  return caseValue > INFLU_BUDGET_CAPS[tier].cap;
 }
 
 /* ---------- Product team ของหัตถการ (migration 0080 · ขยายเป็น 9 ทีมที่ 0103) ----------

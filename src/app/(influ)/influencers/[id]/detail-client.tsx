@@ -51,6 +51,7 @@ import {
   Label,
   Select,
   Modal,
+  Textarea,
 } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
@@ -68,6 +69,7 @@ import {
   caseValueOf,
   contractEndDate,
   hashtagText,
+  INFLU_BUDGET_CAPS,
   INFLU_STAGE,
   INFLU_STAGE_LAST,
   INFLU_STAGES,
@@ -2289,7 +2291,8 @@ function CaseDetailStage({
   const [campaignId, setCampaignId] = useState(influencer.campaign_id ?? "");
   /** เคส "รอปรึกษา" (ติ๊กมาตั้งแต่ตอนสร้างนัด) — ธงเดียวที่อนุญาตให้ไม่มีหัตถการ
       เอาติ๊กออกเมื่อปรึกษาแพทย์แล้วเคาะโปรแกรมได้ (ต้องมีรายการอย่างน้อย 1 ก่อน) */
-  const [consultOnly, setConsultOnly] = useState(influencer.consult_only);
+  /** หมายเหตุประกอบเมื่อมูลค่าเคสเกินเพดานงบของ Tier (0114) */
+  const [budgetNote, setBudgetNote] = useState(influencer.budget_note ?? "");
   const [talentFee, setTalentFee] = useState(
     influencer.talent_fee != null ? String(influencer.talent_fee) : ""
   );
@@ -2456,19 +2459,16 @@ function CaseDetailStage({
 
   // วันเข้าทำหัตถการ/แพทย์ที่รับเคส ไม่บังคับ — บ่อยครั้ง influ ยังไม่เคาะวัน (กลับมากรอกทีหลังได้)
   // เคส "รอปรึกษา" = ยกเว้นข้อบังคับเรื่องหัตถการ (ยังไม่รู้ว่าจะทำอะไรจนกว่าจะเจอแพทย์)
-  const canProceed =
-    occupation.trim() !== "" &&
-    (items.length > 0 || consultOnly) &&
-    followersNum > 0;
+  // 0114: หัตถการไม่บังคับแล้ว (ของบังคับคือ voucher — เคสเก่าที่ยังเป็น 0 ใบ
+  // ไม่บล็อคการบันทึก แค่ขึ้นเตือนที่กล่องมูลค่าเคส)
+  const canProceed = occupation.trim() !== "" && followersNum > 0;
 
   const save = async () => {
     // ยังต้องมีค่าบังคับครบทุกครั้ง — แต่ห้ามปิดปุ่มบันทึกทิ้ง
     // ไม่งั้นคนที่แค่อยากแก้เบอร์โทร/วันนัด จะบันทึกไม่ได้เลยเพราะช่องอื่นว่าง
     // (บอกให้รู้ว่าขาดอะไร ดีกว่าปล่อยให้ล้างค่าทิ้งเงียบๆ หรือกดปุ่มไม่ได้โดยไม่บอกเหตุผล)
     if (!canProceed) {
-      setError(
-        "กรอกให้ครบก่อนบันทึก: อาชีพ, ยอดผู้ติดตาม และโปรแกรมที่รับอย่างน้อย 1 รายการ (หรือติ๊ก 'รอปรึกษา')"
-      );
+      setError("กรอกให้ครบก่อนบันทึก: อาชีพ และยอดผู้ติดตาม");
       return;
     }
     const feeNum = talentFee.trim() === "" ? null : Number(talentFee);
@@ -2496,8 +2496,9 @@ function CaseDetailStage({
           voucher_unit: voucherUnit,
           talent_fee: feeNum,
         }),
-        // มีรายการหัตถการแล้ว = ไม่ใช่เคสรอปรึกษาอีกต่อไป (ธงค้างไว้จะทำให้การ์ดขึ้นชิปผิด)
-        consult_only: items.length > 0 ? false : consultOnly,
+        // 0114: ธง "รอปรึกษา" ตั้งอัตโนมัติจากว่ามีรายการหัตถการหรือยัง
+        consult_only: items.length === 0,
+        budget_note: budgetNote.trim() || null,
         talent_fee: feeNum,
         followers: followersNum || null,
         follower_note: followerNote.trim() || null,
@@ -2558,28 +2559,9 @@ function CaseDetailStage({
             </div>
           </div>
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label className="!mb-0">
-                โปรแกรม/หัตถการที่รับ {items.length > 0 || !consultOnly ? "*" : ""}
-              </Label>
-              {/* ติ๊กนี้ค้างอยู่จากตอนสร้างนัด — พอเพิ่มรายการแล้วระบบเอาออกให้เองตอนบันทึก */}
-              {items.length === 0 && (
-                <label
-                  className={`flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-800 max-sm:min-h-11 ${
-                    readOnly ? "opacity-60" : "cursor-pointer"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={consultOnly}
-                    disabled={readOnly}
-                    onChange={(e) => setConsultOnly(e.target.checked)}
-                    className="h-4 w-4 cursor-pointer accent-[#a96a58] disabled:cursor-default"
-                  />
-                  รอปรึกษา (ยังไม่ระบุหัตถการ)
-                </label>
-              )}
-            </div>
+            {/* 0114: หัตถการไม่บังคับ (ของบังคับคือ voucher) — ไม่มีรายการ = เคส
+                "รอปรึกษา" อัตโนมัติ ธง consult_only ตั้ง/ล้างให้เองตอนบันทึก */}
+            <Label className="!mb-0">เลือก Product Team</Label>
             <div className="mt-1.5" />
             <ProcedureItemsEditor
               influencerId={influencer.id}
@@ -2631,6 +2613,40 @@ function CaseDetailStage({
                   </span>
                 )}
               </p>
+              {/* เพดานงบของ Tier (ตารางทางการ 2026-09-07) — เกิน = ต้องมีหมายเหตุใน Memo */}
+              {tier && (
+                <p
+                  className={`mt-1 text-[11px] font-medium ${
+                    caseTotal > INFLU_BUDGET_CAPS[tier].cap
+                      ? "text-amber-700"
+                      : "text-stone-500"
+                  }`}
+                >
+                  เพดานงบ Tier {INFLU_TIERS[tier].label} :{" "}
+                  {formatCurrency(INFLU_BUDGET_CAPS[tier].cap)}
+                  {caseTotal > INFLU_BUDGET_CAPS[tier].cap &&
+                    ` — เกินอยู่ ${formatCurrency(
+                      caseTotal - INFLU_BUDGET_CAPS[tier].cap
+                    )} · ผู้อนุมัติ ${INFLU_BUDGET_CAPS[tier].approvers}`}
+                </p>
+              )}
+              {((tier && caseTotal > INFLU_BUDGET_CAPS[tier].cap) ||
+                budgetNote.trim() !== "") && (
+                <div className="mt-2">
+                  <Label htmlFor="d-budget-note">
+                    หมายเหตุประกอบการขออนุมัติ{" "}
+                    {tier && caseTotal > INFLU_BUDGET_CAPS[tier].cap ? "*" : ""}
+                  </Label>
+                  <Textarea
+                    id="d-budget-note"
+                    rows={2}
+                    disabled={readOnly}
+                    value={budgetNote}
+                    onChange={(e) => setBudgetNote(e.target.value)}
+                    placeholder="เช่น บุคคลที่มีกระแสสังคม / ดารา-นักแสดง / พันธมิตรทางธุรกิจ"
+                  />
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="d-fee">ค่าตัว (บาท)</Label>

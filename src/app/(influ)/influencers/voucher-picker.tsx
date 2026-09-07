@@ -45,7 +45,7 @@ export function VoucherPicker({
     <div>
       <Label htmlFor="voucher-count" className="flex items-center gap-1.5">
         <Ticket size={14} className="text-brand-500" />
-        จำนวน Voucher (ใบละ {formatCurrency(unit)})
+        จำนวน Voucher * (ใบละ {formatCurrency(unit)})
       </Label>
       <div className="flex items-center gap-2">
         <Input

@@ -205,7 +205,7 @@ export function MemoStage({
   /** โปรแกรม/หัตถการของเคส (0106) — ใช้เช็คว่ามีรายการไหนติ๊ก "แบรนด์ support" ไว้บ้าง
       จะได้ใส่หมายเหตุกำกับใน Memo (มูลค่าที่ขออนุมัติเป็นวงเงิน voucher ไม่รวมราคาสินค้า
       อยู่แล้ว แต่ผู้อนุมัติควรรู้ว่ารายการไหนของแถมจากแบรนด์) */
-  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported">[];
+  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported" | "price">[];
 }) {
   // โหมดแบบฟอร์มดิจิทัล (MemoFormStage) เก็บโค้ดไว้แต่ยังไม่เปิดใช้ — Coming soon
   const [mode] = useState<"copy" | "form">("copy");
@@ -400,7 +400,7 @@ function MemoCopyStage({
   peopleById: Map<string, InfluPerson>;
   onAssigneeChange: (change: AssigneeChange) => void;
   busyUserId: string | null;
-  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported">[];
+  procedureItems: Pick<InfluProcedureItemRow, "name" | "is_supported" | "price">[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -535,15 +535,25 @@ function MemoCopyStage({
   const tierText = influencer.tier
     ? `${INFLU_TIERS[influencer.tier].label} (${INFLU_TIERS[influencer.tier].range})`
     : "-";
+  /* โปรแกรมที่ทำ พร้อมมูลค่าต่อรายการในวงเล็บ (ผู้ใช้ 2026-09-07: ผู้บริหารมองค่าใช้จ่าย
+     จากวงเงิน voucher เป็นหลัก — ราคาต่อโปรแกรมเป็นข้อมูลประกอบ ไม่ใช่ยอดที่ขออนุมัติ) */
+  const programLine =
+    procedureItems.length > 0
+      ? procedureItems
+          .map((i) =>
+            i.is_supported
+              ? `${i.name} (แบรนด์ support)`
+              : `${i.name} (${formatCurrency(Number(i.price) || 0)})`
+          )
+          .join(" / ")
+      : influencer.procedure_text ||
+        (influencer.consult_only ? CONSULT_ONLY_TEXT : "-");
   const detailText = [
     MEMO_COMPANY.purpose,
     "",
     `ชื่อ-นามสกุล : ${nameWithNick}`,
     `อาชีพ : ${influencer.occupation || "-"}`,
-    `หัตถการที่รับบริการ : ${
-      influencer.procedure_text ||
-      (influencer.consult_only ? CONSULT_ONLY_TEXT : "-")
-    }`,
+    `โปรแกรมที่ทำ : ${programLine}`,
     ...(supportNote ? [`หมายเหตุ : ${supportNote}`] : []),
     /* มูลค่าในเอกสารมาจาก **วงเงิน voucher + ค่าตัว** เท่านั้น (ผู้ใช้ 2026-09-03)
        — ราคาของสินค้าที่กดเลือกห้ามโผล่ในเอกสารที่ส่งขออนุมัติ (ยังดูได้ในระบบที่
@@ -558,6 +568,10 @@ function MemoCopyStage({
         ? formatCurrency(influencer.case_value)
         : "-"
     }`,
+    // หมายเหตุงบเกินเพดาน Tier (0114) — เงื่อนไขที่ผู้อนุมัติชุดพิเศษใช้พิจารณา
+    ...(influencer.budget_note
+      ? [`หมายเหตุ (งบเกินเพดาน Tier) : ${influencer.budget_note}`]
+      : []),
     // วันที่ไม่บังคับกรอก — บอกให้ชัดว่ายังไม่เคาะวัน ไม่ใช่ลืมกรอก (ข้อความนี้ถูกก๊อปไปลงเอกสารจริง)
     `วันที่ทำหัตถการ : ${
       influencer.service_date

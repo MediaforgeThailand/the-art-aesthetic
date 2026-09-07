@@ -13,7 +13,7 @@
  * พิมพ์ชื่อใหม่ = ลงทะเบียนเข้าเมนูของทีมนั้นทันที (ค้นเจอครั้งหน้า) แม้จะยังไม่กดสร้างเคสก็ตาม
  */
 
-import { Stethoscope, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -111,14 +111,19 @@ export function ProcedurePicker({
 
   return (
     <div>
+      {/* เลือก product team ก่อน — หัตถการที่เลือกแล้วเป็น bullet ใต้ช่องนี้ (2026-09-07) */}
+      <div className="mb-2">
+        <TeamPicker team={team} disabled={disabled} onChange={setTeam} />
+      </div>
+
       {picked.length > 0 && (
-        <ul className="mb-2 space-y-1.5">
+        <ul className="mb-2 space-y-0.5">
           {picked.map((p) => (
             <li
               key={`${p.team}:${p.name}`}
-              className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white/70 px-3 py-2"
+              className="flex items-center gap-2 border-b border-stone-100 py-1.5 pl-1 last:border-b-0"
             >
-              <Stethoscope size={14} className="shrink-0 text-brand-400" />
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
               {p.team !== "aesthetics" && (
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${INFLU_PRODUCT_TEAMS[p.team].chip}`}
@@ -151,12 +156,6 @@ export function ProcedurePicker({
           ))}
         </ul>
       )}
-
-      {/* เลือก product team ก่อน — dropdown ด้านล่างแสดงเฉพาะเมนูของทีมนี้
-          ผู้ใช้ 2026-09-03: เปลี่ยนจากช่องพิมพ์ค้นหาที่เปิดค้างเป็นปุ่ม dropdown ปิดโดยปริยาย */}
-      <div className="mb-2">
-        <TeamPicker team={team} disabled={disabled} onChange={setTeam} />
-      </div>
 
       <ProcedureDropdown
         team={team}
