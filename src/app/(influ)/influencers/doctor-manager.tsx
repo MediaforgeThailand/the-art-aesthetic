@@ -322,13 +322,11 @@ function DoctorFormModal({
             placeholder="เช่น 12345"
             className="font-mono"
           />
-          <p className="mt-1 text-xs leading-5 text-stone-400">
-            ห้ามซ้ำกับแพทย์ท่านอื่น — ระบบใช้เลขนี้เป็นแฮชแท็ก{" "}
-            <span className="font-mono font-semibold text-brand-600">
-              #DR{licenseNo.trim() || "xxxxx"}
-            </span>{" "}
-            ที่ influ ต้องติดในโพส (ไม่กรอก = เคสของหมอท่านนี้จะขึ้นเตือนว่าแท็กไม่ครบ)
-          </p>
+          {licenseNo.trim() !== "" && (
+            <p className="mt-1 font-mono text-xs font-semibold text-brand-600">
+              #DR{licenseNo.trim()}
+            </p>
+          )}
         </div>
 
         <div>

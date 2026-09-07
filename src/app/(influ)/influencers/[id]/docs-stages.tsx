@@ -700,13 +700,6 @@ function MemoCopyStage({
 
   return (
     <div className="space-y-4">
-      <p className="flex items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
-        <ClipboardList size={14} className="shrink-0" />
-        คัดลอกข้อความแต่ละส่วนด้านล่างไปสร้างเอกสาร Memo ตามฟอร์มของบริษัท —
-        เมื่อ Memo ได้รับอนุมัติแล้ว ให้อัพโหลดไฟล์กลับเข้ามาเก็บไว้ที่นี่
-        แล้วเคสจะไปขั้น &quot;เซนสัญญา + วันรับบริการ&quot; ให้อัตโนมัติ
-      </p>
-
       {/* เส้นขั้นย่อยของ Memo — 1 ส่งเรื่อง → 1.1 ทำเอกสาร → 1.2 อัพไฟล์อนุมัติ */}
       <MemoStepStrip step={step} />
 
@@ -1669,7 +1662,7 @@ function ContractUploadStage({
       <Card className="p-5">
         <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
           <FileText size={14} />
-          ไฟล์แม่แบบสัญญา (PDF) — ดาวน์โหลดไปพิมพ์ให้ Influencer เซน
+          ไฟล์แม่แบบสัญญา (PDF)
         </p>
         <div className="space-y-2">
           {INFLU_CONTRACT_TEMPLATES.map((tpl) => (

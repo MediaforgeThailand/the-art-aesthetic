@@ -504,9 +504,6 @@ export function DashboardClient({
           <h2 className="text-sm font-semibold text-stone-900">
             เคสและต้นทุนย้อนหลัง 6 เดือน
           </h2>
-          <span className="text-xs text-stone-400">
-            ตามวันเข้ารับบริการ — เดือนที่ยังไม่เคาะวันไม่ถูกนับ
-          </span>
         </div>
         {stats.monthly.every((m) => m.cases === 0) ? (
           <EmptyState

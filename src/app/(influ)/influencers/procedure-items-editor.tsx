@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
+import { Select } from "@/components/ui";
 import {
   DEFAULT_PRODUCT_TEAM,
   INFLU_PRODUCT_TEAM_ORDER,
@@ -191,23 +192,18 @@ export function TeamPicker({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <Select
+      aria-label="ทีม product ของหัตถการ"
+      disabled={disabled}
+      value={team}
+      onChange={(e) => onChange(e.target.value as InfluProductTeam)}
+    >
       {INFLU_PRODUCT_TEAM_ORDER.map((t) => (
-        <button
-          key={t}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(t)}
-          className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.97] disabled:cursor-default disabled:opacity-60 max-sm:min-h-11 ${
-            team === t
-              ? "bg-gradient-to-b from-brand-500 to-brand-600 text-cream shadow-sm"
-              : "border border-stone-200 bg-white/60 text-stone-500 hover:bg-white"
-          }`}
-        >
+        <option key={t} value={t}>
           {INFLU_PRODUCT_TEAMS[t].label}
-        </button>
+        </option>
       ))}
-    </div>
+    </Select>
   );
 }
 

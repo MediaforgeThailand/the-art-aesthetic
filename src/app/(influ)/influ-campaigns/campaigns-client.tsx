@@ -311,18 +311,11 @@ function CampaignFormModal({
               <Shuffle size={15} /> สุ่มรหัส
             </Button>
           </div>
-          <p className="mt-1 text-xs leading-5 text-stone-400">
-            แท็กที่บังคับให้ influ ติดในโพส — ใช้ได้เฉพาะตัวอักษร ตัวเลข และขีดล่าง
-            (IG/FB ตัดคำที่ขีดกลาง แท็กที่มีขีดจะ track ไม่ได้)
-            {tagPreview && (
-              <>
-                {" · จะบันทึกเป็น "}
-                <span className="font-mono font-semibold text-brand-600">
-                  #{tagPreview}
-                </span>
-              </>
-            )}
-          </p>
+          {tagPreview && (
+            <p className="mt-1 font-mono text-xs font-semibold text-brand-600">
+              #{tagPreview}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

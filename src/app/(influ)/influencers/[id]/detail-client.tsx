@@ -3102,15 +3102,9 @@ function ServiceDayStage({
       />
 
       <Card className="p-5">
-        <h2 className="mb-1 text-sm font-semibold text-stone-900">
-          หัตถการที่รับบริการ (แก้ไขหน้างานได้ — ต้องมีหัวหน้างานลงนามกำกับ)
+        <h2 className="mb-4 text-sm font-semibold text-stone-900">
+          หัตถการที่รับบริการ
         </h2>
-        <p className="mb-4 text-xs text-stone-400">
-          หากหน้างานมีการเปลี่ยนบริการ ให้กดแก้ไข — รายการเดิมจะถูกขีดฆ่า
-          เขียนรายการใหม่ต่อ พร้อมแปะลายเซนหัวหน้างานกำกับข้างๆ
-          แบบเดียวกับแก้เอกสารจริง (รายการต้นทุน Influencer Cost
-          ไม่เปลี่ยนตามการแก้หน้างาน — กลับไปปรับรายการที่แท็บรายละเอียดเคส)
-        </p>
 
         <div className="space-y-2 rounded-xl border border-stone-200 bg-white/80 px-4 py-3 text-sm leading-7">
           {history.map((h, i) => (

@@ -380,10 +380,6 @@ export function ProfilesClient({
           <h2 className="mb-1 text-sm font-semibold text-stone-900">
             โปรไฟล์ที่ยังไม่มีเคส ({orphans.length})
           </h2>
-          <p className="mb-3 text-xs text-stone-500">
-            สร้างโปรไฟล์ไว้แล้วแต่ยังไม่เคยเปิดเคส — เห็นได้แค่ในช่องค้นหาของโมดัล
-            &ldquo;สร้างนัดใหม่&rdquo; เท่านั้น (ลบทิ้งได้ถ้าเป็นแถวทดสอบ)
-          </p>
           <div className="space-y-1.5">
             {orphans.map((p) => (
               <ProfileRow key={p.id} p={p} />

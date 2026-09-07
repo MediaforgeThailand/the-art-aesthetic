@@ -915,10 +915,6 @@ function EventFormModal({
             value={form.doctor}
             onChange={(name) => patch({ doctor: name })}
           />
-          <p className="mt-1 text-xs text-stone-400">
-            เลือก influencer แล้วระบบเติมแพทย์จากเคสให้อัตโนมัติ — แก้เป็นคนอื่นได้
-            (เพิ่มหมอใหม่ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน)
-          </p>
         </div>
 
         <div>

@@ -387,11 +387,6 @@ function QuotaMode({
     <>
       <section className="space-y-2">
         <SectionTitle icon={Target}>เป้าโพสคลิปตามสัญญา</SectionTitle>
-        <p className="text-xs leading-5 text-stone-500">
-          กำหนดว่า influ คนนี้ต้องลงคลิปช่องไหนกี่โพส —
-          ตัวเลขนี้คือสิ่งที่ระบบใช้ตามงานและใช้ระบายสีปฏิทินด้านบน
-          และเป็นตัวเลือกช่องทางตอนแปะลิงก์โพส
-        </p>
         <div className="space-y-1.5">
           {shown.map((p) => {
             const pm = INFLU_POST_PLATFORMS[p];
