@@ -17,6 +17,8 @@ const VALID_PERMISSIONS = new Set([
   "wellness_lab",
   "wellness_admin",
   "wellness_doctor",
+  // เพิ่ม/แก้/ลบทะเบียนหมอ (ใช้ร่วมทั้งหน้า "จัดการแท็ก" ของทีมคอนเทนต์ และ /influ-doctors)
+  "doctor_manage",
 ]);
 
 const corsHeaders = {

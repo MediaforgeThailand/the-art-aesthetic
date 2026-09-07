@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { canViewInflu, getAccess } from "@/lib/access";
+import { canManageDoctors, canViewInflu, getAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { DoctorRow } from "@/lib/types";
 import { DoctorManagerPanel } from "../influencers/doctor-manager";
@@ -13,7 +13,8 @@ export const metadata: Metadata = {
 /**
  * ทะเบียนแพทย์ — หน้าของตัวเอง (เดิมเป็นโมดัลบนหัวบอร์ดเคส, ย้ายมา 2026-08-19)
  *
- * เปิดดูได้ทุกระดับของระบบ Influencer แต่ **เพิ่ม/แก้/ลบได้เฉพาะ admin** (0103 —
+ * เปิดดูได้ทุกระดับของระบบ Influencer แต่ **เพิ่ม/แก้/ลบได้เฉพาะคนที่ `canManageDoctors`**
+ * (isAdmin หรือสิทธิ์ `doctor_manage` แยก — 0103 ล็อกเฉพาะ admin, เปิดสิทธิ์แยกเพิ่ม 2026-09-07;
  * ทะเบียนเดียวกับหน้าจัดการแท็กของทีมคอนเทนต์ จึงต้องใช้เกณฑ์สิทธิ์เดียวกันทั้งสองหน้า);
  * เพิ่ม/แก้ชื่อหมอต้องผ่านหน้านี้หรือหน้าจัดการแท็กเท่านั้น กันชื่อสะกดเพี้ยนงอกใหม่จากหลายทีม
  */
@@ -31,7 +32,7 @@ export default async function InfluDoctorsPage() {
     <PageContainer>
       <DoctorManagerPanel
         doctors={(doctors ?? []) as DoctorRow[]}
-        canEdit={access.isAdmin}
+        canEdit={canManageDoctors(access)}
         actor={{ id: access.uid, name: access.name }}
       />
     </PageContainer>

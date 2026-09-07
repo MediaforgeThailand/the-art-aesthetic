@@ -270,14 +270,15 @@ export function TagManagementClient({
   doctors,
   influOptions,
   categories,
-  isAdmin,
+  canManageDoctors,
   actor,
 }: {
   doctors: DoctorRow[];
   influOptions: InfluTagOption[];
   categories: ContentCategoryRow[];
-  /** ผู้ดูแลระบบเท่านั้นที่เพิ่ม/แก้/ลบทะเบียนหมอได้ (เกณฑ์เดียวกับหน้า /influ-doctors) */
-  isAdmin: boolean;
+  /** isAdmin หรือสิทธิ์ doctor_manage แยกเท่านั้นที่เพิ่ม/แก้/ลบทะเบียนหมอได้
+      (เกณฑ์เดียวกับหน้า /influ-doctors) */
+  canManageDoctors: boolean;
   /** ผู้ทำ — ทะเบียนหมอที่หน้านี้แก้ต้องเขียน log เหมือนกับ /influ-doctors */
   actor: InfluLogActor;
 }) {
@@ -316,7 +317,7 @@ export function TagManagementClient({
       {tab === "doctor" && (
         <DoctorManagerPanel
           doctors={doctors}
-          canEdit={isAdmin}
+          canEdit={canManageDoctors}
           teamFilter="aesthetics"
           actor={actor}
         />

@@ -47,7 +47,11 @@ export type AppPermission =
   | "wellness_bc"
   | "wellness_lab"
   | "wellness_admin"
-  | "wellness_doctor";
+  | "wellness_doctor"
+  // เพิ่ม/แก้/ลบทะเบียนหมอ (ตาราง doctors — ใช้ร่วมกันทั้งหน้า "จัดการแท็ก" ของทีมคอนเทนต์
+  // และ /influ-doctors ของระบบ Influencer) — เดิมล็อกเฉพาะ role admin เท่านั้น เปิดเป็น
+  // สิทธิ์แยกได้ตั้งแต่ 2026-09-07 ตามคำขอผู้ใช้ (isAdmin ยังทำได้เหมือนเดิมด้วย)
+  | "doctor_manage";
 
 /** รายชื่อคนที่เป็นผู้ตรวจงานได้ (roster — จัดการจากหน้า /tasks) */
 export type TaskReviewerRow = {

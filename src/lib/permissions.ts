@@ -76,6 +76,12 @@ export const PERMISSION_META: {
       "ดูปฏิทินคิวของตัวเอง + เปิดดูผลตรวจเลือดและข้อมูลลูกค้า (อ่านอย่างเดียว)",
     group: "wellness",
   },
+  {
+    key: "doctor_manage",
+    label: "จัดการทะเบียนหมอ",
+    detail:
+      "เพิ่ม/แก้/ลบทะเบียนหมอ — ทะเบียนเดียวกัน ใช้ร่วมทั้งหน้า \"จัดการแท็ก\" ของทีมคอนเทนต์ และ /influ-doctors ของระบบ Influencer",
+  },
 ];
 
 export const ALL_PERMISSIONS: AppPermission[] = PERMISSION_META.map(
@@ -94,6 +100,12 @@ export type Access = {
     ไม่ผูกกับ role: การเป็น admin (จัดการบัญชี/ผู้ตรวจ) เป็นสิทธิ์แยก ไม่เหมาเห็นทุกหน้า */
 export function hasPermission(access: Access, perm: AppPermission): boolean {
   return access.permissions.includes(perm);
+}
+
+/** เพิ่ม/แก้/ลบทะเบียนหมอได้ไหม — isAdmin ทำได้เสมอ (เดิม) หรือมีสิทธิ์ doctor_manage แยก
+    (2026-09-07) ใช้เกณฑ์เดียวกันทั้งหน้า "จัดการแท็ก" ของทีมคอนเทนต์ และ /influ-doctors */
+export function canManageDoctors(access: Access): boolean {
+  return access.isAdmin || hasPermission(access, "doctor_manage");
 }
 
 /* ============================================================

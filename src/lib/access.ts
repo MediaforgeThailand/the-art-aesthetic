@@ -7,6 +7,7 @@ export {
   PERMISSION_META,
   ALL_PERMISSIONS,
   hasPermission,
+  canManageDoctors,
   influLevel,
   canViewInflu,
   canEditInflu,

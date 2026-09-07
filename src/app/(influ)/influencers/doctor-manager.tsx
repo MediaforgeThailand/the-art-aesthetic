@@ -410,7 +410,7 @@ export function DoctorManagerPanel({
   actor = { id: null, name: null },
 }: {
   doctors: DoctorRow[];
-  /** false = ดูอย่างเดียว (ไม่ใช่ผู้ดูแลระบบ) — ซ่อนปุ่มเพิ่ม/แก้/ซ่อน/ลบ/เปลี่ยนรูปทั้งหมด */
+  /** false = ดูอย่างเดียว (ไม่มีสิทธิ์ canManageDoctors) — ซ่อนปุ่มเพิ่ม/แก้/ซ่อน/ลบ/เปลี่ยนรูปทั้งหมด */
   canEdit?: boolean;
   /** แสดงเฉพาะหมอที่อยู่ทีมนี้ (ระบบทีมคอนเทนต์ส่ง "aesthetics") — ไม่ส่ง = ทุกทีม */
   teamFilter?: InfluProductTeam;
@@ -555,7 +555,7 @@ export function DoctorManagerPanel({
             </Button>
           ) : (
             <span className="rounded-lg bg-stone-100 px-2.5 py-1.5 text-xs font-medium text-stone-500">
-              ดูอย่างเดียว — เพิ่ม/แก้ทะเบียนได้เฉพาะผู้ดูแลระบบ
+              ดูอย่างเดียว — ไม่มีสิทธิ์แก้ทะเบียนหมอ
             </span>
           )}
           {teamFilter && hiddenByTeam > 0 && (
@@ -594,7 +594,7 @@ export function DoctorManagerPanel({
                 d.active ? "" : "opacity-55"
               }`}
             >
-              {/* กดรูปเพื่อเปลี่ยนรูปโปรไฟล์ (เฉพาะผู้ดูแลระบบ) */}
+              {/* กดรูปเพื่อเปลี่ยนรูปโปรไฟล์ (เฉพาะคนที่ canEdit) */}
               {canEdit ? (
                 <button
                   type="button"

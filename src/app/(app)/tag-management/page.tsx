@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
-import { getAccess, hasPermission } from "@/lib/access";
+import { canManageDoctors, getAccess, hasPermission } from "@/lib/access";
 import { fetchInfluTagOptions } from "@/lib/influ-tags";
 import { createClient } from "@/lib/supabase/server";
 import type { ContentCategoryRow, DoctorRow } from "@/lib/types";
@@ -18,7 +18,8 @@ export const metadata: Metadata = {
  * · **Influencer** (อ่านจากระบบ Influ: ทุกเคสที่ยังเดินงานอยู่ พร้อมชุดแฮชแท็กบังคับ)
  * · **หมวดเนื้อหา** (อ่านอย่างเดียว — ตั้งค่าจริงอยู่หน้า KPI คอนเทนต์)
  *
- * เปิดดูได้ทุกคนที่มีสิทธิ์ team; แก้ทะเบียนหมอได้เฉพาะ admin (คุมที่ UI ตามแนวระบบ)
+ * เปิดดูได้ทุกคนที่มีสิทธิ์ team; แก้ทะเบียนหมอได้เฉพาะคนที่ `canManageDoctors`
+ * (isAdmin หรือสิทธิ์ `doctor_manage` แยก — เกณฑ์เดียวกับ /influ-doctors, คุมที่ UI ตามแนวระบบ)
  */
 export default async function TagManagementPage() {
   const supabase = await createClient();
@@ -40,7 +41,7 @@ export default async function TagManagementPage() {
     <PageContainer>
       <TagManagementClient
         doctors={(doctorsResult.data ?? []) as DoctorRow[]}
-        isAdmin={access.isAdmin}
+        canManageDoctors={canManageDoctors(access)}
         influOptions={influOptions}
         categories={(categoriesResult.data ?? []) as ContentCategoryRow[]}
         actor={{ id: access.uid, name: access.name }}
