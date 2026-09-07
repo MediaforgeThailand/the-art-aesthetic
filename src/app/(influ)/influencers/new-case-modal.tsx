@@ -508,9 +508,6 @@ export function NewCaseModal({
                   <span className="font-mono text-sm font-semibold text-stone-700">
                     {selected?.influ_code ?? "INF-XXXXX"}
                   </span>
-                  <span className="ml-auto text-xs text-stone-500">
-                    {selected ? "รหัสประจำตัว" : "ตามโปรไฟล์ที่เลือก"}
-                  </span>
                 </div>
               </div>
             </div>

@@ -398,9 +398,6 @@ function ProfileFormInner({
             <span className="font-mono text-sm font-semibold text-stone-700">
               {profile.influ_code}
             </span>
-            <span className="ml-auto text-xs text-stone-500">
-              รหัสประจำตัว ใช้ร่วมทุกรอบ
-            </span>
           </div>
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -465,9 +462,6 @@ function ProfileFormInner({
               onChange={(e) => setFollowers(e.target.value)}
               placeholder="เช่น 150000"
             />
-            <p className="mt-1 text-xs text-stone-400">
-              Tier จัดให้อัตโนมัติจากยอดผู้ติดตาม
-            </p>
           </div>
         </div>
 

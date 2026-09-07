@@ -112,7 +112,7 @@ function RoleLine({ scopes }: { scopes: InfluScope[] }) {
   if (roles.length === 0) {
     return (
       <span className="text-[10px] text-stone-400">
-        ผู้เกี่ยวข้อง (ได้แจ้งเตือนแบบเงียบ)
+        ผู้เกี่ยวข้อง
       </span>
     );
   }
@@ -521,7 +521,7 @@ export function AssigneeEditor({
     <div className="space-y-2">
       {assignees.length === 0 && (
         <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-xs text-stone-500">
-          ยังไม่มีผู้รับผิดชอบ — เคสนี้จะไม่มีใครได้รับแจ้งเตือนเมื่อมีความเคลื่อนไหว
+          ยังไม่มีผู้รับผิดชอบ
         </p>
       )}
 

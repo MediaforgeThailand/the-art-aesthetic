@@ -435,14 +435,7 @@ function CasePhotoGallery({
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <div>
-      <Label>
-        {label}{" "}
-        {photos.length > 0 && (
-          <span className="font-normal text-stone-400">
-            (รูปแรก = รูปที่ใช้แสดงบนโปรไฟล์)
-          </span>
-        )}
-      </Label>
+      <Label>{label}</Label>
       <div className="flex flex-wrap gap-2">
         {photos.map((p, idx) => (
           <CasePhotoTile
@@ -636,9 +629,6 @@ function NameEditModal({
             <span className="font-mono text-sm font-semibold text-stone-700">
               {code || "ยังไม่มีรหัส"}
             </span>
-            <span className="ml-auto text-xs text-stone-500">
-              รหัสประจำตัว ใช้ร่วมทุกรอบ
-            </span>
           </div>
         </div>
         {err && (
@@ -646,11 +636,6 @@ function NameEditModal({
             {err}
           </p>
         )}
-        <p className="text-xs text-stone-400">
-          ชื่อนี้ถูกใช้ในเอกสาร Memo และสัญญาที่สร้างจากระบบ —
-          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม ·
-          ถ้าคนนี้เข้ามาทำหลายรอบ ชื่อจะถูกแก้ให้ทุกรอบพร้อมกัน
-        </p>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
             ยกเลิก
@@ -742,9 +727,6 @@ function CaseInfoEditModal({
             value={serviceDate}
             onChange={(e) => setServiceDate(e.target.value)}
           />
-          <p className="mt-1 text-[11px] text-stone-400">
-            ยังไม่เคาะวันได้ — เว้นว่างไว้ก่อน แล้วกลับมากรอกทีหลัง
-          </p>
         </div>
         <div>
           <Label htmlFor="ci-doc">แพทย์ที่รับเคส</Label>
@@ -754,9 +736,6 @@ function CaseInfoEditModal({
             value={doctorName}
             onChange={setDoctorName}
           />
-          <p className="mt-1 text-[11px] text-stone-400">
-            ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
-          </p>
         </div>
         <div>
           <Label htmlFor="ci-contact">ช่องทางการติดต่อ</Label>
@@ -766,19 +745,12 @@ function CaseInfoEditModal({
             onChange={(e) => setContactChannel(e.target.value)}
             placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
           />
-          <p className="mt-1 text-[11px] text-stone-400">
-            ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ — คนละชุดกับช่องทางในโปรไฟล์ (IG/TikTok ของ influ)
-          </p>
         </div>
         {err && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 animate-fade-in">
             {err}
           </p>
         )}
-        <p className="text-xs text-stone-400">
-          ข้อมูลนี้ถูกใช้ในข้อความ Memo ในขั้น Memo —
-          เอกสารที่พิมพ์/อัปโหลดไปแล้วจะไม่เปลี่ยนตาม
-        </p>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
             ยกเลิก
@@ -1612,9 +1584,6 @@ function HashtagBlock({ tags }: { tags: CaseHashtag[] }) {
         </ul>
       )}
 
-      <p className="text-[11px] leading-5 text-stone-400">
-        แท็กชุดนี้เป็นข้อบังคับของทุกโพส
-      </p>
     </div>
   );
 }
@@ -2558,7 +2527,7 @@ function CaseDetailStage({
   return (
     <Card className="p-5">
       <h2 className="mb-4 text-sm font-semibold text-stone-900">
-        รายละเอียดเคส (ใช้ generate ข้อความ Memo ขออนุมัติอัตโนมัติ)
+        รายละเอียดเคส
       </h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-3">
@@ -2586,8 +2555,7 @@ function CaseDetailStage({
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="!mb-0">
-                โปรแกรม/หัตถการที่รับ {items.length > 0 || !consultOnly ? "*" : ""}{" "}
-                (Influencer Cost)
+                โปรแกรม/หัตถการที่รับ {items.length > 0 || !consultOnly ? "*" : ""}
               </Label>
               {/* ติ๊กนี้ค้างอยู่จากตอนสร้างนัด — พอเพิ่มรายการแล้วระบบเอาออกให้เองตอนบันทึก */}
               {items.length === 0 && (
@@ -2637,9 +2605,6 @@ function CaseDetailStage({
                 value={serviceDate}
                 onChange={(e) => setServiceDate(e.target.value)}
               />
-              <p className="mt-1 text-[11px] text-stone-400">
-                ยังไม่เคาะวันได้ — เว้นว่างไว้ก่อน แล้วกลับมากรอกทีหลัง
-              </p>
             </div>
             <div>
               <Label>มูลค่าเคสรวม (บาท)</Label>
@@ -2674,9 +2639,6 @@ function CaseDetailStage({
                 onChange={(e) => setTalentFee(e.target.value)}
                 placeholder="เว้นว่าง = ไม่มีค่าตัว"
               />
-              <p className="mt-1 text-[11px] text-stone-400">
-                เคสที่ influ คิดเงิน — ขึ้นเป็นบรรทัด &quot;ค่าตัว&quot; ในข้อความ Memo
-              </p>
             </div>
           </div>
           <div>
@@ -2688,9 +2650,6 @@ function CaseDetailStage({
               value={doctorName}
               onChange={setDoctorName}
             />
-            <p className="mt-1 text-[11px] text-stone-400">
-              ไม่มีชื่อในลิสต์ — เพิ่มได้ที่เมนู &quot;จัดการหมอ&quot; บนแถบเมนูด้านบน
-            </p>
           </div>
           <div>
             <Label htmlFor="d-contact">ช่องทางการติดต่อ</Label>
@@ -2701,9 +2660,6 @@ function CaseDetailStage({
               onChange={(e) => setContactChannel(e.target.value)}
               placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
             />
-            <p className="mt-1 text-[11px] text-stone-400">
-              ชื่อกลุ่มไลน์ที่ใช้คุยงานเคสนี้ — คนละชุดกับช่องทางในโปรไฟล์ (IG/TikTok ของ influ)
-            </p>
           </div>
           {/* แคมเปญ (0093) — เลือกแล้วแฮชแท็กของแคมเปญถูกเพิ่มเข้าชุดที่ influ ต้องติดในโพส
               ตัวเลือกโชว์เฉพาะแคมเปญที่เปิดใช้งาน + ของเดิมที่เคสนี้ผูกไว้ (กันค่าหายตอนบันทึก) */}
@@ -2722,11 +2678,11 @@ function CaseDetailStage({
                 </option>
               ))}
             </Select>
-            <p className="mt-1 text-[11px] text-stone-400">
-              {selectedCampaign
-                ? `โพสของเคสนี้ต้องติด #${selectedCampaign.tag} ด้วย`
-                : "ตั้งแคมเปญได้ที่เมนู “แคมเปญ” บนแถบเมนูด้านบน"}
-            </p>
+            {selectedCampaign && (
+              <p className="mt-1 text-[11px] text-stone-600">
+                #{selectedCampaign.tag}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -2754,7 +2710,7 @@ function CaseDetailStage({
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2.5">
             <span className="text-xs text-stone-500">
-              Tier (คำนวณอัตโนมัติจากยอดผู้ติดตาม):
+              Tier
             </span>
             {tier ? (
               <Badge className={INFLU_TIERS[tier].badge}>
@@ -2796,10 +2752,6 @@ function CaseDetailStage({
           ที่แก้ได้ตลอด ไม่ใช่ขั้นตอนที่ต้อง "ผ่าน" */}
       {!readOnly && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-stone-500">
-            แก้ไขได้ตลอดจนกว่าจะปิดงาน — ข้อความ Memo ในขั้น Memo อัพเดทตาม
-            แต่เอกสารที่พิมพ์/อัพโหลดไปแล้วไม่เปลี่ยน
-          </p>
           {/* ค่าบังคับถูกเช็คใน save() แล้ว (ขึ้นข้อความบอกว่าขาดอะไร) — ไม่ปิดปุ่ม
               เพื่อให้ยังแก้ช่องอื่นได้ตามปกติ */}
           <Button loading={busy} onClick={() => void save()}>
@@ -2930,9 +2882,6 @@ function ServiceBookingCard({
           <CheckCircle2 size={16} className="text-emerald-600" />
           ลงคิวเข้าปฏิทินแล้ว
         </h2>
-        <p className="mb-3 text-xs text-stone-500">
-          คิวนี้ขึ้นบนปฏิทินคิวแล้ว — ย้ายวัน/แก้เวลา/เปลี่ยนแพทย์ได้ที่หน้าปฏิทินคิว
-        </p>
         <ul className="space-y-2">
           {bookings.map((b) => (
             <li
@@ -3003,9 +2952,6 @@ function ServiceBookingCard({
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
-              <p className="mt-1 text-xs text-stone-400">
-                ไม่กรอก = คิวทั้งวัน
-              </p>
             </div>
             <div>
               <Label htmlFor="book-doctor">แพทย์ที่รับเคส *</Label>

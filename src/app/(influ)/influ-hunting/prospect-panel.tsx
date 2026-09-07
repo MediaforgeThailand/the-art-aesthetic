@@ -454,13 +454,6 @@ export function ProspectPanel({
               </div>
             )}
 
-            {!isNew && canEdit && (
-              <p className="text-xs text-stone-400">
-                แก้ช่องไหนก็บันทึกอัตโนมัติเมื่อคลิกออกจากช่อง —
-                ดาว/วันนัด/สถานะ บันทึกทันทีที่กด
-              </p>
-            )}
-
             {/* ---- ข้อมูลรายชื่อ (แก้ inline ได้ทุกช่อง) ---- */}
             <div>
               <Label htmlFor="pr-name">ชื่อ / ชื่อช่อง *</Label>
@@ -715,12 +708,6 @@ export function ProspectPanel({
                       ({contacts.length} ครั้ง)
                     </span>
                   </p>
-                  {canEdit && (
-                    <p className="text-xs text-stone-400">
-                      กดปุ่มแล้วบันทึกวันนี้ให้ทันที — กดวันที่บนแถวเพื่อแก้ /
-                      พิมพ์โน้ตต่อท้ายได้
-                    </p>
-                  )}
                 </div>
 
                 {canEdit && (
@@ -758,9 +745,7 @@ export function ProspectPanel({
                         ยังไม่มีบันทึกการติดต่อ
                       </p>
                       <p className="text-xs text-stone-400">
-                        {canEdit
-                          ? "โทรหรือทักไปแล้วกดปุ่มด้านบน — ระบบจดวันให้เอง"
-                          : "ยังไม่มีใครจดว่าติดต่อไปแล้ว"}
+                        ยังไม่มีใครจดว่าติดต่อไปแล้ว
                       </p>
                     </div>
                   ) : (

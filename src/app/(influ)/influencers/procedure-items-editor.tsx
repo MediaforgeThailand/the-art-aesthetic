@@ -11,7 +11,7 @@
  * ใช้ทั้งในแท็บรายละเอียดเคส (หน้าเดินงาน) — ส่วนหน้า /influ-cost ใช้เฉพาะ SupportToggle + CostPriceInput
  */
 
-import { ChevronDown, Gift, Plus, Search, X } from "lucide-react";
+import { ChevronDown, Gift, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -313,9 +313,11 @@ export function ProcedureDropdown({
         aria-expanded={open}
         className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-lg border border-stone-300/80 bg-white/80 px-3 text-left text-sm text-stone-500 transition-colors duration-200 hover:border-brand-300 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-400 sm:h-[38px]"
       >
-        <Search size={15} className="shrink-0 text-stone-400" />
         <span className="min-w-0 flex-1 truncate">{placeholder}</span>
-        <ChevronDown size={15} className="shrink-0 text-stone-400" />
+        <ChevronDown
+          size={16}
+          className={`shrink-0 text-stone-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open &&
         pos &&
@@ -403,7 +405,7 @@ export function ProcedureDropdown({
                 })
               ) : (
                 <p className="px-2 py-2.5 text-xs text-stone-400">
-                  ไม่พบในเมนู — พิมพ์ชื่อแล้วกด Enter เพื่อเพิ่มใหม่
+                  ไม่พบในเมนู
                 </p>
               )}
             </div>
@@ -729,7 +731,7 @@ export function ProcedureItemsEditor({
   return (
     <div>
       {/* รายการที่เพิ่มแล้ว */}
-      {items.length > 0 ? (
+      {items.length > 0 && (
         <ul className="space-y-1.5">
           {items.map((item) => (
             <li
@@ -812,10 +814,6 @@ export function ProcedureItemsEditor({
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="rounded-xl border border-dashed border-stone-300 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
-          ยังไม่มีโปรแกรม — พิมพ์ค้นหาจาก Price List ด้านล่างแล้วกดเพิ่มทีละรายการ
-        </p>
       )}
 
       {/* สรุปต้นทุน */}
@@ -832,7 +830,6 @@ export function ProcedureItemsEditor({
               · แบรนด์ support ประหยัด {formatCurrency(saved)}
             </span>
           )}
-          <span className="text-stone-400"> — ราคา 0 = ยังไม่กรอกต้นทุน</span>
         </p>
       )}
 

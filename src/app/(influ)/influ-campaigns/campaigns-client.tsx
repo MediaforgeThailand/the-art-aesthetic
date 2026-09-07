@@ -370,9 +370,6 @@ function CampaignFormModal({
           />
           <span className="text-sm text-stone-700">
             เปิดใช้งาน
-            <span className="ml-1 text-xs text-stone-400">
-              (ปิดแล้วจะไม่ขึ้นเป็นตัวเลือกในเคสใหม่ ของเดิมไม่กระทบ)
-            </span>
           </span>
         </label>
 

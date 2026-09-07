@@ -170,7 +170,7 @@ export function PhotosModal({
               )
             ) : (
               <div className="flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-stone-200 text-xs text-stone-400">
-                ยังไม่ได้อัพโหลด (เพิ่มรูปได้ที่โปรไฟล์ของ influ)
+                ยังไม่มีรูป
               </div>
             )}
           </div>
@@ -735,8 +735,7 @@ function MemoCopyStage({
                 ส่งเรื่องขอ Memo แล้ว
               </p>
               <p className="text-xs text-stone-500">
-                ยืนยันเมื่อ {formatDateTime(influencer.docs_sent_at!)} ·
-                ขั้นต่อไปเป็นของผู้ออก Memo (ขั้น 1.1)
+                ยืนยันเมื่อ {formatDateTime(influencer.docs_sent_at!)}
               </p>
             </div>
             {fileEditable && !memoUploaded && (
@@ -754,12 +753,13 @@ function MemoCopyStage({
         ) : !fileEditable ? (
           <p className="text-xs text-stone-400">ยังไม่ได้ยืนยันส่งเรื่องขอ Memo</p>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="min-w-0 flex-1 text-xs text-stone-500">
-              {makerIds.length === 0
-                ? "เลือกผู้ออก Memo ด้านบนก่อน แล้วจึงกดยืนยันว่าส่งเรื่องขอ Memo แล้ว"
-                : "ส่งเรื่องขอทำ Memo แล้วให้กดยืนยัน — เคสจะไปขั้น 1.1 รอผู้ออก Memo ทำเอกสาร"}
-            </p>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {/* บอกเหตุผลเฉพาะตอนปุ่มกดไม่ได้ — นอกนั้นปุ่มบอกตัวเองอยู่แล้ว */}
+            {makerIds.length === 0 && (
+              <p className="min-w-0 flex-1 text-xs text-amber-700">
+                เลือกผู้ออก Memo ก่อน
+              </p>
+            )}
             <Button
               variant="secondary"
               onClick={() => void toggleMemoSent()}
@@ -791,8 +791,7 @@ function MemoCopyStage({
                 ทำเอกสาร Memo ส่งขออนุมัติแล้ว
               </p>
               <p className="text-xs text-stone-500">
-                ยืนยันเมื่อ {formatDateTime(influencer.memo_submitted_at)} ·
-                รออนุมัติ — ได้ไฟล์แล้วอัพเข้าขั้น 1.2
+                ยืนยันเมื่อ {formatDateTime(influencer.memo_submitted_at)}
               </p>
             </div>
             {canActMaker && !memoUploaded && (
@@ -812,10 +811,7 @@ function MemoCopyStage({
             ยังไม่ได้ยืนยันว่าทำเอกสาร Memo แล้ว
           </p>
         ) : canActMaker ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="min-w-0 flex-1 text-xs text-stone-500">
-              ทำเอกสาร Memo ตามข้อความด้านล่างและส่งขออนุมัติแล้ว ให้กดยืนยันที่นี่
-            </p>
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <Button
               variant="secondary"
               onClick={() => void setMemoSubmitted(true)}
@@ -913,7 +909,7 @@ function MemoCopyStage({
                 )
               ) : (
                 <div className="flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-stone-200 text-xs text-stone-400">
-                  ยังไม่ได้อัพโหลด (เพิ่มรูปได้ที่โปรไฟล์ของ influ)
+                  ยังไม่มีรูป
                 </div>
               )}
             </div>
@@ -1356,8 +1352,7 @@ export function MemoFormStage({
       {!readOnly && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-stone-500">
-            เซนแล้ว {[...memoSigs.keys()].length}/{MEMO_SIGNERS.length} ช่อง —
-            ต้องเซนครบทุกช่องจึงจะไป stage ถัดไปได้
+            เซนแล้ว {[...memoSigs.keys()].length}/{MEMO_SIGNERS.length} ช่อง
           </p>
           <Button onClick={() => void goNext()} disabled={!allSigned}>
             <CheckCircle2 size={16} />

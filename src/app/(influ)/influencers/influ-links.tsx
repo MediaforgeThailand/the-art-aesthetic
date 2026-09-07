@@ -195,8 +195,7 @@ export function InfluLinksCard({
     <>
       {links.length === 0 ? (
         <p className="mb-3 rounded-xl border border-dashed border-stone-300 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
-          ยังไม่มีลิงก์ — วางลิงก์โฟลเดอร์ Google Drive ของไฟล์ source
-          (รูป/วิดีโอต้นฉบับ) ไว้ที่นี่ ทีมจะได้เปิดหาไฟล์ได้ทันที
+          ยังไม่มีลิงก์
         </p>
       ) : (
         <ul className="mb-3 space-y-1.5">

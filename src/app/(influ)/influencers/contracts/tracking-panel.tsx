@@ -827,7 +827,7 @@ function TrackMode({
 
         {posts.length === 0 && comments.length === 0 ? (
           <p className="rounded-xl border border-dashed border-stone-200 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
-            ยังไม่มีลิงก์ — วางลิงก์โพสจริงของ influ ด้านล่างเพื่อเริ่มนับ
+            ยังไม่มีลิงก์
           </p>
         ) : (
           <div className="space-y-1">
@@ -1175,10 +1175,6 @@ function TrackMode({
               });
           }}
         />
-        <p className="text-[11px] text-stone-400">
-          บันทึกอัตโนมัติเมื่อออกจากช่อง — โน้ตเดียวกับช่อง
-          &quot;หมายเหตุ&quot; ของเคส
-        </p>
       </section>
 
       {/* ---------- ปิดงาน (ย้ายมาจากขั้นตามงานเดิม — 0092) ---------- */}
