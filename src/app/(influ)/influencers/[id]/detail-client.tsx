@@ -12,7 +12,6 @@ import {
   Hash,
   History,
   FileSignature,
-  FolderOpen,
   ImagePlus,
   LayoutList,
   Link2,
@@ -97,7 +96,6 @@ import type {
   InfluCasePhotoRow,
   InfluencerRow,
   InfluRoundLite,
-  InfluLinkRow,
   InfluProcedureItemRow,
   InfluProfileChannelRow,
   InfluProfileRow,
@@ -108,7 +106,6 @@ import type {
   TaskWithAssignee,
 } from "@/lib/types";
 import { DoctorNameChip, DoctorSelect } from "../doctor-select";
-import { InfluLinksCard } from "../influ-links";
 import { NewCaseModal } from "../new-case-modal";
 import { ProfileFormModal } from "../profile-form";
 import {
@@ -782,7 +779,6 @@ export function InfluDetailClient({
   services,
   personProfile,
   profileChannels,
-  sourceLinks,
   casePhotos,
   ownerName,
   userId,
@@ -818,7 +814,6 @@ export function InfluDetailClient({
   personProfile: InfluProfileRow | null;
   profileChannels: InfluProfileChannelRow[];
   /** ลิงก์ไฟล์ source (Google Drive) ของเคสนี้ */
-  sourceLinks: InfluLinkRow[];
   /** รูปภาพหลายรูปของเคสนี้ (0105) — แยก kind photo/channel ในแท็บรายละเอียดเคส */
   casePhotos: InfluCasePhotoRow[];
   /** ชื่อผู้รับผิดชอบเคส (owner_id — คนที่สร้างการ์ด); null = เคสเก่าที่ยังไม่มีเจ้าของ */
@@ -1315,7 +1310,6 @@ export function InfluDetailClient({
             followupTasks={activeTasks}
             contentTasks={contentTasks}
             procedureItems={procedureItems}
-            sourceLinks={sourceLinks}
             personProfile={personProfile}
             profileChannels={profileChannels}
             onEditProfile={
@@ -1625,7 +1619,6 @@ function OverviewPanel({
   followupTasks,
   contentTasks,
   procedureItems,
-  sourceLinks,
   personProfile,
   profileChannels,
   onEditProfile,
@@ -1649,7 +1642,6 @@ function OverviewPanel({
   followupTasks: InfluTaskRow[];
   contentTasks: TaskWithAssignee[];
   procedureItems: ProcedureItemWithPromo[];
-  sourceLinks: InfluLinkRow[];
   /** โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (0080) — ใช้ร่วมกันทุกรอบของคนนี้ */
   personProfile: InfluProfileRow | null;
   profileChannels: InfluProfileChannelRow[];
@@ -1949,6 +1941,21 @@ function OverviewPanel({
             <Field label="ชื่อ-นามสกุล" value={fullName} />
             <Field label="เบอร์โทร" value={influencer.phone} />
             <Field label="อาชีพ" value={influencer.occupation} />
+            {/* ระดับกำหนดเพดานงบที่ขออนุมัติได้ (0114) — ต้องเห็นตั้งแต่หน้าสรุป */}
+            <Field
+              label="ระดับ (Tier)"
+              value={
+                influencer.tier ? (
+                  <span>
+                    {INFLU_TIERS[influencer.tier].label}{" "}
+                    <span className="text-xs text-stone-400">
+                      ({INFLU_TIERS[influencer.tier].range} · เพดานงบ{" "}
+                      {formatCurrency(INFLU_BUDGET_CAPS[influencer.tier].cap)})
+                    </span>
+                  </span>
+                ) : null
+              }
+            />
             <Field label="ช่องทาง/หมายเหตุผู้ติดตาม" value={influencer.follower_note} />
             <Field label="ผู้ดูแล (ผู้จัดทำ)" value={influencer.maker_name} />
           </dl>
@@ -2125,18 +2132,6 @@ function OverviewPanel({
         {/* ลิงก์ไฟล์ source (Google Drive) — แก้ได้เสมอแม้ปิดงานแล้ว (คลังไฟล์อ้างอิง)
             แต่สิทธิ์ team ที่เข้ามาดูจากแกลเลอรีให้เปิดลิงก์ได้อย่างเดียว —
             bare = ตัดกรอบ Card/หัวข้อของการ์ดออก ใช้หัวข้อของ DocSection แทน */}
-        <DocSection
-          icon={<FolderOpen size={15} className="text-brand-600" />}
-          title="ไฟล์ Source (Google Drive)"
-        >
-          <InfluLinksCard
-            influencerId={influencer.id}
-            initialLinks={sourceLinks}
-            readOnly={!canManage}
-            bare
-          />
-        </DocSection>
-
         {/* โปรไฟล์ตัวบุคคล + ช่องทางติดต่อ (influ_profiles, 0080) — ข้อมูลกลางของทุกรอบ */}
         <DocSection
           icon={<Link2 size={15} className="text-brand-600" />}

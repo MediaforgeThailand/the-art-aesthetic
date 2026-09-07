@@ -19,7 +19,6 @@ import type {
   InfluCasePhotoRow,
   InfluencerRow,
   InfluRoundLite,
-  InfluLinkRow,
   InfluProfileChannelRow,
   InfluProfileRow,
   InfluScope,
@@ -77,7 +76,6 @@ export default async function InfluencerDetailPage({
     { data: priceCatalog },
     { data: promoCatalog },
     { data: serviceBookings },
-    { data: sourceLinks },
     { data: profile },
     { data: doctors },
     { data: services },
@@ -141,13 +139,6 @@ export default async function InfluencerDetailPage({
       .eq("influencer_id", id)
       .eq("kind", "service")
       .order("event_date", { ascending: true }),
-    // ลิงก์ไฟล์ source (Google Drive) ของเคสนี้
-    supabase
-      .from("influ_links")
-      .select("*")
-      .eq("influencer_id", id)
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true }),
     userId
       ? supabase
           .from("profiles")
@@ -255,7 +246,6 @@ export default async function InfluencerDetailPage({
         services={(services ?? []) as InfluServiceRow[]}
         personProfile={(personProfile as InfluProfileRow | null) ?? null}
         profileChannels={(profileChannels ?? []) as InfluProfileChannelRow[]}
-        sourceLinks={(sourceLinks ?? []) as InfluLinkRow[]}
         casePhotos={(casePhotos ?? []) as InfluCasePhotoRow[]}
         userId={userId}
         userName={profile?.full_name || profile?.email || ""}

@@ -13,11 +13,12 @@
  * กลับไปที่เคสทุกรอบของคนนี้ (person_id) ให้บอร์ด/การ์ดแสดงตรงกัน
  */
 
-import { Hash, ImagePlus, Link2, Plus, Trash2, UsersRound, X } from "lucide-react";
+import { Hash, ImagePlus, Link2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Button, Input, Label, Modal, Textarea } from "@/components/ui";
 import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import {
+  hashtagSafe,
   INFLU_CHANNEL_PLATFORMS,
   tierFromFollowers,
 } from "@/lib/influ-constants";
@@ -115,6 +116,10 @@ function ProfileFormInner({
 }: ProfileFormProps) {
   const supabase = useMemo(() => createClient(), []);
   const datalistId = useId();
+  /* รหัส Influ / แฮชแท็กบังคับ — ผู้สร้างพิมพ์เองได้แล้ว (ผู้ใช้ 2026-09-07 ตามทิศทาง
+     "#ต้าเฟ็ดเฟ่" 2026-09-03) เว้นว่าง = trigger 0108 ออก INF-xxxxx ให้เหมือนเดิม
+     ยังบังคับไม่ซ้ำทั้งฐาน (unique 0108) เพราะรหัสนี้คือกุญแจ track ยอดจาก Meta */
+  const [influCode, setInfluCode] = useState(profile?.influ_code ?? "");
   const [firstName, setFirstName] = useState(profile?.first_name ?? "");
   const [lastName, setLastName] = useState(profile?.last_name ?? "");
   const [nickname, setNickname] = useState(profile?.nickname ?? "");
@@ -202,18 +207,30 @@ function ProfileFormInner({
       tier: followerCount != null ? tierFromFollowers(followerCount) : null,
       note: note.trim() || null,
     };
+    // ว่าง = ส่ง "" ให้ trigger 0108 ออก INF-xxxxx ให้ (คอลัมน์ NOT NULL ส่ง null ไม่ได้)
+    // — ตอนแก้โปรไฟล์ เคลียร์ช่อง = คงรหัสเดิมไว้ ไม่ออกใหม่
+    const codeField = influCode.trim()
+      ? { influ_code: influCode.trim() }
+      : profile
+        ? {}
+        : { influ_code: "" };
+    /** 23505 บน influ_profiles_code_key = รหัส/แฮชแท็กชนกับโปรไฟล์อื่น */
+    const codeError = (msg: string | undefined, code: string | undefined) =>
+      code === "23505"
+        ? "รหัส Influ นี้ถูกใช้กับโปรไฟล์อื่นแล้ว — เปลี่ยนหรือเติมคำต่อท้ายให้ไม่ซ้ำ"
+        : `บันทึกไม่สำเร็จ: ${msg ?? "ไม่ทราบสาเหตุ"}`;
 
     let saved: InfluProfileRow | null = null;
     if (profile) {
       const { data, error } = await supabase
         .from("influ_profiles")
-        .update(fields)
+        .update({ ...fields, ...codeField })
         .eq("id", profile.id)
         .select("*")
         .single();
       if (error || !data) {
         setSaving(false);
-        setErr(`บันทึกไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
+        setErr(codeError(error?.message, error?.code));
         return;
       }
       saved = data;
@@ -233,12 +250,12 @@ function ProfileFormInner({
     } else {
       const { data, error } = await supabase
         .from("influ_profiles")
-        .insert({ ...fields, created_by: actor.id })
+        .insert({ ...fields, ...codeField, created_by: actor.id })
         .select("*")
         .single();
       if (error || !data) {
         setSaving(false);
-        setErr(`บันทึกไม่สำเร็จ: ${error?.message ?? "ไม่ทราบสาเหตุ"}`);
+        setErr(codeError(error?.message, error?.code));
         return;
       }
       saved = data;
@@ -381,25 +398,26 @@ function ProfileFormInner({
       title={profile ? "แก้ไขโปรไฟล์ Influencer" : "เพิ่มโปรไฟล์ Influencer"}
     >
       <form onSubmit={(e) => void save(e)} className="space-y-4">
-        <p className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs leading-5 text-brand-700">
-          <UsersRound size={14} className="mt-0.5 shrink-0" />
-          <span>
-            โปรไฟล์ = ตกลงร่วมงานกันแล้ว แต่ยังไม่ยืนยันหัตถการ/วันนัด —
-            พอจะนัดจริงค่อยกด{" "}
-            <span className="font-semibold">สร้างนัดใหม่</span>{" "}
-            บนบอร์ดแล้วเลือกโปรไฟล์คนนี้
-          </span>
-        </p>
-        {/* รหัสประจำตัว (0107) — ของ "คน" ไม่ใช่ของเคส ทุกรอบใช้รหัสเดียวกัน
-            โปรไฟล์ใหม่ยังไม่มีรหัสจนกว่าจะบันทึก (trigger ออกให้ตอน insert) */}
-        {profile && (
-          <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+        {/* รหัส Influ = แฮชแท็กบังคับที่ track ยอดจาก Meta — ผู้สร้างพิมพ์เองได้
+            (2026-09-07) เปลี่ยนที่นี่ = เคสทุกรอบเปลี่ยนตาม (trigger fanout 0108) */}
+        <div>
+          <Label htmlFor="pf-code">รหัส Influ / แฮชแท็ก</Label>
+          <div className="flex items-center gap-2">
             <Hash size={15} className="shrink-0 text-brand-500" />
-            <span className="font-mono text-sm font-semibold text-stone-700">
-              {profile.influ_code}
-            </span>
+            <Input
+              id="pf-code"
+              value={influCode}
+              onChange={(e) => setInfluCode(e.target.value)}
+              placeholder="เว้นว่าง = ระบบออกรหัส INF-xxxxx ให้"
+              className="font-mono"
+            />
           </div>
-        )}
+          {influCode.trim() !== "" && (
+            <p className="mt-1 font-mono text-xs font-semibold text-brand-600">
+              #{hashtagSafe(influCode)}
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="pf-first">ชื่อ *</Label>
