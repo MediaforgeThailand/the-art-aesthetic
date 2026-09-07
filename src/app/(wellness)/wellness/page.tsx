@@ -89,10 +89,6 @@ export default async function WellnessHomePage() {
           <h1 className="text-lg font-semibold text-stone-800">
             เลือกงานที่จะทำ
           </h1>
-          <p className="mt-1 text-sm text-stone-500">
-            แต่ละขั้นตอนแยกหน้ากัน — ทำงานของขั้นตัวเองให้เสร็จ
-            แล้วการ์ดจะเลื่อนไปขั้นถัดไปเอง
-          </p>
         </div>
 
         {stages.length > 0 && (

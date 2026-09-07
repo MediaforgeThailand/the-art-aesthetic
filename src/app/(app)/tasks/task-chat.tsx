@@ -524,7 +524,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
           <input
             value={linkDraft}
             aria-label="ลิงก์ไฟล์แนบ"
-            placeholder="วางลิงก์ไฟล์ที่แก้ไข (Google Drive)..."
+            placeholder="ลิงก์ไฟล์ที่แก้ไข"
             onChange={(e) => setLinkDraft(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-stone-200/80 bg-white/80 px-2.5 py-1 text-xs text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
           />

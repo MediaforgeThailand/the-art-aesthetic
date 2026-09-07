@@ -27,7 +27,6 @@ export default async function AccountsPage() {
       <PageContainer>
         <PageHeader
           title="จัดการบัญชีผู้ใช้"
-          description="เพิ่ม/ลบบัญชีที่เข้าสู่ระบบได้ และกำหนดสิทธิ์ผู้ดูแล"
         />
         <EmptyState
           icon={<ShieldAlert size={40} />}

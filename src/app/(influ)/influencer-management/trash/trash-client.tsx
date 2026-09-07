@@ -130,7 +130,6 @@ export function TrashClient({
           <EmptyState
             icon={<Trash2 size={40} strokeWidth={1.5} />}
             title="ถังขยะว่าง"
-            description="ยังไม่มีเคสไหนถูกลบ — เมื่อมีการลบ ข้อมูลจะถูกสำรองไว้ที่นี่ 30 วัน"
           />
         </Card>
       ) : (

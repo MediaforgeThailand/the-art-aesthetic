@@ -440,7 +440,7 @@ export function AssigneeRolePicker({
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นหาชื่อ..."
+              placeholder="ค้นหา"
               aria-label={`ค้นหาบัญชีเพื่อเลือกเป็น${m.short}`}
               className="w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-2 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
             />

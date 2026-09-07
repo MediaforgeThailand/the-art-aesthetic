@@ -284,7 +284,6 @@ function DoctorFormModal({
               disabled={busy}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="เช่น กันตา"
             />
           </div>
         </div>
@@ -297,7 +296,6 @@ function DoctorFormModal({
               disabled={busy}
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              placeholder="เช่น ตันติชูศักดิ์"
             />
           </div>
           <div>
@@ -307,7 +305,6 @@ function DoctorFormModal({
               disabled={busy}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="เช่น หมอแจน"
             />
           </div>
         </div>
@@ -319,7 +316,6 @@ function DoctorFormModal({
             disabled={busy}
             value={licenseNo}
             onChange={(e) => setLicenseNo(e.target.value)}
-            placeholder="เช่น 12345"
             className="font-mono"
           />
           {licenseNo.trim() !== "" && (
@@ -564,7 +560,7 @@ export function DoctorManagerPanel({
           )}
           {missingLicense > 0 && (
             <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
-              ยังไม่มีเลขใบ ปว. {missingLicense} ท่าน — เคสของหมอท่านนั้นจะติดแท็กไม่ครบ
+              ยังไม่มีเลขใบ ปว. {missingLicense} ท่าน
             </span>
           )}
         </div>
@@ -635,7 +631,7 @@ export function DoctorManagerPanel({
                   </p>
                 ) : (
                   <p className="mt-0.5 text-xs text-amber-700">
-                    ยังไม่มีเลขใบ ปว. — เคสของหมอท่านนี้จะติดแท็กไม่ครบ
+                    ยังไม่มีเลขใบ ปว.
                   </p>
                 )}
                 <div className="mt-1">

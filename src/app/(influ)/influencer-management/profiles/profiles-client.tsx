@@ -337,12 +337,8 @@ export function ProfilesClient({
             <UsersRound size={16} className="text-amber-600" />
             คู่ที่น่าจะเป็นคนเดียวกัน ({dupeGroups.length} กลุ่ม)
           </h2>
-          <p className="mb-3 text-xs text-stone-500">
-            จับจากชื่อเล่น/ชื่อ-นามสกุลที่ตรงกันเท่านั้น —{" "}
-            <span className="font-medium text-stone-600">
-              ชื่อซ้ำไม่ได้แปลว่าเป็นคนเดียวกัน
-            </span>{" "}
-            ตรวจให้ชัดก่อนกดรวมทุกครั้ง
+          <p className="mb-3 text-xs font-medium text-stone-600">
+            ชื่อซ้ำไม่ได้แปลว่าเป็นคนเดียวกัน — ตรวจให้ชัดก่อนกดรวม
           </p>
           <div className="space-y-3">
             {dupeGroups.map((g) => (
@@ -403,7 +399,7 @@ export function ProfilesClient({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหา ชื่อ / ชื่อเล่น / เบอร์ / รหัส"
+              placeholder="ค้นหา"
               aria-label="ค้นหาโปรไฟล์"
               className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
             />

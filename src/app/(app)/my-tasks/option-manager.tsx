@@ -70,10 +70,6 @@ export function OptionManagerModal({
   return (
     <>
       <Modal open={open} onClose={onClose} title="จัดการตัวเลือก">
-        <p className="mb-3 text-xs text-stone-400">
-          ตัวเลือกที่เพิ่มเองจะไปโผล่ในเมนูของคอลัมน์นั้นทุกงาน — ลบแล้วงานไม่หาย
-          แค่กลับไปใช้ตัวเลือกในตัว
-        </p>
         <div className="space-y-5">
           <OptionSection
             kind="status"
@@ -179,11 +175,6 @@ function OptionSection({
       </div>
 
       <div className="mt-2 space-y-2">
-        {rows.length === 0 && (
-          <p className="py-3 text-center text-xs text-stone-400">
-            ยังไม่มีตัวเลือกที่เพิ่มเอง — เพิ่มด้านบน หรือกด “+ เพิ่ม…” ในเมนูของคอลัมน์นั้นบนตาราง
-          </p>
-        )}
         {rows.map((o, i) => {
           const used = usage.get(o.id) ?? 0;
           return (

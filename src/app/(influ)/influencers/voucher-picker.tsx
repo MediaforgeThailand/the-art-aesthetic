@@ -57,7 +57,6 @@ export function VoucherPicker({
           disabled={disabled}
           value={count === 0 ? "" : String(count)}
           onChange={(e) => set(Number(e.target.value))}
-          placeholder="0"
           className="w-24"
         />
         <span className="text-sm text-stone-500">ใบ</span>

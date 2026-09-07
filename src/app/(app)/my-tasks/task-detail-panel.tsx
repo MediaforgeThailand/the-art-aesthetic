@@ -233,12 +233,7 @@ export function TaskDetailPanel({
               onPick={(v) => opt.onPickStatus(task.id, v)}
               onCreate={(name) => opt.onCreate("status", task.id, name)}
               addLabel="เพิ่มสถานะ"
-              placeholder="ชื่อสถานะ เช่น กำลังทำ"
-              hint={
-                task.due_date && !task.done
-                  ? "“เลยกำหนด / ใกล้ครบกำหนด” เปลี่ยนตามวันกำหนดส่งอัตโนมัติ"
-                  : null
-              }
+              placeholder="ชื่อสถานะ"
               onManage={opt.onManage}
             />
           </div>
@@ -294,7 +289,6 @@ export function TaskDetailPanel({
               rows={8}
               onChange={(e) => setNote(e.target.value)}
               onBlur={(e) => commitNote(e.target.value)}
-              placeholder="จดรายละเอียด ลิงก์ หรือขั้นตอนที่ต้องทำ…"
             />
           </div>
 

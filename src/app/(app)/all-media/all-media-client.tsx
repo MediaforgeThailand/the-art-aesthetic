@@ -84,7 +84,6 @@ export function AllMediaClient({
     <div className="space-y-5">
       <PageHeader
         title="All Media"
-        description="คลังไฟล์รวมของงานทั้งหมด — ไฟล์งานบนการ์ด ไฟล์งานย่อย และไฟล์แนบในแชท (ดู/ดาวน์โหลดอย่างเดียว อัพโหลดทำที่การ์ดงานเหมือนเดิม)"
       />
 
       {/* ตัวกรอง — จอเล็กเลื่อนแนวนอนแทนตัดบรรทัด */}
@@ -97,7 +96,7 @@ export function AllMediaClient({
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="ค้นหาชื่อไฟล์ หรือชื่องาน..."
+            placeholder="ค้นหา"
             className="!pl-9"
           />
         </div>

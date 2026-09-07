@@ -663,7 +663,7 @@ export function InfluencersClient({
           />
           <input
             type="search"
-            placeholder="ค้นหา ชื่อ / รหัส / เบอร์ / หัตถการ"
+            placeholder="ค้นหา"
             aria-label="ค้นหาเคส"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
@@ -781,7 +781,6 @@ export function InfluencersClient({
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}
             title="ยังไม่มี Influencer ในระบบ"
-            description="เพิ่มโปรไฟล์คนที่ตกลงร่วมงานที่บอร์ด Hunting ก่อน แล้วกด 'สร้างนัดใหม่' ที่นี่เพื่อเปิดเคสเดินงานทีละ stage"
             action={
               me.canEdit ? (
                 <Button onClick={() => setCaseOpen(true)}>
@@ -798,7 +797,6 @@ export function InfluencersClient({
             <EmptyState
               icon={<FileClock size={40} strokeWidth={1.5} />}
               title="ไม่มีเคสค้างรอส่งเรื่อง Memo"
-              description="ทุกเคสในขั้น Memo กดยืนยันส่งเรื่องแล้ว — เคสใหม่จะโผล่ที่นี่จนกว่าผู้ดูแลจะกด 'ยืนยันส่งเรื่อง Memo' ในขั้น 1.0"
             />
           ) : bookingAlertActive && search === "" ? (
             <EmptyState
@@ -808,17 +806,11 @@ export function InfluencersClient({
                   ? "ทุกเคสที่เอกสารผ่านแล้วมีคิวหมอในปฏิทินแล้ว"
                   : "ทุกเคสที่ Memo อนุมัติแล้วมีคิวหมอในปฏิทิน"
               }
-              description={
-                filters.stage === "needbooking_approved"
-                  ? "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่ออัพไฟล์ Memo ที่อนุมัติ (ผ่านขั้น 1.2) แล้วยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
-                  : "ไม่มีเคสไหนค้างรอลงคิว — เคสจะโผล่ที่นี่เมื่อ Memo อนุมัติแล้ว (ขั้นสัญญา) แต่ยังไม่มีคิว 'เข้ารับบริการ' ในปฏิทิน"
-              }
             />
           ) : (
             <EmptyState
               icon={<Search size={40} strokeWidth={1.5} />}
               title="ตัวกรองซ่อนเคสไว้ทั้งหมด — ข้อมูลยังอยู่ครบ"
-              description={`มีเคสในระบบ ${items.length} เคส แต่ตัวกรองที่เปิดอยู่ (ค่าเริ่มต้นคือ “เคสของฉัน” และซ่อนเคสที่ปฏิเสธ) ซ่อนไว้หมด`}
               action={
                 <Button variant="secondary" onClick={showEverything}>
                   แสดงทั้งหมด

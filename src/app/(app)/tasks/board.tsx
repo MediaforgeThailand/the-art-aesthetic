@@ -72,7 +72,7 @@ function TaskComposer({
           ref={inputRef}
           value={text}
           rows={2}
-          placeholder="พิมพ์ชื่องาน แล้วกด Enter"
+          placeholder="ชื่องาน"
           aria-label="ชื่องานใหม่"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -608,7 +608,6 @@ export function KanbanBoard({
           <EmptyState
             icon={<ListPlus size={40} />}
             title="ยังไม่มีเซคชัน"
-            description="เซคชันถูกกำหนดจากระบบ — ติดต่อผู้ดูแลหากยังไม่มีเซคชัน"
           />
         </div>
       </div>

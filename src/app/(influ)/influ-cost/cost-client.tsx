@@ -277,7 +277,6 @@ function CostFilterSections({
     <>
       <FilterSection
         title="ผู้รับผิดชอบ"
-        hint="ค่าเริ่มต้นคือ “เคสของฉัน” — กดบันทึกเป็นค่าเริ่มต้นด้านล่างถ้าอยากเห็นทั้งทีมทุกครั้ง"
       >
         <Select
           value={filters.owner}
@@ -347,7 +346,6 @@ function CostFilterSections({
 
       <FilterSection
         title="ช่วงวันรับบริการ"
-        hint="เคสที่ยังไม่เคาะวันจะไม่เข้าช่วงที่เลือก"
       >
         <DateRangeInputs
           from={filters.dateFrom}
@@ -754,7 +752,7 @@ export function CostClient({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อ influ / โปรแกรม"
+            placeholder="ค้นหา"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
@@ -803,7 +801,6 @@ export function CostClient({
           <EmptyState
             icon={<Wallet size={40} />}
             title="ยังไม่มีรายการต้นทุน"
-            description={'เพิ่มโปรแกรมของแต่ละเคสได้ที่แท็บ "รายละเอียดเคส" ในหน้าเคสดำเนินงาน'}
           />
         )
       ) : (

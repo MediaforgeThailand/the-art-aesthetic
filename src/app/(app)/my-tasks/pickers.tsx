@@ -481,7 +481,7 @@ export function TagPicker({
                   }
                   void create();
                 }}
-                placeholder="ค้นหา / พิมพ์ชื่อแท็กใหม่"
+                placeholder="ค้นหา"
                 /* text-base บนจอเล็ก: ต่ำกว่า 16px แล้ว iOS จะซูมหน้าเข้าเองและไม่ซูมกลับ */
                 className="w-full rounded-md border border-stone-300/80 bg-white px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
               />
@@ -505,11 +505,6 @@ export function TagPicker({
                   </button>
                 );
               })}
-              {shown.length === 0 && !q.trim() && (
-                <p className="px-2 py-3 text-center text-xs text-stone-400">
-                  ยังไม่มีแท็ก — พิมพ์ชื่อด้านบนเพื่อสร้างอันแรก
-                </p>
-              )}
               {q.trim() && !exact && (
                 <button
                   type="button"

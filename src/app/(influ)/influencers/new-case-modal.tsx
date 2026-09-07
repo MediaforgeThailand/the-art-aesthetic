@@ -451,7 +451,7 @@ export function NewCaseModal({
                     disabled={saving}
                     value={profileQuery}
                     onChange={(e) => setProfileQuery(e.target.value)}
-                    placeholder="ค้นหาจากชื่อ / ชื่อเล่น / เบอร์..."
+                    placeholder="ค้นหา"
                     className="w-full rounded-lg border border-stone-300/80 bg-white/80 py-2 pl-9 pr-3 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
                   />
                 </div>
@@ -562,7 +562,6 @@ export function NewCaseModal({
                 disabled={saving}
                 value={talentFee}
                 onChange={(e) => setTalentFee(e.target.value)}
-                placeholder="เว้นว่าง = ไม่มีค่าตัว (แลกหัตถการ)"
               />
               {(() => {
                 // มูลค่าเคสโชว์สดให้เห็นก่อนกดสร้าง — สูตรเดียวกับตอน insert (วงเงิน + ค่าตัว)
@@ -630,7 +629,6 @@ export function NewCaseModal({
                         disabled={saving}
                         value={budgetNote}
                         onChange={(e) => setBudgetNote(e.target.value)}
-                        placeholder="เช่น บุคคลที่มีกระแสสังคม / ดารา-นักแสดง / พันธมิตรทางธุรกิจ"
                       />
                     </div>
                   )}
@@ -714,7 +712,6 @@ export function NewCaseModal({
                 disabled={saving}
                 value={contactChannel}
                 onChange={(e) => setContactChannel(e.target.value)}
-                placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
               />
             </div>
           </details>

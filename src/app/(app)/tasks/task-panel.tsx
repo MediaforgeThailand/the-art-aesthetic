@@ -1370,8 +1370,7 @@ export function TaskPanel({
                   />
                   {reviewerOptions.length === 0 && (
                     <p className="mt-0.5 text-xs text-amber-600">
-                      ยังไม่มีรายชื่อผู้ตรวจ — เพิ่มได้ที่ปุ่ม
-                      &quot;จัดการผู้ตรวจ&quot; ด้านบนของหน้างาน
+                      ยังไม่มีรายชื่อผู้ตรวจ
                     </p>
                   )}
                 </div>
@@ -1413,9 +1412,6 @@ export function TaskPanel({
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 px-1.5 text-[11px] text-stone-400">
-                    ผู้ตรวจร่วม — ต้องอนุมัติครบทุกคน งานจึงผ่านลำดับ 1
-                  </p>
                 </div>
               ) : task.review_status === "none" &&
                 task.reviewer_id !== null &&
@@ -1425,7 +1421,7 @@ export function TaskPanel({
                   onClick={() => setShow1bPicker(true)}
                   className="mt-0.5 cursor-pointer px-1.5 text-[11px] font-medium text-brand-600 hover:underline"
                 >
-                  + เพิ่มผู้ตรวจอีกคน (ตรวจร่วมกัน — ต้องผ่านครบทุกคน)
+                  + เพิ่มผู้ตรวจอีกคน
                 </button>
               ) : null}
               {/* บอกล่วงหน้าก่อนกดส่งตรวจ ว่าช่องไหนจะผ่านเองเพราะเป็นงานของผู้ตรวจคนนั้น */}
@@ -1460,11 +1456,8 @@ export function TaskPanel({
                       ? profileName(teamReviewer2)
                       : "-"}
                 </span>
-                {task.review_status === "none" ? (
-                  <span className="shrink-0 text-[11px] text-stone-400">
-                    (อนุมัติขั้นสุดท้าย — ตามการตั้งค่าทีม)
-                  </span>
-                ) : task.review_status === "approved" ? (
+                {task.review_status === "none" ? null : task.review_status ===
+                  "approved" ? (
                   <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
                     ✓ อนุมัติแล้ว
                   </span>
@@ -1529,14 +1522,14 @@ export function TaskPanel({
                     <input
                       value={doctorQuery}
                       onChange={(e) => setDoctorQuery(e.target.value)}
-                      placeholder="ค้นหาชื่อ / ชื่อเล่น / เลข ปว."
+                      placeholder="ค้นหา"
                       className="min-w-0 flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-500 focus:outline-none sm:text-sm"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
                     {doctorMatches.length === 0 && (
                       <p className="px-3 py-2 text-xs text-stone-400">
-                        ไม่พบชื่อที่ใกล้เคียง — เพิ่มหมอได้ที่หน้าจัดการแท็ก
+                        ไม่พบ
                       </p>
                     )}
                     {doctorMatches.map((d) => (
@@ -1623,15 +1616,14 @@ export function TaskPanel({
                     <input
                       value={influQuery}
                       onChange={(e) => setInfluQuery(e.target.value)}
-                      placeholder="ค้นหาชื่อ / ชื่อเล่น / รหัส Influ"
+                      placeholder="ค้นหา"
                       className="min-w-0 flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-500 focus:outline-none sm:text-sm"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
                     {influMatches.length === 0 && (
                       <p className="px-3 py-2 text-xs text-stone-400">
-                        ไม่พบชื่อที่ใกล้เคียง — รายชื่อมาจากเคสในบอร์ด
-                        Influencer ที่ยังเดินงานอยู่
+                        ไม่พบ
                       </p>
                     )}
                     {influMatches.map((i) => (
@@ -1813,7 +1805,7 @@ export function TaskPanel({
             aria-label={
               isBrief ? "ลิงก์อ้างอิงประกอบ Brief" : "ลิงก์งาน (Google Drive)"
             }
-            placeholder="วางลิงก์..."
+            placeholder="ลิงก์"
             onChange={(e) => setDeliverableDraft(e.target.value)}
             onBlur={saveDeliverableUrl}
             onKeyDown={(e) => {
@@ -1835,7 +1827,6 @@ export function TaskPanel({
             aria-label="รายละเอียดงาน"
             onChange={(e) => setDescription(e.target.value)}
             onBlur={saveDescription}
-            placeholder="งานนี้เกี่ยวกับอะไร..."
             className={`${bareControl} min-h-20 resize-y leading-6`}
           />
         </div>
@@ -1846,9 +1837,6 @@ export function TaskPanel({
           <div className="border-t border-stone-200/70 pt-2.5">
             <p className="mb-1 flex items-center gap-2 px-2 text-sm font-medium text-stone-500">
               ไฟล์จาก Brief
-              <span className="text-xs text-stone-400">
-                source จากผู้สั่ง — ดูได้อย่างเดียว
-              </span>
             </p>
             <div className="space-y-2 px-2">
               {briefSource?.deliverable_url && (
@@ -1974,7 +1962,7 @@ export function TaskPanel({
                 <input
                   autoFocus
                   value={subDraft}
-                  placeholder="พิมพ์ชื่องานย่อย แล้วกด Enter"
+                  placeholder="งานย่อย"
                   onChange={(e) => setSubDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {

@@ -387,7 +387,6 @@ export function FilesClient({
     <>
       <PageHeader
         title="คลังลิงก์ไฟล์"
-        description="รวมลิงก์ Google Sheet / Drive และไฟล์เอกสารที่อัปโหลดของแผนกไว้ที่เดียว"
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={openUpload}>
@@ -454,7 +453,7 @@ export function FilesClient({
           />
           <Input
             type="search"
-            placeholder="ค้นหาจากชื่อ, ลิงก์ หรือคำอธิบาย..."
+            placeholder="ค้นหา"
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -519,7 +518,6 @@ export function FilesClient({
           <EmptyState
             icon={<Link2 size={40} strokeWidth={1.5} />}
             title="ยังไม่มีไฟล์หรือลิงก์ในคลัง"
-            description="เก็บลิงก์ Google Sheet, Drive หรืออัปโหลดไฟล์เอกสารไว้ที่นี่เพื่อหาง่ายทีหลัง"
             action={
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={openUpload}>
@@ -537,7 +535,6 @@ export function FilesClient({
           <EmptyState
             icon={<Search size={40} strokeWidth={1.5} />}
             title="ไม่พบลิงก์ที่ตรงกับตัวกรอง"
-            description="ลองเปลี่ยนคำค้นหา หมวดหมู่ ประเภท หรือช่วงวันที่"
           />
         ) : (
           <div className="overflow-x-auto">
@@ -701,13 +698,9 @@ export function FilesClient({
                 type="url"
                 required
                 disabled={saving}
-                placeholder="https://docs.google.com/spreadsheets/..."
                 value={form.url}
                 onChange={(e) => handleUrlChange(e.target.value)}
               />
-              <p className="mt-1 text-xs text-stone-400">
-                วางลิงก์แล้วระบบจะเดาประเภทให้อัตโนมัติ
-              </p>
             </div>
           )}
 
@@ -717,7 +710,6 @@ export function FilesClient({
               id="link-title"
               required
               disabled={saving}
-              placeholder="เช่น ยอดขายรายวัน 2026 (ทีม DA)"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
@@ -772,7 +764,6 @@ export function FilesClient({
               id="link-description"
               rows={2}
               disabled={saving}
-              placeholder="ไฟล์นี้คืออะไร ใช้ทำอะไร..."
               value={form.description}
               onChange={(e) =>
                 setForm({ ...form, description: e.target.value })
@@ -833,7 +824,6 @@ export function FilesClient({
               id="upload-title"
               required
               disabled={uploading}
-              placeholder="เช่น ใบเสนอราคาโปรแกรม Botox"
               value={uploadTitle}
               onChange={(e) => setUploadTitle(e.target.value)}
             />
@@ -861,7 +851,6 @@ export function FilesClient({
               id="upload-description"
               rows={2}
               disabled={uploading}
-              placeholder="ไฟล์นี้คืออะไร ใช้ทำอะไร..."
               value={uploadDescription}
               onChange={(e) => setUploadDescription(e.target.value)}
             />

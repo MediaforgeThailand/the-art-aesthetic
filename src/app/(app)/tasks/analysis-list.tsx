@@ -317,11 +317,6 @@ export function AnalysisList({
               ? "ยังไม่มีลิงก์ผลวิเคราะห์"
               : "ไม่มีลิงก์ในหมวดที่เลือก"
           }
-          description={
-            items.length === 0
-              ? "ผลวิเคราะห์ Content / Ads / Artwork รายสัปดาห์และรายเดือนจะถูกแชร์ไว้ที่นี่ให้ทีมใช้เป็นต้นแบบ"
-              : "ลองเปลี่ยนหมวดด้านบน หรือกด \"ทั้งหมด\""
-          }
         />
       ) : (
         <div className="space-y-6">
@@ -627,7 +622,7 @@ function AnalysisFormModal({
             id="analysis-url"
             type="url"
             inputMode="url"
-            placeholder="วางลิงก์ เช่น https://www.canva.com/design/..."
+            placeholder="ลิงก์"
             value={v.url}
             onChange={(e) => setV((c) => ({ ...c, url: e.target.value }))}
           />
@@ -650,7 +645,6 @@ function AnalysisFormModal({
           <Textarea
             id="analysis-note"
             rows={2}
-            placeholder="เช่น สัปดาห์นี้ตัวอย่างที่ดีคือคลิปรีวิว Botox ดูโครงเรื่องหน้า 3"
             value={v.note}
             onChange={(e) => setV((c) => ({ ...c, note: e.target.value }))}
           />

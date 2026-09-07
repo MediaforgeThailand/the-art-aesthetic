@@ -571,7 +571,7 @@ export function PriceListClient({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาโปร เช่น Botox, Filler, Pico, Ultraformer..."
+              placeholder="ค้นหา"
               className="w-full rounded-xl border border-stone-200/80 bg-white/90 py-2.5 pl-9 pr-9 text-base text-stone-900 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:text-sm"
             />
             {search !== "" && (
@@ -652,7 +652,7 @@ export function PriceListClient({
 
       {!loadError && filtered.length === 0 && (
         <p className="mx-auto mt-10 max-w-6xl px-4 text-center text-sm text-stone-500">
-          ไม่พบโปรที่ตรงกับที่เลือก — ลองล้างตัวกรองหรือค้นด้วยชื่อหัตถการ
+          ไม่พบโปรที่ตรงกับที่เลือก
         </p>
       )}
 

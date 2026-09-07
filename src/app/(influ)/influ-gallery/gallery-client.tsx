@@ -294,7 +294,7 @@ export function InfluGalleryClient({
           />
           <input
             type="search"
-            placeholder="ค้นหาชื่อ หรือหัตถการ..."
+            placeholder="ค้นหา"
             aria-label="ค้นหาโปรไฟล์"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
@@ -308,7 +308,6 @@ export function InfluGalleryClient({
         >
           <FilterSection
             title="ผู้รับผิดชอบ"
-            hint="นับจากเคสรอบไหนของคนนั้นก็ได้ — ค่าเริ่มต้นคือ “ของฉัน”"
           >
             <Select
               value={filters.owner}
@@ -371,7 +370,6 @@ export function InfluGalleryClient({
 
           <FilterSection
             title="ข้อมูลเก่า"
-            hint="ข้อมูลที่นำเข้าจากไฟล์เดิม (archive) — โผล่เฉพาะหน้านี้หน้าเดียว"
           >
             <FilterChip
               active={filters.includeArchived}
@@ -405,7 +403,6 @@ export function InfluGalleryClient({
           <EmptyState
             icon={<Sparkles size={40} strokeWidth={1.5} />}
             title="ยังไม่มี Influencer ในระบบ"
-            description="เพิ่มโปรไฟล์และสร้างนัดได้ที่หน้าเคสดำเนินงาน"
           />
         </Card>
       ) : filtered.length === 0 ? (

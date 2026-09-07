@@ -158,7 +158,7 @@ function InfluTab({ options }: { options: InfluTagOption[] }) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหาชื่อ · ชื่อเล่น · รหัส Influ · แพทย์ · แคมเปญ"
+              placeholder="ค้นหา"
               className="!pl-9 !pr-9"
             />
             {query !== "" && (
@@ -205,11 +205,6 @@ function InfluTab({ options }: { options: InfluTagOption[] }) {
                 ? "ไม่พบรายชื่อที่ใกล้เคียง"
                 : "ยังไม่มี influencer ในหัตถการนี้"
             }
-            description={
-              query !== ""
-                ? "ลองพิมพ์คำอื่น หรือกดตัวกรองทุกหัตถการ"
-                : "รายชื่อจะขึ้นเองเมื่อมีการสร้างเคสในระบบ Influencer"
-            }
           />
         ) : (
           <div className="grid gap-2.5 xl:grid-cols-2">
@@ -231,10 +226,6 @@ function CategoryTab({ categories }: { categories: ContentCategoryRow[] }) {
   return (
     <Card className="p-3 sm:p-5">
       <div className="space-y-4">
-        <p className="text-sm leading-6 text-stone-500">
-          หมวดเนื้อหาที่ใช้ติดชิ้นงานตอนกดโพสแล้ว — ชุดเดียวกับที่ใช้คิด KPI
-          คอนเทนต์
-        </p>
         <div className="flex flex-wrap gap-1.5">
           {active.map((c) => (
             <span
@@ -286,7 +277,6 @@ export function TagManagementClient({
     <>
       <PageHeader
         title="จัดการแท็ก"
-        description="ศูนย์รวมแท็กของทีมคอนเทนต์ — หมอ · influencer · หมวดเนื้อหา ใช้ติดทุกชิ้นงานก่อนส่งตรวจ"
       />
 
       <div className="mb-4 flex overflow-x-auto rounded-full border border-stone-200 bg-white/70 p-0.5">

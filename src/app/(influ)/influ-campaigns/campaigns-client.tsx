@@ -277,7 +277,6 @@ function CampaignFormModal({
             value={name}
             disabled={busy}
             onChange={(e) => setName(e.target.value)}
-            placeholder="เช่น Social Warrior 2569"
           />
         </div>
 
@@ -296,7 +295,6 @@ function CampaignFormModal({
                 disabled={busy}
                 onChange={(e) => setTag(e.target.value)}
                 onBlur={() => setTag(normalizeCampaignTag(tag))}
-                placeholder="SOCIALWARRIOR"
                 className="pl-7 font-mono tracking-wide"
               />
             </div>
@@ -349,7 +347,6 @@ function CampaignFormModal({
             value={detail}
             disabled={busy}
             onChange={(e) => setDetail(e.target.value)}
-            placeholder="สิ่งที่ influ ต้องทำในแคมเปญนี้ / เงื่อนไขที่ตกลงกัน"
           />
         </div>
 
@@ -531,7 +528,7 @@ function MemberPanel({
                   id="cmp-add"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="ค้นหาชื่อ / ชื่อเล่น / เบอร์"
+                  placeholder="ค้นหา"
                   className="pl-9"
                 />
               </div>
@@ -770,7 +767,7 @@ export function CampaignsClient({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="ค้นหาแคมเปญ / แท็ก"
+            placeholder="ค้นหา"
             className="rounded-full pl-9"
           />
         </div>
@@ -781,7 +778,7 @@ export function CampaignsClient({
           }
           factory={DEFAULT_CAMPAIGN_FILTERS}
         >
-          <FilterSection title="ช่วงเวลา" hint="ไม่เลือก = แสดงทุกแคมเปญ">
+          <FilterSection title="ช่วงเวลา" >
             <div className="flex flex-wrap gap-1.5">
               {CAMPAIGN_PHASE_ORDER.map((ph) => (
                 <FilterChip
@@ -867,11 +864,6 @@ export function CampaignsClient({
           icon={<Megaphone size={40} />}
           title={
             campaigns.length === 0 ? "ยังไม่มีแคมเปญ" : "ไม่พบแคมเปญที่ค้นหา"
-          }
-          description={
-            campaigns.length === 0
-              ? "สร้างแคมเปญเพื่อออกแท็กประจำแคมเปญ แล้วเอา influ เข้ามาเพื่อติดตามผลงานเป็นชุดเดียวกัน"
-              : "ลองคำค้นอื่น"
           }
         />
       ) : (

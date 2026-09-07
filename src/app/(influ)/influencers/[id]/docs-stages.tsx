@@ -889,14 +889,6 @@ function MemoCopyStage({
               : "กดเพื่ออัพโหลดไฟล์ Memo ที่อนุมัติแล้ว (PDF / รูปภาพ / Word)"}
           </button>
         )}
-        {/* stage ผ่านไปแล้วแต่ยังแก้ไฟล์ได้ — บอกให้ชัดว่าเปลี่ยนไฟล์ไม่กระทบ stage ของเคส */}
-        {readOnly && fileEditable && memoUploaded && (
-          <p className="mt-2.5 text-[11px] leading-5 text-stone-400">
-            Stage นี้ผ่านไปแล้ว — ยังเปลี่ยนไฟล์ Memo ได้
-            (เช่นได้ฉบับที่อนุมัติจริงมาทีหลัง หรืออัพผิดไฟล์)
-            โดยไม่กระทบ stage ปัจจุบันของเคส
-          </p>
-        )}
         {fileEditable && (
           <input
             ref={memoInputRef}
@@ -1285,14 +1277,6 @@ function ContractUploadStage({
               ? "กำลังอัพโหลด..."
               : "กดเพื่ออัพโหลดไฟล์สัญญาที่เซนแล้ว (PDF / รูปภาพ / Word)"}
           </button>
-        )}
-        {/* stage ผ่านไปแล้วแต่ยังแก้ไฟล์ได้ — บอกให้ชัดว่าเปลี่ยน/ลบไฟล์ไม่กระทบ stage ของเคส */}
-        {readOnly && fileEditable && contractUploaded && (
-          <p className="mt-2.5 text-[11px] leading-5 text-stone-400">
-            Stage นี้ผ่านไปแล้ว — ยังเปลี่ยนหรือลบไฟล์สัญญาได้ (เช่นอัพผิดไฟล์
-            หรือได้ฉบับที่เซนจริงมาทีหลัง) โดยไม่กระทบ stage ปัจจุบันของเคส
-            แต่การลบจะล้างวันเริ่มสัญญาด้วย
-          </p>
         )}
         {fileEditable && (
           <input

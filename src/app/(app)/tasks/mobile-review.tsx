@@ -72,10 +72,6 @@ export function MobileReviewList({
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
         <ClipboardCheck size={36} strokeWidth={1.5} className="text-brand-200" />
         <p className="text-sm font-medium text-stone-600">ไม่มีงานรอตรวจ</p>
-        <p className="max-w-xs text-xs text-stone-400">
-          เมื่อมีใครส่งงานเข้าตรวจ งานจะมาแสดงที่นี่ — ทั้งงานที่รอคุณตรวจ
-          และงานของทีมที่ค้างอยู่ที่ผู้ตรวจคนอื่น
-        </p>
       </div>
     );
   }
@@ -89,11 +85,6 @@ export function MobileReviewList({
           count={queue.length}
           tone="bg-amber-100 text-amber-700"
           // คำใบ้ตำแหน่งปุ่มมีค่าเฉพาะตอนมีการ์ดให้กด — กลุ่มว่างไม่ต้องกินอีกบรรทัด
-          hint={
-            queue.length > 0
-              ? "กดการ์ดเพื่อเปิดวิดีโอ — ปุ่มอนุมัติ/ตีกลับอยู่ในแถบด้านข้าง"
-              : undefined
-          }
         />
         {queue.length === 0 ? (
           <EmptyRow>ไม่มีงานที่รอคุณตรวจตอนนี้</EmptyRow>
@@ -119,7 +110,6 @@ export function MobileReviewList({
           title="งานรอตรวจของทีม"
           count={teamPending.length}
           tone="bg-stone-200/80 text-stone-600"
-          hint="ค้างอยู่ที่ผู้ตรวจคนอื่น — เรียงรอนานสุดขึ้นก่อน"
         />
         {teamPending.length === 0 ? (
           <EmptyRow>ไม่มีงานอื่นที่รอตรวจอยู่</EmptyRow>

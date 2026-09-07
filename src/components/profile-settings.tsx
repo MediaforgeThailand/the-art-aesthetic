@@ -252,7 +252,6 @@ export function ProfileSettingsModal({
             id="profile-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="ชื่อที่เพื่อนร่วมทีมเห็น"
             onKeyDown={(e) => {
               if (e.key === "Enter") void save();
             }}

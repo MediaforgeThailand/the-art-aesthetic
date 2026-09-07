@@ -912,7 +912,7 @@ function ContactRow({
             // uncontrolled + remount เมื่อค่าจริงเปลี่ยน (แพตเทิร์นโน้ตของระบบนี้)
             key={c.note ?? ""}
             defaultValue={c.note ?? ""}
-            placeholder="เพิ่มโน้ต (ถ้ามี)"
+            placeholder="โน้ต"
             onBlur={(e) => {
               const v = e.target.value.trim();
               if (v !== (c.note ?? "")) onUpdate({ note: v || null });

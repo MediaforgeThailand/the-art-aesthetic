@@ -142,6 +142,35 @@ async function openShotClose(
     (บทเรียนเดียวกับ wellness-flow) — 30 วิ เผื่อ dev server คอมไพล์หน้าหนักๆ ครั้งแรก */
 test.use({ actionTimeout: 30_000 });
 
+/** เก็บ error/warning จาก console + uncaught exception ของทุกหน้าที่ sweep ผ่าน แล้วเขียนเป็นไฟล์
+    e2e/screenshots/{project}/console-issues.json ตอนจบ (เขียนแม้เทสต์ล้มกลางทาง) —
+    ใช้ตอน audit: หน้าไหน render ได้แต่มี error เงียบๆ (hydration, key ซ้ำ, request 4xx) ก็โผล่ที่นี่ */
+type ConsoleIssue = { url: string; type: string; text: string };
+let consoleIssues: ConsoleIssue[] = [];
+
+test.beforeEach(async ({ page }) => {
+  consoleIssues = [];
+  page.on("pageerror", (err) =>
+    consoleIssues.push({ url: page.url(), type: "pageerror", text: String(err) })
+  );
+  page.on("console", (msg) => {
+    const t = msg.type();
+    if (t === "error" || t === "warning") {
+      consoleIssues.push({ url: page.url(), type: t, text: msg.text() });
+    }
+  });
+});
+
+test.afterEach(async ({}, testInfo) => {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const dir = `e2e/screenshots/${testInfo.project.name}`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    `${dir}/console-issues.json`,
+    JSON.stringify(consoleIssues, null, 2)
+  );
+});
+
 test("sweep ทุกหน้า + กด feature หลักครบ", async ({ page }, testInfo) => {
   test.skip(!EMAIL || !PASSWORD, "ตั้ง E2E_EMAIL / E2E_PASSWORD ก่อนรัน");
   const project = testInfo.project.name;

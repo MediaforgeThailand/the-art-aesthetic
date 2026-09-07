@@ -201,7 +201,7 @@ export function TagRequiredModal({
           <SearchBox
             value={doctorQuery}
             onChange={setDoctorQuery}
-            placeholder="ค้นหาชื่อหมอ · ชื่อเล่น · เลข ปว."
+            placeholder="ค้นหา"
           />
           <div className="space-y-0.5">
             {doctorList.map((d) => (
@@ -230,7 +230,7 @@ export function TagRequiredModal({
             ))}
             {doctorList.length === 0 && (
               <p className="px-2.5 py-2 text-xs text-stone-400">
-                ไม่พบชื่อที่ใกล้เคียง — เพิ่มหมอได้ที่หน้าจัดการแท็ก
+                ไม่พบ
               </p>
             )}
             <NoneRow
@@ -251,7 +251,7 @@ export function TagRequiredModal({
           <SearchBox
             value={influQuery}
             onChange={setInfluQuery}
-            placeholder="ค้นหาชื่อ · ชื่อเล่น · รหัส Influ"
+            placeholder="ค้นหา"
           />
           <div className="space-y-0.5">
             {influList.map((o) => (
@@ -284,8 +284,7 @@ export function TagRequiredModal({
             ))}
             {influList.length === 0 && (
               <p className="px-2.5 py-2 text-xs text-stone-400">
-                ไม่พบชื่อที่ใกล้เคียง — รายชื่อมาจากเคสในบอร์ด Influencer
-                ที่ยังเดินงานอยู่
+                ไม่พบ
               </p>
             )}
             <NoneRow

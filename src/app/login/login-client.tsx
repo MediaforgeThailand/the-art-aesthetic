@@ -319,7 +319,6 @@ export default function LoginClient({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@artsurgery.co.th"
                     required
                     autoComplete="email"
                     autoFocus
@@ -352,7 +351,6 @@ export default function LoginClient({
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
                     required
                     autoFocus
                     autoComplete="current-password"
@@ -379,7 +377,6 @@ export default function LoginClient({
                     id="fullName"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="เช่น สมหญิง ใจดี"
                     autoFocus
                   />
                 </div>
@@ -390,7 +387,6 @@ export default function LoginClient({
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="อย่างน้อย 6 ตัวอักษร"
                     required
                     minLength={6}
                     autoComplete="new-password"
@@ -403,7 +399,6 @@ export default function LoginClient({
                     type="password"
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
-                    placeholder="พิมพ์รหัสผ่านอีกครั้ง"
                     required
                     minLength={6}
                     autoComplete="new-password"
@@ -417,9 +412,6 @@ export default function LoginClient({
                 >
                   ตั้งรหัสผ่านและเข้าใช้งาน
                 </Button>
-                <p className="text-center text-xs text-stone-400">
-                  เริ่มต้นบัญชีจะยังไม่เห็นเมนูรายงาน/งาน จนกว่าผู้ดูแลระบบจะเปิดสิทธิ์ให้
-                </p>
               </form>
             )}
           </div>

@@ -105,7 +105,7 @@ export function LogsClient({
           />
           <input
             type="search"
-            placeholder="ค้นหาชื่อเคส ผู้ทำ หรือรายละเอียด..."
+            placeholder="ค้นหา"
             aria-label="ค้นหาประวัติการใช้งาน"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-400 focus:border-brand-400 focus:outline-none sm:text-sm"
             value={search}
@@ -210,11 +210,6 @@ export function LogsClient({
               logs.length === 0
                 ? "ยังไม่มีประวัติการใช้งาน"
                 : "ไม่พบรายการที่ตรงกับตัวกรอง"
-            }
-            description={
-              logs.length === 0
-                ? "ทุกการเพิ่ม/แก้/ลบในระบบ Influencer จะถูกบันทึกที่นี่โดยอัตโนมัติ"
-                : "ลองเปลี่ยนคำค้นหาหรือชนิดการกระทำ"
             }
           />
         </Card>

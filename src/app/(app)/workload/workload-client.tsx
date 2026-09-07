@@ -390,13 +390,11 @@ export function WorkloadClient({
       <div>
         <PageHeader
           title="Team Workload"
-          description="ภาพรวมภาระงานและผลงานรายบุคคลของแผนก"
         />
         <Card>
           <EmptyState
             icon={<Users size={40} strokeWidth={1.5} />}
             title="ยังไม่มีงานในระบบ"
-            description="เพิ่มงานและมอบหมายผู้รับผิดชอบก่อน แล้วสถิติจะแสดงที่นี่"
             action={
               <Link
                 href="/tasks"
@@ -416,7 +414,6 @@ export function WorkloadClient({
     <div>
       <PageHeader
         title="Team Workload"
-        description="ภาพรวมภาระงานและผลงานรายบุคคลของแผนก"
       />
 
       {hasDemo && <DemoBanner onWhat="งานบางส่วน" />}
@@ -536,7 +533,6 @@ export function WorkloadClient({
           <EmptyState
             icon={<Users size={40} strokeWidth={1.5} />}
             title="ไม่มีงานที่ตรงกับตัวกรอง"
-            description="ลองปรับหรือล้างตัวกรองเพื่อดูข้อมูลของทีม"
           />
         </Card>
       ) : (

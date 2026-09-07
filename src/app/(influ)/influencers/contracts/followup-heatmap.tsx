@@ -106,11 +106,6 @@ export function FollowupHeatmap({
             <CalendarRange size={15} className="text-brand-500" />
             วันที่ influ เข้ามา (เริ่มนับสัญญา)
           </h2>
-          <p className="min-w-0 flex-1 text-xs text-stone-400">
-            สีของช่อง = ความคืบหน้าการลงคลิปตามเป้า · กดช่องเพื่อดูเฉพาะเคสวันนั้น
-            {/* บอกวิธีดูเดือนอื่นเฉพาะจอเล็ก — ที่นั่นเดือนเรียงแนวนอนไม่ได้กางให้เห็นครบ */}
-            <span className="sm:hidden"> · ปัดซ้าย-ขวาเพื่อดูเดือนอื่น</span>
-          </p>
           {/* จอเล็ก: ปุ่มช่วงเดือนกินเต็มแถวและแบ่งกันคนละส่วน — เป้านิ้วกว้างพอกดไม่พลาด */}
           <div className="flex gap-1 rounded-full bg-stone-100/80 p-1 max-sm:w-full">
             {HEATMAP_RANGES.map((r) => (

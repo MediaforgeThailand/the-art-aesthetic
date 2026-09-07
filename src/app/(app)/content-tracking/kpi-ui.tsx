@@ -248,12 +248,7 @@ export function PostBacklogModal({
 }) {
   return (
     <Modal open={open} onClose={onClose} title="งานที่ดองไว้ยังไม่ได้โพส" wide>
-      <p className="mb-3 text-xs leading-5 text-stone-500">
-        {scopeLabel} · งานที่ผู้ตรวจอนุมัติครบแล้วแต่ยังไม่กด &quot;โพสแล้ว&quot;
-        — นับวันค้างจากวันที่อนุมัติครบถึงวันนี้ (คิวสด ไม่ผูกกับเดือนที่เลือก)
-        <br />
-        เจ้าของคิว = ผู้สั่ง Brief ถ้าการ์ดมาจาก Brief · ไม่งั้นเป็นผู้รับผิดชอบการ์ดเอง
-      </p>
+      <p className="mb-3 text-xs text-stone-500">{scopeLabel}</p>
 
       <div className="mb-3 grid grid-cols-3 gap-2">
         <div className="rounded-lg border border-stone-200/70 bg-white/70 px-3 py-2">

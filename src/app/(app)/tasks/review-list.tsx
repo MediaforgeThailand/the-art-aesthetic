@@ -114,10 +114,6 @@ export function ReviewList({
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
         <ClipboardCheck size={40} strokeWidth={1.5} className="text-brand-200" />
         <p className="text-sm font-medium text-stone-600">ไม่มีงานรอตรวจ</p>
-        <p className="max-w-sm text-sm text-stone-400">
-          เมื่อมีใครส่งงานเข้าตรวจ งานจะมาแสดงที่นี่ —
-          ทั้งงานที่รอคุณตรวจ และงานของทีมที่ค้างอยู่ที่ผู้ตรวจคนอื่น
-        </p>
       </div>
     );
   }
@@ -237,10 +233,6 @@ export function ReviewList({
           <span className="rounded-full bg-stone-200/80 px-2 py-0.5 text-xs font-semibold text-stone-600">
             {teamPending.length}
           </span>
-        </p>
-        <p className="mb-2 text-xs text-stone-400">
-          งานที่ค้างอยู่ที่ผู้ตรวจคนอื่น — คนส่งงานเปิดดูได้ว่างานตัวเองไปค้างที่ใคร
-          รอมานานเท่าไร (เรียงรอนานสุดขึ้นก่อน)
         </p>
         {teamPending.length === 0 ? (
           <p className="rounded-xl border border-dashed border-stone-200 bg-white/50 px-4 py-3 text-sm text-stone-400">

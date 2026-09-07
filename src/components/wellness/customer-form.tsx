@@ -79,12 +79,6 @@ export function CustomerFormModal({
       title={customer ? "แก้ไขข้อมูลลูกค้า" : "เพิ่มการ์ดลูกค้า"}
     >
       <div className="space-y-3">
-        {!customer && (
-          <p className="rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-800">
-            กรอกหลังลูกค้าศัลยกรรมตรวจเลือดแล้ว — การ์ดจะเข้าคิว “รอผลแลบ”
-            ให้ทีม Lab อัพผลต่อโดยอัตโนมัติ
-          </p>
-        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="wc-first">ชื่อ *</Label>
@@ -92,7 +86,7 @@ export function CustomerFormModal({
               id="wc-first"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="ชื่อจริงลูกค้า"
+              placeholder="ชื่อ"
               autoFocus={
                 typeof window !== "undefined" &&
                 window.matchMedia("(pointer: fine)").matches
@@ -117,7 +111,6 @@ export function CustomerFormModal({
             inputMode="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="08x-xxx-xxxx"
           />
         </div>
         <div>
@@ -126,7 +119,6 @@ export function CustomerFormModal({
             id="wc-proc"
             value={procedure}
             onChange={(e) => setProcedure(e.target.value)}
-            placeholder="เช่น เสริมหน้าอก / ดูดไขมัน"
           />
         </div>
         <div>
@@ -136,7 +128,6 @@ export function CustomerFormModal({
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="ข้อมูลเพิ่มเติม (ถ้ามี)"
           />
         </div>
         {error && (

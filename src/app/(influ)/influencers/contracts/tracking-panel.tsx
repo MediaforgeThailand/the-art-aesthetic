@@ -762,9 +762,7 @@ function TrackMode({
 
         {row.quotaTotal === 0 ? (
           <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/70 px-3 py-3 text-xs leading-5 text-amber-800">
-            เคสนี้<b>ยังไม่ได้ตั้งเป้าโพส</b> — กด &quot;ตั้งเป้า&quot;
-            เพื่อกำหนดว่าต้องลงคลิปช่องไหนกี่โพสก่อน
-            แล้วถึงจะแปะลิงก์โพสให้ระบบนับความคืบหน้าได้
+            ยังไม่ได้ตั้งเป้าโพส
           </div>
         ) : (
           <>
@@ -957,7 +955,7 @@ function TrackMode({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void submitLink();
                   }}
-                  placeholder="วางลิงก์โพส เช่น https://www.tiktok.com/@.../video/..."
+                  placeholder="ลิงก์โพส"
                   className="min-w-0 flex-1"
                 />
                 <PlatformDropdown
@@ -979,7 +977,7 @@ function TrackMode({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void submitLink();
                   }}
-                  placeholder="โน้ต (ไม่บังคับ)"
+                  placeholder="โน้ต"
                 />
                 <Button
                   type="button"
@@ -1054,7 +1052,7 @@ function TrackMode({
               value={campName}
               disabled={campBusy}
               onChange={(e) => setCampName(e.target.value)}
-              placeholder="สิ่งที่ commit เพิ่ม เช่น ถ่ายรีวิวสาขาใหม่ 1 คลิป *"
+              placeholder="สิ่งที่ commit เพิ่ม"
             />
             <div className="flex gap-1.5">
               <Input
@@ -1067,7 +1065,7 @@ function TrackMode({
                 value={campDetail}
                 disabled={campBusy}
                 onChange={(e) => setCampDetail(e.target.value)}
-                placeholder="รายละเอียด (ไม่บังคับ)"
+                placeholder="รายละเอียด"
               />
             </div>
             {campErr && (
@@ -1123,8 +1121,8 @@ function TrackMode({
           (row.checklistTasks.length === 0 ? (
             <p className="rounded-xl border border-dashed border-stone-200 bg-white/50 px-3 py-3 text-center text-xs text-stone-400">
               {customMode
-                ? "เคสนี้ใช้เงื่อนไขแบบแพ็คเกจเฉพาะ — ยังไม่มีข้อติดตามที่พิมพ์ไว้"
-                : "ยังไม่มีเช็คลิสต์ของเคสนี้"}
+                ? "ยังไม่มีข้อติดตาม"
+                : "ยังไม่มีเช็คลิสต์"}
             </p>
           ) : (
             <div className="space-y-2.5">
@@ -1158,7 +1156,7 @@ function TrackMode({
           rows={3}
           defaultValue={i.note ?? ""}
           disabled={!canEdit}
-          placeholder="สถานะการตาม เช่น ทักไปแล้วรอตอบ / ขอเลื่อนลงโพส..."
+          placeholder="สถานะการตาม"
           onBlur={(e) => {
             const v = e.target.value.trim() || null;
             if (v !== i.note)

@@ -408,7 +408,6 @@ function ProfileFormInner({
               id="pf-code"
               value={influCode}
               onChange={(e) => setInfluCode(e.target.value)}
-              placeholder="เว้นว่าง = ระบบออกรหัส INF-xxxxx ให้"
               className="font-mono"
             />
           </div>
@@ -427,7 +426,6 @@ function ProfileFormInner({
               disabled={saving}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="เช่น ภานุเดช"
             />
           </div>
           <div>
@@ -437,7 +435,6 @@ function ProfileFormInner({
               disabled={saving}
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              placeholder="เช่น อินทร์ศรี"
             />
           </div>
           <div>
@@ -447,7 +444,6 @@ function ProfileFormInner({
               disabled={saving}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="เช่น มีมี่"
             />
           </div>
           <div>
@@ -457,7 +453,6 @@ function ProfileFormInner({
               disabled={saving}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="08x-xxx-xxxx"
             />
           </div>
           <div>
@@ -467,7 +462,6 @@ function ProfileFormInner({
               disabled={saving}
               value={occupation}
               onChange={(e) => setOccupation(e.target.value)}
-              placeholder="เช่น นักแสดง / เจ้าของเพจ"
             />
           </div>
           <div>
@@ -478,7 +472,6 @@ function ProfileFormInner({
               inputMode="numeric"
               value={followers}
               onChange={(e) => setFollowers(e.target.value)}
-              placeholder="เช่น 150000"
             />
           </div>
         </div>
@@ -542,7 +535,7 @@ function ProfileFormInner({
           </div>
           {pendingPhotos.length > 0 && (
             <p className="mt-1.5 text-xs text-stone-400">
-              รูปใหม่ {pendingPhotos.length} รูป จะถูกอัพโหลดตอนกดบันทึก
+              รูปใหม่ {pendingPhotos.length} รูป
             </p>
           )}
         </div>
@@ -576,7 +569,7 @@ function ProfileFormInner({
                   disabled={saving}
                   value={r.value}
                   onChange={(e) => setRow(idx, { value: e.target.value })}
-                  placeholder="ลิงก์ / @handle / ไอดี"
+                  placeholder="ลิงก์ / @handle"
                   className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-base text-stone-800 focus:border-brand-400 focus:outline-none sm:text-sm"
                 />
                 <input
@@ -621,7 +614,6 @@ function ProfileFormInner({
             disabled={saving}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="ข้อตกลง/เงื่อนไขคร่าวๆ ที่คุยกันไว้..."
           />
         </div>
 

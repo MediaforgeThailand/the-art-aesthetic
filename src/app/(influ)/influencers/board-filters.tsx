@@ -469,7 +469,6 @@ export function BoardFilterSections({
     <>
       <FilterSection
         title="งานค้าง"
-        hint="“ทุกขั้น” = ยังไม่มีคิว “เข้ารับบริการ” ในปฏิทิน ไม่ว่าจะอยู่ขั้นไหน · “เอกสารผ่านแล้ว” = ผ่านขั้น 1.2 (อัพไฟล์ Memo ที่อนุมัติ) มาแล้วแต่ยังไม่ลงคิว · เคสที่ยังไม่มีเจ้าของ"
       >
         <div className="flex flex-wrap gap-1.5">
           <FilterChip
@@ -520,7 +519,6 @@ export function BoardFilterSections({
 
       <FilterSection
         title="ผู้รับผิดชอบ"
-        hint="ค่าเริ่มต้นคือ “เคสของฉัน” — อยากเห็นทั้งทีมทุกครั้ง เลือกแล้วกดบันทึกเป็นค่าเริ่มต้นด้านล่าง"
       >
         <Select
           value={filters.owner}
@@ -559,7 +557,6 @@ export function BoardFilterSections({
 
       <FilterSection
         title="ซ่อนสถานะ"
-        hint="ค่าเริ่มต้นซ่อนเคสที่ปฏิเสธ — กดจุด “ปฏิเสธ” บนเส้นขั้นงานด้านนอกเพื่อดูเฉพาะกลุ่มนั้น"
       >
         <div className="flex flex-wrap gap-1.5">
           {INFLU_STATUS_ORDER.map((s) => (

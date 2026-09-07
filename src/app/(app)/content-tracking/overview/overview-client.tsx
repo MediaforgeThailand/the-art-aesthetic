@@ -346,9 +346,6 @@ export function OverviewClient({
           <h1 className="text-xl font-semibold text-stone-900">
             ภาพรวม KPI ทีมคอนเทนต์
           </h1>
-          <p className="mt-0.5 text-sm text-stone-500">
-            เทียบผลงานทุกคนในเดือนเดียวกัน — นับจากวันที่ &quot;ส่งงาน&quot;
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <KpiViewTabs active="overview" />
@@ -417,7 +414,7 @@ export function OverviewClient({
         </div>
         {team.overallTarget === 0 ? (
           <p className="rounded-lg border border-dashed border-stone-300 px-3 py-3 text-sm text-stone-500">
-            ยังไม่มีใครถูกตั้งเป้า KPI — ตั้งได้ที่หน้า &quot;ตั้งค่า KPI&quot;
+            ยังไม่มีใครถูกตั้งเป้า KPI
           </p>
         ) : (
           <ul className="space-y-3">
@@ -976,12 +973,6 @@ export function OverviewClient({
             )}
           </div>
         </div>
-        <p className="mb-3 text-[11px] text-stone-500">
-          การ์ด 1 ใบใส่ได้หลายไฟล์ — เทียบ &quot;จำนวนการ์ด&quot;
-          (แยกภาพ/วิดีโอตามประเภทที่ติดไว้) กับ &quot;ชิ้นงานไฟล์&quot;
-          ที่นับจากไฟล์ภาพ/วิดีโอที่อัพโหลดจริงในการ์ด (ไฟล์ชนิดอื่นและไฟล์ในแชทไม่นับ)
-          · นับตามวันส่งงาน ช่วงเวลาเลือกอิสระไม่ผูกกับเดือนด้านบน
-        </p>
 
         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-stone-200/70 bg-white/70 p-3">
@@ -1092,11 +1083,6 @@ export function OverviewClient({
         title={`ผลงานเดือนนี้รายคน · ${team.credited} ชิ้น`}
         wide
       >
-        <p className="mb-3 text-xs leading-5 text-stone-500">
-          &quot;ผลงาน&quot; ของแต่ละคนนับตามฐานที่ตั้งไว้ในหน้าตั้งค่า KPI —
-          คนที่ทำชิ้นงานเองนับตอนส่งตรวจ · คนที่ brief อย่างเดียวนับ Brief
-          ที่มีคนกดรับงาน · ฐาน &quot;งานที่ต้องโพส&quot; นับตอนกดโพส
-        </p>
         {personStats.length === 0 ? (
           <p className="py-6 text-center text-sm text-stone-400">
             ยังไม่มีใครถูกตั้งเป้า KPI
@@ -1226,11 +1212,6 @@ export function OverviewClient({
         }
         wide
       >
-        <p className="mb-3 text-xs leading-5 text-stone-500">
-          {isCurrentMonth
-            ? "เป้าถึงวันนี้ = เป้าทั้งเดือน × สัดส่วนวันที่ผ่านไป — ตัวเลขสีแดงคือจำนวนที่ยังขาดอยู่ ณ วันนี้"
-            : "เทียบกับเป้าทั้งเดือน — ตัวเลขสีแดงคือจำนวนที่ขาดไปเมื่อจบเดือน"}
-        </p>
         {team.behindPeople === 0 ? (
           <p className="py-6 text-center text-sm text-emerald-600">
             ทุกคนตามเป้าอยู่ 🎉

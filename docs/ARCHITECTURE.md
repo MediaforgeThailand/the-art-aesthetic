@@ -60,7 +60,8 @@ Supabase ─ Postgres 17 (RLS) ─ Auth ─ Storage `documents` ─ Realtime ─
 | ยอดขาย | `sales_records` (sync จาก Google Sheets ของทีม DA รายวัน), `sheet_sync_runs`, `sales_targets`, `staff_kpis`, `admin_records`, `data_imports` | Team (`/dashboard`) |
 | ราคา | `price_items` (ราคาอ้างอิงกลาง — Influ/Sales Assistant อ้าง), `promo_packages` + `promo_package_items` (โปรที่ขึ้น `/price-list`), `price_promotions` (ไม่ได้ใช้ 0 แถว) | Team (`/pricing`) |
 | Wellness | `wellness_customers`, `wellness_lab_files`, `wellness_appointments` | ระบบ Wellness |
-| แอปอื่น | `sa_*` | Sales Assistant (repo แยก) — ห้ามแตะ |
+| แอปอื่น | `sa_*` (+ trigger `promo_mirror_*` ที่คัดลอกโปรจาก `promo_packages` ไปให้) | Sales Assistant (repo แยก) — ห้ามแตะ |
+| แอปอื่น | `sq_*` (+ RPC `sq_*`) | Sales Queue `queue.theartbb.com` (repo แยก ใช้ Supabase เดียวกัน) — ห้ามแตะ |
 
 **จุดที่ข้ามระบบกันใน DB (ทั้งหมดมีแค่นี้):**
 - `tasks.influencer_id` → `influencers` และ `tasks.doctor_id` → `doctors` (งานคอนเทนต์ติดแท็กว่าเป็นของ influ/หมอคนไหน — SET NULL)
@@ -100,3 +101,5 @@ Web Push: service worker `public/sw.js` (มีไว้เพื่อ push เ
 - `select` ที่มี embed/join ต้องอยู่ในไฟล์ปกติ ไม่ใช่ไฟล์ `"use client"` (server component import แล้วพัง)
 - UI primitives ใช้จาก `src/components/ui.tsx` เท่านั้น; label/สี/ค่าคงที่จาก `src/lib/constants.ts` หรือ `src/influ/lib/influ-constants.ts`
 - ออกแบบทุกฟีเจอร์ให้ย้ายไป self-host ได้: ห้ามใช้บริการเฉพาะ Vercel, secret ผ่าน env/Vault, external integration ต้อง config/ปิดได้ (ดู `docs/DEPLOYMENT.md`)
+- **UI ต้อง "สะอาด" (กติกาผู้ใช้ 2026-09-08):** ไม่มีคำอธิบายวิธีใช้ใต้ช่อง/หัวข้อ/empty-state, ไม่มี placeholder ตัวอย่าง (ช่องค้นหาใช้แค่ "ค้นหา", ช่องที่ไม่มี Label ใช้ placeholder เป็นคำนามสั้นๆ แทน Label) — สิ่งที่โชว์ได้คือข้อมูลจริง สถานะ เหตุผลที่ปุ่มกดไม่ได้ และคำเตือนผลกระทบที่ย้อนไม่ได้
+- **trigger function ที่เป็น `security definer` ต้อง `revoke execute ... from public, anon, authenticated`** ในไฟล์ migration เดียวกัน และ policy ใหม่เขียน `(select auth.uid())` ไม่ใช่ `auth.uid()` ตรงๆ (ดู `0115_audit_hardening.sql`)

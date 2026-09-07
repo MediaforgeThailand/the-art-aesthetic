@@ -390,7 +390,7 @@ function CalendarFilterSections({
 }) {
   return (
     <>
-      <FilterSection title="ประเภทคิว" hint="ติ๊กออก = ซ่อนประเภทนั้นจากปฏิทิน">
+      <FilterSection title="ประเภทคิว" >
         <div className="flex flex-wrap gap-1.5">
           {INFLU_CALENDAR_KIND_ORDER.map((k) => {
             const meta = INFLU_CALENDAR_KINDS[k];
@@ -411,7 +411,6 @@ function CalendarFilterSections({
           เลือกได้หลายทีม · ไม่เลือก = ทุกทีม */}
       <FilterSection
         title="หัตถการ / ทีม product"
-        hint="ดูจากหัตถการของเคสที่ผูกกับคิว — ไม่เลือก = ทุกทีม · “ไม่ระบุ” = คิวทั่วไป หรือเคสที่ยังไม่ระบุหัตถการ"
       >
         <div className="flex flex-wrap gap-1.5">
           {INFLU_PRODUCT_TEAM_ORDER.map((t) => (
@@ -957,7 +956,6 @@ function EventFormModal({
             id="cal-location"
             value={form.location}
             onChange={(e) => patch({ location: e.target.value })}
-            placeholder="เช่น สตูดิโอชั้น 4, คลินิกชั้น 2"
           />
         </div>
 
@@ -968,7 +966,6 @@ function EventFormModal({
             rows={2}
             value={form.note}
             onChange={(e) => patch({ note: e.target.value })}
-            placeholder="รายละเอียดเพิ่มเติม เช่น ทีมที่ดูแล, สิ่งที่ต้องเตรียม"
           />
         </div>
 

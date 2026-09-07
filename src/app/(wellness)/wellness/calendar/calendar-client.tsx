@@ -524,7 +524,7 @@ function BookingModal({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ค้นหาชื่อ / เบอร์โทร"
+                placeholder="ค้นหา"
                 className="mt-1"
               />
               <p className="mt-1.5 text-xs text-stone-500">

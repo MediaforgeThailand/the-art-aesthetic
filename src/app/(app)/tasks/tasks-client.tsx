@@ -2559,7 +2559,7 @@ export function TasksClient({
             <MobileFilterBar
               search={search}
               onSearch={setSearch}
-              placeholder="ค้นหางาน..."
+              placeholder="ค้นหา"
               activeCount={workFilterCount}
               onOpen={() => setFilterSheet("work")}
             />
@@ -2595,7 +2595,7 @@ export function TasksClient({
             />
             <Input
               type="search"
-              placeholder="ค้นหางาน..."
+              placeholder="ค้นหา"
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -2733,7 +2733,7 @@ export function TasksClient({
             <MobileFilterBar
               search={apSearch}
               onSearch={setApSearch}
-              placeholder="ค้นหางานที่ตรวจแล้ว..."
+              placeholder="ค้นหา"
               activeCount={apFilterCount}
               onOpen={() => setFilterSheet("approved")}
             />
@@ -2749,7 +2749,7 @@ export function TasksClient({
               />
               <Input
                 type="search"
-                placeholder="ค้นหางานที่ตรวจแล้ว..."
+                placeholder="ค้นหา"
                 className="pl-9"
                 value={apSearch}
                 onChange={(e) => setApSearch(e.target.value)}
@@ -3109,10 +3109,6 @@ export function TasksClient({
             <p className="text-sm font-medium text-stone-700">
               รายชื่อผู้ตรวจ
             </p>
-            <p className="mb-2 mt-0.5 text-xs text-stone-400">
-              เฉพาะคนที่อยู่ในรายชื่อนี้จะถูกเลือกเป็น
-              &quot;ผู้ตรวจงาน&quot; ได้ — งานเดิมที่ตรวจอยู่ไม่ถูกกระทบ
-            </p>
             <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
               {profiles.map((p) => {
                 const isReviewer = reviewerSet.has(p.id);
@@ -3164,12 +3160,6 @@ export function TasksClient({
             >
               ผู้ตรวจลำดับ 1 — ผู้ตรวจเริ่มต้น (ใช้กับทุกคน)
             </label>
-            <p className="mb-2 mt-0.5 text-xs text-stone-400">
-              เวลาใครก็ตามสร้างงานใหม่ ระบบจะเลือกคนนี้เป็นผู้ตรวจงานให้ทันที
-              — ตั้งได้ 2 คน (กด &quot;+ เพิ่มอีกคน&quot; ด้านล่าง)
-              งานต้องผ่านการอนุมัติครบทั้งสองคน จึงถือว่าผ่านลำดับ 1
-              (ตั้งได้เฉพาะ admin — เปลี่ยนผู้ตรวจของแต่ละงานได้ในแผงรายละเอียด)
-            </p>
             <PersonSelect
               id="default-reviewer"
               value={globalReviewerId ?? ""}
@@ -3240,11 +3230,6 @@ export function TasksClient({
             >
               ผู้ตรวจลำดับ 2 — อนุมัติขั้นสุดท้าย (ไม่บังคับ)
             </label>
-            <p className="mb-2 mt-0.5 text-xs text-stone-400">
-              ถ้าตั้งไว้ การตรวจจะเป็นทอด: ผู้ตรวจลำดับ 1 อนุมัติครบทุกคนแล้ว
-              งานจะถูกส่งต่อให้คนนี้ตรวจอีกชั้นเป็นขั้นสุดท้าย
-              (เว้นว่าง = ตรวจชั้นเดียวแบบเดิม)
-            </p>
             <PersonSelect
               id="default-reviewer2"
               value={globalReviewer2Id ?? ""}
@@ -3352,7 +3337,7 @@ export function TasksClient({
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="ระบุสิ่งที่ต้องแก้ไข เพื่อให้ผู้รับผิดชอบเห็นในความคิดเห็น..."
+            placeholder="สิ่งที่ต้องแก้ไข"
           />
         </div>
         <div className="mt-5 flex justify-end gap-2">
@@ -3438,10 +3423,6 @@ export function TasksClient({
                 </option>
               ))}
           </Select>
-          <p className="mt-1 text-xs text-stone-400">
-            เช่น สวย / หมอ / Before-After — ใช้ตั้งเป้า KPI แบบเจาะหมวด
-            (เพิ่มหมวดใหม่ได้ที่หน้า &quot;ตั้งค่า KPI&quot;)
-          </p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setPostTarget(null)}>

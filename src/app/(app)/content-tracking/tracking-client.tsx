@@ -845,7 +845,7 @@ export function TrackingClient({
               {scopeTarget === 0 ? (
                 <p className="rounded-lg border border-dashed border-stone-300 px-3 py-2 text-xs text-stone-500">
                   {selected
-                    ? "ยังไม่ถูกตั้งเป้า KPI — ตั้งได้ที่หน้า “ตั้งค่า KPI”"
+                    ? "ยังไม่ถูกตั้งเป้า KPI"
                     : "ยังไม่มีใครถูกตั้งเป้า KPI"}
                 </p>
               ) : (
@@ -1046,7 +1046,7 @@ export function TrackingClient({
               {/* {" "} จำเป็น — JSX text ที่กินหลายบรรทัดจะถูกตัดช่องว่างนำหน้าทิ้ง */}
               <p className="text-xs text-stone-600">
                 {personName(selected)}{" "}
-                ยังไม่ถูกตั้งเป้า KPI — ตัวเลขด้านบนเป็นผลงานจริงที่ส่งในเดือนนี้
+                ยังไม่ถูกตั้งเป้า KPI
               </p>
               <Link
                 href="/content-kpi"
@@ -1424,12 +1424,6 @@ export function TrackingClient({
         onClose={() => setNoticeOpen(false)}
         title={`ระบุประเภทไม่ครบ ${untagged.length} งาน`}
       >
-        <p className="mb-3 text-xs text-stone-500">
-          งานพวกนี้ยังขาดประเภทชิ้นงาน (ภาพ/วิดีโอ) หรือหมวดเนื้อหา (สวย/หมอ/
-          Before-After ...) — จึงนับเข้ากติกาที่เจาะฟอร์แมตหรือหมวดไม่ได้ เปิดงานแล้วเลือก
-          &quot;ชิ้นงาน/เนื้อหา&quot; ในแผงได้เลย (หรือกด &quot;โพสแล้ว&quot;
-          ระบบจะบังคับให้ระบุทั้งสองช่องก่อนบันทึก)
-        </p>
         <div className="space-y-4">
           {untaggedGroups.map(({ key, list }) => (
             <div key={key || "none"}>
@@ -1471,7 +1465,6 @@ export function TrackingClient({
           <EmptyState
             icon={<Target size={40} strokeWidth={1.5} />}
             title="ยังไม่มีข้อมูลในเดือนนี้"
-            description="ยังไม่มีงานที่ส่งในเดือนที่เลือก และยังไม่มีใครถูกตั้งเป้า KPI"
           />
         </Card>
       )}
@@ -1485,10 +1478,6 @@ function PageHeaderRow({ isAdmin }: { isAdmin: boolean }) {
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 animate-fade-in-up">
       <div className="min-w-0">
         <h1 className="text-xl font-semibold text-stone-900">KPI คอนเทนต์</h1>
-        <p className="mt-0.5 text-sm text-stone-500">
-          นับผลงานตามฐานที่ตั้งไว้ให้แต่ละคน — ส่งงาน (กดส่งตรวจ) / Brief
-          ที่ถูกรับงาน / งานที่ต้องโพส · กดชื่อคนเพื่อดูปฏิทินของคนนั้น
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <KpiViewTabs active="calendar" />

@@ -518,7 +518,6 @@ export function ContractsClient({
         <EmptyState
           icon={<FileSignature size={40} strokeWidth={1.5} />}
           title="ยังไม่มี Influencer ที่เริ่มนับสัญญา"
-          description="เมื่ออัพโหลดไฟล์สัญญาที่เซนแล้วในขั้น 'เซนสัญญา + วันรับบริการ' ระบบจะเริ่มนับสัญญาและพาเคสมาติดตามที่หน้านี้"
         />
       </div>
     );
@@ -554,7 +553,7 @@ export function ContractsClient({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อ / รหัส Influ / โน้ต"
+            placeholder="ค้นหา"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-300 focus:outline-none sm:text-sm"
           />
         </div>

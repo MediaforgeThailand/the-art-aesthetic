@@ -99,10 +99,7 @@ export function PostingList({
   return (
     <div className="px-4 pb-6 pt-1 sm:px-6">
       <p className="mb-3 text-xs text-stone-400">
-        งานที่ตรวจผ่านแล้วและยังไม่ได้โพส {tasks.length} งาน —
-        โพสเสร็จแล้วกดปุ่มบนการ์ดเพื่อปิดคิว (ชื่อบนการ์ด = คนที่ต้องโพส:
-        การ์ดจาก Brief เป็นของผู้สั่ง Brief ส่วนการ์ดที่ไม่มี Brief
-        เป็นของผู้รับผิดชอบเอง)
+        งานที่ตรวจผ่านแล้วและยังไม่ได้โพส {tasks.length} งาน
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {tasks.map((task) => (

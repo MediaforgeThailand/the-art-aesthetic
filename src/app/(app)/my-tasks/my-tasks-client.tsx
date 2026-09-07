@@ -1248,9 +1248,6 @@ export function MyTasksClient({
             </Button>
           </div>
         </div>
-        <p className="mt-1 text-sm text-stone-400">
-          โน้ตและงานส่วนตัว — เห็นเฉพาะบัญชีของคุณคนเดียว
-        </p>
       </div>
 
       {err && (
@@ -1293,7 +1290,7 @@ export function MyTasksClient({
                   setSearchOpen(false);
                 }
               }}
-              placeholder="ค้นหาชื่องาน/โน้ต"
+              placeholder="ค้นหา"
               aria-label="ค้นหา"
               /* text-base บนจอเล็ก — ต่ำกว่า 16px แล้ว iOS ซูมหน้าเข้าเองและไม่ซูมกลับ */
               className="w-40 border-none bg-transparent text-base text-stone-900 placeholder:text-stone-500 focus:outline-none sm:w-48 sm:text-sm"
@@ -1410,7 +1407,6 @@ export function MyTasksClient({
                 opt={optionUi}
                 collapsed={!!collapsed[g.key]}
                 dragDisabled={dragDisabled}
-                emptyHint={items.length === 0}
                 uploadingId={uploadingId}
                 onUploadFiles={(taskId, files) => void uploadFiles(taskId, files)}
                 onToggleCollapse={() =>
@@ -1600,7 +1596,7 @@ function AddCategoryInline({
         value={name}
         onChange={(e) => setName(e.target.value)}
         maxLength={60}
-        placeholder="ชื่อหมวดหมู่ เช่น งานประจำวัน, โปรเจกต์"
+        placeholder="ชื่อหมวดหมู่"
         aria-label="ชื่อหมวดหมู่ใหม่"
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -1640,7 +1636,6 @@ function GroupSection({
   opt,
   collapsed,
   dragDisabled,
-  emptyHint,
   uploadingId,
   onToggleCollapse,
   addRef,
@@ -1660,7 +1655,6 @@ function GroupSection({
   /** id ของงานที่กำลังอัพโหลดไฟล์อยู่ (null = ไม่มี) */
   uploadingId: string | null;
   /** ลิสต์ยังว่างทั้งหน้า — โชว์คำแนะนำในกลุ่มแทนตารางเปล่า */
-  emptyHint: boolean;
   onToggleCollapse: () => void;
   addRef: (el: HTMLInputElement | null) => void;
   onAdd: (title: string) => void;
@@ -1856,13 +1850,6 @@ function GroupSection({
               {/* ---- แถบสรุปท้ายกลุ่ม (จอ ≥sm) ---- */}
               {group.tasks.length > 0 && (
                 <GroupSummary tasks={group.tasks} opt={opt} />
-              )}
-
-              {group.tasks.length === 0 && emptyHint && (
-                <p className="px-3 py-3 text-center text-xs text-stone-400">
-                  ยังไม่มีงานในลิสต์ — พิมพ์ชื่องานในช่องด้านบนแล้วกด Enter
-                  แล้วกดที่แถวเพื่อใส่กำหนดส่ง ความสำคัญ แท็ก และโน้ต
-                </p>
               )}
             </div>
           </div>
@@ -2090,12 +2077,7 @@ function TaskRow({
             onPick={(v) => opt.onPickStatus(task.id, v)}
             onCreate={(name) => opt.onCreate("status", task.id, name)}
             addLabel="เพิ่มสถานะ"
-            placeholder="ชื่อสถานะ เช่น กำลังทำ"
-            hint={
-              task.due_date && !task.done
-                ? "“เลยกำหนด / ใกล้ครบกำหนด” เปลี่ยนตามวันกำหนดส่งอัตโนมัติ"
-                : null
-            }
+            placeholder="ชื่อสถานะ"
             onManage={opt.onManage}
           />
         </div>

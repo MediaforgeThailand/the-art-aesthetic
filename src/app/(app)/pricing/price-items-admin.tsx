@@ -132,10 +132,6 @@ function GroupPicker({
           );
         })}
       </div>
-      <p className="mt-1 text-xs text-stone-400">
-        แพ็กเกจที่รวมหลายหัตถการให้ติ๊กหลายกลุ่ม (เช่น Ultraformer + Botox =
-        เครื่อง + ฉีด) — รายการจะไปโผล่ในทุกแท็บที่ติ๊กไว้บนหน้า Price List
-      </p>
     </div>
   );
 }
@@ -193,24 +189,19 @@ function OfferEditor({
           เพิ่ม
         </button>
       </div>
-      {list.length === 0 && (
-        <p className="rounded-lg border border-dashed border-stone-200 px-3 py-2 text-xs text-stone-400">
-          ไม่มี — กด &quot;เพิ่ม&quot; เพื่อใส่{title}
-        </p>
-      )}
       <div className="space-y-1.5">
         {list.map((o, i) => (
           <div key={i} className="flex flex-wrap items-center gap-1.5">
             <Input
               value={o.label}
               onChange={(e) => set(i, { label: e.target.value })}
-              placeholder="ชื่อ เช่น โปรโมชัน"
+              placeholder="ชื่อ"
               className="!w-36 !px-2 !py-1.5 !text-xs"
             />
             <Input
               value={o.price}
               onChange={(e) => set(i, { price: e.target.value })}
-              placeholder="ราคา เช่น 4,990"
+              placeholder="ราคา"
               className="!w-28 !px-2 !py-1.5 !text-xs"
             />
             <Input
@@ -408,13 +399,6 @@ export function PriceItemsAdmin({
         </div>
       </div>
 
-      <p className="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-600">
-        <b>รายการชุดนี้ไม่ได้แสดงบนหน้า /price-list แล้ว</b> (หน้าสาธารณะย้ายไปใช้
-        &quot;โปรที่ขึ้นหน้า Price List&quot; ด้านบน) — ชุดนี้ยังใช้เป็น{" "}
-        <b>ราคาอ้างอิงกลาง</b> ของระบบ: ตัวเลือกโปรแกรมใน Influ Management (แท็บรายละเอียดเคส)
-        และการคิดต้นทุนในหน้า /influ-cost ดึงราคาจากที่นี่
-      </p>
-
       {loadError && (
         <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600 animate-fade-in">
           โหลดข้อมูลไม่สำเร็จ: {loadError} — รายการที่แสดงอาจไม่ครบ
@@ -429,7 +413,7 @@ export function PriceItemsAdmin({
         />
         <Input
           type="search"
-          placeholder="ค้นหารายการ/หมวด..."
+          placeholder="ค้นหา"
           className="!pl-9"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -547,7 +531,6 @@ export function PriceItemsAdmin({
                 onChange={(e) =>
                   setDraft({ ...draft, category: e.target.value })
                 }
-                placeholder="เช่น Botox : ลดริ้วรอย..."
               />
               <datalist id="pi-categories">
                 {categories.map((c) => (
@@ -562,7 +545,6 @@ export function PriceItemsAdmin({
                 type="number"
                 value={draft.item_no}
                 onChange={(e) => setDraft({ ...draft, item_no: e.target.value })}
-                placeholder="เช่น 249"
               />
             </div>
           </div>
@@ -574,7 +556,6 @@ export function PriceItemsAdmin({
               rows={2}
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder="เช่น Botox Hutox (50 Unit)"
             />
           </div>
 
@@ -591,7 +572,6 @@ export function PriceItemsAdmin({
               onChange={(e) =>
                 setDraft({ ...draft, price_normal: e.target.value })
               }
-              placeholder="เช่น 6,900"
             />
           </div>
 
@@ -636,7 +616,6 @@ export function PriceItemsAdmin({
               onChange={(e) =>
                 setDraft({ ...draft, search_aliases: e.target.value })
               }
-              placeholder="เช่น Botox Korea โบเกาหลี (คั่นด้วยเว้นวรรค — ไม่แสดงบนเมนู ใช้ค้นหาอย่างเดียว)"
             />
           </div>
 
@@ -653,12 +632,6 @@ export function PriceItemsAdmin({
               />
               แสดงบนหน้า Price List สาธารณะ
             </label>
-            {!draft.active && (
-              <p className="mt-1.5 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-500">
-                รายการนี้จะถูกซ่อนจากหน้าเว็บสาธารณะ
-                แต่ยังอยู่ในหลังบ้านและกลับมาติ๊กแสดงได้ทุกเมื่อ
-              </p>
-            )}
           </div>
 
           {error && (

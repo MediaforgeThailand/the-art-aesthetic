@@ -167,7 +167,7 @@ export function RegisterClient({
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหา ชื่อ / เบอร์ / หัตถการ"
+              placeholder="ค้นหา"
               className="w-full rounded-full border border-stone-200/80 bg-white/90 py-2.5 pl-10 pr-4 text-base text-stone-700 shadow-sm placeholder:text-stone-500 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
@@ -223,9 +223,6 @@ export function RegisterClient({
                   ปิดเคสแล้ว
                 </h2>
                 <span className="text-[13px] text-stone-400">{closed.length} ใบ</span>
-                <span className="text-[13px] text-stone-400">
-                  · เก็บเป็นประวัติ แก้ไขไม่ได้
-                </span>
               </header>
               <ul className="space-y-2.5">{closed.map(renderRow)}</ul>
             </section>

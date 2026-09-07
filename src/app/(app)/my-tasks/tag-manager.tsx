@@ -59,7 +59,7 @@ export function TagManagerModal({
                 void add();
               }
             }}
-            placeholder="ชื่อแท็กใหม่ เช่น ส่วนตัว, งานด่วน"
+            placeholder="ชื่อแท็กใหม่"
             maxLength={40}
           />
           <Button onClick={() => void add()} loading={adding} className="shrink-0">
@@ -69,11 +69,6 @@ export function TagManagerModal({
         </div>
 
         <div className="mt-4 space-y-2">
-          {tags.length === 0 && (
-            <p className="py-6 text-center text-sm text-stone-400">
-              ยังไม่มีแท็ก — เพิ่มอันแรกด้านบน แล้วนำไปติดกับงานในลิสต์ได้เลย
-            </p>
-          )}
           {tags.map((t) => {
             const used = usage.get(t.id) ?? 0;
             return (

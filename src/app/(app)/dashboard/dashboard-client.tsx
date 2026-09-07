@@ -372,13 +372,11 @@ export function DashboardClient({
       <div>
         <PageHeader
           title="แดชบอร์ดผู้บริหาร"
-          description="รายงานทุกส่วนในหน้าเดียว"
         />
         <Card>
           <EmptyState
             icon={<BarChart3 size={40} />}
             title="ยังไม่มีข้อมูลยอดขาย"
-            description="ข้อมูลยอดขายจะซิงก์มาจากไฟล์ของทีม DA โดยอัตโนมัติ"
           />
         </Card>
       </div>
@@ -389,7 +387,6 @@ export function DashboardClient({
     <div>
       <PageHeader
         title="แดชบอร์ดผู้บริหาร"
-        description="รายงานทุกส่วนในหน้าเดียว — เลื่อนลงเพื่อดูครบทุก section ตัวกรองด้านล่างใช้ร่วมกันทั้งหน้า"
       />
 
       {(salesDemo || adminDemo || tasksDemo || targetsDemo) && (

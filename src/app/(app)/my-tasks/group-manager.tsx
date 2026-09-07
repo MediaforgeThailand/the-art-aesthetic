@@ -55,9 +55,6 @@ export function GroupManagerModal({
   return (
     <>
       <Modal open={open} onClose={onClose} title="จัดการหมวดหมู่">
-        <p className="mb-3 text-xs text-stone-400">
-          หมวดหมู่คือหัวข้อใหญ่บนบอร์ด — ลากงานเข้าหมวด หรือกดชื่อหมวดบนบอร์ดเพื่อเปลี่ยนชื่อได้เลย
-        </p>
         <div className="flex gap-2">
           <Input
             value={newName}
@@ -68,7 +65,7 @@ export function GroupManagerModal({
                 void add();
               }
             }}
-            placeholder="ชื่อหมวดหมู่ใหม่ เช่น งานประจำวัน, โปรเจกต์"
+            placeholder="ชื่อหมวดหมู่ใหม่"
             maxLength={60}
           />
           <Button onClick={() => void add()} loading={adding} className="shrink-0">
@@ -78,11 +75,6 @@ export function GroupManagerModal({
         </div>
 
         <div className="mt-4 space-y-2">
-          {groups.length === 0 && (
-            <p className="py-6 text-center text-sm text-stone-400">
-              ยังไม่มีหมวดหมู่ — เพิ่มอันแรกด้านบน แล้วงานทั้งหมดจะลาก/ย้ายเข้าหมวดได้จากบอร์ด
-            </p>
-          )}
           {groups.map((g, i) => {
             const used = usage.get(g.id) ?? 0;
             return (

@@ -499,7 +499,6 @@ export function CostPriceInput({
         step="any"
         disabled={disabled}
         defaultValue={value === 0 ? "" : value}
-        placeholder="0"
         onBlur={(e) => {
           const n = Number(e.target.value);
           const next = Number.isFinite(n) && n > 0 ? n : 0;

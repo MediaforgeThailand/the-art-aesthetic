@@ -193,11 +193,6 @@ function ContentEditor({
           เพิ่มหัตถการ
         </button>
       </div>
-      {list.length === 0 && (
-        <p className="rounded-lg border border-dashed border-stone-200 px-3 py-2 text-xs text-stone-400">
-          ยังไม่มีรายการ — ป๊อปอัพจะขึ้นว่า &quot;ไม่มีรายละเอียดในระบบ&quot;
-        </p>
-      )}
       <div className="space-y-1.5">
         {list.map((o, i) => (
           <div key={i} className="flex flex-wrap items-center gap-1.5">
@@ -463,13 +458,6 @@ export function PromoPackagesAdmin({
         </div>
       </div>
 
-      <p className="mb-3 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-brand-700">
-        หน้า <b>/price-list</b> (สาธารณะ ไม่ต้องล็อกอิน) แสดงจากรายการชุดนี้ —
-        นำเข้าครั้งแรกจากไฟล์แพ็กเกจของระบบ POS แก้ราคา/วันหมดเขต/ซ่อน–แสดง
-        ที่นี่แล้วหน้าเว็บอัพเดททันที · โปรที่เลยวันหมดเขตจะขึ้นป้ายเตือนสีแดงบนหน้าเว็บ
-        (ไม่ได้ซ่อนอัตโนมัติ — กดซ่อนเองเมื่อเลิกขายจริง)
-      </p>
-
       {expiredCount > 0 && (
         <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -501,7 +489,7 @@ export function PromoPackagesAdmin({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อโปร / รหัส / หัตถการในโปร"
+            placeholder="ค้นหา"
             className="!pl-9"
           />
         </div>
@@ -677,7 +665,6 @@ export function PromoPackagesAdmin({
             <Input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder="เช่น โปร Pico Smooth 1 แถม 1"
             />
           </div>
 
@@ -688,7 +675,6 @@ export function PromoPackagesAdmin({
                 list="promo-categories"
                 value={draft.category}
                 onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                placeholder="เช่น Botox"
               />
               <datalist id="promo-categories">
                 {[...new Set([...PROMO_CATEGORY_ORDER, ...categories])].map((c) => (
@@ -721,7 +707,6 @@ export function PromoPackagesAdmin({
               <Input
                 value={draft.sale_price}
                 onChange={(e) => setDraft({ ...draft, sale_price: e.target.value })}
-                placeholder="เช่น 4900"
               />
             </div>
             <div>
@@ -729,7 +714,6 @@ export function PromoPackagesAdmin({
               <Input
                 value={draft.full_price}
                 onChange={(e) => setDraft({ ...draft, full_price: e.target.value })}
-                placeholder="เว้นว่าง = ไม่โชว์ % ลด"
               />
             </div>
           </div>

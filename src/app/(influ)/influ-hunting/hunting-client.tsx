@@ -481,7 +481,7 @@ export function HuntingClient({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="ค้นหาชื่อ / ช่องทาง / หัตถการ..."
+            placeholder="ค้นหา"
             className="w-full rounded-full border border-stone-200 bg-white/80 py-2 pl-9 pr-4 text-base text-stone-800 placeholder:text-stone-500 focus:border-brand-400 focus:outline-none sm:text-sm"
           />
         </div>
@@ -550,7 +550,6 @@ export function HuntingClient({
         <EmptyState
           icon={<Crosshair size={32} />}
           title="ยังไม่มีรายชื่อบนบอร์ด Hunting"
-          description="เจอ influencer ที่น่าสนใจจากไหนก็ตาม จดชื่อไว้ที่นี่ก่อน แล้วค่อยๆ ตามจนเขาตอบรับ"
           action={
             me.canEdit ? (
               <Button onClick={() => setPanel({ mode: "create" })}>

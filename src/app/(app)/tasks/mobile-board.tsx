@@ -55,7 +55,7 @@ function MobileComposer({
       <input
         ref={ref}
         value={text}
-        placeholder="ชื่องานใหม่ แล้วกด Enter"
+        placeholder="ชื่องาน"
         aria-label="ชื่องานใหม่"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -152,7 +152,6 @@ export function MobileBoard({
         <EmptyState
           icon={<ListPlus size={36} />}
           title="ยังไม่มีเซคชัน"
-          description="เซคชันถูกกำหนดจากระบบ — ติดต่อผู้ดูแลหากยังไม่มีเซคชัน"
         />
       </div>
     );
@@ -250,8 +249,6 @@ export function MobileBoard({
               {tasks.length === 0 ? (
                 <div className="mt-2 rounded-2xl border-2 border-dashed border-stone-200 px-4 py-10 text-center text-xs text-stone-400">
                   ยังไม่มีการ์ดในเซคชันนี้
-                  <br />
-                  (ตัวกรองอาจซ่อนอยู่ — เช็คที่ปุ่มตัวกรองด้านบน)
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">

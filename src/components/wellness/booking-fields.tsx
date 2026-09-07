@@ -97,7 +97,6 @@ export function BookingFields({
           id={`${idPrefix}-note`}
           value={draft.note}
           onChange={(e) => onChange({ note: e.target.value })}
-          placeholder="เช่น ขอคุยเรื่องวิตามินเพิ่ม / มากับญาติ"
         />
       </div>
     </div>

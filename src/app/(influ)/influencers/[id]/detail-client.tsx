@@ -616,7 +616,6 @@ function NameEditModal({
             id="influ-nick"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            placeholder="ใช้แสดงบนการ์ดบอร์ดและในเอกสาร"
           />
         </div>
         {/* รหัส Influ ID = รหัสประจำตัวบุคคล (0107) — ทุกรอบของคนนี้ใช้รหัสเดียวกัน
@@ -742,7 +741,6 @@ function CaseInfoEditModal({
             id="ci-contact"
             value={contactChannel}
             onChange={(e) => setContactChannel(e.target.value)}
-            placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
           />
         </div>
         {err && (
@@ -2188,7 +2186,7 @@ function OverviewPanel({
             </>
           ) : (
             <p className="text-sm text-stone-400">
-              เคสนี้สร้างก่อนระบบโปรไฟล์ — ยังไม่มีข้อมูลโปรไฟล์กลางของคนนี้
+              ยังไม่มีโปรไฟล์กลาง
             </p>
           )}
         </DocSection>
@@ -2535,7 +2533,6 @@ function CaseDetailStage({
                 disabled={readOnly}
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                placeholder="เช่น ซ่า"
               />
             </div>
             <div>
@@ -2633,7 +2630,6 @@ function CaseDetailStage({
                     disabled={readOnly}
                     value={budgetNote}
                     onChange={(e) => setBudgetNote(e.target.value)}
-                    placeholder="เช่น บุคคลที่มีกระแสสังคม / ดารา-นักแสดง / พันธมิตรทางธุรกิจ"
                   />
                 </div>
               )}
@@ -2648,7 +2644,6 @@ function CaseDetailStage({
                 disabled={readOnly}
                 value={talentFee}
                 onChange={(e) => setTalentFee(e.target.value)}
-                placeholder="เว้นว่าง = ไม่มีค่าตัว"
               />
             </div>
           </div>
@@ -2669,7 +2664,6 @@ function CaseDetailStage({
               disabled={readOnly}
               value={contactChannel}
               onChange={(e) => setContactChannel(e.target.value)}
-              placeholder="เช่น กลุ่มไลน์ ART x คุณเอ"
             />
           </div>
           {/* แคมเปญ (0093) — เลือกแล้วแฮชแท็กของแคมเปญถูกเพิ่มเข้าชุดที่ influ ต้องติดในโพส
@@ -2705,7 +2699,6 @@ function CaseDetailStage({
                 disabled={readOnly}
                 value={followers}
                 onChange={(e) => setFollowers(e.target.value)}
-                placeholder="1600000"
               />
             </div>
             <div>
@@ -2715,7 +2708,6 @@ function CaseDetailStage({
                 disabled={readOnly}
                 value={followerNote}
                 onChange={(e) => setFollowerNote(e.target.value)}
-                placeholder="เช่น Tiktok 1.6 M, IG 13.6 K"
               />
             </div>
           </div>
@@ -2931,12 +2923,6 @@ function ServiceBookingCard({
           ? "เซนสัญญาแล้วแต่ยังไม่ได้ลงคิวเข้าปฏิทิน — ลงคิวให้เรียบร้อยก่อน"
           : "ยังไม่ได้ลงคิวเข้าปฏิทิน — เคาะวันกับแพทย์แล้วลงคิวได้เลย"}
       </h2>
-      <p className="mb-4 text-xs leading-5 text-stone-600">
-        เคาะ<b>วันที่เข้ารับบริการ</b>กับ<b>แพทย์ที่รับเคส</b>แล้วกดลงคิว
-        — ระบบจะเขียนคิวขึ้นปฏิทินคิวให้เลย ทีมอื่นจึงเห็นว่าวันนั้นมีใครเข้า
-        (วันกับแพทย์จะถูกอัปเดตกลับเข้าเคสให้อัตโนมัติ)
-      </p>
-
       {!canBook ? (
         <p className="rounded-lg border border-stone-200 bg-white/70 px-3 py-2 text-xs text-stone-500">
           {influencer.completed
@@ -3197,8 +3183,7 @@ function ServiceDayStage({
               </div>
             ) : (
               <span className="text-xs text-stone-400">
-                อัพโหลดไฟล์สัญญาที่เซนแล้ว (ส่วนสัญญาด้านบน) เพื่อเริ่มนับสัญญา
-                — เคสจะไปโผล่ที่หน้า Follow Up เอง
+                ยังไม่มีไฟล์สัญญา
               </span>
             )}
           </div>
@@ -3235,7 +3220,6 @@ function ServiceDayStage({
               id="sv"
               value={supervisor}
               onChange={(e) => setSupervisor(e.target.value)}
-              placeholder="เช่น คุณปิยะวัฒน์ วรสิงห์"
             />
           </div>
           {/* error ตอนบันทึกล้ม — โชว์ใน modal เพราะข้อความใน Card ถูก modal บัง */}

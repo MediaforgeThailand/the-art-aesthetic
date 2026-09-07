@@ -256,7 +256,6 @@ export function ContentKpiClient({
     <>
       <PageHeader
         title="ตั้งค่า KPI คอนเทนต์"
-        description="กำหนดหมวดเนื้อหาและเป้าจำนวนชิ้นงานรายคน (ต่อเดือนหรือต่อวัน) — ผลติดตามจริงดูที่แดชบอร์ด"
         action={
           <Link href="/content-tracking">
             <Button variant="secondary">
@@ -282,10 +281,6 @@ export function ContentKpiClient({
               หมวดเนื้อหา
             </h2>
           </div>
-          <p className="mb-3 text-xs leading-5 text-stone-400">
-            เช่น ขาย / Value / หมอ / สวย — ใช้ติดบนการ์ดงานตอนกด &quot;โพสแล้ว&quot;
-            และใช้ตั้งเป้า KPI แบบเจาะหมวด
-          </p>
           <ul className="space-y-1.5">
             {cats.map((cat, idx) => (
               <li
@@ -385,7 +380,7 @@ export function ContentKpiClient({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void addCategory();
                 }}
-                placeholder="เพิ่มหมวดใหม่..."
+                placeholder="หมวดใหม่"
                 className="flex-1"
               />
               <Button
@@ -404,11 +399,7 @@ export function ContentKpiClient({
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-stone-800">
-              เป้า KPI รายคน{" "}
-              <span className="font-normal text-stone-400">
-                (เลือกได้ว่านับจากอะไร — ส่งงาน / Brief ที่ถูกรับ / งานที่ต้องโพส
-                และเป้าเป็น &quot;ต่อเดือน&quot; หรือ &quot;ต่อวัน&quot;)
-              </span>
+              เป้า KPI รายคน
             </h2>
             {isAdmin && peopleWithoutRules.length > 0 && (
               <label className="inline-flex items-center gap-2 text-sm text-stone-500">
@@ -437,11 +428,6 @@ export function ContentKpiClient({
               <EmptyState
                 icon={<UserPlus size={40} strokeWidth={1.5} />}
                 title="ยังไม่มีใครถูกตั้งเป้า KPI"
-                description={
-                  isAdmin
-                    ? 'เลือกทีมงานจากช่อง "+ เพิ่มทีมงาน" ด้านบนเพื่อเริ่มตั้งเป้า'
-                    : "หัวหน้าทีม (admin) เป็นคนตั้งเป้าจากหน้านี้"
-                }
               />
             </Card>
           ) : (
@@ -564,9 +550,6 @@ export function ContentKpiClient({
                                   ))}
                               </Select>
                             </div>
-                            <p className="text-[10px] leading-4 text-stone-400">
-                              {CONTENT_KPI_BASES[rule.basis].desc}
-                            </p>
                           </div>
                           {isAdmin && (
                             <button
@@ -649,32 +632,6 @@ export function ContentKpiClient({
             })
           )}
 
-          <div className="space-y-2 text-xs leading-5 text-stone-400">
-            <p>
-              งาน 1 ชิ้นนับให้ทุกกติกาที่เข้าเงื่อนไข — เช่นตั้ง &quot;วิดีโอ ·
-              ทุกหมวด = 2&quot; คู่กับ &quot;วิดีโอ · หมอ = 1&quot; คลิปหมอ 1
-              ชิ้นจะนับทั้งสองแถว (ตรงกับวิธีคิด &quot;วิดีโอ 2 ชิ้น
-              และต้องเป็นคลิปหมออย่างน้อย 1&quot;) · เป้าแบบ &quot;ต่อวัน&quot;
-              แดชบอร์ดจะคูณจำนวนวันของเดือนเป็นเป้าทั้งเดือนให้เอง (เช่น 1 ชิ้น/วัน =
-              30–31 ชิ้น/เดือน และเป้าถึงวันนี้ = จำนวนวันที่ผ่านไป)
-            </p>
-            <p>
-              <span className="font-semibold text-stone-500">
-                &quot;นับจาก&quot; คืออะไร:
-              </span>{" "}
-              คนที่ทำชิ้นงานเองใช้ &quot;ชิ้นงานที่ทำเอง&quot; (นับตอนกดส่งตรวจ) ·
-              คนที่ทำหน้าที่ brief อย่างเดียวใช้ &quot;Brief ที่ถูกรับงาน&quot;
-              (การ์ด Brief ที่ตัวเองสั่งและมีคนกดรับงาน = เสร็จ 1 ชิ้น) ·
-              ส่วน &quot;งานที่ต้องโพส&quot; นับตอนกด &quot;โพสแล้ว&quot;
-              โดยการ์ดที่มาจาก Brief เป็นของผู้สั่ง Brief
-              ส่วนการ์ดที่ไม่มี Brief (ตัดเอง/สร้างการ์ดเอง) เป็นของผู้รับผิดชอบการ์ดเอง
-            </p>
-            <p>
-              กติกาฐาน &quot;Brief&quot; ที่เจาะฟอร์แมตจะเทียบกับชนิดงานที่เลือกไว้บน
-              การ์ด Brief (Graphic = ภาพ, Video = วิดีโอ) เพราะการ์ด Brief
-              ยังไม่มีประเภทชิ้นงานจนกว่าจะถึงตอนโพส
-            </p>
-          </div>
         </div>
       </div>
 

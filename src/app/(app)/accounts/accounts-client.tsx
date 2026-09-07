@@ -393,7 +393,6 @@ export function AccountsClient({
     <>
       <PageHeader
         title="จัดการบัญชีและสิทธิ์ผู้ใช้"
-        description="เพิ่ม/ลบบัญชี ตั้งรหัสผ่าน และเปิดสิทธิ์การมองเห็นให้แต่ละคน — หน้า Product Pricing และ Influencer เปิดให้ทุกคนอยู่แล้ว"
         action={
           <Button
             onClick={() => {
@@ -528,7 +527,6 @@ export function AccountsClient({
               id="acc-name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="เช่น สมหญิง ใจดี"
               required
             />
           </div>
@@ -539,7 +537,6 @@ export function AccountsClient({
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="somying@artsurgery.co.th"
               required
             />
           </div>
@@ -744,10 +741,6 @@ function PermissionEditor({
     <div className="space-y-2">
       <div>
         <Label>สิทธิ์การเข้าถึง</Label>
-        <p className="-mt-1 mb-1 text-xs text-stone-400">
-          ติ๊กเปิดเฉพาะส่วนที่ต้องการให้บัญชีนี้เห็น — แต่ละสิทธิ์แยกกันอิสระ
-          (หน้า /price-list สาธารณะเปิดให้ทุกคนอยู่แล้ว)
-        </p>
       </div>
 
       {/* ผู้ดูแลระบบ = สิทธิ์จัดการบัญชี/ผู้ตรวจ (แยกอิสระเหมือนสิทธิ์อื่น) */}
@@ -795,9 +788,6 @@ function PermissionEditor({
       <div className="rounded-lg border border-brand-100 bg-brand-50/30 px-3 py-2.5">
         <p className="text-sm font-medium text-stone-800">
           ระบบ Influencer (Influencer System)
-        </p>
-        <p className="mb-2 text-xs text-stone-400">
-          เลือกได้ระดับเดียว — ระดับสูงกว่าทำได้ทุกอย่างของระดับต่ำกว่า
         </p>
         <div className="space-y-1.5">
           {INFLU_LEVEL_ORDER.map((lv) => (
