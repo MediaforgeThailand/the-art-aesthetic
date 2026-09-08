@@ -356,16 +356,9 @@ export const SALES_ASSISTANT_FROM = "sales";
  */
 export const SALES_OPERATION_URL: string | null = "https://queue.theartbb.com";
 
-/**
- * ระบบ Influencer — แยกเป็น repo/แอปของตัวเองเมื่อ 2026-09-08 (repo `the-art-influencer`,
- * ใช้ Supabase ตัวเดียวกัน บัญชี/สิทธิ์ชุดเดียวกัน) ทางเข้าทุกจุดในแอปนี้ (หน้าประตู, sidebar,
- * /start, แดชบอร์ด) ชี้ไปที่นี่ — ย้ายโดเมนเมื่อไหร่แก้ค่านี้ค่าเดียว
- *
- * ยังเป็น `.vercel.app` ไปก่อน (ยังไม่ผูก subdomain) ⇒ คุกกี้ session แยกจากแอปนี้ ต้องล็อกอินอีกรอบ
- * ที่นั่น; ค่าเดียวกันถูกเก็บใน Vault `influ_app_url` ให้ edge function `send-push` ใช้ทำ URL เต็ม
- * ของแจ้งเตือน Influ (เปลี่ยนที่นี่ต้องเปลี่ยนที่ Vault ด้วย)
- */
-export const INFLU_APP_URL = "https://the-art-influencer.vercel.app";
+/** ระบบ Influencer = แอปแยก (repo `the-art-influencer`) — ค่าจริง + เหตุผลอยู่ `src/lib/influ-app-url.ts`
+    (ไฟล์เดี่ยวเพราะ next.config.ts ต้องใช้ทำ redirect ด้วย) ทางเข้าทุกจุดในแอปนี้อ่านจากตัวนี้ */
+export { INFLU_APP_URL } from "./influ-app-url";
 
 /* ---------- คลังลิงก์ไฟล์ (File Management) ---------- */
 
