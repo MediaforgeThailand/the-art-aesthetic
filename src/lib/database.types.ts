@@ -1805,6 +1805,18 @@ export interface Database {
         Args: { p: Json };
         Returns: string;
       };
+      /** state machine ของขั้นย่อย Memo ของระบบ Influencer (0116 — repo the-art-influencer);
+          แอปนี้ไม่เรียก แต่ type ต้องตรงกับ DB ที่ใช้ร่วมกัน */
+      influ_memo_transition: {
+        Args: {
+          p_id: string;
+          p_action: string;
+          p_file_path?: string | null;
+          p_file_name?: string | null;
+          p_actor_name?: string | null;
+        };
+        Returns: Json;
+      };
       /** รวมโปรไฟล์ซ้ำเป็นคนเดียวกัน (0111) — ย้ายเคส/ช่องทาง/รูป/แคมเปญจาก p_from
           ไป p_into แล้วลบ p_from; รหัสที่รอด = เลขเก่ากว่า (กติกาผู้ใช้ 2026-09-03)
           คืน id ของโปรไฟล์ที่รอด */
