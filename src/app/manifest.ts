@@ -8,7 +8,7 @@ import type { MetadataRoute } from "next";
  * - **ต้องปล่อยผ่านใน `src/proxy.ts`** เบราว์เซอร์ดึง manifest แบบไม่ส่ง cookie
  *   ถ้าไม่ปล่อยผ่านจะโดน redirect ไป /login แล้วติดตั้งไม่ได้ (เจอตอน audit 2026-08-05)
  * - start_url เป็น "/start" — หน้านั้นส่งต่อไปหน้าแรกที่ผู้ใช้คนนั้นมีสิทธิ์เข้าเอง
- *   (ทีม influ ไม่มีสิทธิ์ data จะเด้งเข้า /influencers แทน) — เปิดจากไอคอน PWA
+ *   (ทีม influ ไม่มีสิทธิ์ data จะถูกส่งไปแอป Influencer ที่แยกไปแล้ว) — เปิดจากไอคอน PWA
  *   จึงเข้าหน้างานตรงๆ ไม่ต้องผ่านหน้าประตูรวมช่องทางที่ root ("/" เปลี่ยนเป็น
  *   หน้าประตูสาธารณะเมื่อ 2026-08-19)
  * - ไอคอนสร้างจาก `scripts/gen-icons.mjs` (sharp) — แก้ดีไซน์แล้วรันใหม่
@@ -19,7 +19,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "The ART Aesthetic — ระบบทีม Aesthetic",
     short_name: "Aesthetic",
     description:
-      "ระบบจัดการหลังบ้านแผนก Aesthetic: งานทีม, Influencer, Price List และรายงาน",
+      "ระบบจัดการหลังบ้านแผนก Aesthetic: งานทีม, Wellness, Price List และรายงาน",
     lang: "th",
     dir: "ltr",
     // id คือ "ตัวตน" ของแอปที่ติดตั้งไปแล้ว — **ห้ามแก้เด็ดขาด** ไม่งั้นเบราว์เซอร์
@@ -55,12 +55,6 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "งานของทีม",
         short_name: "Task",
         url: "/tasks",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
-      },
-      {
-        name: "Influ Management",
-        short_name: "Influ",
-        url: "/influencers",
         icons: [{ src: "/icon-192.png", sizes: "192x192" }],
       },
       {

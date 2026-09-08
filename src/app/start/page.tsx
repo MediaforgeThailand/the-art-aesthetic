@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/access";
+import { INFLU_APP_URL } from "@/lib/constants";
 import { PendingApprovalClient } from "./pending-client";
 
 /**
@@ -17,13 +18,14 @@ export default async function StartPage() {
   const access = await getAccess();
 
   if (access.permissions.includes("data")) redirect("/dashboard");
-  // ระดับใดก็ได้ของระบบ Influencer (Admin/Influencer/Viewer) — บอร์ดเคสคือหน้ารวมของระบบ
+  // ระดับใดก็ได้ของระบบ Influencer (Admin/Influencer/Viewer) — ระบบนั้นเป็นแอปแยกคนละโดเมน
+  // (แยก repo 2026-09-08) /start ของที่นั่นพาเข้าบอร์ดเคสเอง; คุกกี้แยกกัน อาจต้องล็อกอินอีกรอบ
   if (
     access.permissions.includes("influ") ||
     access.permissions.includes("influ_hunter") ||
     access.permissions.includes("influ_view")
   )
-    redirect("/influencers");
+    redirect(INFLU_APP_URL);
   if (access.permissions.includes("team")) redirect("/tasks");
   if (access.permissions.includes("pricing")) redirect("/pricing");
   // ระบบ Wellness — ส่งไปหน้าแรกของระบบ แล้วที่นั่นส่งต่อไปหน้างานของบทบาทนั้นเอง

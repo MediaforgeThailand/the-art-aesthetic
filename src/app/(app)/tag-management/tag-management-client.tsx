@@ -11,9 +11,10 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { DoctorManagerPanel, type InfluLogActor } from "@/influ/public/doctor";
-import { HashtagChips } from "@/influ/public/hashtag-chips";
-import { InfluTagAvatar } from "@/influ/public/influ-tag-avatar";
+import { DoctorManagerPanel } from "@/influ-bridge/doctor-manager";
+import type { InfluLogActor } from "@/influ-bridge/influ-log";
+import { HashtagChips } from "@/influ-bridge/hashtag-chips";
+import { InfluTagAvatar } from "@/influ-bridge/influ-tag-avatar";
 import { Button, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { fuzzyFilter } from "@/lib/fuzzy";
 import {
@@ -23,7 +24,7 @@ import {
   influLabel,
   influTagHashtags,
   missingHashtagCount,
-} from "@/influ/public/constants";
+} from "@/influ-bridge/constants";
 import type {
   ContentCategoryRow,
   DoctorRow,

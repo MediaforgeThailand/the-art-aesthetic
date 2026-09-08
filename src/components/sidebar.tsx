@@ -3,7 +3,6 @@
 import {
   ClipboardList,
   Hash,
-  IdCard,
   Images,
   LayoutDashboard,
   Link2,
@@ -25,6 +24,7 @@ import { useSignedUrl } from "@/lib/use-signed-url";
 import { LogoMark, LogoWordmark } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
 import { ProfileSettingsModal } from "@/components/profile-settings";
+import { INFLU_APP_URL } from "@/lib/constants";
 import type { AppPermission } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -46,35 +46,33 @@ type NavItem = {
     (เรียงตามที่ทีมเปิดบ่อยจริง ไม่ใช่ตามลำดับใน sidebar) */
 const MOBILE_NAV_ORDER = [
   "/tasks",
-  "/influencers",
+  INFLU_APP_URL,
   "/my-tasks",
   "/dashboard",
-  "/influ-gallery",
   "/pricing",
   "/files",
 ];
 const MOBILE_NAV_MAX = 4;
 
-/** สิทธิ์ทุกระดับของระบบ Influencer (ระบบนั้นมีแถบเมนูของตัวเอง — ที่นี่เหลือแค่ทางเข้า) */
-const INFLU_PERMS: AppPermission[] = ["influ", "influ_hunter", "influ_view"];
+/** สิทธิ์ทุกระดับของระบบ Influencer + ทีมคอนเทนต์ที่ดูโปรไฟล์ influ ได้ (ระบบนั้นเป็นแอปแยก
+    คนละ repo/โดเมน — ที่นี่เหลือแค่ทางเข้า และแอปนั้นเลือกหน้าแรกตามสิทธิ์ให้เอง) */
+const INFLU_PERMS: AppPermission[] = ["influ", "influ_hunter", "influ_view", "team"];
 
 const navItems: NavItem[] = [
   // แดชบอร์ด = รายงานทุก section ในหน้าเดียว (เมนู "รายงาน" /reports ถูกถอดออก 2026-08-07 เพราะซ้ำกับหน้านี้)
   { href: "/dashboard", label: "แดชบอร์ด", icon: LayoutDashboard, perm: "data", short: "แดชบอร์ด", rail: "แดชบอร์ด" },
   { href: "/pricing", label: "Product Pricing", icon: Tags, perm: "pricing", short: "ราคา", rail: "ราคา" },
-  // ระบบ Influencer รวมเป็นปุ่มเดียว → บอร์ดเคส /influencers = หน้ารวมของระบบ (0080 —
-  // หน้ารวมเดิม /influencer-management เหลือแค่ redirect; ปฏิทิน/ต้นทุน/แดชบอร์ด/สัญญา/
-  // Log/ถังขยะ อยู่ในแถบเมนูของระบบนั้นเอง) — ทีมอื่นเข้ามาใช้ด้วยจึงแยกเป็น "แอปของตัวเอง"
+  // ระบบ Influencer = แอปแยก (repo the-art-influencer, 2026-09-08) — ปุ่มเดียวพาออกไปทั้งระบบ
+  // (next/link รับ URL เต็มได้ เบราว์เซอร์นำทางปกติ) แอปนั้น /start เลือกหน้าแรกตามสิทธิ์เอง:
+  // ระดับ influ* → บอร์ดเคส, สิทธิ์ team อย่างเดียว → แกลเลอรีโปรไฟล์ (อ่านอย่างเดียว)
   {
-    href: "/influencers",
+    href: INFLU_APP_URL,
     label: "Influencer System",
     icon: Sparkles,
     perm: INFLU_PERMS,
     short: "Influ",
     rail: "Influ",
   },
-  // โปรไฟล์ Influencer เห็นได้ทั้งทีมและทุกระดับของระบบ Influencer
-  { href: "/influ-gallery", label: "โปรไฟล์ Influencer", icon: IdCard, perm: ["team", "influ", "influ_hunter", "influ_view"], short: "โปรไฟล์", rail: "โปรไฟล์" },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
   // ศูนย์รวมแท็กของทีมคอนเทนต์ (0100) — ทะเบียนหมอ + influ ที่ติดแท็กได้ + แฮชแท็กบังคับ
   { href: "/tag-management", label: "จัดการแท็ก", icon: Hash, perm: "team", rail: "แท็ก" },
@@ -176,16 +174,9 @@ export function Sidebar({
     };
   }, []);
 
-  /** มีระดับใดระดับหนึ่งในระบบ Influencer ไหม (ใช้ยุบเมนูให้เหลือปุ่มเดียว — ดูด้านล่าง) */
-  const hasInflu = INFLU_PERMS.some((p) => permissions.includes(p));
-
   // แต่ละเมนูขึ้นกับสิทธิ์ของเมนูนั้นแยกอิสระ (แบบ Discord)
   // เมนู "จัดการบัญชี" (perm 'admin') = เฉพาะ role admin; ที่เหลือดูจาก permissions รายคน
   const visibleNav = navItems.filter((item) => {
-    // ระบบ Influencer แยกเป็นแอปของตัวเองแล้ว (route group (influ) มีแถบเมนูในตัว) —
-    // คนที่มีสิทธิ์ในระบบนั้นจึงเข้าผ่านปุ่ม "Influencer System" ปุ่มเดียว ไม่ต้องมี
-    // "โปรไฟล์ Influencer" ซ้ำอีกปุ่ม; เก็บไว้เฉพาะคนที่มีแค่สิทธิ์ team (ทางเข้าทางเดียวของเขา)
-    if (item.href === "/influ-gallery" && hasInflu) return false;
     if (item.perm === null) return true;
     if (item.perm === "admin") return isAdmin;
     if (Array.isArray(item.perm))

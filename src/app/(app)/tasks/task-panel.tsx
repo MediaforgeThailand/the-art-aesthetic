@@ -27,9 +27,9 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSyncedState } from "@/lib/use-synced-state";
-import { DoctorAvatar } from "@/influ/public/doctor";
-import { HashtagChips } from "@/influ/public/hashtag-chips";
-import { InfluTagAvatar } from "@/influ/public/influ-tag-avatar";
+import { DoctorAvatar } from "@/influ-bridge/doctor-select";
+import { HashtagChips } from "@/influ-bridge/hashtag-chips";
+import { InfluTagAvatar } from "@/influ-bridge/influ-tag-avatar";
 import { ConfirmDialog } from "@/components/ui";
 import {
   BRIEF_CONTENT_TYPES,
@@ -45,7 +45,7 @@ import {
   influLabel,
   influTagHashtags,
   missingHashtagCount,
-} from "@/influ/public/constants";
+} from "@/influ-bridge/constants";
 import { createClient } from "@/lib/supabase/client";
 import {
   MAX_UPLOAD_BYTES,

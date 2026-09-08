@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AccessNotice } from "@/components/access-notice";
 import { PageContainer } from "@/components/ui";
 import { type Access, getAccess, hasPermission } from "@/lib/access";
+import { INFLU_APP_URL } from "@/lib/constants";
 import { todayISO } from "@/lib/format";
 import {
   cutoffFor,
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
     เป็นหน้าจอแรกทุกครั้ง — พาไปหน้าที่เขาใช้งานได้แทน (ไม่มีสิทธิ์ไหนเลย = แจ้งตามเดิม) */
 function firstAllowedPath(access: Access): string | null {
   if (hasPermission(access, "team")) return "/tasks";
-  if (hasPermission(access, "influ")) return "/influencers";
+  if (hasPermission(access, "influ")) return INFLU_APP_URL;
   if (hasPermission(access, "pricing")) return "/pricing";
   return null;
 }

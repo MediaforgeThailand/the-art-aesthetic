@@ -12,7 +12,11 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LogoMark } from "@/components/logo";
-import { SALES_ASSISTANT_URL, SALES_OPERATION_URL } from "@/lib/constants";
+import {
+  INFLU_APP_URL,
+  SALES_ASSISTANT_URL,
+  SALES_OPERATION_URL,
+} from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "The ART Aesthetic — รวมช่องทางระบบ",
@@ -56,7 +60,9 @@ const CHANNELS: Channel[] = [
   },
   {
     name: "Influencers System",
-    href: "/influencers",
+    // แอปแยก (repo the-art-influencer ใช้ Supabase เดียวกัน) — ย้ายโดเมนแก้ที่ constants.ts จุดเดียว
+    href: INFLU_APP_URL,
+    external: true,
     image: "influencers-system",
     icon: Megaphone,
   },

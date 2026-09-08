@@ -1,14 +1,15 @@
 # การ deploy และการย้ายไปรันบน server ของบริษัท
 
-> อัปเดต 2026-09-08 — ส่วนที่ 1 คือของที่รันอยู่จริงตอนนี้ ส่วนที่ 2-4 คือสิ่งที่ต้องเตรียมเมื่อย้าย (ยังไม่ได้ซ้อมย้ายจริง — ควรซ้อมบน Docker ในเครื่องก่อนวันจริง ดูข้อ 5)
+> อัปเดต 2026-09-08 (วันแยก repo ระบบ Influencer — เอกสาร self-host ของระบบนั้นอยู่ที่ repo `the-art-influencer`) — ส่วนที่ 1 คือของที่รันอยู่จริงตอนนี้ ส่วนที่ 2-4 คือสิ่งที่ต้องเตรียมเมื่อย้าย (ยังไม่ได้ซ้อมย้ายจริง — ควรซ้อมบน Docker ในเครื่องก่อนวันจริง ดูข้อ 5)
 
 ## 1. topology ปัจจุบัน
 
 | ส่วน | ที่อยู่ | หมายเหตุ |
 |---|---|---|
 | เว็บแอป (Next.js) | **Vercel** โปรเจกต์ `the-art-aesthetic` region `syd1` (ใกล้ DB) — auto-deploy เมื่อ push `main`; CI (`.github/workflows/ci.yml`) ต้อง build + lint ผ่าน | โดเมน `www.theartbb.com` / `theartbb.com` (DNS ที่ GoDaddy) + `the-art-aesthetic.vercel.app` |
+| แอป Influencer (repo `the-art-influencer`) | Vercel โปรเจกต์ `the-art-influencer` — `https://the-art-influencer.vercel.app` (ยังไม่ผูกโดเมนบริษัท) | ใช้ Supabase ตัวเดียวกัน; ทางเข้าจากแอปนี้ = `INFLU_APP_URL` ใน `src/lib/constants.ts` — ย้ายโดเมนแก้ค่านี้ + Vault `influ_app_url` + Redirect URLs |
 | ฐานข้อมูล/Auth/Storage | **Supabase cloud** โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, region ap-southeast-2 Sydney) | Postgres 17 · Storage เพดานไฟล์ 500MB (ตั้งที่ Dashboard → Storage → Settings) |
-| Edge functions | Supabase (Deno) — `admin-users` (verify_jwt เปิด), `domain-auth` (ปิด — เรียกก่อนล็อกอิน), `send-push` (ปิด — ใช้ header `x-push-secret`), `sheets-sync` (ปิด — ใช้ header `x-sync-secret`) | โค้ด mirror ที่ `supabase/functions/` deploy ด้วย Supabase CLI/MCP |
+| Edge functions | Supabase (Deno) — `admin-users` (verify_jwt เปิด), `domain-auth` (ปิด — เรียกก่อนล็อกอิน), `send-push` (ปิด — ใช้ header `x-push-secret`), `sheets-sync` (ปิด — ใช้ header `x-sync-secret`) | โค้ด mirror: `sheets-sync` ที่ `supabase/functions/` ของ repo นี้; อีก 3 ตัว (backend ร่วม) ที่ repo `the-art-influencer` — deploy ด้วย Supabase CLI/MCP |
 | งานตามเวลา | pg_cron ใน DB: `vercel-warm-ping` (ทุก 5 นาที → `/api/warm`), sync ยอดขาย 00:30 UTC (→ edge `sheets-sync`) | |
 | ล็อกอิน Google | Google Cloud OAuth client → callback `https://zcoqzasbtgfccuibteji.supabase.co/auth/v1/callback`; Supabase Auth → Redirect URLs ต้องมีทุกโดเมนของแอป | ปุ่มโผล่เองเมื่อ provider เปิด (แอปอ่าน `/auth/v1/settings`) |
 | แอปพี่น้อง (repo แยก) | Sales Assistant `https://sales.theartbb.com/salestool/` (ใช้ Supabase เดียวกัน ตาราง `sa_*`), Sales Queue `https://queue.theartbb.com` | ลิงก์ถึงกันผ่านค่าใน `src/lib/constants.ts` |
@@ -24,6 +25,7 @@
 | `google_sa_key` | edge `sheets-sync` — service account อ่าน Google Sheets ของทีม DA |
 | `sheets_sync_secret`, `sheets_sync_function_url` | pg_cron เรียก `sheets-sync` |
 | `vapid_private_key`, `vapid_subject`, `push_secret`, `push_function_url` | trigger ส่ง Web Push → edge `send-push` |
+| `influ_app_url` | edge `send-push` ต่อ URL เต็มให้แจ้งเตือนของแอป Influencer (ต้องตรงกับ `INFLU_APP_URL`) |
 
 **`app_settings`** (ตารางปกติ): `vapid_public_key` (คู่กับคีย์ลับใน Vault — ออกใหม่ต้องเปลี่ยนคู่กัน), `default_reviewer_id`/`default_reviewer1b_id`/`default_reviewer2_id` (ผู้ตรวจงาน), `kpi_reset_at`
 
@@ -43,9 +45,9 @@
 ## 4. ขั้นตอนแบบ B (self-host เต็ม)
 
 1. **ตั้ง stack**: `supabase/docker` (docker-compose อย่างเป็นทางการ) — Postgres 17 image ของ Supabase มี `pg_cron`, `pg_net`, `supabase_vault` มาให้แล้ว (migration ชุดนี้ต้องการ schema `storage` และ `vault` — **รันบน Postgres เปล่าไม่ได้**); ตั้ง JWT secret + anon/service key ใหม่, `SITE_URL` = โดเมนแอป
-2. **สร้าง schema**: apply `supabase/migrations/0001..N` เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
+2. **สร้าง schema**: apply `supabase/migrations/0001..N` **จาก repo `the-art-influencer`** (ชุด canonical ของ DB ร่วม — repo นี้ไม่มีโฟลเดอร์ migrations แล้ว) เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
 3. **ย้ายข้อมูล**: `pg_dump --data-only` ของ schema `public` + `auth` (ต้องเก็บ `auth.users.id` เดิม เพราะ `profiles`/FK ทั้งระบบชี้ id นี้) + `storage.buckets/objects`; ไฟล์จริงใน bucket `documents` ต้องคัดลอกผ่าน Storage API (list → download → upload) ไม่ใช่ SQL — ประมาณ 1-2 GB
-4. **Edge functions**: deploy 4 ตัวจาก `supabase/functions/` ไปที่ edge runtime ของ stack ใหม่ (ตั้ง verify_jwt ตามตารางข้อ 1) แล้ว **ใส่ Vault secrets ใหม่** (`push_function_url`/`sheets_sync_function_url` เปลี่ยนเป็นโดเมนใหม่; VAPID ใช้คู่เดิมได้ อุปกรณ์ที่สมัคร push ไว้จะยังใช้ได้)
+4. **Edge functions**: deploy 4 ตัว (`sheets-sync` จาก repo นี้ + `admin-users`/`domain-auth`/`send-push` จาก repo `the-art-influencer`) ไปที่ edge runtime ของ stack ใหม่ (ตั้ง verify_jwt ตามตารางข้อ 1) แล้ว **ใส่ Vault secrets ใหม่** (`push_function_url`/`sheets_sync_function_url` เปลี่ยนเป็นโดเมนใหม่; VAPID ใช้คู่เดิมได้ อุปกรณ์ที่สมัคร push ไว้จะยังใช้ได้)
 5. **pg_cron**: สร้าง job sync ยอดขายใหม่ (ถ้ายังใช้) และ **ไม่ต้องสร้าง `vercel-warm-ping`** (ของ Vercel เท่านั้น)
 6. **Auth**: Google provider (สร้าง OAuth client ใหม่ callback = `https://<supabase-host>/auth/v1/callback`), Redirect URLs = โดเมนแอปใหม่, ปิด email signup ได้เลย (trigger `handle_new_user` กันอยู่แล้ว) — ระบบไม่พึ่ง SMTP (สร้างบัญชีแบบ `email_confirm=true` จาก `/accounts`)
 7. **Storage**: ตั้งเพดานไฟล์ 500MB ผ่าน Studio/Storage API (**ห้าม update ตาราง `storage.buckets` ด้วย SQL** — เคยทำให้อัปโหลดพังทั้งระบบ), เลือก backend เป็น local disk หรือ S3-compatible
@@ -78,6 +80,6 @@
 ## 7. การแก้ระบบหลังส่งมอบ
 
 - โค้ด: git (`main`) → CI build+lint → IT deploy ใหม่ (pull → `npm ci` → `npm run build` → restart)
-- schema: นักพัฒนาเขียน **ไฟล์ migration ใหม่** ใน `supabase/migrations/` + แก้ `database.types.ts` → IT รัน `supabase migration up` / `psql -f` บน DB ของบริษัท (ไม่มีใครแก้ DB ด้วยมือ)
+- schema: นักพัฒนาเขียน **ไฟล์ migration ใหม่** ใน `supabase/migrations/` ของ repo `the-art-influencer` (ตราบใดที่ยังใช้ DB ร่วมกัน) + แก้ `database.types.ts` ของทั้ง 2 repo → IT รัน `supabase migration up` / `psql -f` บน DB ของบริษัท (ไม่มีใครแก้ DB ด้วยมือ)
 - edge function: แก้ใน `supabase/functions/` → `supabase functions deploy <name>`
 - ถ้าให้นักพัฒนาต่อ DB ผ่าน VPN ได้ ขั้นตอน schema ทำเองได้เหมือนตอนอยู่ cloud (ใช้ CLI/psql แทน Supabase MCP)

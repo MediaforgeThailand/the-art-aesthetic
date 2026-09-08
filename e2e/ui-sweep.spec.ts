@@ -6,6 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
  * เก็บใน e2e/screenshots/{mobile|desktop}/ และ assert ว่าไม่มีเนื้อหาล้นจอแนวนอน
  *
  * ต้องตั้ง env: E2E_EMAIL / E2E_PASSWORD (บัญชีสิทธิ์ครบ + admin)
+ * (หน้าของระบบ Influencer อยู่ใน repo the-art-influencer ตั้งแต่ 2026-09-08 — sweep ที่นั่น)
  */
 
 const EMAIL = process.env.E2E_EMAIL ?? "";
@@ -14,17 +15,6 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const PAGES: { path: string; name: string }[] = [
   { path: "/dashboard", name: "dashboard" },
   { path: "/pricing", name: "pricing" },
-  { path: "/influencers", name: "influencers" },
-  { path: "/influ-hunting", name: "influ-hunting" },
-  { path: "/influ-doctors", name: "influ-doctors" },
-  { path: "/influ-gallery", name: "influ-gallery" },
-  { path: "/influencers/contracts", name: "influ-contracts" },
-  { path: "/influ-campaigns", name: "influ-campaigns" },
-  { path: "/influ-calendar", name: "influ-calendar" },
-  { path: "/influ-cost", name: "influ-cost" },
-  { path: "/influ-dashboard", name: "influ-dashboard" },
-  { path: "/influencer-management/logs", name: "influ-logs" },
-  { path: "/influencer-management/trash", name: "influ-trash" },
   // Wellness — 1 บทบาท = 1 หน้า (บัญชีเทสต์เป็น admin จึงเห็นครบทุกหน้า)
   { path: "/wellness", name: "wellness-home" },
   { path: "/wellness/register", name: "wellness-register" },
@@ -194,111 +184,6 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       fullPage: true,
     });
     await expectNoHorizontalOverflow(page, p.path);
-  }
-
-  /* ---------- ปฏิทินคิว: มุมมองสัปดาห์ + ตัวกรอง (ปุ่มเดียว + แผงลอย ทุกขนาดจอ) ---------- */
-  await gotoPage(page, "/influ-calendar");
-  await settle(page, 1000);
-
-  // เดสก์ท็อป (≥lg): หน้าปฏิทินต้องสูงพอดีจอ ไม่มี scroll แนวตั้ง (คำสั่งผู้ใช้ 2026-08-20)
-  const expectNoVerticalScroll = async (where: string) => {
-    if (mobile) return;
-    const oy = await page.evaluate(() => {
-      const el = document.querySelector("main > div");
-      return el ? el.scrollHeight - el.clientHeight : 0;
-    });
-    expect(oy, `${where}: หน้าปฏิทินเลื่อนแนวตั้งได้ ${oy}px`).toBeLessThanOrEqual(2);
-  };
-  await expectNoVerticalScroll("/influ-calendar มุมมองเดือน");
-
-  await page.getByRole("button", { name: "สัปดาห์", exact: true }).click();
-  await settle(page, 500);
-  await page.screenshot({
-    path: shotPath(project, "influ-calendar-week"),
-    fullPage: true,
-  });
-  await expectNoHorizontalOverflow(page, "/influ-calendar มุมมองสัปดาห์");
-  await expectNoVerticalScroll("/influ-calendar มุมมองสัปดาห์");
-  // ทุกหน้าในระบบ Influ ใช้ปุ่ม "ตัวกรอง" ตัวเดียวกัน (InfluFilterButton, 2026-08-29)
-  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
-  await settle(page, 400);
-  await page.screenshot({
-    path: shotPath(project, "influ-calendar-filters"),
-    fullPage: true,
-  });
-  await expectNoHorizontalOverflow(page, "/influ-calendar ตัวกรอง");
-  await page.keyboard.press("Escape"); // ปิดแผงตัวกรอง
-  await settle(page, 300);
-
-  /* ---------- บอร์ดเคส: แผงตัวกรองรวม + กระดิ่งแจ้งเตือนของระบบ Influ (2026-08-29) ---------- */
-  await gotoPage(page, "/influencers");
-  await settle(page, 800);
-  await page.getByRole("button", { name: "ตัวกรอง", exact: true }).click();
-  await settle(page, 400);
-  await page.screenshot({
-    path: shotPath(project, "influ-board-filters"),
-    fullPage: true,
-  });
-  await expectNoHorizontalOverflow(page, "/influencers ตัวกรอง");
-  await page.keyboard.press("Escape");
-  await settle(page, 300);
-
-  // กระดิ่งของระบบ Influ (คนละตัวกับกระดิ่งของแอปทีม) — ชื่อมีจำนวนต่อท้ายได้
-  await page.getByRole("button", { name: /^การแจ้งเตือน/ }).first().click();
-  await settle(page, 600);
-  await page.screenshot({
-    path: shotPath(project, "influ-bell"),
-    fullPage: true,
-  });
-  await expectNoHorizontalOverflow(page, "/influencers กระดิ่ง");
-  await page.keyboard.press("Escape");
-  await settle(page, 300);
-
-  /* ---------- มือถือ: แถบบนของระบบ Influencer = hamburger + drawer (2026-08-30) ----------
-       เมนูแถวล่างที่เลื่อนแนวนอนถูกถอดออก เมนูทั้งหมดอยู่ใน drawer ที่เปิดจากปุ่มมุมขวาบน */
-  if (mobile) {
-    await gotoPage(page, "/influencers");
-    await settle(page, 1000);
-    await openShotClose(
-      page,
-      project,
-      async () => {
-        await page
-          .getByRole("button", { name: "เปิดเมนูระบบ Influencer", exact: true })
-          .click();
-        return true;
-      },
-      "influ-drawer"
-    );
-
-    /* แผ่นตัวกรองของแต่ละหน้า — ปุ่มเดียวเปิดแผ่นสูง ~2/3 จอ (คำสั่งผู้ใช้ 2026-08-30)
-       assert ว่าเปิดได้ ไม่ล้นแนวนอน แล้ว Esc ปิด */
-    for (const [path, name] of [
-      ["/influencers", "influ-board-filters"],
-      ["/influ-hunting", "influ-hunting-filters"],
-      ["/influencers/contracts", "influ-followup-filters"],
-      ["/influ-cost", "influ-cost-filters"],
-    ] as const) {
-      await gotoPage(page, path);
-      await settle(page, 1000);
-      // ชื่อปุ่มมีตัวเลขจำนวนตัวกรองต่อท้ายได้ (เช่น "ตัวกรอง 2") — จับแบบ substring
-      const filterBtn = page.getByRole("button", { name: /ตัวกรอง/ }).first();
-      if ((await filterBtn.count()) === 0) continue;
-      await openShotClose(
-        page,
-        project,
-        async () => {
-          await filterBtn.click();
-          // แผ่นต้องเปิดจริง — เคยพลาดมาแล้วที่ state ของแผ่นถูกเมนู popup ปิดทับ
-          // (แค่ถ่ายรูปไม่พอ เพราะรูปที่ไม่มีแผ่นก็ผ่าน assert overflow ได้)
-          await expect(
-            page.locator('[role="dialog"][aria-modal="true"]').first()
-          ).toBeVisible({ timeout: 5_000 });
-          return true;
-        },
-        name
-      );
-    }
   }
 
   /* ---------- มือถือ: เมนู drawer + กระดิ่ง + ตั้งค่าโปรไฟล์ (แอปทีม) ---------- */
@@ -506,11 +391,6 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
     { path: "/pricing", label: "เพิ่มรายการ", name: "pricing-add-item" },
     { path: "/files", label: "เพิ่มลิงก์", name: "files-add-link" },
     { path: "/accounts", label: "เพิ่มบัญชี", name: "accounts-add-user" },
-    { path: "/influencers", label: "สร้างนัดใหม่", name: "influ-new-case" },
-    { path: "/influ-hunting", label: "เพิ่มโปรไฟล์", name: "influ-add-profile" },
-    { path: "/influ-hunting", label: "เพิ่มรายชื่อ", name: "hunting-add" },
-    { path: "/influ-campaigns", label: "แคมเปญใหม่", name: "influ-campaign-new" },
-    { path: "/influ-doctors", label: "เพิ่มแพทย์", name: "influ-doctor-add" },
     { path: "/my-tasks", label: "จัดการแท็ก", name: "my-tasks-tag-manager" },
     {
       path: "/wellness/register",
@@ -536,31 +416,6 @@ test("sweep ทุกหน้า + กด feature หลักครบ", async
       },
       a.name
     );
-  }
-
-  /* ---------- หน้าเดินงาน influencer รายคน (คนแรกบนบอร์ด) ---------- */
-  await gotoPage(page, "/influencers");
-  await settle(page, 1000);
-  await expectNot404(page, "/influencers (ก่อนเปิดหน้าเดินงาน)");
-  const influCard = page
-    .locator('[aria-label^="เปิดหน้าเดินงานของ"]')
-    .first();
-  if ((await influCard.count()) > 0) {
-    await influCard.click();
-    try {
-      await page.waitForURL("**/influencers/**", { timeout: 15_000 });
-    } catch {
-      // click แรกอาจยิงก่อน hydration ผูก handler เสร็จ (แพตเทิร์นเดียวกับ login)
-      await influCard.click();
-      await page.waitForURL("**/influencers/**", { timeout: 30_000 });
-    }
-    await settle(page, 1200);
-    await expectNot404(page, "หน้าเดินงาน influencer");
-    await page.screenshot({
-      path: shotPath(project, "influ-detail"),
-      fullPage: true,
-    });
-    await expectNoHorizontalOverflow(page, "หน้าเดินงาน influencer");
   }
 
   /* ---------- Wellness: การ์ดลูกค้าใบแรก (ภาพรวมเคสของ admin → หน้ารายละเอียด) ---------- */
