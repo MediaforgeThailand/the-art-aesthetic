@@ -32,8 +32,9 @@ export const metadata: Metadata = {
     เป็นหน้าจอแรกทุกครั้ง — พาไปหน้าที่เขาใช้งานได้แทน (ไม่มีสิทธิ์ไหนเลย = แจ้งตามเดิม) */
 function firstAllowedPath(access: Access): string | null {
   if (hasPermission(access, "team")) return "/tasks";
-  if (hasPermission(access, "influ")) return INFLU_APP_URL;
   if (hasPermission(access, "pricing")) return "/pricing";
+  // ไม่มีสิทธิ์ของแอปนี้เลย มีแต่ของระบบ Influencer → แอป Influ (แอปแยก คนละโดเมน)
+  if (hasPermission(access, "influ")) return INFLU_APP_URL;
   return null;
 }
 

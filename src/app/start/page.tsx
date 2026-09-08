@@ -18,14 +18,6 @@ export default async function StartPage() {
   const access = await getAccess();
 
   if (access.permissions.includes("data")) redirect("/dashboard");
-  // ระดับใดก็ได้ของระบบ Influencer (Admin/Influencer/Viewer) — ระบบนั้นเป็นแอปแยกคนละโดเมน
-  // (แยก repo 2026-09-08) /start ของที่นั่นพาเข้าบอร์ดเคสเอง; คุกกี้แยกกัน อาจต้องล็อกอินอีกรอบ
-  if (
-    access.permissions.includes("influ") ||
-    access.permissions.includes("influ_hunter") ||
-    access.permissions.includes("influ_view")
-  )
-    redirect(INFLU_APP_URL);
   if (access.permissions.includes("team")) redirect("/tasks");
   if (access.permissions.includes("pricing")) redirect("/pricing");
   // ระบบ Wellness — ส่งไปหน้าแรกของระบบ แล้วที่นั่นส่งต่อไปหน้างานของบทบาทนั้นเอง
@@ -39,6 +31,16 @@ export default async function StartPage() {
     redirect("/wellness");
   // admin ที่ยังไม่ได้ติ๊กสิทธิ์มองเห็นให้ตัวเอง — ส่งไปหน้าที่ตัวเองเข้าได้แน่ๆ
   if (access.isAdmin) redirect("/accounts");
+  // มีแต่สิทธิ์ของระบบ Influencer (ไม่มีสิทธิ์ของแอปนี้เลย) → ส่งไปแอป Influ ซึ่งเป็นแอปแยกคนละโดเมน
+  // (แยก repo 2026-09-08) — เช็คท้ายสุดโดยตั้งใจ (ผู้ใช้ 2026-09-08): คนที่มีสิทธิ์ของแอปหลักด้วย
+  // ต้องอยู่ที่แอปที่เพิ่งล็อกอิน แล้วกดปุ่ม "Influencer System" เองเมื่อต้องการ ไม่ใช่ถูกพาข้าม
+  // โดเมนทันที (คุกกี้แยกกัน = ต้องล็อกอินซ้ำที่นั่น)
+  if (
+    access.permissions.includes("influ") ||
+    access.permissions.includes("influ_hunter") ||
+    access.permissions.includes("influ_view")
+  )
+    redirect(INFLU_APP_URL);
 
   // ยังไม่มีสิทธิ์อะไรเลย = บัญชีที่เพิ่งสร้าง (ส่วนใหญ่มาจากเมลบริษัทที่ล็อกอินด้วย Google
   // ตาม migration 0094) — บอกตรงๆ ว่า "รออนุมัติสิทธิ์" ไม่ใช่โยนเข้า My List เงียบๆ
