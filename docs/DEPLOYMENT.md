@@ -37,7 +37,7 @@
 
 | แบบ | คืออะไร | เหมาะเมื่อ |
 |---|---|---|
-| **A. แอปบน server บริษัท + Supabase cloud เดิม** | รัน Next.js เอง (Node 22 หรือ Docker) ชี้ Supabase cloud ต่อ | ทำได้ทันที ต้องมี outbound HTTPS ไป `*.supabase.co`; ข้อมูลยังอยู่ Sydney |
+| **A. แอปบน server บริษัท + Supabase cloud เดิม** | รัน Next.js เอง (Node 22 ขึ้นไป — โปรดักชันปัจจุบันรัน Node 24 บน Vercel — หรือ Docker) ชี้ Supabase cloud ต่อ | ทำได้ทันที ต้องมี outbound HTTPS ไป `*.supabase.co`; ข้อมูลยังอยู่ Sydney |
 | **B. self-host Supabase ทั้ง stack** | Docker Compose ของ Supabase (Postgres + GoTrue + PostgREST + Storage + Realtime + Edge runtime + Studio) บน server บริษัท แล้วแอปชี้ไปที่นั่น | on-prem / air-gapped จริง — ต้องดูแล stack เอง (backup, upgrade) |
 
 โค้ดแอปไม่ต้องแก้ทั้ง 2 แบบ (ไม่ได้ใช้บริการเฉพาะ Vercel — `vercel.json` มีแค่ region) แค่เปลี่ยน env
@@ -45,13 +45,13 @@
 ## 4. ขั้นตอนแบบ B (self-host เต็ม)
 
 1. **ตั้ง stack**: `supabase/docker` (docker-compose อย่างเป็นทางการ) — Postgres 17 image ของ Supabase มี `pg_cron`, `pg_net`, `supabase_vault` มาให้แล้ว (migration ชุดนี้ต้องการ schema `storage` และ `vault` — **รันบน Postgres เปล่าไม่ได้**); ตั้ง JWT secret + anon/service key ใหม่, `SITE_URL` = โดเมนแอป
-2. **สร้าง schema**: apply `supabase/migrations/0001..N` ของ repo นี้ (ชุด canonical ของ DB ร่วม — กลับมาจาก repo Influ เมื่อ 2026-09-09) เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
+2. **สร้าง schema**: apply `supabase/migrations/0001..N` ของ repo นี้ ตามลำดับเลขไฟล์ (มีไฟล์ mirror ย้อนหลัง `0118–0128` ที่เลขไม่ตรงลำดับ apply จริงแต่ replay ตามเลขไฟล์ได้ — ตรวจความครบก่อนตามวิธีใน `supabase/README.md`) (ชุด canonical ของ DB ร่วม — กลับมาจาก repo Influ เมื่อ 2026-09-09) เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
 3. **ย้ายข้อมูล**: `pg_dump --data-only` ของ schema `public` + `auth` (ต้องเก็บ `auth.users.id` เดิม เพราะ `profiles`/FK ทั้งระบบชี้ id นี้) + `storage.buckets/objects`; ไฟล์จริงใน bucket `documents` ต้องคัดลอกผ่าน Storage API (list → download → upload) ไม่ใช่ SQL — ประมาณ 1-2 GB
 4. **Edge functions**: deploy 4 ตัวจาก `supabase/functions/` ของ repo นี้ (`sheets-sync`/`admin-users`/`domain-auth`/`send-push`) ไปที่ edge runtime ของ stack ใหม่ (ตั้ง verify_jwt ตามตารางข้อ 1) แล้ว **ใส่ Vault secrets ใหม่** (`push_function_url`/`sheets_sync_function_url` เปลี่ยนเป็นโดเมนใหม่; VAPID ใช้คู่เดิมได้ อุปกรณ์ที่สมัคร push ไว้จะยังใช้ได้)
 5. **pg_cron**: สร้าง job sync ยอดขายใหม่ (ถ้ายังใช้) และ **ไม่ต้องสร้าง `vercel-warm-ping`** (ของ Vercel เท่านั้น)
 6. **Auth**: Google provider (สร้าง OAuth client ใหม่ callback = `https://<supabase-host>/auth/v1/callback`), Redirect URLs = โดเมนแอปใหม่, ปิด email signup ได้เลย (trigger `handle_new_user` กันอยู่แล้ว) — ระบบไม่พึ่ง SMTP (สร้างบัญชีแบบ `email_confirm=true` จาก `/accounts`)
 7. **Storage**: ตั้งเพดานไฟล์ 500MB ผ่าน Studio/Storage API (**ห้าม update ตาราง `storage.buckets` ด้วย SQL** — เคยทำให้อัปโหลดพังทั้งระบบ), เลือก backend เป็น local disk หรือ S3-compatible
-8. **แอป**: `npm ci && npm run build && npm run start` (Node 22) หลัง nginx ที่มี TLS + รองรับ WebSocket (Realtime) — env 2 ตัวชี้ stack ใหม่; ยังไม่มี `Dockerfile` ใน repo (เพิ่มได้ด้วย `output: "standalone"` ของ Next ถ้า IT ต้องการ image)
+8. **แอป**: `npm ci && npm run build && npm run start` (Node ≥22 ตาม `engines` ใน package.json; Vercel ใช้ 24) หลัง nginx ที่มี TLS + รองรับ WebSocket (Realtime) — env 2 ตัวชี้ stack ใหม่; ยังไม่มี `Dockerfile` ใน repo (เพิ่มได้ด้วย `output: "standalone"` ของ Next ถ้า IT ต้องการ image)
 9. **DNS/TLS** ชี้โดเมนมาที่ server; ถ้าใช้โดเมนเดิม ให้แก้ Redirect URLs/OAuth ให้ครบก่อนสลับ
 
 ### ของที่ไม่ย้ายตาม 1:1 (ต้องตัดสินใจล่วงหน้า)
@@ -59,7 +59,7 @@
 - **Google Sheets sync ยอดขาย** — ต้องออก internet + service account; air-gapped = ปิด job แล้วนำเข้าไฟล์เอง
 - **Web Push** — server ต้องยิงออกไป push service ของ Google/Apple/Mozilla ได้; air-gapped = แจ้งเตือนในแอปยังทำงาน แต่ไม่เด้งบนอุปกรณ์
 - **ล็อกอิน Google** — ต้องออก internet ไป Google; ถ้าไม่ได้ ใช้อีเมล+รหัสผ่านที่ผู้ดูแลตั้งให้ (มีอยู่แล้ว) หรือผูก SSO ของบริษัท
-- **cold start** — ไม่มีเพราะรัน Node ค้างไว้ (job `vercel-warm-ping` ไม่ต้องมี)
+- **cold start** — ไม่มีเพราะรัน Node ค้างไว้ (job `vercel-warm-ping` จากไฟล์ 0128 ไม่ต้องมี — `select cron.unschedule('vercel-warm-ping')`)
 - **Supabase Studio** — ใช้ดู/แก้ข้อมูลแทน Dashboard cloud; งาน "จัดการบัญชี" ทำจากหน้า `/accounts` ในแอปเหมือนเดิม
 
 ## 5. ควรซ้อมก่อนย้ายจริง

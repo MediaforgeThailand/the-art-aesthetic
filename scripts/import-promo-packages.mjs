@@ -15,6 +15,10 @@
  *
  * ⚠️ ชีทต้นทุน (Cost list) **ห้ามนำเข้า** — ตารางปลายทาง anon อ่านได้ผ่านหน้าสาธารณะ
  *
+ * ตั้งแต่ migration 0085 สองตารางนี้ mirror ลง sa_promos/sa_promo_items ให้เองด้วย trigger
+ * (= ตารางที่แอปขายบน iPad อ่าน) จึงไม่ต้องทำอะไรเพิ่มหลัง import — iPad ดึงใหม่เองทุก 15 นาที
+ * ถ้าสงสัยว่าไม่ตรง สั่งซ่อมมือได้ที่ SQL editor:  select promo_mirror_sync();
+ *
  * สคริปต์นี้ "ล้างแล้วใส่ใหม่ทั้งชุด": แพ็กเกจที่ทีมแก้เอง/เพิ่มเองในหน้า /pricing (รหัส MANUAL-*)
  * จะถูกเก็บไว้ ส่วนแถวที่มาจากไฟล์จะถูกเขียนทับด้วยข้อมูลใหม่ (จับคู่ด้วยรหัสแพ็กเกจ)
  *
@@ -175,8 +179,12 @@ for (const p of packs) {
     starts_on: clean(p["เริ่มขาย"]) || null,
     ends_on: end || null,
     base_item_sku: single?.item_sku ?? null,
+    // ปกติชื่อฐานดึงจาก Item Master แต่ถ้าใบนี้มี rename (Master นิยามรวมเกินจนแยกโปรไม่ออก
+    // เช่น "นวดมือ" ที่ต้องแยกเป็นนวดหน้า/นวดตัว) ต้องใช้ชื่อบรรทัดที่แก้แล้ว ไม่งั้นถอยกลับทุกรอบ import
     base_item_name: single
-      ? (itemInfo.get(single.item_sku)?.name ?? single.item_name)
+      ? (LINE_FIX.some((f) => f.pkg === sku && f.kind === "rename" && f.item_sku === single.item_sku)
+          ? single.item_name
+          : (itemInfo.get(single.item_sku)?.name ?? single.item_name))
       : null,
     base_qty: single?.qty ?? null,
     base_unit: single?.unit ?? null,

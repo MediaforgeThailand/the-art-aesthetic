@@ -12,10 +12,21 @@
 -- ยังเป็นของ sq_members + RPC/RLS ของ sq_* เหมือนเดิม สิทธิ์นี้คุมแค่ "เห็นเมนู/เข้าหน้า"
 -- ============================================================
 
-update public.profiles p
-   set permissions = array_append(coalesce(p.permissions, '{}'::text[]), 'sales_queue')
- where not ('sales_queue' = any(coalesce(p.permissions, '{}'::text[])))
-   and (
-     p.role = 'admin'
-     or p.id in (select m.user_id from public.sq_members m where m.is_active)
-   );
+-- 2026-09-09 (แก้ไฟล์ที่ apply แล้วเพื่อ replay เท่านั้น — เนื้อหาบนโปรดักชันไม่เปลี่ยน):
+-- ไฟล์ schema ของ sq_* ถูกกู้เข้า repo ทีหลังเป็น 0120–0127 จึงมาหลังไฟล์นี้ในลำดับ replay
+-- บน stack เปล่าตาราง sq_members ยังไม่มีตอนรันไฟล์นี้ → ข้าม backfill (ข้อมูลจริงมากับ dump อยู่แล้ว)
+-- plpgsql เตรียม statement ตอนรันถึงบรรทัดนั้น การ return ก่อนจึงไม่ parse ชื่อตารางที่ยังไม่มี
+do $$
+begin
+  if to_regclass('public.sq_members') is null then
+    raise notice '0117: skip backfill — sq_members not created yet (fresh replay)';
+    return;
+  end if;
+  update public.profiles p
+     set permissions = array_append(coalesce(p.permissions, '{}'::text[]), 'sales_queue')
+   where not ('sales_queue' = any(coalesce(p.permissions, '{}'::text[])))
+     and (
+       p.role = 'admin'
+       or p.id in (select m.user_id from public.sq_members m where m.is_active)
+     );
+end $$;
