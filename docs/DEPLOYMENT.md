@@ -45,7 +45,7 @@
 ## 4. ขั้นตอนแบบ B (self-host เต็ม)
 
 1. **ตั้ง stack**: `supabase/docker` (docker-compose อย่างเป็นทางการ) — Postgres 17 image ของ Supabase มี `pg_cron`, `pg_net`, `supabase_vault` มาให้แล้ว (migration ชุดนี้ต้องการ schema `storage` และ `vault` — **รันบน Postgres เปล่าไม่ได้**); ตั้ง JWT secret + anon/service key ใหม่, `SITE_URL` = โดเมนแอป
-2. **สร้าง schema**: apply `supabase/migrations/0001..N` **จาก repo `the-art-influencer`** (ชุด canonical ของ DB ร่วม — repo นี้ไม่มีโฟลเดอร์ migrations แล้ว) เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
+2. **สร้าง schema**: apply `supabase/migrations/0001..N` ของ repo นี้ (ชุด canonical ของ DB ร่วม — กลับมาจาก repo Influ เมื่อ 2026-09-09) เรียงลำดับ — `supabase db push --db-url "$DB_URL"` หรือ `psql -v ON_ERROR_STOP=1 -f` ทีละไฟล์ (เคย audit แล้วว่า replay บน stack เปล่าผ่าน)
 3. **ย้ายข้อมูล**: `pg_dump --data-only` ของ schema `public` + `auth` (ต้องเก็บ `auth.users.id` เดิม เพราะ `profiles`/FK ทั้งระบบชี้ id นี้) + `storage.buckets/objects`; ไฟล์จริงใน bucket `documents` ต้องคัดลอกผ่าน Storage API (list → download → upload) ไม่ใช่ SQL — ประมาณ 1-2 GB
 4. **Edge functions**: deploy 4 ตัว (`sheets-sync` จาก repo นี้ + `admin-users`/`domain-auth`/`send-push` จาก repo `the-art-influencer`) ไปที่ edge runtime ของ stack ใหม่ (ตั้ง verify_jwt ตามตารางข้อ 1) แล้ว **ใส่ Vault secrets ใหม่** (`push_function_url`/`sheets_sync_function_url` เปลี่ยนเป็นโดเมนใหม่; VAPID ใช้คู่เดิมได้ อุปกรณ์ที่สมัคร push ไว้จะยังใช้ได้)
 5. **pg_cron**: สร้าง job sync ยอดขายใหม่ (ถ้ายังใช้) และ **ไม่ต้องสร้าง `vercel-warm-ping`** (ของ Vercel เท่านั้น)
@@ -80,6 +80,6 @@
 ## 7. การแก้ระบบหลังส่งมอบ
 
 - โค้ด: git (`main`) → CI build+lint → IT deploy ใหม่ (pull → `npm ci` → `npm run build` → restart)
-- schema: นักพัฒนาเขียน **ไฟล์ migration ใหม่** ใน `supabase/migrations/` ของ repo `the-art-influencer` (ตราบใดที่ยังใช้ DB ร่วมกัน) + แก้ `database.types.ts` ของทั้ง 2 repo → IT รัน `supabase migration up` / `psql -f` บน DB ของบริษัท (ไม่มีใครแก้ DB ด้วยมือ)
+- schema: นักพัฒนาเขียน **ไฟล์ migration ใหม่** ใน `supabase/migrations/` ของ repo นี้ (ระบบ Influ ที่ยังใช้ DB ร่วมกันก็เขียนที่นี่) + แก้ `database.types.ts` ของทั้ง 2 repo → IT รัน `supabase migration up` / `psql -f` บน DB ของบริษัท (ไม่มีใครแก้ DB ด้วยมือ)
 - edge function: แก้ใน `supabase/functions/` → `supabase functions deploy <name>`
 - ถ้าให้นักพัฒนาต่อ DB ผ่าน VPN ได้ ขั้นตอน schema ทำเองได้เหมือนตอนอยู่ cloud (ใช้ CLI/psql แทน Supabase MCP)

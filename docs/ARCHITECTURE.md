@@ -61,7 +61,7 @@ Supabase ─ Postgres 17 (RLS) ─ Auth ─ Storage `documents` ─ Realtime ─
 - Influ → แอปนี้: `influ_procedure_items.price_item_id` → `price_items`, `influ_procedure_items.promo_package_id` → `promo_packages` (เมนูหัตถการ + รหัสโปรสำหรับแฮชแท็ก) — **2 ตารางนี้ห้ามลบ**
 - ทุกระบบอ่าน `profiles` (ชื่อ/รูป/สิทธิ์)
 
-**migrations** ของ DB ที่ใช้ร่วมกันอยู่ที่ repo `the-art-influencer` (`supabase/migrations/0001..N` — canonical); ดู `supabase/README.md`
+**migrations** ของ DB ที่ใช้ร่วมกันอยู่ที่ repo นี้ (`supabase/migrations/0001..N` — canonical ตั้งแต่ 2026-09-09; repo Influ มีแต่ README ชี้มา); ดู `supabase/README.md`
 
 ตารางที่ยังอยู่แต่ไม่มี UI แล้ว (เก็บข้อมูลเก่า): `price_promotions`, `documents`, `data_imports` (ของ Influ: `influ_followups`, `influ_campaigns`, `influ_signatures`)
 
@@ -90,7 +90,7 @@ Web Push: service worker `public/sw.js` (มีไว้เพื่อ push เ
 
 ## 8. กติกาการพัฒนาที่ต้องรู้ก่อนแก้โค้ด
 
-- **schema เปลี่ยน = ไฟล์ migration ใหม่ใน repo `the-art-influencer` (`supabase/migrations/` — canonical ของ DB ร่วม) + แก้ `database.types.ts` ของทั้ง 2 repo** (ห้ามแก้ไฟล์ migration เก่า, ห้ามแก้ DB มือ) — เปลี่ยนความหมายของคอลัมน์เดิมต้อง UPDATE ย้ายข้อมูลเก่าในไฟล์เดียวกัน
+- **schema เปลี่ยน = ไฟล์ migration ใหม่ใน `supabase/migrations/` ของ repo นี้ (canonical ของ DB ร่วม — รวมฟีเจอร์ของ Influ ด้วย) + แก้ `database.types.ts` ของทั้ง 2 repo** (ห้ามแก้ไฟล์ migration เก่า, ห้ามแก้ DB มือ) — เปลี่ยนความหมายของคอลัมน์เดิมต้อง UPDATE ย้ายข้อมูลเก่าในไฟล์เดียวกัน
 - **supabase-js builder เป็น lazy thenable** — `await` หรือ `.then()` เสมอ ไม่งั้นไม่ยิง request (fire-and-forget ต้องมี `.then()` ปิดท้าย)
 - `npm run lint` ต้องเขียว (CI บล็อค) — กฎ react-hooks ของ Next 16 (ห้าม setState ใน effect เพื่อ sync props → ใช้ `useSyncedState`, ห้าม `Date.now()` ระหว่าง render → helper ระดับโมดูลหรือรับ "วันนี้" จาก server)
 - อัพโหลดไฟล์ผ่าน `prepareUploadFiles → tooLargeSummary → uploadWithProgress` เสมอ (ย่อรูป/บีบวิดีโอ H.264 ก่อนเช็คเพดาน 500MB)

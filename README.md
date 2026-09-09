@@ -67,7 +67,7 @@ docs/              # เอกสารสถาปัตยกรรม / ก�
 
 ## ฐานข้อมูลและ backend
 
-- **Schema = ไฟล์ migration เท่านั้น** — ชุด canonical `0001..N` ของ DB ที่ใช้ร่วมกันอยู่ที่ repo `the-art-influencer` (`supabase/migrations/`) ตั้งแต่แยก repo: schema เปลี่ยนเพื่อฟีเจอร์ของแอปนี้ก็ต้องเขียนไฟล์ที่นั่น แล้วแก้ `src/lib/database.types.ts` ของทั้ง 2 repo ให้ตรง ห้ามแก้ DB ด้วยมือ (ดู [supabase/README.md](supabase/README.md))
+- **Schema = ไฟล์ migration เท่านั้น** — ชุด canonical `0001..N` ของ DB ที่ใช้ร่วมกันอยู่ที่ repo นี้ (`supabase/migrations/` — กลับมาจาก repo Influ เมื่อ 2026-09-09 ตามโมเดล 2 ระบบ): schema เปลี่ยนเพื่อฟีเจอร์ของแอปไหนก็เขียนไฟล์ที่นี่ แล้วแก้ `src/lib/database.types.ts` ของทั้ง 2 repo ให้ตรง ห้ามแก้ DB ด้วยมือ (ดู [supabase/README.md](supabase/README.md))
 - **Edge functions**: `sheets-sync` (ดึงยอดขายจาก Google Sheets รายวัน — mirror ที่นี่); `admin-users` (จัดการบัญชี), `domain-auth` (เช็คอีเมลตอนล็อกอิน), `send-push` (Web Push) เป็น backend ร่วม mirror อยู่ repo Influ — หน้า `/accounts` และ `/login` ของแอปนี้ยังเรียกใช้เหมือนเดิม
 - **Secrets ไม่อยู่ใน repo** — เก็บใน Supabase Vault (คีย์ Google service account, VAPID, secret ของ function, `influ_app_url`) และ env ของ edge function; รายการครบอยู่ใน [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **Storage**: bucket `documents` — ไฟล์ของ Task (`tasks/`), Wellness (`wellness/`), My List (`my-tasks/`), รูปโปรไฟล์ (`avatars/`); ของระบบ Influencer (`influencers/`, `influ-profiles/`, `doctors/`, `templates/`) อยู่ bucket เดียวกัน
