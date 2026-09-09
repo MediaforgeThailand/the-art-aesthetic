@@ -6,6 +6,7 @@ import {
   Images,
   LayoutDashboard,
   Link2,
+  ListOrdered,
   ListTodo,
   LogOut,
   Menu,
@@ -47,6 +48,7 @@ type NavItem = {
 const MOBILE_NAV_ORDER = [
   "/tasks",
   INFLU_APP_URL,
+  "/queue",
   "/my-tasks",
   "/dashboard",
   "/pricing",
@@ -74,6 +76,9 @@ const navItems: NavItem[] = [
     rail: "Influ",
   },
   { href: "/tasks", label: "Task", icon: ClipboardList, perm: "team", short: "งาน", rail: "Task" },
+  // Sales Queue = ระบบคิวลูกค้าออนไลน์ของทีม BC (รวมเข้าแอปนี้ 2026-09-09 — เดิม queue.theartbb.com)
+  // แท็บภายในระบบ (คิว/วางข้อมูล/ทีม/อันดับ/ประวัติ) อยู่ที่ (app)/queue/queue-nav.tsx
+  { href: "/queue", label: "Sales Queue", icon: ListOrdered, perm: "sales_queue", short: "คิว", rail: "คิว" },
   // ศูนย์รวมแท็กของทีมคอนเทนต์ (0100) — ทะเบียนหมอ + influ ที่ติดแท็กได้ + แฮชแท็กบังคับ
   { href: "/tag-management", label: "จัดการแท็ก", icon: Hash, perm: "team", rail: "แท็ก" },
   // คลังไฟล์รวมของงาน (ดู/ดาวน์โหลดอย่างเดียว — อัพโหลดทำที่การ์ดงาน)

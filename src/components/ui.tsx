@@ -85,9 +85,13 @@ export function Input({
 
 export function Textarea({
   className = "",
+  ref,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${controlBase} ${className}`} {...props} />;
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  /** React 19 รับ ref เป็น prop ธรรมดา — หน้าวางข้อมูลคิวใช้โฟกัส/เลือกข้อความในช่อง */
+  ref?: React.Ref<HTMLTextAreaElement>;
+}) {
+  return <textarea ref={ref} className={`${controlBase} ${className}`} {...props} />;
 }
 
 export function Select({

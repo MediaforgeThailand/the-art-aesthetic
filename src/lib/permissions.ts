@@ -49,6 +49,12 @@ export const PERMISSION_META: {
     detail: "เข้าหน้าจัดการราคา (Price List) — หน้าราคาสาธารณะยังเปิดให้ทุกคน",
   },
   {
+    key: "sales_queue",
+    label: "Sales Queue (คิวลูกค้าออนไลน์)",
+    detail:
+      "เข้าหน้าคิวลูกค้าของทีม Beauty Consult — บทบาทในระบบ (BC / แอดมิน / ผู้ดูอย่างเดียว) ตั้งที่หน้า “ทีม” ในระบบคิว ไม่ใช่ที่นี่",
+  },
+  {
     key: "wellness_bc",
     label: "Wellness — BC (Beauty Consult)",
     detail:

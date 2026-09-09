@@ -34,9 +34,133 @@ export type ProfileRow = {
       'influ_view'   = ดูเฉยๆ (อ่านได้ทุกหน้า แก้/เพิ่ม/ลบไม่ได้เลย)
       'influ_hunter' = Hunter (สร้างการ์ด + แก้ + ลบเคสของตัวเองได้ แต่ไม่ใช่ผู้ดูแล)
       'influ'        = ผู้ดูแลระบบ Influ (ทำได้ทุกอย่าง + log/ถังขยะ/ทะเบียนหมอ) */
+/* ---------- Sales Queue (sq_* — ระบบคิวลูกค้าออนไลน์ของทีม Beauty Consult) ----------
+   รวมเข้าแอปนี้ 2026-09-09 จากแอป Next แยก (the-art-sales-assistant/queue); ค่า enum
+   (บทบาท/สถานะ/ประเภทเคส) และ label อยู่ที่ src/lib/queue/types.ts — ที่นี่เป็นแค่ shape ของแถว */
+export type SqMemberRow = {
+  id: string;
+  user_id: string;
+  display_name: string;
+  employee_code: string | null;
+  /** bc | admin | viewer */
+  role: string;
+  is_active: boolean;
+  queue_enabled: boolean;
+  /** available | busy | paused | offline */
+  availability: string;
+  joined_at: string;
+  deactivated_at: string | null;
+  deactivation_reason: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SqCaseRow = {
+  id: string;
+  case_no: number;
+  /** online | walk_in | existing | referral | drag_surgery | other */
+  case_type: string;
+  /** open | pending_manual_assignment | cancelled */
+  status: string;
+  customer_name: string;
+  customer_age: number | null;
+  phone: string | null;
+  line_id: string | null;
+  appointment_date: string | null;
+  appointment_time: string | null;
+  treatment_main: string | null;
+  treatment_detail: string | null;
+  doctor: string | null;
+  branch: string | null;
+  channel: string | null;
+  seller_name: string | null;
+  owner_bc_name: string | null;
+  discussion_start_date: string | null;
+  closed_date: string | null;
+  note: string | null;
+  dup_key: string | null;
+  idempotency_key: string | null;
+  force_reason: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SqAssignmentRow = {
+  id: string;
+  case_id: string;
+  member_id: string | null;
+  /** assigned | acknowledged | reassigned | pending_manual_assignment | cancelled | voided */
+  status: string;
+  rank_snapshot: number | null;
+  weight_snapshot: number;
+  daily_ratio: number | null;
+  monthly_ratio: number | null;
+  seq_today: number | null;
+  quota_consumed: boolean;
+  assigned_date: string;
+  period_key: string;
+  assigned_at: string;
+  acknowledged_at: string | null;
+  reassigned_at: string | null;
+  voided_at: string | null;
+  reason: string | null;
+  replaced_by: string | null;
+  created_by: string | null;
+};
+
+export type SqRankingPeriodRow = {
+  id: string;
+  period_key: string;
+  version: number;
+  status: string;
+  source_note: string | null;
+  published_by: string | null;
+  published_at: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type SqRankingEntryRow = {
+  id: string;
+  period_id: string;
+  member_id: string;
+  rank: number;
+  weight: number;
+  drag_paid_bills: number;
+  drag_net_sales: number;
+  cancel_count: number | null;
+  source_name: string | null;
+  source_row: number | null;
+  created_at: string;
+};
+
+export type SqSettingRow = {
+  key: string;
+  value: Json;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+export type SqAuditLogRow = {
+  id: number;
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  reason: string | null;
+  summary: Json;
+  created_at: string;
+};
+
 export type AppPermission =
   | "data"
   | "team"
+  // Sales Queue (คิวลูกค้าออนไลน์ของทีม BC — รวมเข้าแอปนี้ 2026-09-09, migration 0117):
+  // เห็นเมนู/เข้าหน้า /queue; บทบาทในระบบ (BC/แอดมิน/ผู้ดูอย่างเดียว) ยังอยู่ที่ sq_members
+  | "sales_queue"
   | "influ"
   | "influ_hunter"
   | "influ_view"
@@ -1764,6 +1888,51 @@ export interface Database {
         Update: Partial<WellnessAppointmentRow>;
         Relationships: [];
       };
+      /* ---------- Sales Queue — sq_* (รวมเข้าแอปนี้ 2026-09-09; สร้างจาก migration sales_queue_*)
+         คอลัมน์ตาม DB จริง ณ วันย้าย; ฝั่งแอปอ่านผ่าน src/lib/queue/data.ts (cast เป็น shape ของตัวเอง)
+         และเขียนผ่าน RPC sq_* เท่านั้น (client ไม่มีสิทธิ์ insert/update ตารางเหล่านี้ตรง) ---------- */
+      sq_members: {
+        Row: SqMemberRow;
+        Insert: Partial<SqMemberRow>;
+        Update: Partial<SqMemberRow>;
+        Relationships: [];
+      };
+      sq_cases: {
+        Row: SqCaseRow;
+        Insert: Partial<SqCaseRow>;
+        Update: Partial<SqCaseRow>;
+        Relationships: [];
+      };
+      sq_assignments: {
+        Row: SqAssignmentRow;
+        Insert: Partial<SqAssignmentRow>;
+        Update: Partial<SqAssignmentRow>;
+        Relationships: [];
+      };
+      sq_ranking_periods: {
+        Row: SqRankingPeriodRow;
+        Insert: Partial<SqRankingPeriodRow>;
+        Update: Partial<SqRankingPeriodRow>;
+        Relationships: [];
+      };
+      sq_ranking_entries: {
+        Row: SqRankingEntryRow;
+        Insert: Partial<SqRankingEntryRow>;
+        Update: Partial<SqRankingEntryRow>;
+        Relationships: [];
+      };
+      sq_settings: {
+        Row: SqSettingRow;
+        Insert: Partial<SqSettingRow>;
+        Update: Partial<SqSettingRow>;
+        Relationships: [];
+      };
+      sq_audit_log: {
+        Row: SqAuditLogRow;
+        Insert: Partial<SqAuditLogRow>;
+        Update: Partial<SqAuditLogRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     /* RPC aggregate ยอดขาย (migration 0038) — คืน jsonb ให้ cast เป็น type ใน report-utils */
@@ -1815,6 +1984,81 @@ export interface Database {
           p_file_name?: string | null;
           p_actor_name?: string | null;
         };
+        Returns: Json;
+      };
+      /* ---------- Sales Queue — RPC sq_* (SECURITY DEFINER ตรวจสิทธิ์ซ้ำที่ DB; ผู้เรียกอยู่ใน
+         src/lib/queue/actions.ts + session.ts) ---------- */
+      sq_my_access: { Args: Record<string, never>; Returns: Json };
+      sq_is_admin: { Args: Record<string, never>; Returns: boolean };
+      sq_is_member: { Args: Record<string, never>; Returns: boolean };
+      sq_can_view_all: { Args: Record<string, never>; Returns: boolean };
+      sq_my_member_id: { Args: Record<string, never>; Returns: string | null };
+      sq_create_case: {
+        Args: {
+          p_payload: Json;
+          p_case_type: string;
+          p_idempotency_key: string;
+          p_force?: boolean;
+          p_force_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      sq_acknowledge: { Args: { p_assignment_id: string }; Returns: Json };
+      sq_reassign: {
+        Args: {
+          p_assignment_id: string;
+          p_reason: string;
+          p_target_member_id?: string | null;
+        };
+        Returns: Json;
+      };
+      sq_assign_pending: {
+        Args: {
+          p_assignment_id: string;
+          p_target_member_id?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      sq_void_assignment: {
+        Args: {
+          p_assignment_id: string;
+          p_reason: string;
+          p_cancel_case?: boolean;
+        };
+        Returns: Json;
+      };
+      sq_update_case: {
+        Args: { p_case_id: string; p_patch: Json; p_reason?: string | null };
+        Returns: Json;
+      };
+      sq_add_member: {
+        Args: {
+          p_user_id: string;
+          p_employee_code?: string | null;
+          p_role?: string;
+          p_queue_enabled?: boolean | null;
+        };
+        Returns: Json;
+      };
+      sq_update_member: {
+        Args: {
+          p_member_id: string;
+          p_is_active?: boolean | null;
+          p_queue_enabled?: boolean | null;
+          p_availability?: string | null;
+          p_role?: string | null;
+          p_employee_code?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      sq_set_my_availability: {
+        Args: { p_availability: string };
+        Returns: Json;
+      };
+      sq_publish_ranking: {
+        Args: { p_period_key: string; p_entries: Json; p_source_note?: string | null };
         Returns: Json;
       };
       /** รวมโปรไฟล์ซ้ำเป็นคนเดียวกัน (0111) — ย้ายเคส/ช่องทาง/รูป/แคมเปญจาก p_from

@@ -354,7 +354,8 @@ export const SALES_ASSISTANT_FROM = "sales";
  * ลิงก์ `the-art-sales-queue.vercel.app` เดิมยังเข้าได้ แต่ห้ามเอากลับมาเป็นค่าในโค้ด
  * ย้ายโดเมนอีกแก้ค่านี้จุดเดียว การ์ดบนหน้าประตูจะตามเอง (ไม่มีสัญญา referrer ข้าม repo แบบแอปขาย)
  */
-export const SALES_OPERATION_URL: string | null = "https://queue.theartbb.com";
+// SALES_OPERATION_URL ถูกถอด 2026-09-09 — Sales Queue รวมเข้าแอปนี้เป็นหน้า /queue แล้ว
+// (โดเมน queue.theartbb.com เดิมให้ redirect มาที่ www.theartbb.com/queue ที่ Vercel/DNS)
 
 /** ระบบ Influencer = แอปแยก (repo `the-art-influencer`) — ค่าจริง + เหตุผลอยู่ `src/lib/influ-app-url.ts`
     (ไฟล์เดี่ยวเพราะ next.config.ts ต้องใช้ทำ redirect ด้วย) ทางเข้าทุกจุดในแอปนี้อ่านจากตัวนี้ */

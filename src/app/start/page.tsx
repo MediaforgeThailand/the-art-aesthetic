@@ -20,6 +20,8 @@ export default async function StartPage() {
   if (access.permissions.includes("data")) redirect("/dashboard");
   if (access.permissions.includes("team")) redirect("/tasks");
   if (access.permissions.includes("pricing")) redirect("/pricing");
+  // Sales Queue (คิวลูกค้าของทีม BC — รวมเข้าแอปนี้ 2026-09-09)
+  if (access.permissions.includes("sales_queue")) redirect("/queue");
   // ระบบ Wellness — ส่งไปหน้าแรกของระบบ แล้วที่นั่นส่งต่อไปหน้างานของบทบาทนั้นเอง
   // (BC → ทะเบียนลูกค้า, Lab → อัพผลแลบ, แพทย์ → คิวตรวจ, Admin/หลายบทบาท → หน้าเลือกงาน)
   if (

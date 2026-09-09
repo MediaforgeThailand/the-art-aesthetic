@@ -15,7 +15,7 @@ import { LogoMark } from "@/components/logo";
 import {
   INFLU_APP_URL,
   SALES_ASSISTANT_URL,
-  SALES_OPERATION_URL,
+
 } from "@/lib/constants";
 
 export const metadata: Metadata = {
@@ -87,10 +87,10 @@ const CHANNELS: Channel[] = [
   },
   {
     name: "Sales Operation",
-    // ระบบจัดคิวลูกค้าของทีม Beauty Consult (แอปแยก) — ย้ายโดเมนแก้ที่ constants.ts จุดเดียว
-    // null เมื่อไหร่ = การ์ดจางกดไม่ได้ + ป้าย "เร็วๆ นี้" เอง
-    href: SALES_OPERATION_URL,
-    external: true,
+    // ระบบจัดคิวลูกค้าของทีม Beauty Consult — รวมเข้าแอปนี้แล้ว 2026-09-09 (เดิมแอปแยกที่
+    // queue.theartbb.com) จึงเป็นลิงก์ภายในเหมือน Aesthetics Team; guard ของหน้า /queue
+    // เป็นคนเช็คสิทธิ์ (sales_queue หรือสมาชิกทีมคิว)
+    href: "/queue",
     image: "sales-operation",
     icon: BarChart3,
   },

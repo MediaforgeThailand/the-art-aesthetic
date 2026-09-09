@@ -12,6 +12,8 @@ const VALID_PERMISSIONS = new Set([
   "influ_hunter",
   "influ",
   "pricing",
+  // Sales Queue — เมนู/หน้า /queue ของแอปหลัก (รวมเข้ามา 2026-09-09; บทบาทในระบบอยู่ที่ sq_members)
+  "sales_queue",
   // ระบบ Wellness — บทบาทอิสระ 4 ตัว ติ๊กรวมกันได้ (ดู PERMISSION_META group "wellness")
   "wellness_bc",
   "wellness_lab",

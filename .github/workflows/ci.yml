@@ -72,3 +72,7 @@ jobs:
 
       - name: ESLint
         run: npm run lint
+
+      # unit test ของ logic ล้วน (ตัวอ่านข้อความ/เครื่องแจกคิว/นำเข้าอันดับของ Sales Queue — vitest, ไม่แตะ DOM/DB)
+      - name: Unit tests
+        run: npm test

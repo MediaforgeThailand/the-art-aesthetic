@@ -6,6 +6,7 @@
 |---|---|---|---|
 | **Team** | `src/app/(app)/` | ทีมคอนเทนต์ / ผู้บริหาร | บอร์ดงาน + ตรวจงาน + คิวโพส, KPI คอนเทนต์, คลังไฟล์, My List, แดชบอร์ดยอดขาย, หลังบ้าน Price List, จัดการแท็ก (รวมทะเบียนหมอ), จัดการบัญชี/สิทธิ์ของทุกแอป |
 | **Wellness** | `src/app/(wellness)/` | BC / Lab / Admin / แพทย์ | คิวลูกค้า wellness: ลงทะเบียน → ผลเลือด → โทรนัด → ลงคิว → ตรวจ |
+| **Sales Queue** | `src/app/(app)/queue/` + `src/lib/queue/` | ทีม Beauty Consult (สิทธิ์ `sales_queue`; บทบาท BC / แอดมิน / ผู้ดูอย่างเดียวใน `sq_members`) | แจกคิวลูกค้าออนไลน์ให้ BC อัตโนมัติตามน้ำหนักอันดับ Drag รายเดือน — รวมเข้าแอปนี้ 2026-09-09 (เดิม `queue.theartbb.com` ใน repo Sales Assistant); logic มี unit test `npm test` |
 | หน้าสาธารณะ | `src/app/page.tsx`, `src/app/price-list/` | ทุกคน (ไม่ต้องล็อกอิน) | หน้าประตูรวมช่องทาง (`/`) และ Price List (`/price-list`) |
 | **Influencer System** | repo แยก **[`the-art-influencer`](https://github.com/MediaforgeThailand/the-art-influencer)** (ตั้งแต่ 2026-09-08) | ทีมการตลาด Influ | ดูแล influencer ตั้งแต่ล่ารายชื่อ → เปิดเคส → Memo → สัญญา → ติดตามโพส — **ระบบที่จะส่งมอบให้ทีม IT ผูก API และย้ายไป server บริษัท**; ใช้ Supabase ตัวเดียวกับที่นี่ ทางเข้าจากหน้าประตู/sidebar ชี้ไป `INFLU_APP_URL` (`src/lib/constants.ts`) |
 
@@ -59,7 +60,7 @@ src/
   proxy.ts         # auth guard ทุก request (Next 16 ใช้ proxy.ts แทน middleware.ts)
 supabase/
   README.md        # migrations ย้ายไป repo the-art-influencer แล้ว (ชุด canonical ของ DB ที่ใช้ร่วมกัน)
-  functions/       # edge function ของ Team: sheets-sync (admin-users/domain-auth/send-push อยู่ repo Influ)
+  functions/       # edge functions ทั้งหมด: sheets-sync, admin-users, domain-auth, send-push (canonical ที่นี่ตั้งแต่ 2026-09-09)
 e2e/               # Playwright specs
 scripts/           # สคริปต์นำเข้าข้อมูล (Price List/โปร) + สร้างไอคอน
 docs/              # เอกสารสถาปัตยกรรม / การ deploy
@@ -68,16 +69,16 @@ docs/              # เอกสารสถาปัตยกรรม / ก�
 ## ฐานข้อมูลและ backend
 
 - **Schema = ไฟล์ migration เท่านั้น** — ชุด canonical `0001..N` ของ DB ที่ใช้ร่วมกันอยู่ที่ repo นี้ (`supabase/migrations/` — กลับมาจาก repo Influ เมื่อ 2026-09-09 ตามโมเดล 2 ระบบ): schema เปลี่ยนเพื่อฟีเจอร์ของแอปไหนก็เขียนไฟล์ที่นี่ แล้วแก้ `src/lib/database.types.ts` ของทั้ง 2 repo ให้ตรง ห้ามแก้ DB ด้วยมือ (ดู [supabase/README.md](supabase/README.md))
-- **Edge functions**: `sheets-sync` (ดึงยอดขายจาก Google Sheets รายวัน — mirror ที่นี่); `admin-users` (จัดการบัญชี), `domain-auth` (เช็คอีเมลตอนล็อกอิน), `send-push` (Web Push) เป็น backend ร่วม mirror อยู่ repo Influ — หน้า `/accounts` และ `/login` ของแอปนี้ยังเรียกใช้เหมือนเดิม
+- **Edge functions** (mirror ที่ `supabase/functions/` ของ repo นี้ทั้งหมด — deploy ผ่าน MCP/CLI ไม่ auto จาก git): `sheets-sync` (ดึงยอดขายจาก Google Sheets รายวัน), `admin-users` (จัดการบัญชี/สิทธิ์ของทุกแอป), `domain-auth` (เช็คอีเมลตอนล็อกอิน — ใช้ทั้ง 2 แอป), `send-push` (Web Push ของทั้ง 2 แอป)
 - **Secrets ไม่อยู่ใน repo** — เก็บใน Supabase Vault (คีย์ Google service account, VAPID, secret ของ function, `influ_app_url`) และ env ของ edge function; รายการครบอยู่ใน [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 - **Storage**: bucket `documents` — ไฟล์ของ Task (`tasks/`), Wellness (`wellness/`), My List (`my-tasks/`), รูปโปรไฟล์ (`avatars/`); ของระบบ Influencer (`influencers/`, `influ-profiles/`, `doctors/`, `templates/`) อยู่ bucket เดียวกัน
 - **RLS**: ตารางส่วนใหญ่เป็น "ผู้ใช้ที่ล็อกอินเข้าถึงได้ทั้งหมด" โดยตั้งใจ (ระบบภายในแผนก) — สิทธิ์การมองเห็น/แก้ไขคุมที่ชั้นแอปผ่าน `permissions` ยกเว้นตารางส่วนตัว (`list_*`, `push_subscriptions`, `influ_notifications`) และถังขยะ/RPC ของ Influ ที่มี guard ใน DB
-- DB เดียวกันมีผู้ใช้อีก 3 แอป: ระบบ Influencer (`influ_*`, `influencers`, `doctors`), Sales Assistant (`sa_*`), Sales Queue (`sq_*`) — **ห้ามลบ/แก้ตารางของแอปอื่น**; FK ข้ามระบบกับ Influ มี 4 เส้น (`tasks.influencer_id/doctor_id` → Influ, `influ_procedure_items.price_item_id/promo_package_id` → `price_items`/`promo_packages` ที่นี่ — **ห้ามลบ 2 ตารางนี้**)
+- DB เดียวกันมีผู้ใช้อีก 2 แอป: ระบบ Influencer (`influ_*`, `influencers`, `doctors`) และ Sales Assistant (`sa_*`, โปรแกรม offline บน iPad) — **ห้ามลบ/แก้ตารางของแอปอื่น** (ตาราง `sq_*` ของ Sales Queue เป็นของแอปนี้แล้ว); FK ข้ามระบบกับ Influ มี 4 เส้น (`tasks.influencer_id/doctor_id` → Influ, `influ_procedure_items.price_item_id/promo_package_id` → `price_items`/`promo_packages` ที่นี่ — **ห้ามลบ 2 ตารางนี้**)
 
 ## การเข้าระบบและสิทธิ์
 
 - **สมัครเองไม่ได้** — บัญชีถูกสร้างจากหน้า `/accounts` โดยผู้ดูแล หรืออีเมลโดเมนบริษัทล็อกอินผ่าน Google แล้วรออนุมัติสิทธิ์ (trigger `handle_new_user` + ตาราง `allowed_emails` / `allowed_email_domains`)
-- สิทธิ์เป็นสวิตช์อิสระต่อบัญชีใน `profiles.permissions` (`data`, `team`, `pricing`, `doctor_manage`, ระดับ Influencer 3 ระดับ `influ_view`/`influ_hunter`/`influ` — ใช้ในแอป Influ, Wellness 4 บทบาท) + `profiles.role = 'admin'` สำหรับจัดการบัญชี — นิยามที่ `src/lib/permissions.ts` ทุกหน้า server-guard ด้วย `getAccess()` + `hasPermission()`; **บัญชี/สิทธิ์ของแอป Influ ก็ตั้งจากหน้า `/accounts` ที่นี่** (Supabase ตัวเดียวกัน)
+- สิทธิ์เป็นสวิตช์อิสระต่อบัญชีใน `profiles.permissions` (`data`, `team`, `pricing`, `sales_queue`, `doctor_manage`, ระดับ Influencer 3 ระดับ `influ_view`/`influ_hunter`/`influ` — ใช้ในแอป Influ, Wellness 4 บทบาท) + `profiles.role = 'admin'` สำหรับจัดการบัญชี — นิยามที่ `src/lib/permissions.ts` ทุกหน้า server-guard ด้วย `getAccess()` + `hasPermission()`; **บัญชี/สิทธิ์ของแอป Influ ก็ตั้งจากหน้า `/accounts` ที่นี่** (Supabase ตัวเดียวกัน)
 - หน้าแรกหลังล็อกอิน (`/start`) ส่งไปยังระบบตามสิทธิ์ที่มี — ระดับ influ* ถูกส่งออกไปแอป Influ (คุกกี้แยกตามโดเมน ต้องล็อกอินที่นั่นอีกรอบจนกว่าจะอยู่ใต้โดเมนเดียวกัน)
 
 ## Deploy / ย้ายไป server ของบริษัท

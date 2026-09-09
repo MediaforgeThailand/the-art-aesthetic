@@ -23,6 +23,12 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/wellness/clinic", name: "wellness-clinic" },
   { path: "/wellness/cases", name: "wellness-cases" },
   { path: "/wellness/calendar", name: "wellness-calendar" },
+  // Sales Queue (รวมเข้าแอปนี้ 2026-09-09) — บัญชี QA เป็น admin จึงเห็นทุกหน้ารวมหน้าแอดมิน
+  { path: "/queue", name: "queue" },
+  { path: "/queue/new", name: "queue-new" },
+  { path: "/queue/team", name: "queue-team" },
+  { path: "/queue/ranking", name: "queue-ranking" },
+  { path: "/queue/audit", name: "queue-audit" },
   { path: "/tasks", name: "tasks" },
   { path: "/tag-management", name: "tag-management" },
   { path: "/my-tasks", name: "my-tasks" },

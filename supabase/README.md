@@ -1,6 +1,6 @@
 # `supabase/` — ฐานข้อมูลของระบบ Aesthetics (canonical อยู่ที่ repo นี้)
 
-Supabase โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, ap-southeast-2) เป็น **ฐานข้อมูลของฝั่ง Aesthetics** — แอปนี้ (Team/Wellness/Pricing/Price List/แดชบอร์ด/บัญชี), Sales Assistant (`sa_*`) และ Sales Queue (`sq_*`) ใช้ร่วมกัน ส่วน **ระบบ Influencer (repo `the-art-influencer`) เป็นแขกที่ใช้ DB นี้ชั่วคราว** จนกว่าจะแยก Supabase ของตัวเอง (ดู "ตอนแยก" ด้านล่าง)
+Supabase โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, ap-southeast-2) เป็น **ฐานข้อมูลของฝั่ง Aesthetics** — แอปนี้ (Team/Wellness/Pricing/Price List/แดชบอร์ด/บัญชี/Sales Queue `sq_*`) และ Sales Assistant (`sa_*`, โปรแกรม offline บน iPad) ใช้ร่วมกัน ส่วน **ระบบ Influencer (repo `the-art-influencer`) เป็นแขกที่ใช้ DB นี้ชั่วคราว** จนกว่าจะแยก Supabase ของตัวเอง (ดู "ตอนแยก" ด้านล่าง)
 
 > โมเดล 2 ระบบ (ผู้ใช้ 2026-09-09): Aesthetics = ทุกอย่างที่ไม่ใช่ Influ อยู่ที่เดียวกัน ⇒ schema/edge function ที่เป็นของ DB นี้อยู่ที่ repo นี้ ไม่ใช่ repo Influ (ย้ายกลับมาเมื่อ 2026-09-09 — ก่อนหน้านั้นเคยย้ายไป repo Influ ตอนแยก repo วันที่ 08)
 
@@ -12,7 +12,7 @@ Supabase โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, ap-
 - **trigger function ที่เป็น `security definer` ต้อง `revoke execute ... from public, anon, authenticated`** ในไฟล์เดียวกัน; RPC ใหม่ต้อง `grant execute ... to authenticated` เอง (default privileges ถูกตั้งเป็น revoke ตั้งแต่ 0107); policy ใหม่ใช้ `(select auth.uid())` (0115)
 - ชุดนี้ต้อง **replay ได้บน Supabase stack เปล่า** (ไม่ใช่ Postgres เปล่า — `0001` ใช้ schema `storage`, `0038` ใช้ `vault`) ทดสอบล่าสุด 2026-08-03
 - ข้อมูลที่ถูกแก้ตรงบน remote โดยไม่มีไฟล์ (data cleanup ไม่ใช่ schema) ถูกบันทึกไว้ใน `AGENTS.md` ของ repo ที่เกี่ยวข้อง — เช่น เก็บกวาดชื่อหมอ 2026-08-03, ล้าง `docs_sent_at` 2026-09-03 (repo Influ)
-- ตาราง `sa_*` (Sales Assistant) และ `sq_*` (Sales Queue) มีไฟล์ migration อยู่ในชุดนี้ด้วย — ห้ามลบ/แก้โดยไม่คุยกับแอปนั้น
+- ตาราง `sa_*` (Sales Assistant — โปรแกรม offline บน iPad คนละ repo) มีไฟล์ migration อยู่ในชุดนี้ด้วย — ห้ามลบ/แก้โดยไม่คุยกับแอปนั้น; ส่วน `sq_*` (Sales Queue) เป็นของแอปนี้แล้วตั้งแต่ 2026-09-09 (หน้า `/queue`, สิทธิ์ `sales_queue` — 0117)
 
 ## functions/ — edge functions ทั้งหมดอยู่ที่นี่
 

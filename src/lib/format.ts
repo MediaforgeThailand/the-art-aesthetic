@@ -123,6 +123,18 @@ export function formatNotiTime(value: string | Date | null | undefined): string 
 }
 
 /** ชื่อเดือนสั้นภาษาไทยจาก key "YYYY-MM" เช่น "ก.ค. 69" */
+/** วันที่แบบสั้นไม่มีปี เช่น "27 ส.ค." — ใช้ในลิสต์ที่มีวันที่ทุกแถว (คิวลูกค้า) ตรึงโซนเวลาไทย */
+export function formatDateShort(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 export function formatMonthKey(key: string): string {
   const [y, m] = key.split("-").map(Number);
   if (!y || !m) return key;
