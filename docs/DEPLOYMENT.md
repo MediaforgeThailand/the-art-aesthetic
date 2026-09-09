@@ -7,7 +7,7 @@
 | ส่วน | ที่อยู่ | หมายเหตุ |
 |---|---|---|
 | เว็บแอป (Next.js) | **Vercel** โปรเจกต์ `the-art-aesthetic` region `syd1` (ใกล้ DB) — auto-deploy เมื่อ push `main`; CI (`.github/workflows/ci.yml`) ต้อง build + lint ผ่าน | โดเมน `www.theartbb.com` / `theartbb.com` (DNS ที่ GoDaddy) + `the-art-aesthetic.vercel.app` |
-| แอป Influencer (repo `the-art-influencer`) | Vercel โปรเจกต์ `the-art-influencer` — `https://the-art-influencer.vercel.app` (ยังไม่ผูกโดเมนบริษัท) | ใช้ Supabase ตัวเดียวกัน; ทางเข้าจากแอปนี้ = `INFLU_APP_URL` ใน `src/lib/constants.ts` — ย้ายโดเมนแก้ค่านี้ + Vault `influ_app_url` + Redirect URLs |
+| แอป Influencer (repo `the-art-influencer`) | Vercel โปรเจกต์ `the-art-influencer` — `https://the-art-influencer.vercel.app` (ผู้ใช้ 2026-09-09: ใช้โดเมน Vercel ไปก่อน จะไม่มี `influ.theartbb.com` จนกว่าจะได้โดเมนบริษัทจริง — ล็อกอินแยกจากแอปนี้) | ใช้ Supabase ตัวเดียวกัน; ทางเข้าจากแอปนี้ = `INFLU_APP_URL` ใน `src/lib/constants.ts` — ย้ายโดเมนแก้ค่านี้ + Vault `influ_app_url` + Redirect URLs |
 | ฐานข้อมูล/Auth/Storage | **Supabase cloud** โปรเจกต์ `TheArtAesthetic` (`zcoqzasbtgfccuibteji`, region ap-southeast-2 Sydney) | Postgres 17 · Storage เพดานไฟล์ 500MB (ตั้งที่ Dashboard → Storage → Settings) |
 | Edge functions | Supabase (Deno) — `admin-users` (verify_jwt เปิด), `domain-auth` (ปิด — เรียกก่อนล็อกอิน), `send-push` (ปิด — ใช้ header `x-push-secret`), `sheets-sync` (ปิด — ใช้ header `x-sync-secret`) | โค้ด mirror ทั้ง 4 ตัวอยู่ `supabase/functions/` ของ repo นี้ (canonical ตั้งแต่ 2026-09-09 — repo Influ ไม่มีสำเนาแล้ว) — deploy ด้วย Supabase CLI/MCP |
 | งานตามเวลา | pg_cron ใน DB: `vercel-warm-ping` (ทุก 5 นาที → `/api/warm`), sync ยอดขาย 00:30 UTC (→ edge `sheets-sync`) | |
