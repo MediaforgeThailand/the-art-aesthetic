@@ -17,8 +17,7 @@
 Supabase ─ Postgres 17 (RLS) ─ Auth ─ Storage `documents` ─ Realtime ─ Edge Functions ─ pg_cron/pg_net/Vault
    ▲
    ├─ แอป Influencer  repo `the-art-influencer` (โดเมนแยก — ตาราง influ_*, influencers, doctors)
-   ├─ Sales Assistant (iPad, repo แยก, ตาราง sa_*)
-   └─ Sales Queue queue.theartbb.com (repo แยก, ตาราง/RPC sq_*)
+   └─ Sales Assistant (iPad, repo แยก, ตาราง sa_*)
 ```
 
 - **1 repo = 1 Next app** ที่มี 2 route group — route group ไม่โผล่ใน URL แต่แต่ละกลุ่มมี `layout.tsx` ของตัวเอง = โครงหน้า/เมนู/การตรวจสิทธิ์แยกกัน; ระบบ Influencer เคยเป็น route group ที่ 3 `(influ)` ที่นี่ จนแยกออกไปเป็น repo/แอปของตัวเองเมื่อ 2026-09-08 (ทางเข้าเหลือลิงก์ `INFLU_APP_URL`)
@@ -54,7 +53,7 @@ Supabase ─ Postgres 17 (RLS) ─ Auth ─ Storage `documents` ─ Realtime ─
 | Wellness | `wellness_customers`, `wellness_lab_files`, `wellness_appointments` | ระบบ Wellness |
 | Influencer | `influencers`, `influ_*` (profiles/prospects/procedure_items/calendar_events/assignees/post_links/tasks/campaign_defs/…/activity_log/notifications/deleted_backups), `doctors` | **แอป Influencer (repo แยก)** — แอปนี้อ่าน `influencers`/`doctors`/`influ_procedure_items`/`influ_campaign_defs` และเขียน `doctors`/`influ_activity_log` ผ่าน `src/influ-bridge/` |
 | แอปอื่น | `sa_*` (+ trigger `promo_mirror_*` ที่คัดลอกโปรจาก `promo_packages` ไปให้) | Sales Assistant (repo แยก) — ห้ามแตะ |
-| แอปอื่น | `sq_*` (+ RPC `sq_*`) | Sales Queue `queue.theartbb.com` (repo แยก) — ห้ามแตะ |
+| Sales Queue | `sq_*` (+ RPC `sq_*`) | ระบบคิวลูกค้าออนไลน์ของแอปนี้ (`/queue` — รวมเข้ามา 2026-09-09; เดิมแอปแยกที่ `queue.theartbb.com` ซึ่งเลิกใช้แล้ว) |
 
 **จุดที่ข้ามระบบกันใน DB (ทั้งหมดมีแค่นี้ — ทุกเส้น SET NULL):**
 - แอปนี้ → Influ: `tasks.influencer_id` → `influencers`, `tasks.doctor_id` → `doctors` (งานคอนเทนต์ติดแท็กว่าเป็นของ influ/หมอคนไหน)

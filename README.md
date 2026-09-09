@@ -59,7 +59,8 @@ src/
   lib/database.types.ts   # types ตรงกับ schema ของ DB ที่ใช้ร่วมกัน (เขียนมือ ต้องแก้คู่กับ migration)
   proxy.ts         # auth guard ทุก request (Next 16 ใช้ proxy.ts แทน middleware.ts)
 supabase/
-  README.md        # migrations ย้ายไป repo the-art-influencer แล้ว (ชุด canonical ของ DB ที่ใช้ร่วมกัน)
+  README.md        # คู่มือ migrations/edge functions + ขั้นตอนแยก Supabase ของ Influ ในอนาคต
+  migrations/      # 0001..N ชุด canonical ของ DB ที่ใช้ร่วมกัน (รวมตาราง Influ — canonical ที่นี่ตั้งแต่ 2026-09-09) mirror ของที่ apply แล้ว
   functions/       # edge functions ทั้งหมด: sheets-sync, admin-users, domain-auth, send-push (canonical ที่นี่ตั้งแต่ 2026-09-09)
 e2e/               # Playwright specs
 scripts/           # สคริปต์นำเข้าข้อมูล (Price List/โปร) + สร้างไอคอน

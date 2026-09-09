@@ -344,18 +344,11 @@ export const SALES_ASSISTANT_URL = "https://sales.theartbb.com/salestool/";
 export const SALES_ASSISTANT_FROM = "sales";
 
 /**
- * Sales Operation — ระบบจัดคิวลูกค้าออนไลน์ของทีม Beauty Consult ("Sales Queue")
- * แอปแยกอีกตัว (คนละ repo/โดเมน: Vercel project `the-art-sales-queue`) มีล็อกอินของตัวเอง
- * เปิดทางเข้าจากหน้าประตูรวมช่องทาง (root `/`) เมื่อ 2026-09-01
- *
- * **แอปนี้ serve ที่ root ของโดเมนตัวเอง ไม่มี base path แบบ `SALES_ASSISTANT_URL`**
- * (อันนั้นต้องมี `/salestool/` ต่อท้าย ห้ามตัด) — ที่นี่ใส่ origin ล้วนพอ
- * ผูกโดเมนบริษัท `queue.theartbb.com` แล้วเมื่อ 2026-09-01 (CNAME ที่ GoDaddy ชี้เข้า Vercel)
- * ลิงก์ `the-art-sales-queue.vercel.app` เดิมยังเข้าได้ แต่ห้ามเอากลับมาเป็นค่าในโค้ด
- * ย้ายโดเมนอีกแก้ค่านี้จุดเดียว การ์ดบนหน้าประตูจะตามเอง (ไม่มีสัญญา referrer ข้าม repo แบบแอปขาย)
+ * Sales Operation = ระบบคิวลูกค้าออนไลน์ของทีม Beauty Consult ("Sales Queue")
+ * รวมเข้าแอปนี้เป็นหน้า /queue แล้ว 2026-09-09 — การ์ดบนหน้าประตูเป็นลิงก์ภายใน ค่า SALES_OPERATION_URL ถูกถอด
+ * เดิมเป็นแอปแยก (Vercel project `the-art-sales-queue`, โดเมน `queue.theartbb.com`) — เลิกใช้ทั้งคู่
+ * ไม่ย้ายโดเมนนั้นมาที่นี่ (ผู้ใช้ 2026-09-09: จะย้ายไปรันบน server บริษัทภายใต้โดเมนหลัก)
  */
-// SALES_OPERATION_URL ถูกถอด 2026-09-09 — Sales Queue รวมเข้าแอปนี้เป็นหน้า /queue แล้ว
-// (โดเมน queue.theartbb.com เดิมให้ redirect มาที่ www.theartbb.com/queue ที่ Vercel/DNS)
 
 /** ระบบ Influencer = แอปแยก (repo `the-art-influencer`) — ค่าจริง + เหตุผลอยู่ `src/lib/influ-app-url.ts`
     (ไฟล์เดี่ยวเพราะ next.config.ts ต้องใช้ทำ redirect ด้วย) ทางเข้าทุกจุดในแอปนี้อ่านจากตัวนี้ */
