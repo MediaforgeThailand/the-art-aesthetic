@@ -834,26 +834,14 @@ export type InfluProfileRow = {
     รูปแรกตาม position = รูปหน้าปก ฝั่งแอป sync ลง influ_profiles.photo_path เสมอ
     ไฟล์จากฟีเจอร์นี้อยู่ documents/influ-profiles/{profile_id}/ — แถว backfill
     ยังชี้โฟลเดอร์เคสเดิม ห้ามลบไฟล์ตอนลบแถว (แอปเช็ค prefix ก่อน remove) */
+/** kind ของรูป influencer (0129) — "photo" = รูปตัวคน, "channel" = รูปช่องทาง/สกรีนช็อตยอดผู้ติดตาม */
+export type InfluPhotoKind = "photo" | "channel";
+
 export type InfluProfilePhotoRow = {
   id: string;
   profile_id: string;
-  file_path: string;
-  file_name: string | null;
-  position: number;
-  created_by: string | null;
-  created_at: string;
-};
-
-/** kind ของ influ_case_photos — "photo" = รูป influencer, "channel" = รูปช่องทาง/สกรีนช็อตยอดผู้ติดตาม */
-export type InfluCasePhotoKind = "photo" | "channel";
-
-/** รูปภาพของ "เคส" (migration 0105) — หลายรูปต่อเคส แยกชนิด photo/channel
-    รูปแรกตาม position (ต่อชนิด) = รูปหน้าปก ฝั่งแอป sync ลง influencers.photo_path /
-    channel_photo_path เสมอ — ไฟล์อยู่ documents/influencers/{influencer_id}/ */
-export type InfluCasePhotoRow = {
-  id: string;
-  influencer_id: string;
-  kind: InfluCasePhotoKind;
+  /** 0129: ยุบรูปของเคส (influ_case_photos เดิม) เข้ามาที่นี่ — ทุกรอบของคนเดียวกันใช้ร่วมกัน */
+  kind: InfluPhotoKind;
   file_path: string;
   file_name: string | null;
   position: number;
@@ -1639,16 +1627,6 @@ export interface Database {
           file_path: string;
         };
         Update: Partial<InfluProfilePhotoRow>;
-        Relationships: [];
-      };
-      influ_case_photos: {
-        Row: InfluCasePhotoRow;
-        Insert: Partial<InfluCasePhotoRow> & {
-          influencer_id: string;
-          kind: InfluCasePhotoKind;
-          file_path: string;
-        };
-        Update: Partial<InfluCasePhotoRow>;
         Relationships: [];
       };
       influ_prospects: {
