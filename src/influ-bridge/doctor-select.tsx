@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-menu";
 import type { DoctorRow } from "@/lib/types";
 import { useSignedUrl } from "@/lib/use-signed-url";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 /* รูปโปรไฟล์หมอ — photo_path จาก bucket documents (signed URL มี cache ใน useSignedUrl)
    ไม่มีรูป = วงกลมไอคอนหูฟังแพทย์, doctor = null = วงกลมเส้นประ ("ไม่ระบุ") */
@@ -118,9 +119,8 @@ export function DoctorSelect({
   // ค่าปัจจุบันไม่อยู่ในตัวเลือก (หมอถูกซ่อน/ถูกลบ/ชื่อสะกดแบบเก่า) — คงไว้ให้เลือกซ้ำได้
   const legacy =
     value !== "" && !active.some((d) => d.name === value) ? value : null;
-  const q = query.trim().toLowerCase();
-  const filtered =
-    q === "" ? active : active.filter((d) => d.name.toLowerCase().includes(q));
+  const terms = searchTerms(query);
+  const filtered = active.filter((d) => matchesSearch(terms, d.name));
 
   const toggle = () => {
     if (disabled) return;
@@ -235,7 +235,7 @@ export function DoctorSelect({
                   )}
                 </button>
               ))}
-              {filtered.length === 0 && q !== "" && (
+              {filtered.length === 0 && terms.length > 0 && (
                 <p className="px-2 py-2 text-xs text-stone-400">
                   ไม่พบชื่อนี้
                 </p>

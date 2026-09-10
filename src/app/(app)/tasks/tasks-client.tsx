@@ -79,6 +79,7 @@ import {
 } from "./task-card";
 import { TaskPanel, type TaskPatch } from "./task-panel";
 import { TRASH_KEEP_DAYS, TrashList } from "./trash-list";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 type ProfileOption = Pick<ProfileRow, "id" | "full_name" | "email" | "avatar_path">;
 /** โปรไฟล์พร้อมค่าผู้ตรวจอัตโนมัติ (ใช้เฉพาะในหน้านี้) */
@@ -544,7 +545,7 @@ export function TasksClient({
   };
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const terms = searchTerms(search);
     // ตัวกรองสถานะที่เลือกไว้ชนะ "ยกเว้น" เสมอ — ไม่งั้นเลือกสถานะที่ถูกยกเว้นอยู่
     // (default ยกเว้น "done") จะกรองชนกันเองจนบอร์ดว่างทั้งที่มีงานสถานะนั้นอยู่จริง
     const excludeSt =
@@ -604,11 +605,7 @@ export function TasksClient({
       const due = t.due_date ? t.due_date.slice(0, 10) : null;
       if (dueFrom !== "" && (due === null || due < dueFrom)) return false;
       if (dueTo !== "" && (due === null || due > dueTo)) return false;
-      if (q === "") return true;
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.description ?? "").toLowerCase().includes(q)
-      );
+      return matchesSearch(terms, t.title, t.description);
     });
   }, [
     activeItems,
@@ -897,7 +894,7 @@ export function TasksClient({
   }, [postQueueAll, pqAssignee, userId]);
 
   const approvedFiltered = useMemo(() => {
-    const q = apSearch.trim().toLowerCase();
+    const terms = searchTerms(apSearch);
     return approvedAll
       .filter((t) => {
         if (apAssignee === "me") {
@@ -933,11 +930,7 @@ export function TasksClient({
           if (apFrom !== "" && day < apFrom) return false;
           if (apTo !== "" && day > apTo) return false;
         }
-        if (q === "") return true;
-        return (
-          t.title.toLowerCase().includes(q) ||
-          (t.description ?? "").toLowerCase().includes(q)
-        );
+        return matchesSearch(terms, t.title, t.description);
       })
       .sort((a, b) =>
         (b.approved_at ?? b.updated_at).localeCompare(

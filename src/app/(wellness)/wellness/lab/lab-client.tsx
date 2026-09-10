@@ -20,6 +20,7 @@ import type {
 import { formatDate, formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { wellnessCustomerName } from "@/lib/wellness-constants";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 export type LabQueueCustomer = WellnessCustomerRow & {
   lab_files: WellnessLabFileRow[];
@@ -55,14 +56,10 @@ export function LabQueueClient({
   const [openConfirmed, setOpenConfirmed] = useState<string | null>(null);
   const [showConfirmed, setShowConfirmed] = useState(false);
 
-  const q = search.trim().toLowerCase();
-  const matched = q
-    ? customers.filter((c) =>
-        `${c.first_name} ${c.last_name} ${c.procedure_text}`
-          .toLowerCase()
-          .includes(q)
-      )
-    : customers;
+  const terms = searchTerms(search);
+  const matched = customers.filter((c) =>
+    matchesSearch(terms, c.first_name, c.last_name, c.procedure_text)
+  );
 
   const waiting = matched.filter((c) => !c.lab_confirmed_at);
   const confirmed = matched.filter((c) => c.lab_confirmed_at);
@@ -135,7 +132,7 @@ export function LabQueueClient({
           </div>
         )}
 
-        {q && matched.length === 0 && customers.length > 0 && (
+        {terms.length > 0 && matched.length === 0 && customers.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-[15px] text-amber-800">
             ไม่พบชื่อที่ตรงกับ “{search}” — คิวทั้งหมด {customers.length}{" "}
             รายยังอยู่ครบ

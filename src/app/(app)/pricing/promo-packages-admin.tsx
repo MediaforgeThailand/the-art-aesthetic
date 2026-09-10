@@ -42,6 +42,7 @@ import type {
   PromoPackageKind,
   PromoPackageWithItems,
 } from "@/lib/types";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 type ItemDraft = {
   item_name: string;
@@ -273,7 +274,7 @@ export function PromoPackagesAdmin({
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const terms = searchTerms(search);
     return packages.filter((p) => {
       if (category !== "all" && p.category !== category) return false;
       if (status === "shown" && !p.active) return false;
@@ -289,12 +290,12 @@ export function PromoPackagesAdmin({
         )
       )
         return false;
-      if (q === "") return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.items.some((i) => i.item_name.toLowerCase().includes(q))
+      return matchesSearch(
+        terms,
+        p.name,
+        p.sku,
+        p.category,
+        p.items.map((i) => i.item_name).join(" ")
       );
     });
   }, [packages, search, category, status, today]);

@@ -33,6 +33,7 @@ import {
   apptRangeLabel,
   wellnessCustomerName,
 } from "@/lib/wellness-constants";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 export type ContactCustomer = WellnessCustomerRow & {
   lab_files: { id: string }[];
@@ -130,14 +131,10 @@ export function ContactClient({
     error: string | null;
   } | null>(null);
 
-  const q = search.trim().toLowerCase();
-  const matched = q
-    ? customers.filter((c) =>
-        `${c.first_name} ${c.last_name} ${c.phone} ${c.procedure_text}`
-          .toLowerCase()
-          .includes(q)
-      )
-    : customers;
+  const terms = searchTerms(search);
+  const matched = customers.filter((c) =>
+    matchesSearch(terms, c.first_name, c.last_name, c.phone, c.procedure_text)
+  );
 
   // รอโทรนัด = ผลพร้อม + ยังไม่มีคิวที่นัดไว้ + ยังไม่เคยมาพบแพทย์
   // (เคยมาแล้ว = ไปกอง "รอปิดเคส" ไม่ใช่วนกลับมาให้โทรนัดใหม่)
@@ -297,7 +294,7 @@ export function ContactClient({
           </div>
         )}
 
-        {q && matched.length === 0 && customers.length > 0 && (
+        {terms.length > 0 && matched.length === 0 && customers.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-[15px] text-amber-800">
             ไม่พบชื่อที่ตรงกับ “{search}” — เคสทั้งหมด {customers.length}{" "}
             รายยังอยู่ครบ

@@ -26,6 +26,7 @@ import {
   type ProfileOption,
   profileName,
 } from "./task-card";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 /* ============================================================================
    แชทของงาน (task_comments) — hook + ชิ้น UI ใช้ร่วมกัน
@@ -176,11 +177,11 @@ export function useTaskChat({
 
   const mentionMatches = useMemo(() => {
     if (mentionQuery === null) return [];
-    const q = mentionQuery.toLowerCase();
+    const terms = searchTerms(mentionQuery);
     return (
       profiles
         .filter((p) => p.id !== userId)
-        .filter((p) => profileName(p).toLowerCase().includes(q))
+        .filter((p) => matchesSearch(terms, profileName(p)))
         // เมนูเลื่อนได้แล้ว จึงไม่ตัดที่ 6 คนเหมือนเดิม (ชื่อไทยเรียงท้ายสุดเลยไม่เคยโผล่)
         // เพดานนี้กันเมนูยาวเกินตอนพิมพ์ @ เปล่าๆ เท่านั้น
         .slice(0, 20)

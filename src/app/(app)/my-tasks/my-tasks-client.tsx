@@ -119,6 +119,7 @@ import {
   PickFilesButton,
   type UploadProgress,
 } from "./task-files";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 /** ค่าตัวกรองสถานะ/ความสำคัญ — เป็น string เพราะนอกจากค่าในตัวยังเป็น id ของตัวเลือก
  *  ที่ผู้ใช้เพิ่มเองได้ด้วย (uuid ไม่มีทางชนกับคีย์ในตัวอย่าง "open"/"urgent") */
@@ -909,7 +910,7 @@ export function MyTasksClient({
   /* ---------- กรอง + เรียง + จัดกลุ่ม ---------- */
 
   const filtered = useMemo(() => {
-    const keyword = q.trim().toLowerCase();
+    const terms = searchTerms(q);
     return items.filter((t) => {
       // "ยังไม่เสร็จ" = ทุกงานที่ยังไม่ติ๊กเสร็จ รวมงานที่ตั้งสถานะเพิ่มเองไว้ (เช่น กำลังทำ)
       // ส่วนค่าที่ไม่ใช่คีย์ในตัว = id ของสถานะที่เพิ่มเอง ต้องตรงกับสถานะที่งานโชว์อยู่จริง
@@ -930,12 +931,7 @@ export function MyTasksClient({
         return false;
       if (filters.tagId !== "all" && !t.tagIds.includes(filters.tagId))
         return false;
-      if (
-        keyword &&
-        !t.title.toLowerCase().includes(keyword) &&
-        !(t.note ?? "").toLowerCase().includes(keyword)
-      )
-        return false;
+      if (!matchesSearch(terms, t.title, t.note)) return false;
       return true;
     });
   }, [items, q, filters, options]);

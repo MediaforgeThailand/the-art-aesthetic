@@ -148,6 +148,45 @@ function scoreOne(norm: string, folded: string, q: string, qFolded: string): num
   return 0;
 }
 
+/* ---------- ค้นหาแบบ "ต้องเจอครบทุกคำ" (ผู้ใช้ 2026-09-10) ----------
+   คนละงานกับ fuzzyFilter ที่เดาคำใกล้เคียงให้: ชุดนี้คือช่องค้นหาของลิสต์/บอร์ด
+   ที่ต้องคาดเดาได้ — พิมพ์เพิ่มอีกคำ = ผลแคบลงเสมอ ไม่ใช่ได้ของใกล้เคียงเพิ่มมา
+   แต่ยังกินกติกา normalize ตัวเดียวกับ fuzzy (เเ→แ · ตัดอักขระล่องหน · ตัดตัวคั่น
+   · ผ่อนวรรณยุกต์เป็นชั้นสำรอง) ⇒ พิมพ์ "แทน" เจอชื่อที่พิมพ์ว่า "เเทนไท",
+   "081-234" เจอ "0812345678" และ "แทน กฤต" เจอ "กฤตกิตินันท์ (เเทนไท)" */
+
+/** คำค้นที่ตัดเป็นคำๆ + normalize แล้ว — ลิสต์ว่าง = ไม่ได้ค้นอะไร (ผ่านทุกแถว) */
+export function searchTerms(query: string): string[] {
+  return query
+    .split(/\s+/)
+    .map((t) => normalizeSearch(t))
+    .filter((t) => t !== "");
+}
+
+export type SearchField = string | number | null | undefined;
+
+/** ทุกคำในคำค้นต้องเจอในช่องที่ส่งมา (รวมทุกช่องเป็นก้อนเดียวก่อนเทียบ) */
+export function matchesSearch(
+  terms: readonly string[],
+  ...fields: SearchField[]
+): boolean {
+  if (terms.length === 0) return true;
+  const raw = fields
+    .filter((f) => f !== null && f !== undefined && f !== "")
+    .join(" ");
+  const norm = normalizeSearch(raw);
+  if (norm === "") return false;
+  // ชั้นสำรองคิดเมื่อต้องใช้จริง — คำค้นส่วนใหญ่เจอตั้งแต่ชั้นแรก
+  let folded: string | null = null;
+  return terms.every((t) => {
+    if (norm.includes(t)) return true;
+    const tf = t.replace(THAI_MARKS, "");
+    if (tf === "" || tf === t) return false;
+    folded ??= foldSearch(raw);
+    return folded.includes(tf);
+  });
+}
+
 /** คะแนนความใกล้เคียงของข้อความหนึ่งกับคำค้น (0 = ไม่ตรง, 1 = ตรงเป๊ะ) */
 function fuzzyScore(text: string, query: string): number {
   const q = normalizeSearch(query);

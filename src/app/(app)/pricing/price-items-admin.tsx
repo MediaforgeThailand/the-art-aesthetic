@@ -30,6 +30,7 @@ import {
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { PriceGroup, PriceItemRow, PriceOffer } from "@/lib/types";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 type OfferDraft = { label: string; price: string; start: string; end: string };
 
@@ -259,13 +260,10 @@ export function PriceItemsAdmin({
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (q === "") return items;
-    return items.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q) ||
-        (i.search_aliases ?? "").toLowerCase().includes(q)
+    const terms = searchTerms(search);
+    if (terms.length === 0) return items;
+    return items.filter((i) =>
+      matchesSearch(terms, i.name, i.category, i.search_aliases)
     );
   }, [items, search]);
 

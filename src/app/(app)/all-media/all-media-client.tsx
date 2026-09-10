@@ -17,6 +17,7 @@ import {
   thaiDayOf,
 } from "@/lib/media";
 import type { ProfileRow } from "@/lib/types";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 /** ชื่อที่แสดงของ profile — full_name ก่อน ตกลงมาที่ email */
 function personLabel(p: ProfileRow): string {
@@ -54,7 +55,7 @@ export function AllMediaClient({
   const filtered = useMemo(() => {
     const start = range === "custom" ? (from || null) : rangeStart(range, today);
     const end = range === "custom" ? (to || null) : null;
-    const needle = q.trim().toLowerCase();
+    const terms = searchTerms(q);
 
     return items.filter((it) => {
       if (kind !== "all" && it.kind !== kind) return false;
@@ -66,10 +67,8 @@ export function AllMediaClient({
         if (start && day < start) return false;
         if (end && day > end) return false;
       }
-      if (needle) {
-        const hay = `${mediaDisplayName(it)} ${it.taskTitle}`.toLowerCase();
-        if (!hay.includes(needle)) return false;
-      }
+      if (!matchesSearch(terms, mediaDisplayName(it), it.taskTitle))
+        return false;
       return true;
     });
   }, [items, kind, person, range, from, to, q, today]);

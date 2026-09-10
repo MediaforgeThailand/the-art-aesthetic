@@ -49,6 +49,7 @@ import {
   todayBangkokISO,
   wellnessCustomerName,
 } from "@/lib/wellness-constants";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 type CalendarLabFile = Pick<
   WellnessLabFileRow,
@@ -462,19 +463,15 @@ function BookingModal({
   const [error, setError] = useState<string | null>(null);
 
   const selected = customers.find((c) => c.id === customerId) ?? null;
-  const q = query.trim().toLowerCase();
+  const terms = searchTerms(query);
   // **เลือกได้เฉพาะคนที่ทีม Lab ยืนยันผลแล้ว** (ผู้ใช้ 2026-08-29) — ลงคิวก่อนมีผลเลือด
   // ไม่มีประโยชน์กับหมอ; server ก็กรองมาแล้วชั้นหนึ่ง ตรงนี้กันพลาดซ้ำ
   const bookable = customers.filter(
     (c) => c.lab_confirmed_at && !c.completed_at
   );
-  const filtered = (
-    q
-      ? bookable.filter((c) =>
-          `${c.first_name} ${c.last_name} ${c.phone}`.toLowerCase().includes(q)
-        )
-      : bookable
-  ).slice(0, 30);
+  const filtered = bookable
+    .filter((c) => matchesSearch(terms, c.first_name, c.last_name, c.phone))
+    .slice(0, 30);
 
   async function submit() {
     if (!customerId || !draft.time || saving) return;

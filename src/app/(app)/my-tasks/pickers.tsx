@@ -24,6 +24,7 @@ import { type MenuBox, menuBox, useAnchoredMenu } from "@/components/anchored-me
 import { LIST_TAG_COLOR_ORDER, listTagColor } from "@/lib/constants";
 import type { ListTagRow } from "@/lib/types";
 import type { OptionView } from "./list-utils";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 /** โฟกัสช่องค้นหาอัตโนมัติเฉพาะเครื่องที่มีเมาส์ — บนมือถือคีย์บอร์ดจะเด้งมาบังลิสต์ */
 function autoFocusSearch(el: HTMLInputElement | null) {
@@ -415,10 +416,10 @@ export function TagPicker({
     onReposition: (b) => setPos(place(b)),
   });
 
+  const terms = searchTerms(q);
+  const shown = tags.filter((t) => matchesSearch(terms, t.name));
+  // เช็ค "ชื่อซ้ำ" ต้องตรงตัวจริงๆ (คนละเรื่องกับการค้นหา) — ไม่ผ่าน normalize
   const keyword = q.trim().toLowerCase();
-  const shown = keyword
-    ? tags.filter((t) => t.name.toLowerCase().includes(keyword))
-    : tags;
   const exact = tags.some((t) => t.name.trim().toLowerCase() === keyword);
 
   const create = async () => {

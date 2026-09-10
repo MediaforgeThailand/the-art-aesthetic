@@ -48,6 +48,7 @@ import { formatDate, formatFileSize } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { FileLinkWithCreator } from "@/lib/types";
 import { detectSourceType, displayUrl } from "./link-utils";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 const TYPE_ICONS: Record<FileLinkType, { icon: LucideIcon; color: string }> = {
   google_sheet: { icon: FileSpreadsheet, color: "text-emerald-600" },
@@ -133,7 +134,7 @@ export function FilesClient({
   };
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const terms = searchTerms(search);
     return links.filter((l) => {
       if (categoryFilter !== "all" && l.category !== categoryFilter) {
         return false;
@@ -142,12 +143,7 @@ export function FilesClient({
       const day = localDay(l.created_at);
       if (dateFrom !== "" && day < dateFrom) return false;
       if (dateTo !== "" && day > dateTo) return false;
-      if (q === "") return true;
-      return (
-        l.title.toLowerCase().includes(q) ||
-        l.url.toLowerCase().includes(q) ||
-        (l.description ?? "").toLowerCase().includes(q)
-      );
+      return matchesSearch(terms, l.title, l.url, l.description);
     });
   }, [links, search, categoryFilter, typeFilter, dateFrom, dateTo]);
 

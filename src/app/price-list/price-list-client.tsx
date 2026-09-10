@@ -28,6 +28,7 @@ import {
 } from "@/lib/format";
 import { COMPANY_INFO } from "@/lib/constants";
 import type { PriceGroup, PromoPackageWithItems } from "@/lib/types";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 type Pkg = PromoPackageWithItems;
 
@@ -430,8 +431,9 @@ export function PriceListClient({
   );
 
   const searched = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return q === "" ? rows : rows.filter((r) => r.search.includes(q));
+    const terms = searchTerms(search);
+    if (terms.length === 0) return rows;
+    return rows.filter((r) => matchesSearch(terms, r.search));
   }, [rows, search]);
 
   // จำนวนบนแท็บ — นับหลังค้นหา (แพ็กเกจที่ติดหลายกลุ่มถูกนับทุกกลุ่ม ผลรวมจึงเกินจำนวนแถวจริงได้)

@@ -25,6 +25,7 @@ import {
   wellnessCustomerName,
   wellnessStatusOf,
 } from "@/lib/wellness-constants";
+import { matchesSearch, searchTerms } from "@/lib/fuzzy";
 
 export type RegisterApptLite = Pick<
   WellnessAppointmentRow,
@@ -70,14 +71,17 @@ export function RegisterClient({
     return map;
   }, [scheduledAppts]);
 
-  const q = search.trim().toLowerCase();
-  const filtered = q
-    ? customers.filter((c) =>
-        `${c.first_name} ${c.last_name} ${c.phone} ${c.procedure_text} ${c.note}`
-          .toLowerCase()
-          .includes(q)
-      )
-    : customers;
+  const terms = searchTerms(search);
+  const filtered = customers.filter((c) =>
+    matchesSearch(
+      terms,
+      c.first_name,
+      c.last_name,
+      c.phone,
+      c.procedure_text,
+      c.note
+    )
+  );
 
   const active = filtered.filter((c) => !c.completed_at);
   const closed = filtered.filter((c) => c.completed_at);
@@ -179,7 +183,7 @@ export function RegisterClient({
           </Button>
         </div>
 
-        {q && filtered.length === 0 && customers.length > 0 && (
+        {terms.length > 0 && filtered.length === 0 && customers.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-[15px] text-amber-800">
             ไม่พบการ์ดที่ตรงกับ “{search}” — การ์ดทั้งหมด {customers.length}{" "}
             ใบยังอยู่ครบ
