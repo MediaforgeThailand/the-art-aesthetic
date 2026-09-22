@@ -1,6 +1,11 @@
 "use client";
 
-import { AlertCircle, Image as ImageIcon, Play } from "lucide-react";
+import {
+  AlertCircle,
+  ExternalLink,
+  Image as ImageIcon,
+  Play,
+} from "lucide-react";
 import { useState } from "react";
 import { formatDate } from "@/lib/format";
 import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
@@ -40,11 +45,24 @@ function coverFileOf(files: TaskFileRow[]): TaskFileRow | null {
   })[0];
 }
 
-/** พื้นหลังการ์ดที่ยังไม่มีไฟล์ — โทนแบรนด์อ่อน ให้แถบ fade ขาวที่ทับอยู่ยังกลมกลืน */
-function CoverFallback() {
+/** พื้นหลังการ์ดที่ยังไม่มีไฟล์ — โทนแบรนด์อ่อน ให้แถบ fade ขาวที่ทับอยู่ยังกลมกลืน
+ *
+ *  `drive` = งานไม่มีไฟล์ในระบบ แต่มีลิงก์ Drive — ซึ่งเป็นสภาพปกติของงานคลิปทั้งหมด
+ *  ตั้งแต่ปิดรับอัพวิดีโอ (`VIDEO_UPLOAD_ENABLED=false`) ⇒ ต้องบอกว่า "ตัวงานอยู่ที่ไหน"
+ *  ไม่งั้นการ์ดว่างทั้งใบดูเหมือนรูปโหลดไม่ขึ้น (ตัวงานกดดูได้จากปุ่มในหน้าตรวจงาน) */
+function CoverFallback({ drive }: { drive: boolean }) {
   return (
-    <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-100 via-brand-200 to-brand-400">
-      <ImageIcon size={30} className="text-white/60" />
+    <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-brand-100 via-brand-200 to-brand-400">
+      {drive ? (
+        <>
+          <ExternalLink size={26} className="text-brand-700/80" />
+          <span className="text-[11px] font-medium text-brand-700">
+            งานอยู่บน Drive
+          </span>
+        </>
+      ) : (
+        <ImageIcon size={30} className="text-white/60" />
+      )}
     </span>
   );
 }
@@ -56,7 +74,8 @@ function CoverMedia({ file }: { file: TaskFileRow }) {
   // ของเบราว์เซอร์แล้วใบที่เกินไม่ขึ้นรูปเลย (ดู useInView)
   const [coverRef, inView] = useInView();
 
-  if (failed || broken) return <CoverFallback />;
+  // มีไฟล์อยู่จริงแต่โหลดไม่ขึ้น — คนละเรื่องกับงานที่ตัวงานอยู่บน Drive
+  if (failed || broken) return <CoverFallback drive={false} />;
   if (!url) {
     return <span className="absolute inset-0 animate-pulse bg-stone-200" />;
   }
@@ -191,7 +210,11 @@ export function PosterCard({
         selected ? "ring-2 ring-brand-500" : "ring-1 ring-black/5"
       } ${temp ? "opacity-60" : "cursor-pointer"}`}
     >
-      {cover ? <CoverMedia file={cover} /> : <CoverFallback />}
+      {cover ? (
+        <CoverMedia file={cover} />
+      ) : (
+        <CoverFallback drive={(task.deliverable_url ?? "").trim() !== ""} />
+      )}
 
       {/* งานที่ทำเสร็จแล้ว — ทำรูปให้จางลงนิดหน่อยแทนการขีดฆ่าชื่อ */}
       {task.completed && (
