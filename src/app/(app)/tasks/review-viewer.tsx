@@ -26,6 +26,7 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { TaskWithAssignee } from "@/lib/types";
 import { LightboxMedia, ThumbPreview } from "./media-lightbox";
+import { DriveLinkButton } from "./review-poster";
 import {
   AssigneeAvatar,
   currentReviewerIds,
@@ -41,7 +42,7 @@ import { ChatComposer, ChatMessages, useTaskChat } from "./task-chat";
    ----------------------------------------------------------------------------
    จอ ≥lg: sidebar ข้างขวาที่คัดมาเฉพาะของที่ใช้ตรวจ (โครงเดิม ไม่แตะ)
    จอ <lg: วิดีโอ/กราฟิกเต็มจอ + แถบควบคุมลอยทับด้านบน/ล่าง (อนุมัติ/ตีกลับ/ช่องแชท
-   เด่นสุด เคียงข้างกัน) ส่วนที่เหลือ (ดูรายละเอียด/ลิงก์งาน/ดาวน์โหลด/จบทันที) ยุบเป็น
+   เด่นสุด เคียงข้างกัน) + ปุ่ม Drive บนแถบบน ส่วนที่เหลือ (ดูรายละเอียด/ดาวน์โหลด/จบทันที) ยุบเป็น
    ปุ่ม "เพิ่มเติม" มุมขวาล่าง กดแล้วเด้ง bottom sheet (Modal ของระบบ)
    ⚠️ จอเล็ก/ใหญ่แยกเป็นคนละ return ทั้งก้อน (ไม่ใช่ CSS max-lg:/lg: ผสมกันในต้นไม้เดียว)
    เพราะ ChatComposer ทั้งสองแบบผูก ref เดียวกัน (chat.commentInputRef จาก useTaskChat) —
@@ -298,23 +299,6 @@ export function ReviewViewer({
             ดูรายละเอียดทั้งหมด
           </button>
 
-          {deliverableUrl ? (
-            <a
-              href={deliverableUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 active:scale-[0.98]"
-            >
-              <ExternalLink size={17} className="shrink-0 text-stone-400" />
-              เปิดลิงก์งาน
-            </a>
-          ) : (
-            <span className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-dashed border-stone-200 px-4 text-sm text-stone-400">
-              <ExternalLink size={17} className="shrink-0" />
-              ยังไม่ใส่ลิงก์งาน
-            </span>
-          )}
-
           {current && (
             <button
               type="button"
@@ -395,9 +379,13 @@ export function ReviewViewer({
             )}
             {current ? (
               <LightboxMedia key={current.file_path} item={current} />
+            ) : deliverableUrl ? (
+              // งานคลิปไม่มีไฟล์ในระบบแล้ว (ปิดรับอัพวิดีโอ) — ลิงก์ Drive คือทางเดียวที่จะดูงาน
+              // จึงต้องเป็นปุ่มใหญ่กลางจอ ไม่ใช่ข้อความชี้ไปหาเมนูอื่น
+              <DriveLinkButton url={deliverableUrl} variant="hero" />
             ) : (
               <p className="px-6 text-center text-sm text-white/60">
-                งานนี้ไม่มีไฟล์แนบ — ดูงานจากปุ่ม &quot;เพิ่มเติม&quot; มุมขวาล่าง
+                งานนี้ไม่มีไฟล์แนบและยังไม่ใส่ลิงก์งาน
               </p>
             )}
             {count > 1 && (
@@ -423,6 +411,14 @@ export function ReviewViewer({
                   </p>
                 )}
               </div>
+              {/* ลิงก์ Drive ต้องอยู่หน้าจอหลัก ไม่ใช่ในชีท "เพิ่มเติม" — งานคลิปดูได้จากที่นี่ทางเดียว */}
+              {deliverableUrl && (
+                <DriveLinkButton
+                  url={deliverableUrl}
+                  variant="bar"
+                  label="Drive"
+                />
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -618,9 +614,11 @@ export function ReviewViewer({
           )}
           {current ? (
             <LightboxMedia key={current.file_path} item={current} />
+          ) : deliverableUrl ? (
+            <DriveLinkButton url={deliverableUrl} variant="hero" />
           ) : (
             <p className="text-sm text-white/60">
-              งานนี้ไม่มีไฟล์แนบ — ดูงานจากลิงก์ทางขวา
+              งานนี้ไม่มีไฟล์แนบและยังไม่ใส่ลิงก์งาน
             </p>
           )}
           {count > 1 && (
@@ -702,7 +700,7 @@ export function ReviewViewer({
               className="inline-flex max-sm:min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-3 py-2 text-xs font-medium text-white shadow-sm transition-all hover:opacity-95 active:scale-95"
             >
               <ExternalLink size={14} className="shrink-0" />
-              <span className="truncate">เปิดลิงก์งาน</span>
+              <span className="truncate">เปิดงานใน Drive</span>
             </a>
           ) : (
             <span className="inline-flex min-w-0 flex-1 items-center justify-center rounded-lg border border-dashed border-stone-200 px-3 py-2 text-xs text-stone-500">

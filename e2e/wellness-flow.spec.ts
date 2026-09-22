@@ -192,7 +192,7 @@ test("flow ครบวงจร: BC → Lab → Admin ลงคิว → ค�
     const bookModal = page.getByRole("dialog");
     await expect(bookModal, "③ โมดัลลงคิวต้องเปิด").toBeVisible();
     // ตัวเลือกลูกค้าต้องมีเฉพาะคนที่ผลแลบยืนยันแล้ว — เคสนี้ต้องอยู่ในลิสต์
-    await bookModal.getByPlaceholder("ค้นหาชื่อ / เบอร์โทร").fill(FIRST);
+    await bookModal.getByPlaceholder("ค้นหา").fill(FIRST);
     const pick = bookModal.locator(`button[aria-label^="เลือกลูกค้า ${FIRST}"]`);
     await expect(
       pick,

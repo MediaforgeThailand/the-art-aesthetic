@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3 } from "lucide-react";
+import { Clock3, ExternalLink } from "lucide-react";
 import type { TaskWithAssignee } from "@/lib/types";
 import { CardChip, PosterCard } from "./poster-card";
 import {
@@ -20,6 +20,45 @@ import {
    ⇒ หน้าตา/ชิป/บรรทัดใต้ชื่อ อยู่ที่ไฟล์นี้ที่เดียว ต่างกันแค่ prop `size`
    (มือถือ sm 2 คอลัมน์ · จอใหญ่ md หลายคอลัมน์) — ห้าม copy markup ไปไว้สองฝั่ง
    ========================================================================== */
+
+/* ---------- ปุ่มเปิดไฟล์งานบน Google Drive ----------
+   ตั้งแต่ปิดรับอัพคลิปเข้าระบบ (`VIDEO_UPLOAD_ENABLED=false` — แพลน Free) **ลิงก์ Drive
+   คือ "ตัวงาน" ของงานคลิปทั้งหมด** ผู้ตรวจจึงต้องเห็นและกดได้ทันทีทุกจอ ห้ามให้ไปซ่อน
+   อยู่ในเมนูย่อยอีก (ผู้ใช้ 2026-09-22: "ในส่วนของผู้ตรวจปรับให้มีปุ่มกดเพื่อตามลิงค์ไปชัดๆ")
+   ใช้ร่วมกันทั้งลิสต์รอตรวจ (review-list) และหน้าตรวจงานเต็มจอ (review-viewer) */
+const DRIVE_VARIANT = {
+  /** ใต้การ์ดในลิสต์รอตรวจของจอใหญ่ */
+  compact:
+    "gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-100",
+  /** แถบบนของหน้าตรวจงานเต็มจอ (พื้นดำ) */
+  bar: "gap-1.5 rounded-full border border-white/30 bg-white/15 px-3 py-2 text-xs font-medium text-white active:scale-95",
+  /** กลางพื้นที่ดูงาน ตอนงานนั้นไม่มีไฟล์ในระบบเลย — เป็นทางเดียวที่จะดูงานได้ */
+  hero: "gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-black/40 active:scale-95",
+} as const;
+
+export function DriveLinkButton({
+  url,
+  variant,
+  label = "เปิดไฟล์งานใน Drive",
+}: {
+  url: string;
+  variant: keyof typeof DRIVE_VARIANT;
+  label?: string;
+}) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      // ปุ่มนี้อยู่บนการ์ด/แถบที่กดแล้วมี action ของตัวเอง — กันไม่ให้เปิดงานซ้อนขึ้นมาด้วย
+      onClick={(e) => e.stopPropagation()}
+      className={`inline-flex max-sm:min-h-11 cursor-pointer items-center justify-center transition-all ${DRIVE_VARIANT[variant]}`}
+    >
+      <ExternalLink size={variant === "hero" ? 17 : 13} className="shrink-0" />
+      {label}
+    </a>
+  );
+}
 
 /** รอนานเกิน 2 วันไหม — เน้นงานที่ค้างนานให้สะดุดตา (helper นอก component เลี่ยงกฎ purity) */
 function isLongWait(sinceIso: string | null): boolean {

@@ -5,14 +5,13 @@ import {
   CheckCheck,
   CheckCircle2,
   ClipboardCheck,
-  Link2,
   Undo2,
 } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { TASK_PRIORITY } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import type { TaskSectionRow, TaskWithAssignee } from "@/lib/types";
-import { ReviewPosterCard } from "./review-poster";
+import { DriveLinkButton, ReviewPosterCard } from "./review-poster";
 import { currentReviewerIds, reviewStepOf } from "./task-card";
 
 /* ============================================================================
@@ -64,16 +63,11 @@ function CardMeta({
         </span>
       )}
       {task.deliverable_url && (
-        <a
-          href={task.deliverable_url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-sky-600 hover:underline"
-        >
-          <Link2 size={11} />
-          ลิงก์งาน
-        </a>
+        <DriveLinkButton
+          url={task.deliverable_url}
+          variant="compact"
+          label="เปิดงานใน Drive"
+        />
       )}
     </div>
   );

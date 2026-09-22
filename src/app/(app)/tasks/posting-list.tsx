@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, Link2, Paperclip, Send } from "lucide-react";
+import { BadgeCheck, Paperclip, Send } from "lucide-react";
 import { CONTENT_FORMATS, postOwnerIdOf } from "@/lib/constants";
 import { formatDateBangkok } from "@/lib/format";
 import type {
@@ -15,6 +15,7 @@ import {
   profileName,
   waitDurationLabel,
 } from "./task-card";
+import { DriveLinkButton } from "./review-poster";
 
 /** เวลาที่ถือว่างานตรวจผ่าน — เริ่มนับคิวรอโพสจากจุดนี้ */
 function approvedAtOf(t: TaskWithAssignee): string {
@@ -208,16 +209,11 @@ function PostingCard({
         </span>
         {section && <span className="text-stone-400">· {section}</span>}
         {task.deliverable_url && (
-          <a
-            href={task.deliverable_url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-sky-600 hover:underline"
-          >
-            <Link2 size={12} />
-            ลิงก์งาน
-          </a>
+          <DriveLinkButton
+            url={task.deliverable_url}
+            variant="compact"
+            label="เปิดงานใน Drive"
+          />
         )}
         {files.length > 0 && (
           <span className="inline-flex items-center gap-0.5 text-brand-600">
