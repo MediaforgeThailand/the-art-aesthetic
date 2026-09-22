@@ -9,7 +9,7 @@ import {
 } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import { fileTooLargeMessage, uploadWithProgress } from "@/lib/upload";
+import { uploadBlockedMessage, uploadWithProgress } from "@/lib/upload";
 import { prepareUploadFile } from "@/lib/upload-prepare";
 import type {
   NotificationPriority,
@@ -242,7 +242,7 @@ export function useTaskChat({
     if (file) {
       // ย่อรูป/บีบวิดีโอก่อน (ไฟล์อื่นส่งต่อตามเดิม) แล้วค่อยเช็คเพดาน
       const ready = await prepareUploadFile(file);
-      const tooLarge = fileTooLargeMessage(ready);
+      const tooLarge = uploadBlockedMessage(ready);
       if (tooLarge) {
         setSending(false);
         onError(tooLarge);
@@ -640,7 +640,7 @@ export function ChatComposer({ chat }: { chat: TaskChat }) {
             e.target.value = "";
             if (!f) return;
             // บอกตั้งแต่ตอนเลือก ไม่ใช่ตอนกดส่ง
-            const tooLarge = fileTooLargeMessage(f);
+            const tooLarge = uploadBlockedMessage(f);
             if (tooLarge) {
               onError(tooLarge);
               return;

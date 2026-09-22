@@ -74,7 +74,7 @@ import type {
   ListTaskFileRow,
   ListTaskRow,
 } from "@/lib/types";
-import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
+import { uploadBlockedSummary, uploadWithProgress } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";
 import { useHydrated } from "@/lib/use-synced-state";
 import { GroupManagerModal } from "./group-manager";
@@ -446,7 +446,7 @@ export function MyTasksClient({
       setUploadingId(null);
       setUploadProgress(null);
     }
-    const tooLarge = tooLargeSummary(picked);
+    const tooLarge = uploadBlockedSummary(picked);
     if (tooLarge) {
       setErr(tooLarge);
       return;

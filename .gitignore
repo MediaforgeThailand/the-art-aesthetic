@@ -40,3 +40,6 @@ next-env.d.ts
 
 # claude
 .claude/settings.local.json
+
+# storage maintenance (scripts/compress-storage-images.mjs)
+/storage-originals

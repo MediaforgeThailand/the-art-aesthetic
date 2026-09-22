@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ไฟล์แนบของงานใน My List — วิดีโอ/รูป/ไอเดียที่เก็บไว้กับงานตัวเอง (ตาราง list_task_files)
+ * ไฟล์แนบของงานใน My List — รูป/ไอเดียที่เก็บไว้กับงานตัวเอง (ตาราง list_task_files)
  *
  * ใช้ 3 ที่ในหน้าเดียวกัน:
  *   - `FilesCell`    คอลัมน์ "ไฟล์" ในตาราง (จอ ≥sm) — อัพจากแถวได้เลย กดรูปเปิด lightbox
@@ -17,6 +17,7 @@ import { FileText, ImageOff, Paperclip, Play, Plus, Trash2, Upload } from "lucid
 import { useRef, useState } from "react";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { MediaLightbox } from "@/app/(app)/tasks/media-lightbox";
+import { UPLOAD_ACCEPT } from "@/lib/constants";
 import { formatFileSize } from "@/lib/format";
 import { isImagePath, isVideoPath, videoThumbSrc } from "@/lib/media";
 import type { ListTaskFileRow } from "@/lib/types";
@@ -103,6 +104,7 @@ function PickButton({
         ref={ref}
         type="file"
         multiple
+        accept={UPLOAD_ACCEPT}
         hidden
         onChange={(e) => {
           const files = e.target.files;
@@ -253,7 +255,7 @@ export function FilesSection({
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-stone-500">
-          ไฟล์แนบ (วิดีโอ / รูป / ไอเดีย)
+          ไฟล์แนบ (รูป / ไอเดีย)
           {files.length > 0 && (
             <span className="ml-1 text-stone-400">· {files.length} ไฟล์</span>
           )}
@@ -293,7 +295,7 @@ export function FilesSection({
           className="flex w-full cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-brand-200 bg-white/50 px-3 py-5 text-xs text-stone-400 transition-colors hover:border-brand-400 hover:text-brand-600 disabled:cursor-wait"
         >
           <Paperclip size={18} />
-          กดเพื่อแนบวิดีโอ รูป หรือไฟล์ไอเดียของงานนี้
+          กดเพื่อแนบรูปหรือไฟล์ไอเดียของงานนี้
         </PickButton>
       ) : (
         <div className="grid grid-cols-3 gap-2">
@@ -327,7 +329,7 @@ export function FilesSection({
 
       {files.length > 0 && (
         <p className="mt-2 text-[11px] text-stone-400">
-          กดที่ไฟล์เพื่อดูเต็มจอ · วิดีโอใหญ่ระบบบีบให้อัตโนมัติก่อนอัพ · เพดาน{" "}
+          กดที่ไฟล์เพื่อดูเต็มจอ · เพดาน{" "}
           {formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ (ใหญ่กว่านั้นให้วางลิงก์ Google
           Drive ในโน้ตแทน)
         </p>

@@ -8,7 +8,7 @@ import { STORAGE_BUCKET_DOCUMENTS } from "@/lib/constants";
 import type { WellnessLabFileRow } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import { tooLargeSummary, uploadWithProgress } from "@/lib/upload";
+import { uploadBlockedSummary, uploadWithProgress } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";
 import { useSignedUrl } from "@/lib/use-signed-url";
 import { newLabFilePath } from "@/lib/wellness-constants";
@@ -151,7 +151,7 @@ export function LabFilesPanel({
 
     // รูปสแกนถูกย่อก่อน (PDF ผ่านตามเดิม) แล้วค่อยเช็คเพดานขนาด — ลำดับตามกติกา upload
     const prepared = await prepareUploadFiles(picked);
-    const tooBig = tooLargeSummary(prepared);
+    const tooBig = uploadBlockedSummary(prepared);
     if (tooBig) {
       setError(tooBig);
       return;

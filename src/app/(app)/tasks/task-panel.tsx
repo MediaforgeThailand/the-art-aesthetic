@@ -38,6 +38,7 @@ import {
   CONTENT_FORMATS,
   DEFAULT_TASK_CATEGORY,
   STORAGE_BUCKET_DOCUMENTS,
+  UPLOAD_ACCEPT,
 } from "@/lib/constants";
 import { formatDateTime, formatFileSize } from "@/lib/format";
 import { fuzzyFilter } from "@/lib/fuzzy";
@@ -49,7 +50,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import {
   MAX_UPLOAD_BYTES,
-  tooLargeSummary,
+  uploadBlockedSummary,
   uploadWithProgress,
 } from "@/lib/upload";
 import { prepareUploadFiles } from "@/lib/upload-prepare";
@@ -667,7 +668,7 @@ export function TaskPanel({
       setUploadProgress(null);
     }
     // กันไฟล์ใหญ่เกินเพดานตั้งแต่ก่อนเริ่ม — ไม่ต้องรออัพวิดีโอเป็นนาทีแล้วค่อยเจอ error
-    const tooLarge = tooLargeSummary(picked);
+    const tooLarge = uploadBlockedSummary(picked);
     if (tooLarge) {
       showError(tooLarge);
       return;
@@ -799,7 +800,7 @@ export function TaskPanel({
     if (sub.id.startsWith("temp-")) return;
     // ย่อรูป/บีบวิดีโอก่อนเช็คเพดาน เหมือนไฟล์งานบนการ์ด
     const picked = await prepareUploadFiles(Array.from(fileList));
-    const tooLarge = tooLargeSummary(picked);
+    const tooLarge = uploadBlockedSummary(picked);
     if (tooLarge) {
       showError(tooLarge);
       return;
@@ -1909,7 +1910,7 @@ export function TaskPanel({
                 ? uploadProgress
                   ? `${uploadProgress.phase === "compress" ? "กำลังบีบไฟล์" : "กำลังอัพโหลด"} ${uploadProgress.index + 1}/${uploadProgress.total} · ${Math.round(uploadProgress.pct * 100)}%`
                   : "กำลังอัพโหลด..."
-                : `อัพโหลดรูป/วิดีโอ (เลือกได้หลายไฟล์ · วิดีโอใหญ่ระบบบีบให้อัตโนมัติ · ไม่เกิน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์)`}
+                : `อัพโหลดรูป (เลือกได้หลายไฟล์ · ไม่เกิน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ · คลิปให้วางลิงก์ Drive)`}
             </button>
             {uploadProgress && (
               <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
@@ -1922,7 +1923,7 @@ export function TaskPanel({
             <input
               ref={deliverableInputRef}
               type="file"
-              accept="image/*,video/*,.pdf"
+              accept={UPLOAD_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {

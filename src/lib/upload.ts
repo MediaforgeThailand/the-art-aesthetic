@@ -1,3 +1,4 @@
+import { VIDEO_UPLOAD_ENABLED } from "@/lib/constants";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env";
 import { formatFileSize } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -7,30 +8,50 @@ import { createClient } from "@/lib/supabase/client";
  *  ค่านี้ "ไม่ได้" ตั้งที่ bucket (bucket documents ตั้ง file_size_limit = null โดยตั้งใจ —
  *  ดู AGENTS.md: ตั้งด้วย SQL ตรงๆ แล้วอัปโหลดพังทุกขนาด) แต่มาจากลิมิตกลางของโปรเจกต์
  *  ที่ **Dashboard → Storage → Settings** — ตัวเลขตรงนี้ต้องตั้งให้ตรงกับที่นั่นเสมอ
- *  (ตั้งไว้ 500MB ตามที่ผู้ใช้อัพแพลน Supabase แล้วเมื่อ 2026-08-08; เดิม Free plan = 50MB)
  *
- *  รูปถูกย่อในเบราว์เซอร์ก่อนถึงจุดนี้แล้ว (`compressImageFile` ใน @/lib/upload-prepare)
- *  เพดานนี้จึงกระทบกับวิดีโอเป็นหลัก */
-export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+ *  25MB ตั้งแต่ 2026-09-22 ตอนกลับมาเป็นแพลน Free (โควตารวมทั้งโปรเจกต์ 1GB — ไฟล์ใบละ
+ *  500MB แบบเดิมกินโควตาครึ่งหนึ่งได้ในไฟล์เดียว) คู่กับ `VIDEO_UPLOAD_ENABLED = false`
+ *  ⇒ ของที่เหลืออัพได้คือรูป (ย่อแล้วมักไม่ถึง 1MB) กับ PDF ผลแลบ
+ *
+ *  รูปถูกย่อในเบราว์เซอร์ก่อนถึงจุดนี้แล้ว (`compressImageFile` ใน @/lib/upload-prepare) */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-/** ข้อความอธิบายเมื่อไฟล์ใหญ่เกินเพดาน — คืน null เมื่อขนาดผ่าน
- *  (เช็คตั้งแต่ก่อนยิงขึ้น server: ไม่งั้นผู้ใช้ต้องรออัพวิดีโอเป็นนาทีแล้วค่อยเจอ error) */
-export function fileTooLargeMessage(file: File): string | null {
-  if (file.size <= MAX_UPLOAD_BYTES) return null;
-  return `ไฟล์ "${file.name}" ใหญ่ ${formatFileSize(file.size)} — เกินเพดาน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ของระบบ ให้บีบอัดวิดีโอให้เล็กลง หรือวางลิงก์ Google Drive ในช่องลิงก์แทน`;
+/** วิดีโอหรือเปล่า — ดูจาก MIME ก่อน (ช่องนี้ว่างได้บนบางเครื่อง) แล้วค่อยตกไปดูนามสกุล */
+function isVideoFile(file: File): boolean {
+  if (file.type.startsWith("video/")) return true;
+  return /\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc|mpg|mpeg|wmv|flv)$/i.test(
+    file.name
+  );
+}
+
+/** เหตุผลที่ไฟล์นี้อัพไม่ได้ — คืน null เมื่อผ่าน
+ *
+ *  เช็คตั้งแต่ก่อนยิงขึ้น server: ไม่งั้นผู้ใช้ต้องรออัพเป็นนาทีแล้วค่อยเจอ error
+ *  ครอบ 2 เรื่อง คือ "ชนิดไฟล์ที่ระบบปิดรับ" (วิดีโอ) และ "ใหญ่เกินเพดาน" */
+export function uploadBlockedMessage(file: File): string | null {
+  if (!VIDEO_UPLOAD_ENABLED && isVideoFile(file)) {
+    return `ตอนนี้ระบบไม่รับอัพโหลดวิดีโอ (พื้นที่เก็บไฟล์เต็มโควตา) — ให้อัพคลิปขึ้น Google Drive แล้ววางลิงก์ในช่อง "ลิงก์ไฟล์งาน Google Drive" แทน`;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return `ไฟล์ "${file.name}" ใหญ่ ${formatFileSize(file.size)} — เกินเพดาน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ของระบบ ให้วางลิงก์ Google Drive ในช่องลิงก์แทน`;
+  }
+  return null;
 }
 
 /** ตรวจทั้งชุดก่อนเริ่มอัพ — คืน null เมื่อผ่านหมด
- *  บอกชื่อ+ขนาดของไฟล์ที่เกิน "ทุกไฟล์" เพื่อให้รู้ทีเดียวว่าต้องไปบีบไฟล์ไหนบ้าง
+ *  บอกชื่อของไฟล์ที่ไม่ผ่าน "ทุกไฟล์" เพื่อให้รู้ทีเดียวว่าต้องเอาไฟล์ไหนออกบ้าง
  *  (ถ้าบอกทีละไฟล์ ทีมต้องเลือกไฟล์ใหม่ซ้ำหลายรอบกว่าจะรู้ครบ) */
-export function tooLargeSummary(files: File[]): string | null {
-  const over = files.filter((f) => f.size > MAX_UPLOAD_BYTES);
-  if (over.length === 0) return null;
-  if (over.length === 1) return fileTooLargeMessage(over[0]);
-  const list = over
-    .map((f) => `"${f.name}" (${formatFileSize(f.size)})`)
-    .join(", ");
-  return `ไฟล์ ${over.length} ไฟล์ใหญ่เกินเพดาน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์: ${list} — ให้บีบอัดวิดีโอให้เล็กลง หรือวางลิงก์ Google Drive ในช่องลิงก์แทน`;
+export function uploadBlockedSummary(files: File[]): string | null {
+  const blocked = files.filter((f) => uploadBlockedMessage(f) !== null);
+  if (blocked.length === 0) return null;
+  if (blocked.length === 1) return uploadBlockedMessage(blocked[0]);
+
+  const videos = blocked.filter((f) => uploadBlockedMessage(f)!.includes("วิดีโอ"));
+  const list = blocked.map((f) => `"${f.name}"`).join(", ");
+  if (videos.length === blocked.length) {
+    return `ตอนนี้ระบบไม่รับอัพโหลดวิดีโอ (พื้นที่เก็บไฟล์เต็มโควตา) — ${blocked.length} ไฟล์ที่เลือกเป็นคลิป: ${list} ให้อัพขึ้น Google Drive แล้ววางลิงก์แทน`;
+  }
+  return `อัพไม่ได้ ${blocked.length} ไฟล์: ${list} — วิดีโอต้องไปอยู่บน Google Drive และไฟล์อื่นต้องไม่เกิน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์`;
 }
 
 /** แปลง error จาก storage API เป็นข้อความไทยที่บอกทางแก้
@@ -54,7 +75,11 @@ function storageErrorMessage(httpStatus: number, responseText: string): string {
   const code = bodyStatus || httpStatus;
 
   if (code === 413) {
-    return `ไฟล์ใหญ่เกินเพดาน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ที่ Supabase ยอมรับ — ให้บีบอัดวิดีโอ หรือวางลิงก์ Google Drive แทน`;
+    return `ไฟล์ใหญ่เกินเพดาน ${formatFileSize(MAX_UPLOAD_BYTES)} ต่อไฟล์ที่ Supabase ยอมรับ — ให้วางลิงก์ Google Drive แทน`;
+  }
+  // แพลน Free มีโควตารวม 1GB ทั้งโปรเจกต์ — เต็มแล้วจะเด้งกลับมาเป็น 507 พร้อมข้อความอังกฤษ
+  if (code === 507 || /quota|exceeded the storage/i.test(detail)) {
+    return "พื้นที่เก็บไฟล์ของระบบเต็มโควตาแล้ว — แจ้งผู้ดูแลระบบ และระหว่างนี้ให้วางลิงก์ Google Drive แทน";
   }
   if (code === 401 || code === 403) {
     return "ไม่มีสิทธิ์อัพโหลด หรือเซสชันหมดอายุ — ลองรีเฟรชหน้าแล้วเข้าสู่ระบบใหม่";
@@ -77,8 +102,10 @@ export async function uploadWithProgress(
   file: File,
   onProgress?: (ratio: number) => void
 ): Promise<{ error: { message: string } | null }> {
-  const tooLarge = fileTooLargeMessage(file);
-  if (tooLarge) return { error: { message: tooLarge } };
+  // ด่านสุดท้ายก่อนยิงจริง — ผู้เรียกเช็คมาแล้วชั้นหนึ่ง แต่ห้ามพึ่งผู้เรียกอย่างเดียว
+  // (จุดอัพโหลดใหม่ที่ลืมเช็คจะได้ไม่หลุดวิดีโอขึ้น storage เงียบๆ)
+  const blocked = uploadBlockedMessage(file);
+  if (blocked) return { error: { message: blocked } };
 
   const supabase = createClient();
   const {

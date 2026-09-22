@@ -10,8 +10,9 @@
  * ขอบเขต:
  * - **รูป** (jpeg/png/webp ที่เบราว์เซอร์ decode ได้) — heic ของ iPhone decode ไม่ได้
  *   จึงส่งต่อไฟล์เดิม
- * - **วิดีโอ** ถูกบีบด้วย WebCodecs ที่ `compressVideoFile` (@/lib/video-compress)
- *   ไฟล์อื่น (pdf ฯลฯ) ส่งต่อตามเดิม
+ * - **วิดีโอ** ปิดรับอยู่ (`VIDEO_UPLOAD_ENABLED = false` — แพลน Free) จึงส่งไฟล์เดิมกลับไป
+ *   ให้ `uploadBlockedMessage` ปฏิเสธ; ตัวบีบ `compressVideoFile` (@/lib/video-compress)
+ *   ยังอยู่ครบ รอวันเปิดสวิตช์กลับ — ไฟล์อื่น (pdf ฯลฯ) ส่งต่อตามเดิม
  *
  * จุดอัพโหลดทุกที่ควรเรียกผ่าน `prepareUploadFile`/`prepareUploadFiles` ตัวเดียว จะได้ไม่ต้อง
  * จำว่าไฟล์ชนิดไหนต้องผ่านตัวย่อตัวไหน
@@ -20,7 +21,12 @@
  * (ผู้เรียกต้องย่อก่อน แล้วค่อยเช็คเพดาน เพราะไฟล์ที่เกินมักผ่านได้หลังย่อ)
  */
 
-import { IMAGE_COMPRESS_OVER_MB, IMAGE_MAX_DIMENSION } from "@/lib/constants";
+import {
+  IMAGE_COMPRESS_OVER_MB,
+  IMAGE_JPEG_QUALITY,
+  IMAGE_MAX_DIMENSION,
+  VIDEO_UPLOAD_ENABLED,
+} from "@/lib/constants";
 import { compressVideoFile } from "@/lib/video-compress";
 
 const MB = 1024 * 1024;
@@ -59,7 +65,7 @@ export async function compressImageFile(file: File): Promise<File> {
     bitmap.close();
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.82)
+      canvas.toBlob(resolve, "image/jpeg", IMAGE_JPEG_QUALITY)
     );
     // ย่อแล้วไม่เล็กลง (เช่น PNG ลายเส้น) — เก็บไฟล์เดิมไว้ดีกว่า
     if (!blob || blob.size >= file.size) return file;
@@ -82,7 +88,12 @@ export async function prepareUploadFile(
   file: File,
   onProgress?: (ratio: number) => void
 ): Promise<File> {
-  if (file.type.startsWith("video/")) return compressVideoFile(file, onProgress);
+  if (file.type.startsWith("video/")) {
+    // ปิดรับวิดีโออยู่ (แพลน Free) — ส่งไฟล์เดิมกลับไปให้ `uploadBlockedMessage` ปฏิเสธทันที
+    // ไม่ต้องเสียเวลาบีบเป็นนาทีแล้วค่อยบอกว่าอัพไม่ได้
+    if (!VIDEO_UPLOAD_ENABLED) return file;
+    return compressVideoFile(file, onProgress);
+  }
   return compressImageFile(file);
 }
 
