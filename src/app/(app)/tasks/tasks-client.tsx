@@ -255,6 +255,8 @@ export function TasksClient({
   /** ประเภทการตีกลับ — "คำผิด" นับเป็นข้อผิดพลาดใน KPI, "เพิ่มเติม" ไม่นับ */
   const [rejectKind, setRejectKind] =
     useState<RevisionKind>(DEFAULT_REVISION_KIND);
+  /** ผลการตรวจในกล่องเดียวกัน — "revise" = ตีกลับให้แก้ / "cancel" = ไม่ผ่าน ยกเลิกงานทิ้งเลย */
+  const [rejectMode, setRejectMode] = useState<"revise" | "cancel">("revise");
 
   /* ---------- ยืนยันโพส + ติดประเภทชิ้นงาน (KPI คอนเทนต์) ---------- */
   // งานที่ยังไม่เคยระบุ content_format ตอนกด "โพสแล้ว" จะเปิดกล่องนี้ก่อน —
@@ -1517,7 +1519,63 @@ export function TasksClient({
     if (isTempId(task.id)) return;
     setRejectReason("");
     setRejectKind(reviewStepOf(task) <= 0 ? "brief" : DEFAULT_REVISION_KIND);
+    setRejectMode("revise");
     setRejectTarget(task);
+  };
+
+  /** ผู้ตรวจเลือก "ไม่ผ่าน (ยกเลิกงาน)" — งานไม่ต้องแก้ต่อแล้ว ทิ้งไปเลย (ผู้ใช้ 2026-10-15)
+      บันทึกเหตุผลในแชทงาน (คอมเมนต์ธรรมดา ไม่ใช่รอบแก้ไข จึงไม่นับ KPI คำผิด/เพิ่มเติม)
+      แล้วย้ายงานไปถังขยะพร้อมจด cancelled_by — งานหายจากบอร์ด/คิวตรวจ/KPI ทันที
+      (ทุก query กรอง deleted_at อยู่แล้ว) และกู้คืนได้ใน 14 วันถ้ากดพลาด */
+  const confirmCancel = async () => {
+    const task = rejectTarget;
+    if (!task || rejecting || isTempId(task.id)) return;
+    const reason = rejectReason.trim();
+    setRejecting(true);
+    const { error: cErr } = await supabase.from("task_comments").insert({
+      task_id: task.id,
+      author_id: userId,
+      body: reason ? `ไม่ผ่าน (ยกเลิกงาน): ${reason}` : "ไม่ผ่าน (ยกเลิกงาน)",
+    });
+    setRejecting(false);
+    if (cErr) {
+      showError(`ยกเลิกงานไม่สำเร็จ: ${cErr.message}`);
+      return;
+    }
+    setSelectedId((sel) => (sel === task.id ? null : sel));
+    setViewerId((sel) => (sel === task.id ? null : sel));
+    // ล้างสถานะการตรวจด้วย — ถ้ากู้คืนจากถังขยะ งานกลับมาเป็น "กำลังทำ" ไม่ค้างในคิวตรวจ
+    patchTask(task.id, {
+      db: {
+        deleted_at: new Date().toISOString(),
+        cancelled_by: userId,
+        review_status: "none",
+        completed: false,
+        approved_at: null,
+        review_step: briefReviewerId(task) === null ? 1 : 0,
+        review1_approved_at: null,
+        reviewer1_approved_at: null,
+        reviewer1b_approved_at: null,
+        review_submitted_at: null,
+        rejected_by: null,
+      },
+    });
+    const briefer = briefReviewerId(task);
+    const alsoTell = new Set<string>();
+    if (briefer !== null && briefer !== task.assignee_id) alsoTell.add(briefer);
+    for (const id of currentReviewerIds(task))
+      if (id !== task.assignee_id) alsoTell.add(id);
+    notify(task, [
+      { recipient: task.assignee_id, type: "cancelled", preview: reason || null },
+      ...[...alsoTell].map((id) => ({
+        recipient: id,
+        type: "cancelled" as const,
+        priority: "secondary" as const,
+        preview: reason || null,
+      })),
+    ]);
+    setRejectTarget(null);
+    setRejectReason("");
   };
 
   /** ยืนยันตีกลับ — บันทึกคอมเมนต์ revision (นับเป็นการแก้ไข 1 ครั้งของผู้รับผิดชอบ)
@@ -1832,6 +1890,7 @@ export function TasksClient({
       brief_accepted_at: null,
       brief_source_id: null,
       deleted_at: null,
+      cancelled_by: null,
       created_by: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -1983,6 +2042,7 @@ export function TasksClient({
       brief_accepted_at: null,
       brief_source_id: task.id,
       deleted_at: null,
+      cancelled_by: null,
       created_by: briefCreatorId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -2052,7 +2112,8 @@ export function TasksClient({
   /** กู้งานคืนจากถังขยะ — กลับไปเซคชัน/สถานะเดิมทุกอย่าง */
   const restoreTask = (task: TaskWithAssignee) => {
     markServerStale(); // เขียน DB = cache ของหน้านี้เก่าแล้ว
-    patchTask(task.id, { db: { deleted_at: null } });
+    // งานที่ผู้ตรวจยกเลิก กู้คืนแล้วล้างชื่อคนยกเลิกด้วย (กลับมาเป็นงานปกติ)
+    patchTask(task.id, { db: { deleted_at: null, cancelled_by: null } });
   };
 
   /** เก็บกวาดไฟล์ของงานใน storage (best effort) — ไฟล์งาน tasks/{id}/,
@@ -2965,6 +3026,7 @@ export function TasksClient({
           <TrashList
             tasks={trashedItems}
             sections={sections}
+            profiles={profiles}
             onRestore={restoreTask}
             onHardDelete={requestHardDeleteTask}
           />
@@ -3256,8 +3318,46 @@ export function TasksClient({
       <Modal
         open={rejectTarget !== null}
         onClose={() => setRejectTarget(null)}
-        title={rejectFromBriefer ? "ขอให้แก้ก่อนส่งตรวจ" : "ตีกลับงานให้แก้ไข"}
+        title={
+          rejectMode === "cancel"
+            ? "ไม่ผ่าน — ยกเลิกงาน"
+            : rejectFromBriefer
+              ? "ขอให้แก้ก่อนส่งตรวจ"
+              : "ตีกลับงานให้แก้ไข"
+        }
       >
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-stone-100 p-1">
+          {(
+            [
+              ["revise", rejectFromBriefer ? "ขอให้แก้" : "ตีกลับให้แก้"],
+              ["cancel", "ไม่ผ่าน (ยกเลิกงาน)"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setRejectMode(mode)}
+              className={`cursor-pointer rounded-lg px-3 py-2 text-sm font-medium transition-all max-sm:min-h-11 ${
+                rejectMode === mode
+                  ? mode === "cancel"
+                    ? "bg-white text-rose-700 shadow-sm"
+                    : "bg-white text-brand-800 shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {rejectMode === "cancel" ? (
+          <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] leading-6 text-rose-800">
+            งาน &quot;
+            <span className="font-semibold">{rejectTarget?.title}</span>
+            &quot; จะถูกยกเลิกและย้ายไปถังขยะ ไม่ต้องแก้ต่อ — กู้คืนได้ใน{" "}
+            {TRASH_KEEP_DAYS} วัน
+          </p>
+        ) : (
+        <>
         <p className="text-sm leading-6 text-stone-600">
           งาน &quot;
           <span className="font-medium text-stone-800">
@@ -3323,14 +3423,20 @@ export function TasksClient({
           </div>
         </div>
         )}
+        </>
+        )}
         <div className="mt-3">
-          <Label htmlFor="reject-reason">สิ่งที่ต้องแก้ไข / เหตุผล (ไม่บังคับ)</Label>
+          <Label htmlFor="reject-reason">
+            {rejectMode === "cancel"
+              ? "เหตุผล (ไม่บังคับ)"
+              : "สิ่งที่ต้องแก้ไข / เหตุผล (ไม่บังคับ)"}
+          </Label>
           <Textarea
             id="reject-reason"
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="สิ่งที่ต้องแก้ไข"
+            placeholder={rejectMode === "cancel" ? "เหตุผล" : "สิ่งที่ต้องแก้ไข"}
           />
         </div>
         <div className="mt-5 flex justify-end gap-2">
@@ -3340,11 +3446,15 @@ export function TasksClient({
           <Button
             variant="danger"
             loading={rejecting}
-            onClick={() => void confirmReject()}
+            onClick={() =>
+              void (rejectMode === "cancel" ? confirmCancel() : confirmReject())
+            }
           >
-            {rejectFromBriefer
-              ? "ส่งกลับให้แก้"
-              : `ตีกลับ (${REVISION_KINDS[rejectKind].label})`}
+            {rejectMode === "cancel"
+              ? "ไม่ผ่าน — ยกเลิกงาน"
+              : rejectFromBriefer
+                ? "ส่งกลับให้แก้"
+                : `ตีกลับ (${REVISION_KINDS[rejectKind].label})`}
           </Button>
         </div>
       </Modal>

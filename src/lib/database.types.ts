@@ -250,6 +250,9 @@ export type TaskRow = {
   /** ผู้ตีกลับล่าสุด — งานที่แก้แล้วกด "ส่งตรวจแก้" จะวิ่งกลับมาที่คนนี้ตรงๆ (ข้ามผู้สั่ง brief);
       ล้างตอนอนุมัติ/ยกเลิกส่งตรวจ/เปิดงานใหม่ — migration 0098 */
   rejected_by: string | null;
+  /** ผู้ตรวจที่กด "ไม่ผ่าน (ยกเลิกงาน)" — งานถูกย้ายไปถังขยะพร้อมกัน; null = ไม่ได้ถูกยกเลิก
+      (ลบเอง/ยังอยู่) ล้างตอนกู้คืน — migration 0131 */
+  cancelled_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -379,7 +382,8 @@ export type NotificationType =
   | "review_request"
   | "approved"
   | "rejected"
-  | "brief_accepted";
+  | "brief_accepted"
+  | "cancelled";
 
 /** ระดับความสำคัญของแจ้งเตือน — primary = ต้องลงมือทำ (ป้ายเรืองแสง + เด้งเข้าเครื่อง)
     secondary = แค่เกี่ยวข้อง (ขึ้นในกระดิ่งแบบเงียบ ไม่เด้ง) — migration 0098 */

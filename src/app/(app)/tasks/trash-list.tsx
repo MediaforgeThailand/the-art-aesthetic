@@ -22,16 +22,23 @@ function daysLeft(deletedAt: string): number {
 export function TrashList({
   tasks,
   sections,
+  profiles,
   onRestore,
   onHardDelete,
 }: {
   tasks: TaskWithAssignee[];
   sections: TaskSectionRow[];
+  /** ไว้หาชื่อผู้ตรวจที่กด "ไม่ผ่าน (ยกเลิกงาน)" จาก cancelled_by */
+  profiles: { id: string; full_name: string | null; email: string | null }[];
   onRestore: (task: TaskWithAssignee) => void;
   onHardDelete: (task: TaskWithAssignee) => void;
 }) {
   const sectionName = (id: string | null) =>
     sections.find((s) => s.id === id)?.name ?? "-";
+  const cancellerName = (id: string) => {
+    const p = profiles.find((x) => x.id === id);
+    return p ? profileName(p) : "ผู้ตรวจ";
+  };
 
   if (tasks.length === 0) {
     return (
@@ -63,6 +70,11 @@ export function TrashList({
               <p className="truncate text-sm font-medium text-stone-800">
                 {t.title}
               </p>
+              {t.cancelled_by && (
+                <p className="mt-0.5 truncate text-xs font-medium text-rose-600">
+                  ไม่ผ่าน (ยกเลิกงาน) โดย {cancellerName(t.cancelled_by)}
+                </p>
+              )}
               <p className="mt-0.5 truncate text-xs text-stone-400">
                 {sectionName(t.section_id)} · ผู้รับผิดชอบ{" "}
                 {t.assignee ? profileName(t.assignee) : "ไม่ระบุ"} · ลบเมื่อ{" "}

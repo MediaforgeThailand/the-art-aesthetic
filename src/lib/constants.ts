@@ -467,7 +467,8 @@ type NotificationBadgeKey =
   | "assign"
   | "approved"
   | "comment"
-  | "brief_accepted";
+  | "brief_accepted"
+  | "cancelled";
 
 export const NOTIFICATION_BADGES: Record<
   NotificationBadgeKey,
@@ -516,6 +517,11 @@ export const NOTIFICATION_BADGES: Record<
   brief_accepted: {
     label: "รับงาน brief",
     chip: "border-stone-200 bg-stone-50 text-stone-500",
+    loud: false,
+  },
+  cancelled: {
+    label: "ยกเลิกงาน",
+    chip: "border-stone-300 bg-stone-100 text-stone-600",
     loud: false,
   },
 };

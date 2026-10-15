@@ -51,6 +51,8 @@ function messageOf(n: NotificationWithJoins): string {
           : `${actor} ตีกลับงาน ${title} ให้แก้คำผิด`;
     case "brief_accepted":
       return `${actor} รับงาน brief ${title} แล้ว`;
+    case "cancelled":
+      return `${actor} ตรวจงาน ${title} ไม่ผ่าน — ยกเลิกงานแล้ว`;
   }
 }
 

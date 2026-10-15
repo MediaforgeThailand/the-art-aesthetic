@@ -198,6 +198,8 @@ function messageOf(r: Row): string {
           : `${who} ตีกลับงาน ${title} ให้แก้คำผิด`;
     case "brief_accepted":
       return `${who} รับงาน brief ${title} แล้ว`;
+    case "cancelled":
+      return `${who} ตรวจงาน ${title} ไม่ผ่าน — ยกเลิกงานแล้ว`;
     default:
       return `มีความเคลื่อนไหวในงาน ${title}`;
   }
@@ -224,6 +226,8 @@ function headingOf(r: Row): string {
       return "ความคิดเห็นใหม่";
     case "brief_accepted":
       return "รับงาน brief แล้ว";
+    case "cancelled":
+      return "งานถูกยกเลิก";
     default:
       return "การแจ้งเตือน";
   }
